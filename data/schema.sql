@@ -1,0 +1,2 @@
+-- Schema for data/app.db.
+-- Intentionally empty: tables are defined starting with backlog task 2 (section config).

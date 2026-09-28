@@ -1,0 +1,17 @@
+1. Initialize Python repo (Playwright, python-docx, openpyxl/pandas, pdfplumber, Streamlit, SQLite)
+2. Set up section config (Equities, Fixed Income, Digital Payments, Real Estate, Focus) + permission flags per section
+3. Build CBK rates fetcher (public rates page)
+4. Build NSE T-bill/T-bond fetcher (PDF parsing, per-auction)
+5. Build World Bank data fetcher (public API, format=json)
+6. Build NASI index fetcher (public quote page)
+7. Build Ibuka/REIT weekly summary fetcher (predictable filename pattern PDF)
+8. Write unit tests for the five public-source fetchers (depends on: 3-7)
+9. Design checking-layer exact-match comparison logic
+10. Build checking-layer module against sample figures (depends on: 9)
+11. Draft Focus topic-suggestion logic spec (scans historical reports for candidate topics)
+12. Scaffold historical-report ingestion for Focus topic suggestion (depends on: 11)
+13. Scaffold admin CMS publish automation script (Playwright, SSO-authenticated, no live test yet)
+14. Draft coordinator-review output format (single accuracy pass across all 5 sections)
+15. Draft Edwin/Liz Word-doc-summary generator (python-docx, before-publish, insight-only)
+16. Wire workbook fallback + cross-check into checking-layer module (depends on: 10, workbook data arriving)
+17. End-to-end test on one department: draft → check → coordinator review → summary → CMS publish (depends on: 13, 14, 15, 16)
