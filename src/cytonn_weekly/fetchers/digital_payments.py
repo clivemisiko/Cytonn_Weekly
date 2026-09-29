@@ -20,6 +20,7 @@ Typical usage
 
 from __future__ import annotations
 
+import math
 from datetime import date, timedelta
 from typing import Any, Optional
 
@@ -35,6 +36,8 @@ COMPANIES: list[tuple[str, str]] = [
     ("Global Payments", "GPN"),
 ]
 
+_PE_FIELDS = ("forward_pe", "forward_eps", "forward_pe_source", "forward_pe_note")
+
 _NUMERIC_FIELDS = (
     "current_price",
     "current_price_date",
@@ -45,6 +48,61 @@ _NUMERIC_FIELDS = (
     "wow_pct",
     "ytd_pct",
 )
+
+
+def _positive_number(value: Any) -> Optional[float]:
+    """value as a finite float > 0, else None (Yahoo may return None or 'Infinity')."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if not math.isfinite(value) or value <= 0:
+        return None
+    return float(value)
+
+
+def get_forward_pe(ticker: str, price: float) -> dict[str, Any]:
+    """Forward P/E on the conventional consensus-estimate basis.
+
+    Prefers Yahoo's own info["forwardPE"] (price / forward consensus EPS).  If
+    that is missing or not a positive number, falls back to the supplied price
+    divided by info["forwardEps"].  Pulled fresh every run: consensus estimates
+    are revised over time, so nothing here is cached.
+
+    Returns {"forward_pe", "forward_eps", "forward_pe_source", "forward_pe_note"};
+    forward_pe is None (with a note) if neither route yields a positive figure.
+    Raises if the info call itself fails.
+    """
+    info = yf.Ticker(ticker).info or {}
+    eps = _positive_number(info.get("forwardEps"))
+    pe = _positive_number(info.get("forwardPE"))
+    if pe is not None:
+        return {
+            "forward_pe": pe,
+            "forward_eps": eps,
+            "forward_pe_source": "yahoo_forwardPE",
+            "forward_pe_note": None,
+        }
+    if eps is not None:
+        return {
+            "forward_pe": price / eps,
+            "forward_eps": eps,
+            "forward_pe_source": "price/forwardEps",
+            "forward_pe_note": "forwardPE missing; computed from price / forwardEps",
+        }
+    return {
+        "forward_pe": None,
+        "forward_eps": None,
+        "forward_pe_source": None,
+        "forward_pe_note": "no positive forwardPE or forwardEps from Yahoo",
+    }
+
+
+def average_forward_pe(rows: list[dict[str, Any]]) -> Optional[float]:
+    """Mean forward P/E over rows that have one (2dp), or None if none do.
+
+    Failed rows and rows with no forward P/E are left out.
+    """
+    pes = [r["forward_pe"] for r in rows if isinstance(r.get("forward_pe"), (int, float))]
+    return round(sum(pes) / len(pes), 2) if pes else None
 
 
 def _pct_change(new: float, old: float) -> float:
@@ -84,6 +142,12 @@ def _fetch_one(name: str, ticker: str, today: date) -> dict[str, Any]:
     prior_close = float(hist["Close"].iloc[prior_idx[-1]])
     prior_date = dates[prior_idx[-1]]
 
+    pe: dict[str, Any] = {f: None for f in _PE_FIELDS}
+    try:
+        pe.update(get_forward_pe(ticker, current))
+    except Exception as exc:  # noqa: BLE001 - price data is still good; only P/E is unavailable
+        pe["forward_pe_note"] = f"forward P/E unavailable: {type(exc).__name__}: {exc}"
+
     return {
         "company": name,
         "ticker": ticker,
@@ -95,12 +159,18 @@ def _fetch_one(name: str, ticker: str, today: date) -> dict[str, Any]:
         "ytd_open_date": dates[0].isoformat(),
         "wow_pct": _pct_change(current, prior_close),
         "ytd_pct": _pct_change(current, ytd_open),
+        **pe,
         "error": None,
     }
 
 
 def fetch_digital_payments(today: Optional[date] = None) -> list[dict[str, Any]]:
     """Fetch price data for every tracked company.
+
+    Each row also carries forward_pe (forward consensus basis, see
+    get_forward_pe), forward_eps, forward_pe_source and forward_pe_note.
+    forward_pe is None when Yahoo has no usable figure; the note says why.
+    Use average_forward_pe(rows) for the table's average.
 
     A failure on one ticker is recorded in that row's "error" field (numeric
     fields are None) and never stops the rest of the batch.
@@ -112,7 +182,7 @@ def fetch_digital_payments(today: Optional[date] = None) -> list[dict[str, Any]]
             results.append(_fetch_one(name, ticker, today))
         except Exception as exc:  # noqa: BLE001 - isolate any per-ticker failure
             row: dict[str, Any] = {"company": name, "ticker": ticker}
-            row.update({f: None for f in _NUMERIC_FIELDS})
+            row.update({f: None for f in _NUMERIC_FIELDS + _PE_FIELDS})
             row["error"] = f"{type(exc).__name__}: {exc}"
             results.append(row)
     return results
