@@ -1,3 +1,10 @@
+# IDE/agent tooling, not project files
+.agents/
+.claude/
+.qodo/
+claude.exe
+skills-lock.json
+
 # Python
 __pycache__/
 *.py[cod]
