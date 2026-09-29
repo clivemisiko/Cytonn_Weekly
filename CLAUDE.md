@@ -2,7 +2,7 @@
 
 AI tool that drafts the first version of the weekly Cytonn Weekly report by pulling data from spreadsheets, dashboards, past reports, and websites, mapping it into the report's existing format. Produces a ready-to-review draft instead of a blank page. Intern capstone project (Clive Mutende, Vunoh Global AI Intern Program), Option C ("full capstone") scope.
 
-**Status as of 2026-09-28:** Proposal presented to Cytonn; verbal go-ahead to start build, official written approval still outstanding. Awaiting the three production workbooks (Equities, Fixed Income, Digital Payments) and recent report files from the team, expected this week. Build sequencing: get everything that doesn't need the workbooks working first (see Backlog below), wire in workbook fallback/cross-check once the data lands.
+**Status as of 2026-09-29:** Proposal presented to Cytonn; verbal go-ahead to start build, official written approval still outstanding. **Pilot section for the current ~4-5 week build window: Digital Payments** — the one section committed to being built and proven fully end to end (drafting, checking, coordinator review, Word doc summary, publish, distribute) before this window closes. The other four sections (Equities, Fixed Income, Real Estate, Focus) are documented as roadmap, not built now. Digital Payments needs no workbook at all: its only source is Yahoo Finance, which also supplies the historical prices (week-ago, year-open) its weekly comparison table needs — see Sources below.
 
 ## Non-negotiable rules
 
@@ -10,14 +10,15 @@ AI tool that drafts the first version of the weekly Cytonn Weekly report by pull
 - **Checking is exact-match after normalization, not a tolerance band.** No percentage/margin tolerance for a real error, ever. But before comparing, normalize the source value to the draft's display precision and units (round, convert, strip formatting) — this is a defined, mechanical transformation, not a fuzzy allowance. A drafted figure must equal the normalized source figure exactly.
 - **A mismatch and a source disagreement are different flags.** If the draft doesn't equal its own normalized source, that's a mismatch/error flag. If two independent legitimate sources report the same underlying figure with a genuinely different derived number (e.g. two different NPL ratios off the same loan-book figure, different methodology), that's a separate **"sources disagree"** flag — it tells the coordinator a human call is needed on which source to use, it does not imply the draft is wrong.
 - **The checking layer only verifies figures that trace to a source, never analysis or opinion.** A sentence like "profit rose sharply due to strong loan growth" splits into a checkable figure (the profit number) and an uncheckable interpretive claim (the "due to" framing). Check the figure; leave the interpretive language alone rather than silently marking it as verified.
+- **There are no "departments," only report sections** (Equities, Fixed Income, Digital Payments, Real Estate, Focus). Analysts rotate across sections weekly; permissions and config are section-based, not person-based.
 - **The tool never approves anything.** A single coordinator reviews all five sections for accuracy before anything moves forward. Edwin and Liz (CEO and co) are insight recipients, not approvers — they get a Word doc summary of the coordinator-checked values *before* publish, for their own awareness, not to sign off.
 - **Publishing is SSO-driven browser automation, not a direct API/DB write.** No API or database access has been confirmed or granted by Cytonn's team (CT) — the tool drives the existing admin CMS through the same SSO-authenticated session a person would use. Cytonn's backend (PHP/Laravel/nginx) is irrelevant to this — browser automation works at the DOM level regardless of backend language.
 
 ## Architecture
 
-Two layers, per department (Equities, Fixed Income, Digital Payments, Real Estate, Focus):
+Two layers, per section (Equities, Fixed Income, Digital Payments, Real Estate, Focus):
 
-1. **Drafting layer** — sources primarily online per department (see Sources below), workbook as fallback when an online source is missing/unclear. Access and settings are **section-based**, not person-based (analysts rotate sections weekly).
+1. **Drafting layer** — sources primarily online per section (see Sources below), workbook as fallback when an online source is missing/unclear. Access and settings are **section-based**, not person-based (analysts rotate sections weekly).
 2. **Checking layer** — before a coordinator ever sees a draft, checks every figure against the exact (normalized) source it was drafted from and flags mismatches; see the normalization, sources-disagree, and figure-vs-analysis rules above. While the workbook is in the loop, it also serves as an independent second data point beyond match-to-source. **The workbook's role here is explicitly temporary** — phases out once online sourcing is trusted enough to stand alone. The team keeps maintaining the workbooks regardless (their own yearly rollups), so the data stays available as long as the tool needs it.
 
 **Focus of the Week is the exception**: no fixed topic or source. The tool suggests candidate topics from historical reports; the analyst picks from the suggestions (tool doesn't choose unilaterally). Source is either analyst-supplied or tool-found, depending on that section's permission setting — either way it's surfaced to the reviewer, never guessed at silently. This is the least-tested part of the drafting layer.
@@ -26,13 +27,14 @@ Two layers, per department (Equities, Fixed Income, Digital Payments, Real Estat
 
 **Trigger:** automatic on the existing Friday cadence. On-demand ad-hoc ask is a later addition, not needed for the first working version.
 
-## Sources (per department)
+## Sources (per section)
 
-- **Equities / Fixed Income:** CBK (rates page, no public API — scrape), NSE (T-bill/T-bond results as per-auction PDFs, no simple API), World Bank (real public API, `?format=json`), NASI index (free public quote pages — NSE's own site, Investing.com; no paid Bloomberg Terminal needed).
-- **Digital Payments:** KCB daily email (not public — needs an inbox/forwarding rule; figures split between body text and a PDF attachment).
+- **Equities:** CBK (rates page, no public API — scrape), NSE (T-bill/T-bond results as per-auction PDFs, no simple API), World Bank (real public API, `?format=json`), NASI index (free public quote pages — NSE's own site, Investing.com; no paid Bloomberg Terminal needed), **and the KCB daily email** (not public — needs an inbox/forwarding rule; figures split between body text and a PDF attachment).
+- **Fixed Income:** CBK, NSE (T-bill/T-bond per-auction PDFs), World Bank, NASI — same public sources as Equities, no email dependency.
+- **Digital Payments:** Yahoo Finance (free public site, no access request needed). This is the only fetcher this build window actually needs. Its weekly report table (confirmed against a real Cytonn Weekly report, pages 16-18: "Digital Payments NYSE and LSE Stock Performance") covers **7 companies: American Express, Visa, Mastercard, Circle, Block, PayPal, Global Payments** — all NYSE/NASDAQ, no LSE names despite the table's title. **Wise Plc is not in it**: the report's intro sentence names Wise (and skips Circle and Global Payments, which *are* in the table), but that sentence is stale boilerplate, not a reliable company list — go by the table's actual rows. Needs, per company: current price, price 7 days ago, and this year's open price, to compute w/w % change and YTD % change — all three are ordinary historical prices Yahoo Finance holds for any past date, so no workbook or stored run history is needed for these comparisons. The table's one non-weekly input, Forward P/E, is computed off FY'2025 audited financials — an annual figure worth sourcing/caching separately, not re-pulled every run. **Confirmed working tickers:** AXP, V, MA, CRCL, XYZ (not the old SQ symbol — Block rebranded), PYPL, GPN.
 - **Real Estate:** REIT figures from the NSE's Unquoted Securities Platform ("Ibuka"), published as a weekly PDF at a predictable filename pattern (`nse.co.ke/wp-content/uploads/Unquoted-Securities-Platform-Ibuka-Weekly-Summary_DD-MM-YYYY.pdf`) — no listing page, construct the filename from the date. Newspaper coverage: Business Daily Africa is mostly free; Daily Nation and The Standard are paywalled (paid access requested separately).
 - **Focus:** historical Cytonn Weekly reports (topic suggestion), source per analyst/tool-permission as above.
-- **All departments, fallback only:** the three production workbooks (Equities, Fixed Income, Digital Payments — long-running, updated weekly by the team regardless of this tool).
+- **All sections, fallback only:** the three production workbooks (Equities, Fixed Income, Digital Payments — long-running, updated weekly by the team regardless of this tool).
 
 **Known parsing risk:** source formats drift (this is the proposal's central named risk, and Cytonn's own publishing team already hits the same problem extracting the finished PDF into their CMS). PDFs (NSE T-bills, Ibuka) need real parsing, not just a page read.
 
@@ -51,29 +53,29 @@ Python, end to end:
 - Storage: **SQLite** — permissions config, draft state, historical-report index, run history. No real concurrency at this scale (weekly cadence, one coordinator)
 - Hosting: Cytonn's own servers, no separate hosting cost
 
-## Backlog (current, front-loaded to what doesn't need the workbooks)
+## Backlog (current, scoped to the Digital Payments pilot — see Status above)
 
-1. Initialize Python repo (Playwright, python-docx, openpyxl/pandas, pdfplumber, Streamlit, SQLite)
-2. Set up section config (5 departments) + permission flags per section
-3. Build CBK rates fetcher
-4. Build NSE T-bill/T-bond fetcher (PDF parsing, per-auction)
-5. Build World Bank data fetcher (public API)
-6. Build NASI index fetcher (public quote page)
-7. Build Ibuka/REIT weekly summary fetcher (predictable filename pattern PDF)
-8. Unit tests for the five public-source fetchers (depends on: 3-7)
-9. Design checking-layer comparison logic: normalization (precision/units), the mismatch-vs-sources-disagree flag split, and the figure-vs-analysis scope boundary
-10. Build checking-layer module against sample figures, covering all three cases above (depends on: 9)
-11. Draft Focus topic-suggestion logic spec
-12. Scaffold historical-report ingestion for Focus topic suggestion (depends on: 11)
-13. Scaffold admin CMS publish automation script (Playwright, SSO-authenticated, no live test yet)
-14. Draft coordinator-review output format (single accuracy pass, all 5 sections)
-15. Draft Edwin/Liz Word-doc-summary generator (python-docx, before-publish, insight-only)
-16. Wire workbook fallback + cross-check into checking-layer module (depends on: 10, workbook data arriving)
-17. End-to-end test, one department: draft → check → coordinator review → summary → CMS publish (depends on: 13, 14, 15, 16)
+1. ~~Initialize Python repo (Playwright, python-docx, openpyxl/pandas, pdfplumber, Streamlit, SQLite)~~ — **done**, two commits (`1f92db9`, `1828d0e`)
+2. ~~Set up section config (5 sections) + permission flags per section~~ — **done** (`sections.py`, seeded, 19 tests passing)
+3. ~~Build Digital Payments' Yahoo Finance fetcher~~ — **done**, `digital_payments.py`, confirmed against the 7 real tickers (AXP, V, MA, CRCL, XYZ, PYPL, GPN), Wise Plc removed. Not yet committed — awaiting manual commit (Claude Code no longer commits/pushes, that's manual now).
+4. ~~Unit tests for the Yahoo Finance fetcher~~ — **done**, 25 tests passing, updated for the 7-company list
+5. Design checking-layer comparison logic: normalization (precision/units), the mismatch-vs-sources-disagree flag split, and the figure-vs-analysis scope boundary — **next**
+6. Build checking-layer module against sample Digital Payments figures, covering all three cases above (depends on: 5)
+7. Draft coordinator-review output format (single accuracy pass, scoped to Digital Payments for this window)
+8. Build the coordinator-review screen (Streamlit), scoped to Digital Payments (depends on: 7)
+9. Build the Edwin/Liz Word-doc-summary generator (python-docx, before-publish, insight-only), scoped to Digital Payments
+10. Scaffold and build admin CMS publish automation (Playwright, SSO-authenticated), scoped to Digital Payments' section of the CMS
+11. End-to-end test, Digital Payments: draft → check → coordinator review → summary → CMS publish → distribute (depends on: 6, 8, 9, 10)
+
+**Documented as roadmap beyond this window, not built now:**
+- Extending drafting and checking to the remaining four sections (Equities, Fixed Income, Real Estate, Focus) — includes the CBK, NSE T-bill/T-bond, World Bank, NASI, and Ibuka/REIT fetchers, the Focus topic-suggestion logic, and historical-report ingestion
+- Workbook fallback/cross-check wiring — not needed for Digital Payments; may matter once other sections come into scope
+- The on-demand (ask-anytime) trigger, beyond the automatic Friday-cadence run
+- Full hardening against source-format drift across every section's sources
 
 ## Open items
 
-- Two data-access requests still open: Digital Payments' KCB email access, paid Daily Nation/Standard newspaper access. Workbooks and recent report files already requested, in motion.
+- Two data-access requests still open, neither blocking the Digital Payments pilot: an inbox/forwarding rule for Equities' KCB daily email, and paid access to Daily Nation/The Standard for Real Estate's newspaper coverage.
 - Whether Cytonn (CT) would ever open real API/database access, beyond the SSO-driven UI automation — genuinely unasked, not needed for the current plan.
 - Official written approval of the Inception Report is still outstanding despite the verbal go-ahead to start building.
 
