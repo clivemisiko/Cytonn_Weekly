@@ -15,7 +15,7 @@ dependencies = [
     "pandas==2.2.3",
     "pdfplumber==0.11.4",
     "streamlit==1.41.1",
-    "anthropic==0.42.0",
+    "anthropic==1.9.0",
     "apscheduler==3.11.0",
     "yfinance==1.7.0",
 ]
