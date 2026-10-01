@@ -1,4 +1,4 @@
-"""Unit tests for cytonn_weekly.fetchers.digital_payments.
+"""Unit tests for cytonn_weekly.digital_payments.fetcher.
 
 yfinance is mocked; no network access.
 """
@@ -8,7 +8,7 @@ from datetime import date
 import pandas as pd
 import pytest
 
-from cytonn_weekly.fetchers import digital_payments as dp
+from cytonn_weekly.digital_payments import fetcher as dp
 
 TODAY = date(2026, 9, 29)
 
@@ -230,12 +230,72 @@ def test_average_covers_all_seven_when_all_have_forward_pe(patch_yf):
     pes = {"V": 24.0, "MA": 24.0, "AXP": 15.0, "CRCL": 56.0, "XYZ": 14.0, "PYPL": 9.0, "GPN": 5.0}
     patch_yf({t: GOOD for _, t in dp.COMPANIES}, {t: {"forwardPE": v} for t, v in pes.items()})
     rows = dp.fetch_digital_payments(today=TODAY)
-    assert dp.average_forward_pe(rows) == round(sum(pes.values()) / 7, 2)
+    assert dp.average_forward_pe(rows) == 21.0  # 147 / 7, at 1dp
 
 
 def test_average_matches_what_the_outlook_stats_read(patch_yf):
-    from cytonn_weekly.drafters.digital_payments_highlights import table_stats
+    from cytonn_weekly.digital_payments.highlights import table_stats
 
     patch_yf({t: GOOD for _, t in dp.COMPANIES}, {"V": {"forwardPE": 24.0}, "MA": {"forwardPE": 25.0}})
     rows = dp.fetch_digital_payments(today=TODAY)
     assert table_stats(rows)["avg_forward_pe"] == dp.average_forward_pe(rows)
+
+
+# ---------------------------------------------------------------------------
+# Display formatting and 1dp average
+# ---------------------------------------------------------------------------
+
+def _row(**kw):
+    base = {"company": "Visa", "ticker": "V", "current_price": 372.65, "prior_close": 388.31,
+            "ytd_open": 350.6, "wow_pct": -4.0234, "ytd_pct": 6.3149, "forward_pe": 15.46}
+    base.update(kw)
+    return base
+
+
+def test_format_uses_the_real_table_style():
+    f = dp.format_table_rows([_row()])[0]
+    assert f["company"] == "Visa" and f["ticker"] == "V"
+    assert f["current_price"] == "372.7"   # no $, one decimal, half up
+    assert f["prior_close"] == "388.3"
+    assert f["ytd_open"] == "350.6"
+    assert f["wow_pct"] == "(4.0%)"        # negative: parentheses, no minus
+    assert f["ytd_pct"] == "6.3%"          # positive: no plus
+    assert f["forward_pe"] == "15.5x"
+
+
+def test_format_has_no_currency_symbol_plus_or_minus_signs():
+    f = dp.format_table_rows([_row(wow_pct=1.26, ytd_pct=-12.5)])[0]
+    assert "$" not in f["current_price"] and "+" not in f["wow_pct"]
+    assert f["wow_pct"] == "1.3%" and f["ytd_pct"] == "(12.5%)"
+    assert "-" not in f["ytd_pct"]
+
+
+def test_format_zero_and_rounds_to_zero_have_no_sign_or_parentheses():
+    f = dp.format_table_rows([_row(wow_pct=0.0, ytd_pct=-0.04)])[0]
+    assert f["wow_pct"] == "0.0%" and f["ytd_pct"] == "0.0%"
+
+
+def test_format_rounds_half_up_not_bankers():
+    f = dp.format_table_rows([_row(current_price=2.25, wow_pct=-2.25, forward_pe=24.95)])[0]
+    assert f["current_price"] == "2.3" and f["wow_pct"] == "(2.3%)" and f["forward_pe"] == "25.0x"
+
+
+def test_format_missing_values_are_dashes():
+    failed = {"company": "Circle", "ticker": "CRCL", "current_price": None, "prior_close": None,
+              "ytd_open": None, "wow_pct": None, "ytd_pct": None, "forward_pe": None, "error": "x"}
+    f = dp.format_table_rows([failed, _row(forward_pe=None)])
+    assert all(f[0][k] == "-" for k in ("current_price", "prior_close", "ytd_open", "wow_pct", "ytd_pct", "forward_pe"))
+    assert f[1]["forward_pe"] == "-"
+
+
+def test_format_keeps_fetcher_field_names_and_row_order():
+    rows = [_row(), _row(company="Mastercard", ticker="MA")]
+    out = dp.format_table_rows(rows)
+    assert [r["ticker"] for r in out] == ["V", "MA"]
+    assert set(out[0]) == {"company", "ticker", "current_price", "prior_close", "ytd_open",
+                           "wow_pct", "ytd_pct", "forward_pe"}
+
+
+def test_average_forward_pe_is_one_decimal_half_up():
+    assert dp.average_forward_pe([{"forward_pe": 24.9}, {"forward_pe": 25.0}]) == 25.0  # 24.95
+    assert dp.average_forward_pe([{"forward_pe": 23.3}, {"forward_pe": 23.4}]) == 23.4  # 23.35

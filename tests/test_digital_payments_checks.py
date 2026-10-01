@@ -21,7 +21,7 @@ def src(ticker, price=100.0, prior=90.0, ytd_open=80.0, wow=11.11, ytd=25.0, pe=
             "ytd_open": ytd_open, "wow_pct": wow, "ytd_pct": ytd, "forward_pe": pe}
 
 
-def drafted(ticker, price=100.0, prior=90.0, ytd_open=80.0, wow=11.11, ytd=25.0, pe=25.0):
+def drafted(ticker, price=100.0, prior=90.0, ytd_open=80.0, wow=11.1, ytd=25.0, pe=25.0):
     return {"ticker": ticker, "current_price": price, "prior_close": prior,
             "ytd_open": ytd_open, "wow_pct": wow, "ytd_pct": ytd, "forward_pe": pe}
 
@@ -163,14 +163,14 @@ def test_table_check_accepts_extra_sources_keyed_by_ticker_and_field():
 
 def test_table_all_match_including_normalized_pe_is_clean():
     rows = [src("V"), src("MA", price=567.65)]
-    d = [drafted("V"), drafted("MA", price=567.65)]
+    d = [drafted("V"), drafted("MA", price=567.7)]  # source 567.65 -> displayed 567.7
     r = ck.check_table(rows, d)
     assert r.clean and r.flags == []
     assert r.checked == 2 * len(ck.TABLE_DECIMALS)
 
 
 def test_table_mismatch_names_the_ticker_and_field():
-    r = ck.check_table([src("V"), src("MA")], [drafted("V"), drafted("MA", wow=11.12)])
+    r = ck.check_table([src("V"), src("MA")], [drafted("V"), drafted("MA", wow=11.2)])
     assert [(f.kind, f.subject, f.field) for f in r.flags] == [(MISMATCH, "MA", "wow_pct")]
     assert not r.clean
 
@@ -183,7 +183,7 @@ def test_table_covers_all_six_figures():
 
 def test_table_accepts_formatted_display_strings():
     d = {"ticker": "V", "current_price": "$100.00", "prior_close": "$90.00", "ytd_open": "$80.00",
-         "wow_pct": "+11.11%", "ytd_pct": "+25.00%", "forward_pe": "25.0x"}
+         "wow_pct": "+11.1%", "ytd_pct": "+25.00%", "forward_pe": "25.0x"}
     assert ck.check_table([src("V")], [d]).clean
 
 
@@ -219,7 +219,7 @@ ROWS = [src("V", wow=1.0, ytd=10.0, pe=20.0), src("MA", wow=-3.0, ytd=2.0, pe=30
         src("AXP", wow=5.0, ytd=-4.0, pe=10.0), src("GPN", error="x")]
 
 GOOD_STATS = {"companies_included": 3, "companies_failed": 1, "avg_wow_pct": 1.0,
-              "avg_ytd_pct": 2.67, "advancers": 2, "decliners": 1, "avg_forward_pe": 20.0}
+              "avg_ytd_pct": 2.7, "advancers": 2, "decliners": 1, "avg_forward_pe": 20.0}
 
 
 def test_expected_outlook_stats_recomputed_from_source_rows():
@@ -243,8 +243,10 @@ def test_outlook_stat_mismatch_is_flagged_per_stat():
 
 
 def test_outlook_stat_normalization_applies_to_averages():
-    # true avg ytd = 2.6666...; drafted 2.67 passes, 2.66 does not.
-    assert ck.check_outlook_stats(dict(GOOD_STATS, avg_ytd_pct=2.66), ROWS).flags[0].field == "avg_ytd_pct"
+    # true avg ytd = 2.6666...; at the table's 1dp it normalizes to 2.7.
+    assert ck.check_outlook_stats(dict(GOOD_STATS, avg_ytd_pct=2.7), ROWS).clean
+    assert ck.check_outlook_stats(dict(GOOD_STATS, avg_ytd_pct=2.6), ROWS).flags[0].field == "avg_ytd_pct"
+    assert ck.check_outlook_stats(dict(GOOD_STATS, avg_ytd_pct=2.67), ROWS).flags[0].kind == MISMATCH  # 2dp not displayed
 
 
 def test_outlook_missing_and_unknown_stats():
@@ -261,7 +263,7 @@ def test_outlook_without_any_pe_source_passes_when_draft_omits_it():
 
 
 def test_outlook_stats_agree_with_the_drafters_own_table_stats():
-    from cytonn_weekly.drafters.digital_payments_highlights import table_stats
+    from cytonn_weekly.digital_payments.highlights import table_stats
 
     assert ck.check_outlook_stats(table_stats(ROWS), ROWS).clean
 
@@ -309,3 +311,127 @@ def test_entrypoint_collects_mismatch_and_disagreement_separately():
         extra_sources={("V", "forward_pe"): [SourceValue("alt", 40.0)]},
     )
     assert len(r.by_kind(MISMATCH)) == 1 and len(r.by_kind(SOURCES_DISAGREE)) == 1
+
+
+# ---------------------------------------------------------------------------
+# Display precision is one decimal, confirmed against the real table
+# ---------------------------------------------------------------------------
+
+def test_table_defaults_are_one_decimal_for_every_figure():
+    assert set(ck.TABLE_DECIMALS.values()) == {1}
+    assert set(ck.TABLE_DECIMALS) == {"current_price", "prior_close", "ytd_open",
+                                      "wow_pct", "ytd_pct", "forward_pe"}
+
+
+def test_outlook_decimals_derive_from_table_decimals():
+    assert ck.OUTLOOK_DECIMALS["avg_forward_pe"] == ck.TABLE_DECIMALS["forward_pe"]
+    assert ck.OUTLOOK_DECIMALS["avg_wow_pct"] == ck.TABLE_DECIMALS["wow_pct"]
+    assert ck.OUTLOOK_DECIMALS["avg_ytd_pct"] == ck.TABLE_DECIMALS["ytd_pct"]
+    assert ck.OUTLOOK_DECIMALS["advancers"] == ck.OUTLOOK_DECIMALS["decliners"] == 0
+    changed = ck.outlook_decimals_from({**ck.TABLE_DECIMALS, "forward_pe": 2})
+    assert changed["avg_forward_pe"] == 2
+
+
+def test_entrypoint_outlook_precision_follows_an_overridden_table_precision():
+    rows = [src("V", pe=20.0), src("MA", pe=25.0)]  # avg P/E 22.5
+    stats = {"companies_included": 2, "companies_failed": 0, "avg_wow_pct": 11.11,
+             "avg_ytd_pct": 25.0, "advancers": 2, "decliners": 0, "avg_forward_pe": 22.5}
+    over = {**ck.TABLE_DECIMALS, "wow_pct": 2}
+    assert ck.check_digital_payments(rows, drafted_outlook_stats=stats, table_decimals=over).clean
+    assert ck.check_digital_payments(rows, drafted_outlook_stats=stats).by_kind(MISMATCH)  # 11.11 vs 11.1
+
+
+def test_price_372_65_against_source_372_7_is_a_mismatch_at_one_decimal():
+    f = ck.check_table([src("V", price=372.7)], [drafted("V", price=372.65)]).flags
+    assert [(x.kind, x.field, x.expected) for x in f] == [(MISMATCH, "current_price", "372.7")]
+
+
+def test_two_decimal_draft_that_matched_its_source_under_the_old_default_now_fails():
+    # Old 2dp default: 372.65 == 372.65 passed, even though the real table never shows a
+    # second decimal.  At the real 1dp display precision it is flagged.
+    f = ck.check_table([src("V", price=372.65)], [drafted("V", price=372.65)]).flags
+    assert [(x.kind, x.field, x.expected) for x in f] == [(MISMATCH, "current_price", "372.7")]
+    assert "more than the 1 display decimals" in f[0].message
+
+
+def test_one_decimal_draft_of_a_two_decimal_source_passes():
+    assert ck.check_table([src("V", price=372.65)], [drafted("V", price=372.7)]).clean  # half up
+
+
+def test_real_table_style_values_pass():
+    s = src("V", price=372.7, prior=388.3, ytd_open=350.6, wow=-4.02, ytd=6.31, pe=23.3)
+    d = {"ticker": "V", "current_price": "372.7", "prior_close": "388.3", "ytd_open": "350.6",
+         "wow_pct": "(4.0%)", "ytd_pct": "6.3%", "forward_pe": "23.3x"}
+    assert ck.check_table([s], [d]).clean
+
+
+# ---------------------------------------------------------------------------
+# Parsing of the real report formats
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("raw,val", [
+    ("372.7", "372.7"), ("6.3%", "6.3"), ("(4.0%)", "-4.0"), ("15.5x", "15.5"),
+    ("(0.0%)", "0.0"), ("0.0%", "0.0"), (" (4.0%) ", "-4.0"), ("(12.5)", "-12.5"),
+])
+def test_parse_number_handles_real_report_formats(raw, val):
+    assert ck.parse_number(raw) == Decimal(val)
+
+
+@pytest.mark.parametrize("bad", ["(-4.0%)", "(", "()", "(abc)", "4.0%)"])
+def test_parse_number_rejects_malformed_parentheses(bad):
+    with pytest.raises(ValueError):
+        ck.parse_number(bad)
+
+
+def test_parenthesised_negative_matches_a_negative_source():
+    assert ck.check_figure("table", "V", "wow_pct", "(4.0%)", -4.02, 1) is None
+
+
+def test_parenthesised_value_does_not_match_a_positive_source():
+    f = ck.check_figure("table", "V", "wow_pct", "(4.0%)", 4.02, 1)
+    assert f.kind == MISMATCH and f.expected == "4.0"
+
+
+def test_plain_positive_percent_does_not_match_a_negative_source():
+    f = ck.check_figure("table", "V", "wow_pct", "4.0%", -4.02, 1)
+    assert f.kind == MISMATCH and f.expected == "-4.0"
+
+
+def test_price_and_pe_strings_in_real_format():
+    assert ck.check_figure("table", "V", "current_price", "372.7", 372.65, 1) is None
+    assert ck.check_figure("table", "V", "forward_pe", "15.5x", 15.46, 1) is None
+    assert ck.check_figure("table", "V", "forward_pe", "15.6x", 15.46, 1).kind == MISMATCH
+
+
+# ---------------------------------------------------------------------------
+# Formatter -> checker round trip (the real drafted-row path)
+# ---------------------------------------------------------------------------
+
+def _fetcher_row(ticker, price, prior, ytd_open, wow, ytd, pe):
+    return {"company": ticker, "ticker": ticker, "current_price": price, "prior_close": prior,
+            "ytd_open": ytd_open, "wow_pct": wow, "ytd_pct": ytd, "forward_pe": pe, "error": None}
+
+
+def test_formatted_rows_pass_the_table_check_end_to_end():
+    from cytonn_weekly.digital_payments.fetcher import format_table_rows
+
+    rows = [
+        _fetcher_row("V", 372.65, 388.31, 350.55, -4.0234, 6.3149, 23.25),
+        _fetcher_row("MA", 566.72, 555.89, 570.71, 1.95, -0.7, 24.61),
+        _fetcher_row("XYZ", 73.44, 77.53, 65.72, -0.04, 0.0, 14.15),
+        _fetcher_row("CRCL", 86.11, 94.59, 80.84, -8.97, 6.52, None),
+    ]
+    report = ck.check_table(rows, format_table_rows(rows))
+    assert report.flags == [] and report.clean
+
+
+def test_formatted_rows_feed_check_digital_payments_with_outlook_stats():
+    from cytonn_weekly.digital_payments.highlights import table_stats
+    from cytonn_weekly.digital_payments.fetcher import average_forward_pe, format_table_rows
+
+    rows = [_fetcher_row("V", 372.65, 388.31, 350.55, -4.0234, 6.3149, 23.25),
+            _fetcher_row("MA", 566.72, 555.89, 570.71, 1.95, -0.7, 24.61)]
+    report = ck.check_digital_payments(
+        rows, drafted_rows=format_table_rows(rows), drafted_outlook_stats=table_stats(rows))
+    assert report.clean
+    assert table_stats(rows)["avg_forward_pe"] == average_forward_pe(rows)

@@ -7,7 +7,7 @@ Compare the column against the "Forward P/E" shown on each ticker's Yahoo Financ
 quote/statistics page.
 """
 
-from cytonn_weekly.fetchers.digital_payments import average_forward_pe, fetch_digital_payments
+from cytonn_weekly.digital_payments.fetcher import average_forward_pe, fetch_digital_payments
 
 rows = fetch_digital_payments()
 print(f"{'Company':<24}{'Ticker':<8}{'Price':>10}{'Prior':>10}{'YTD open':>10}{'w/w %':>9}{'YTD %':>9}{'Fwd EPS':>9}{'Fwd P/E':>9}")

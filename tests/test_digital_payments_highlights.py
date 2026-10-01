@@ -1,6 +1,6 @@
-"""Unit tests for cytonn_weekly.drafters.digital_payments_highlights.
+"""Unit tests for cytonn_weekly.digital_payments.highlights with the Anthropic provider.
 
-The Anthropic client is faked; no network access.
+The Anthropic client is faked and handed to AnthropicProvider; no network access.
 """
 
 from datetime import date
@@ -8,7 +8,9 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from cytonn_weekly.drafters import digital_payments_highlights as dh
+from cytonn_weekly.digital_payments import highlights as dh
+from cytonn_weekly.digital_payments.providers import anthropic_provider as ap
+from cytonn_weekly.digital_payments.providers.anthropic_provider import AnthropicProvider
 
 TODAY = date(2026, 9, 29)
 
@@ -91,7 +93,7 @@ def all_ir_news(companies=PRIORITY, extra=None):
 
 
 def full_draft():
-    return dh.draft_highlights(client=NewsClient(all_ir_news()), today=TODAY)
+    return dh.draft_highlights(provider=AnthropicProvider(client=NewsClient(all_ir_news())), today=TODAY)
 
 
 # ---------------------------------------------------------------------------
@@ -110,7 +112,7 @@ def test_ir_domains_are_configured_per_company():
 
 def test_priority_order_honored_when_all_five_have_news():
     client = NewsClient(all_ir_news())
-    d = dh.draft_highlights(client=client, today=TODAY)
+    d = dh.draft_highlights(provider=AnthropicProvider(client=client), today=TODAY)
     assert [h["company"] for h in d["highlights"]] == PRIORITY[:4]  # Circle is left out
     assert d["shortfall"] == 0
     assert ("Circle", "ir") not in client.scopes()  # lowest priority never even searched
@@ -119,7 +121,7 @@ def test_priority_order_honored_when_all_five_have_news():
 
 def test_lower_priority_company_fills_in_when_a_higher_one_has_no_news():
     news = all_ir_news(companies=["Visa", "American Express", "PayPal", "Circle"])
-    d = dh.draft_highlights(client=NewsClient(news), today=TODAY)
+    d = dh.draft_highlights(provider=AnthropicProvider(client=NewsClient(news)), today=TODAY)
     assert [h["company"] for h in d["highlights"]] == ["Visa", "American Express", "PayPal", "Circle"]
     assert d["shortfall"] == 0
     assert any("Mastercard: no story found" in w for w in d["warnings"])
@@ -131,7 +133,7 @@ def test_block_and_global_payments_are_never_searched_or_used():
     news["Mastercard"] = {"ir": story("Mastercard", "https://x.com/1", subject="Block")}
     news["American Express"] = {"web": story("American Express", "https://x.com/2", subject="Global Payments")}
     client = NewsClient(news)
-    d = dh.draft_highlights(client=client, today=TODAY)
+    d = dh.draft_highlights(provider=AnthropicProvider(client=client), today=TODAY)
     assert [h["company"] for h in d["highlights"]] == ["Visa"]
     searched = {c for c, _ in client.scopes()}
     assert searched == set(PRIORITY)  # Block / Global Payments never requested
@@ -140,14 +142,14 @@ def test_block_and_global_payments_are_never_searched_or_used():
 
 
 def test_shortfall_is_flagged_and_never_filled_from_block_or_gpn():
-    d = dh.draft_highlights(client=NewsClient(all_ir_news(companies=["Visa", "PayPal"])), today=TODAY)
+    d = dh.draft_highlights(provider=AnthropicProvider(client=NewsClient(all_ir_news(companies=["Visa", "PayPal"]))), today=TODAY)
     assert [h["company"] for h in d["highlights"]] == ["Visa", "PayPal"]
     assert d["shortfall"] == 2
     assert any("only 2 of 4" in w for w in d["warnings"])
 
 
 def test_zero_stories_is_full_shortfall():
-    d = dh.draft_highlights(client=NewsClient({}), today=TODAY)
+    d = dh.draft_highlights(provider=AnthropicProvider(client=NewsClient({})), today=TODAY)
     assert d["highlights"] == [] and d["shortfall"] == 4
 
 
@@ -157,7 +159,7 @@ def test_zero_stories_is_full_shortfall():
 
 def test_ir_search_is_restricted_to_the_companys_own_domain():
     client = NewsClient(all_ir_news())
-    dh.draft_highlights(client=client, today=TODAY)
+    dh.draft_highlights(provider=AnthropicProvider(client=client), today=TODAY)
     for company, scope, kwargs in client.calls:
         assert scope == "ir"
         tool = kwargs["tools"][0]
@@ -168,7 +170,7 @@ def test_ir_search_is_restricted_to_the_companys_own_domain():
 
 def test_ir_story_is_used_and_no_general_search_runs():
     client = NewsClient(all_ir_news())
-    d = dh.draft_highlights(client=client, today=TODAY)
+    d = dh.draft_highlights(provider=AnthropicProvider(client=client), today=TODAY)
     assert all(h["search_scope"] == "investor_relations" for h in d["highlights"])
     assert all(s == "ir" for _, s in client.scopes())
 
@@ -177,7 +179,7 @@ def test_falls_back_to_general_web_search_only_when_ir_has_no_story():
     news = all_ir_news()
     news["Visa"] = {"web": story("Visa", "https://news.example.com/visa")}  # IR: NO_STORY
     client = NewsClient(news)
-    d = dh.draft_highlights(client=client, today=TODAY)
+    d = dh.draft_highlights(provider=AnthropicProvider(client=client), today=TODAY)
 
     visa = d["highlights"][0]
     assert visa["company"] == "Visa" and visa["search_scope"] == "web_fallback"
@@ -193,7 +195,7 @@ def test_falls_back_to_general_web_search_only_when_ir_has_no_story():
 
 def test_no_story_anywhere_tries_ir_then_web_then_moves_on():
     client = NewsClient(all_ir_news(companies=["Mastercard", "American Express", "PayPal", "Circle"]))
-    d = dh.draft_highlights(client=client, today=TODAY)
+    d = dh.draft_highlights(provider=AnthropicProvider(client=client), today=TODAY)
     assert client.scopes()[:2] == [("Visa", "ir"), ("Visa", "web")]
     assert [h["company"] for h in d["highlights"]] == ["Mastercard", "American Express", "PayPal", "Circle"]
     assert any("Visa: no story found" in w for w in d["warnings"])
@@ -235,7 +237,7 @@ def test_link_to_url_not_in_search_results_is_unlinked_and_flagged():
     body = words(140, "During the week, Visa announced a [made up](https://evil.com/x) launch;")
     blocks = [search_result("https://investor.visa.com/n"), text("### Visa Thing\n\n"),
               text(body, [cite("https://investor.visa.com/n")])]
-    d = dh.draft_highlights(client=NewsClient({"Visa": {"ir": blocks}}), today=TODAY)
+    d = dh.draft_highlights(provider=AnthropicProvider(client=NewsClient({"Visa": {"ir": blocks}})), today=TODAY)
     h = d["highlights"][0]
     assert h["links"] == []
     assert "made up" in h["body"] and "evil.com" not in h["body_md"]
@@ -249,20 +251,20 @@ def test_word_count_and_opener_warnings():
         text("### Visa Thing\n\n"),
         text("Visa did a short thing [here](https://investor.visa.com/n).", [cite("https://investor.visa.com/n")]),
     ]
-    h = dh.draft_highlights(client=NewsClient({"Visa": {"ir": blocks}}), today=TODAY)["highlights"][0]
+    h = dh.draft_highlights(provider=AnthropicProvider(client=NewsClient({"Visa": {"ir": blocks}})), today=TODAY)["highlights"][0]
     assert any("words, outside 100-180" in w for w in h["warnings"])
     assert any("does not open with" in w for w in h["warnings"])
 
 
 def test_uncited_highlight_is_flagged():
     blocks = [text("### Visa Thing\n\n" + words(140))]
-    h = dh.draft_highlights(client=NewsClient({"Visa": {"ir": blocks}}), today=TODAY)["highlights"][0]
+    h = dh.draft_highlights(provider=AnthropicProvider(client=NewsClient({"Visa": {"ir": blocks}})), today=TODAY)["highlights"][0]
     assert any("no cited claims" in w for w in h["warnings"])
 
 
 def test_multiple_stories_in_one_company_call_keeps_first_with_warning():
     blocks = story("Visa", "https://investor.visa.com/1") + story("Visa", "https://investor.visa.com/2", headline="Second")
-    d = dh.draft_highlights(client=NewsClient({"Visa": {"ir": blocks}}), today=TODAY)
+    d = dh.draft_highlights(provider=AnthropicProvider(client=NewsClient({"Visa": {"ir": blocks}})), today=TODAY)
     assert d["highlights"][0]["headline"] == "Visa Launches Product"
     assert any("Visa: model returned 2 stories" in w for w in d["warnings"])
 
@@ -273,7 +275,7 @@ def test_multiple_stories_in_one_company_call_keeps_first_with_warning():
 
 def test_request_scopes_to_one_company_and_states_week():
     client = NewsClient(all_ir_news())
-    dh.draft_highlights(client=client, today=TODAY)
+    dh.draft_highlights(provider=AnthropicProvider(client=client), today=TODAY)
     company, _, kwargs = client.calls[0]
     assert company == "Visa"
     assert "2026-09-23 to 2026-09-29" in kwargs["messages"][0]["content"]
@@ -282,7 +284,7 @@ def test_request_scopes_to_one_company_and_states_week():
 
 def test_style_examples_override():
     client = NewsClient(all_ir_news())
-    dh.draft_highlights(client=client, today=TODAY, style_examples="EXAMPLE-STYLE-TEXT")
+    dh.draft_highlights(provider=AnthropicProvider(client=client), today=TODAY, style_examples="EXAMPLE-STYLE-TEXT")
     assert "EXAMPLE-STYLE-TEXT" in client.calls[0][2]["messages"][0]["content"]
 
 
@@ -299,21 +301,21 @@ def test_pause_turn_is_resumed_and_bounded():
             return resp(story("Visa", "https://investor.visa.com/n")[1:])
 
     c = Paused(1)
-    h = dh._draft_for_company(c, dh.MODEL, dh.HIGHLIGHT_COMPANIES[0], "investor_relations",
+    h = ap._draft_for_company(c, ap.MODEL, dh.HIGHLIGHT_COMPANIES[0], "investor_relations",
                               date(2026, 9, 23), TODAY, TODAY, "", [])
     assert len(c.calls) == 2 and c.calls[1]["messages"][-1]["role"] == "assistant"
     assert h is not None
 
     c = Paused(99)
-    dh._run_search(c, dh.MODEL, "Company: Visa.\nx", {"type": "web_search_20250305", "name": "web_search"})
-    assert len(c.calls) == dh.MAX_CONTINUATIONS + 1
+    ap._run_search(c, ap.MODEL, "Company: Visa.\nx", {"type": "web_search_20250305", "name": "web_search"})
+    assert len(c.calls) == ap.MAX_CONTINUATIONS + 1
 
 
 def test_api_error_propagates():
     client = NewsClient({})
     client.messages = NS(create=lambda **kw: (_ for _ in ()).throw(RuntimeError("boom")))
     with pytest.raises(RuntimeError):
-        dh.draft_highlights(client=client, today=TODAY)
+        dh.draft_highlights(provider=AnthropicProvider(client=client), today=TODAY)
 
 
 class SimpleClient:
@@ -346,7 +348,7 @@ TABLE = [row("V", 1.0, 10.0), row("MA", -3.0, 2.0), row("AXP", 5.0, -4.0), row("
 def test_table_stats_exclude_failed_rows_and_omit_pe_if_absent():
     s = dh.table_stats(TABLE)
     assert s["companies_included"] == 3 and s["companies_failed"] == 1
-    assert s["avg_wow_pct"] == 1.0 and s["avg_ytd_pct"] == 2.67
+    assert s["avg_wow_pct"] == 1.0 and s["avg_ytd_pct"] == 2.7
     assert s["advancers"] == 2 and s["decliners"] == 1
     assert "avg_forward_pe" not in s
 
@@ -359,7 +361,7 @@ def test_table_stats_average_forward_pe_when_present():
 def test_outlook_is_bold_italic_uncited_and_uses_stats_without_search():
     d = full_draft()
     client = SimpleClient([resp([text(words(100, "The sector outlook"))])])
-    o = dh.draft_outlook(d, TABLE, client=client)
+    o = dh.draft_outlook(d, TABLE, provider=AnthropicProvider(client=client))
     assert o["text_md"] == f"***{o['text']}***"
     call = client.calls[0]
     assert "tools" not in call
@@ -373,13 +375,13 @@ def test_outlook_is_bold_italic_uncited_and_uses_stats_without_search():
 
 def test_outlook_word_count_warning():
     d = full_draft()
-    o = dh.draft_outlook(d, TABLE, client=SimpleClient([resp([text("Too short.")])]))
+    o = dh.draft_outlook(d, TABLE, provider=AnthropicProvider(client=SimpleClient([resp([text("Too short.")])])))
     assert any("outside 80-120" in w for w in o["warnings"])
 
 
 def test_compose_section_numbers_highlights_table_then_outlook():
     d = full_draft()
-    o = dh.draft_outlook(d, TABLE, client=SimpleClient([resp([text(words(100))])]))
+    o = dh.draft_outlook(d, TABLE, provider=AnthropicProvider(client=SimpleClient([resp([text(words(100))])])))
     sec = dh.compose_section(d, TABLE, o)
     assert [i["numeral"] for i in sec["items"]] == ["I", "II", "III", "IV", "V"]
     assert [i["kind"] for i in sec["items"]] == ["highlight"] * 4 + ["stock_table"]
@@ -388,10 +390,36 @@ def test_compose_section_numbers_highlights_table_then_outlook():
 
 
 def test_compose_section_with_shortfall_renumbers_table_and_carries_warnings():
-    d = dh.draft_highlights(client=NewsClient(all_ir_news(companies=["Visa"])), today=TODAY)
-    o = dh.draft_outlook(d, TABLE, client=SimpleClient([resp([text(words(100))])]))
+    d = dh.draft_highlights(provider=AnthropicProvider(client=NewsClient(all_ir_news(companies=["Visa"]))), today=TODAY)
+    o = dh.draft_outlook(d, TABLE, provider=AnthropicProvider(client=SimpleClient([resp([text(words(100))])])))
     sec = dh.compose_section(d, TABLE, o)
     assert [i["numeral"] for i in sec["items"]] == ["I", "II"]
     assert sec["items"][1]["kind"] == "stock_table"
     assert sec["shortfall"] == 3
     assert any("only 1 of 4" in w for w in sec["warnings"])
+
+
+def test_stats_averages_round_half_up_to_one_decimal():
+    # 2.25 -> 2.3 (Python's round() would give 2.2); 24.95 -> 25.0 (round() gives 24.9)
+    s = dh.table_stats([row("V", 2.25, 0.05, pe=24.9), row("MA", 2.25, 0.05, pe=25.0)])
+    assert s["avg_wow_pct"] == 2.3
+    assert s["avg_ytd_pct"] == 0.1
+    assert s["avg_forward_pe"] == 25.0  # mean 24.95
+
+
+def test_stats_advancer_decliner_counts_stay_whole_numbers():
+    s = dh.table_stats(TABLE)
+    assert isinstance(s["advancers"], int) and isinstance(s["decliners"], int)
+
+
+def test_stats_average_pe_equals_the_fetchers_table_average():
+    from cytonn_weekly.digital_payments.fetcher import average_forward_pe
+
+    rows = [row("V", 1, 1, pe=24.5), row("MA", 1, 1, pe=24.6), row("AXP", 1, 1, pe=15.15)]
+    assert dh.table_stats(rows)["avg_forward_pe"] == average_forward_pe(rows)
+
+
+def test_stats_average_that_rounds_to_zero_is_not_negative_zero():
+    s = dh.table_stats([row("V", -0.02, -0.04, pe=1.0), row("MA", 0.0, 0.0, pe=1.0)])
+    assert s["avg_wow_pct"] == 0.0 and str(s["avg_wow_pct"]) == "0.0"
+    assert str(s["avg_ytd_pct"]) == "0.0"

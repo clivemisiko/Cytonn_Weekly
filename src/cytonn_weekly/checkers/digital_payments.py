@@ -48,28 +48,39 @@ UNSOURCED = "unsourced"              # drafted figure exists with no source behi
 SOURCES_DISAGREE = "sources_disagree"  # independent sources differ; human call needed
 NOT_IMPLEMENTED = "not_implemented"  # check not built yet (highlight citations, 6b)
 
-# Display precision (decimal places) per figure.  ASSUMPTIONS to confirm against
-# the published report layout: prices and % changes at 2dp, forward P/E at 1dp
-# (real issues show e.g. 69.0x).  Override via the ``decimals`` arguments.
+# Display precision (decimal places) per figure, confirmed against the real
+# report table (Cytonn Weekly #37.2026, p.17): every price, % change and P/E is
+# shown at one decimal (e.g. 372.7, (4.0%), 6.3%, 23.3x).  Override via the
+# ``decimals`` arguments.
 TABLE_DECIMALS: dict[str, int] = {
-    "current_price": 2,
-    "prior_close": 2,
-    "ytd_open": 2,
-    "wow_pct": 2,
-    "ytd_pct": 2,
+    "current_price": 1,
+    "prior_close": 1,
+    "ytd_open": 1,
+    "wow_pct": 1,
+    "ytd_pct": 1,
     "forward_pe": 1,
 }
 
-# Outlook stats are checked at the precision draft_outlook() emits them (2dp).
-OUTLOOK_DECIMALS: dict[str, int] = {
-    "companies_included": 0,
-    "companies_failed": 0,
-    "avg_wow_pct": 2,
-    "avg_ytd_pct": 2,
-    "advancers": 0,
-    "decliners": 0,
-    "avg_forward_pe": 2,
-}
+
+def outlook_decimals_from(table_decimals: dict[str, int]) -> dict[str, int]:
+    """Outlook-stat precision, derived from the table's so the two cannot drift.
+
+    The real outlook paragraph reuses the table's Average row verbatim, so each
+    average is displayed at the same precision as its table column.  Counts are
+    whole numbers.
+    """
+    return {
+        "companies_included": 0,
+        "companies_failed": 0,
+        "avg_wow_pct": table_decimals["wow_pct"],
+        "avg_ytd_pct": table_decimals["ytd_pct"],
+        "advancers": 0,
+        "decliners": 0,
+        "avg_forward_pe": table_decimals["forward_pe"],
+    }
+
+
+OUTLOOK_DECIMALS: dict[str, int] = outlook_decimals_from(TABLE_DECIMALS)
 
 _BLANKS = {"", "-", "–", "—", "n/a", "n/m", "na", "none"}
 
@@ -128,7 +139,10 @@ def _is_blank(value: Any) -> bool:
 
 
 def parse_number(value: Any) -> Decimal:
-    """Parse a number or formatted display string ("$1,234.50", "+1.2%", "24.5x").
+    """Parse a number or a display string as the real table prints it.
+
+    Handles "372.7", "6.3%", "(4.0%)" (accounting-style negative), "15.5x", and
+    also tolerates "$", "+", thousands commas and a unicode minus.
 
     Raises ValueError if it cannot be read as a finite number.
     """
@@ -140,6 +154,9 @@ def parse_number(value: Any) -> Decimal:
         d = Decimal(repr(value))  # shortest repr avoids binary-float artefacts
     elif isinstance(value, str):
         s = value.strip().replace("−", "-")
+        negative = s.startswith("(") and s.endswith(")")
+        if negative:
+            s = s[1:-1]
         for ch in "$£€,% ":
             s = s.replace(ch, "")
         if s[-1:] in ("x", "X"):
@@ -150,6 +167,10 @@ def parse_number(value: Any) -> Decimal:
             d = Decimal(s)
         except InvalidOperation:
             raise ValueError(f"not a number: {value!r}") from None
+        if negative:
+            if d < 0 or s.startswith("-"):
+                raise ValueError(f"not a number: {value!r}")  # e.g. "(-4.0%)" is ambiguous
+            d = -d
     else:
         raise ValueError(f"not a number: {value!r}")
     if not d.is_finite():
@@ -259,9 +280,10 @@ def check_table(
 ) -> CheckReport:
     """Check drafted table rows (display values, keyed by ticker) against source rows.
 
-    Source rows are digital_payments.py output; drafted rows use the same field
+    Source rows are digital_payments/fetcher.py output; drafted rows use the same field
     names (current_price, prior_close, ytd_open, wow_pct, ytd_pct, forward_pe)
-    holding the figures as drafted, either numbers or formatted strings.
+    holding the figures as drafted, either numbers or display strings in the
+    real table's format (see format_table_rows() in the fetcher module).
     """
     decimals = decimals or TABLE_DECIMALS
     extra_sources = extra_sources or {}
@@ -413,6 +435,8 @@ def check_digital_payments(
     if drafted_rows is not None:
         parts.append(check_table(source_rows, drafted_rows, table_decimals, extra_sources))
     if drafted_outlook_stats is not None:
+        if outlook_decimals is None and table_decimals is not None:
+            outlook_decimals = outlook_decimals_from({**TABLE_DECIMALS, **table_decimals})
         parts.append(check_outlook_stats(drafted_outlook_stats, source_rows, outlook_decimals, extra_sources))
     for part in parts:
         report.flags.extend(part.flags)

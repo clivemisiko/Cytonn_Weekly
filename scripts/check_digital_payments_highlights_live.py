@@ -3,14 +3,17 @@
 Not part of pytest.  Calls the live Anthropic API (web search + tokens, a few
 cents) and Yahoo Finance.  Needs ANTHROPIC_API_KEY set.  Run from the repo root:
     PYTHONPATH=src python scripts/check_digital_payments_highlights_live.py
+
+To draft with the local dev provider instead (phi4-mini via Ollama + Exa, needs
+EXA_API_KEY; output is NOT FOR PUBLICATION), set CYTONN_LLM_PROVIDER=local.
 """
 
-from cytonn_weekly.drafters.digital_payments_highlights import (
+from cytonn_weekly.digital_payments.highlights import (
     compose_section,
     draft_highlights,
     draft_outlook,
 )
-from cytonn_weekly.fetchers.digital_payments import fetch_digital_payments
+from cytonn_weekly.digital_payments.fetcher import fetch_digital_payments
 
 draft = draft_highlights()
 table = fetch_digital_payments()

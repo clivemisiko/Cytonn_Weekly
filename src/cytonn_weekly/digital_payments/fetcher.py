@@ -11,7 +11,7 @@ quoted in pence, so current_price would be in pence, not pounds.
 
 Typical usage
 -------------
-    from cytonn_weekly.fetchers.digital_payments import fetch_digital_payments
+    from cytonn_weekly.digital_payments.fetcher import fetch_digital_payments
 
     for row in fetch_digital_payments():
         if row["error"]:
@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import math
 from datetime import date, timedelta
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Optional
 
 import yfinance as yf
@@ -96,13 +97,67 @@ def get_forward_pe(ticker: str, price: float) -> dict[str, Any]:
     }
 
 
-def average_forward_pe(rows: list[dict[str, Any]]) -> Optional[float]:
-    """Mean forward P/E over rows that have one (2dp), or None if none do.
+# The report table shows every price, % change and P/E at one decimal.
+DISPLAY_DECIMALS = 1
 
-    Failed rows and rows with no forward P/E are left out.
+_PRICE_FIELDS = ("current_price", "prior_close", "ytd_open")
+_PCT_FIELDS = ("wow_pct", "ytd_pct")
+
+
+def _round_half_up(value: float, decimals: int = DISPLAY_DECIMALS) -> Decimal:
+    """Round half up on the float's shortest string form (matches the checking layer)."""
+    return Decimal(repr(value)).quantize(Decimal(1).scaleb(-decimals), rounding=ROUND_HALF_UP)
+
+
+def average_forward_pe(rows: list[dict[str, Any]]) -> Optional[float]:
+    """Mean forward P/E over rows that have one, at display precision (1dp), or None.
+
+    Failed rows and rows with no forward P/E are left out.  This is the table's
+    Average row value, which the outlook paragraph reuses verbatim.
     """
-    pes = [r["forward_pe"] for r in rows if isinstance(r.get("forward_pe"), (int, float))]
-    return round(sum(pes) / len(pes), 2) if pes else None
+    pes = [
+        Decimal(repr(r["forward_pe"]))
+        for r in rows
+        if isinstance(r.get("forward_pe"), (int, float)) and not isinstance(r.get("forward_pe"), bool)
+    ]
+    if not pes:
+        return None
+    avg = sum(pes) / len(pes)
+    return float(avg.quantize(Decimal(1).scaleb(-DISPLAY_DECIMALS), rounding=ROUND_HALF_UP))
+
+
+def _fmt_number(value: Optional[float], kind: str) -> str:
+    """One figure as the real report table prints it; "-" when there is no value."""
+    if value is None:
+        return "-"
+    d = _round_half_up(value)
+    if kind == "price":
+        return f"{d:.{DISPLAY_DECIMALS}f}"  # 372.7 (no currency symbol)
+    if kind == "pe":
+        return f"{d:.{DISPLAY_DECIMALS}f}x"  # 15.5x
+    body = f"{abs(d):.{DISPLAY_DECIMALS}f}%"
+    return f"({body})" if d < 0 else body  # 6.3% / (4.0%); zero has no sign
+
+
+def format_table_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Turn fetcher rows into drafted, display-formatted rows for the report table.
+
+    Same field names as the fetcher's rows (company, ticker, current_price,
+    prior_close, ytd_open, wow_pct, ytd_pct, forward_pe); the figures become
+    strings in the real table's format: prices "372.7", positive % "6.3%",
+    negative % "(4.0%)", forward P/E "15.5x".  Missing figures (failed rows,
+    no forward P/E) are "-".
+    """
+    out = []
+    for r in rows:
+        f: dict[str, Any] = {"company": r["company"], "ticker": r["ticker"]}
+        for name in _PRICE_FIELDS:
+            f[name] = _fmt_number(r.get(name), "price")
+        for name in _PCT_FIELDS:
+            f[name] = _fmt_number(r.get(name), "pct")
+        f["forward_pe"] = _fmt_number(r.get("forward_pe"), "pe")
+        out.append(f)
+    return out
 
 
 def _pct_change(new: float, old: float) -> float:
