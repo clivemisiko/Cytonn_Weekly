@@ -1,19 +1,24 @@
 """Manual review: run the real Digital Payments highlights drafter against live data.
 
 Not part of pytest.  Calls the live Anthropic API (web search + tokens, a few
-cents) and Yahoo Finance.  Needs ANTHROPIC_API_KEY set.  Run from the repo root:
+cents) and Yahoo Finance.  Needs ANTHROPIC_API_KEY set (in the shell or in the
+repo-root .env, which is loaded automatically).  Run from the repo root:
     PYTHONPATH=src python scripts/check_digital_payments_highlights_live.py
 
 To draft with the local dev provider instead (phi4-mini via Ollama + Exa, needs
 EXA_API_KEY; output is NOT FOR PUBLICATION), set CYTONN_LLM_PROVIDER=local.
 """
 
-from cytonn_weekly.digital_payments.highlights import (
+from cytonn_weekly.env import load_env
+
+load_env()  # before anything reads os.environ (provider choice, API keys)
+
+from cytonn_weekly.digital_payments.highlights import (  # noqa: E402
     compose_section,
     draft_highlights,
     draft_outlook,
 )
-from cytonn_weekly.digital_payments.fetcher import fetch_digital_payments
+from cytonn_weekly.digital_payments.fetcher import fetch_digital_payments  # noqa: E402
 
 draft = draft_highlights()
 table = fetch_digital_payments()

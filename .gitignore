@@ -31,6 +31,12 @@ env/
 # Streamlit
 .streamlit/secrets.toml
 
+# Cached Exa search results (local dev provider)
+data/exa_cache/
+
+# Generated Word summaries for Edwin/Liz
+data/summaries/
+
 # SQLite
 *.db
 *.db-journal

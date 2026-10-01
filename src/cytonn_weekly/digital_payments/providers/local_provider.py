@@ -15,15 +15,28 @@ small model's output is not a substitute for the production provider.  Its
 claims carry no ``cited_text`` (Exa returns page text, not cited spans), so the
 citation checker has less to verify against; each highlight says so.
 
+The Ollama model is selectable (default phi4-mini) so models can be A/B-tested;
+``drafted_by`` reports whichever model actually ran.
+
+Exa results can be cached per company and date (``cache_dir``) so a second run
+with a different model is judged on literally identical search results.  The
+cache is off unless ``cache_dir`` is given (the provider factory turns it on for
+local dev mode).  To force a fresh Exa pull, delete the company's file in the
+cache directory (``<company>_<YYYY-MM-DD>.json``), delete the whole directory,
+or construct with ``refresh_cache=True`` (factory: set CYTONN_EXA_REFRESH=1).
+
 Needs: Ollama running with the model pulled (``ollama pull phi4-mini``) and
-EXA_API_KEY in the environment.  Uses httpx (already installed with anthropic).
+EXA_API_KEY in the environment (not needed when every search is already cached).
+Uses httpx (already installed with anthropic).
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import date
+from pathlib import Path
 from typing import Any, Optional, Sequence
 
 import httpx
@@ -53,7 +66,56 @@ EXA_URL = "https://api.exa.ai/search"
 NUM_RESULTS = 5
 CONTEXT_CHARS_PER_RESULT = 3000  # enough text per result to draft from
 NUM_CTX = 8192
+# Hard cap on generated tokens for every local model.  A valid highlight reply is ~300-400
+# tokens; without a cap a model that never closes its JSON (seen with MiniCPM5-2B) generates
+# until the context is exhausted.  A capped reply is truncated JSON, which the provider
+# discards as "invalid JSON" instead of hanging.
+NUM_PREDICT = 2048
 OLLAMA_TIMEOUT = 600  # small local models on CPU can be slow
+
+# What an un-tagged / ":latest" Ollama model resolves to, where "latest" hides the variant.
+# gemma4:latest is the E4B build (same registry digests as gemma4:e4b, checked 2026-10-01).
+# If Ollama re-points "latest" this goes stale; fall back to passing the explicit tag.
+_LATEST_RESOLVES_TO = {"gemma4": "e4b"}
+
+
+# Per-model overrides of the /api/chat request; every model not listed gets none, so its
+# request is exactly the default shape.  Keyed by model name (registry namespace and tag
+# ignored).  "options" entries are merged over the default options; any other key is added to
+# the request as a top-level field (e.g. {"think": False}).
+#
+# MiniCPM5-2B is a thinking model.  Its thinking is what gives it good genuine-vs-opinion
+# judgment and word-count discipline (think=False was tried and lost both), but it can loop on
+# the word-count target and exhaust the default 2048-token cap before starting its JSON answer,
+# so it gets a higher cap.
+_MODEL_CONFIG: dict[str, dict[str, Any]] = {
+    "minicpm5-2b": {"options": {"num_predict": 4096}},
+}
+
+
+def _model_name(model: str) -> str:
+    return model.partition(":")[0].rsplit("/", 1)[-1]
+
+
+def model_label(model: str) -> str:
+    """Short model name for ``drafted_by``: the Ollama tag minus noise.
+
+    "phi4-mini" -> "phi4-mini"; "phi4-mini:latest" -> "phi4-mini";
+    "gemma4:26b-a4b-it-qat" -> "gemma4-26b-a4b" (instruction-tuned / QAT markers dropped).
+    "openbmb/minicpm5-2b" -> "minicpm5-2b" (namespace dropped).
+    The label is derived from whatever model string is passed in; nothing is tied to one variant.
+    A bare/"latest" tag is shown as the variant it resolves to where that is known
+    (_LATEST_RESOLVES_TO), so e.g. "gemma4:latest" is not mislabelled as a generic "gemma4".
+    """
+    _, _, tag = model.partition(":")
+    name = _model_name(model)  # drops a registry namespace: "openbmb/minicpm5-2b" -> "minicpm5-2b"
+    if tag in ("", "latest") and name in _LATEST_RESOLVES_TO:
+        tag = _LATEST_RESOLVES_TO[name]
+    parts = [] if tag in ("", "latest") else tag.split("-")
+    while parts and parts[-1] in ("it", "qat"):
+        parts.pop()
+    return "-".join([name, *parts])
+
 
 _HIGHLIGHT_SYSTEM = f"""\
 You help draft one "Weekly Highlights" item for the Digital Payments section of a \
@@ -112,12 +174,16 @@ class LocalProvider(DraftingProvider):
         ollama_url: str = OLLAMA_URL,
         exa_api_key: Optional[str] = None,
         http_client: Optional[httpx.Client] = None,
+        cache_dir: Optional[Path] = None,
+        refresh_cache: bool = False,
     ):
         self.model = model
-        self.drafted_by = DRAFTED_BY if model == MODEL else f"local:{model}"
+        self.drafted_by = f"local:{model_label(model)}"
         self.ollama_url = ollama_url.rstrip("/")
         self._exa_api_key = exa_api_key
         self._http = http_client or httpx.Client(timeout=OLLAMA_TIMEOUT)
+        self._cache_dir = Path(cache_dir) if cache_dir else None
+        self._refresh_cache = refresh_cache
         self._model_checked = False
 
     # -- setup ---------------------------------------------------------------
@@ -166,17 +232,59 @@ class LocalProvider(DraftingProvider):
             return self._exa_search(f"{company} news announcement", start, [ir_domain])
         return self._exa_search(f"{company} recent news", start)
 
+    # -- Exa result cache (so A/B runs of different models see identical input) --
+
+    def _cache_path(self, company: str, today: date) -> Path:
+        slug = re.sub(r"[^a-z0-9]+", "-", company.lower()).strip("-")
+        return self._cache_dir / f"{slug}_{today.isoformat()}.json"
+
+    def _load_cache(self, path: Path) -> dict[str, Any]:
+        if self._refresh_cache or not path.exists():
+            return {}
+        try:
+            return json.loads(path.read_text(encoding="utf-8")).get("scopes", {})
+        except (OSError, json.JSONDecodeError):
+            return {}  # unreadable cache is treated as absent and rewritten
+
+    def _search_cached(
+        self, company: str, ir_domain: str, scope: str, start: date, today: date,
+        cached: dict[str, Any], had_cache: bool, warnings: list[str],
+    ) -> list[dict[str, Any]]:
+        """Exa results for one scope, read from / written to the per-company-per-day cache."""
+        if self._cache_dir is None:
+            return self._search(company, ir_domain, scope, start)
+        if scope in cached:
+            return cached[scope]
+        if had_cache:
+            warnings.append(
+                f"{company}: {scope} search results were not in the cache (the earlier run never needed "
+                "them); fetched fresh from Exa and cached, so this scope was not seen identically by earlier runs"
+            )
+        results = self._search(company, ir_domain, scope, start)
+        cached[scope] = results
+        path = self._cache_path(company, today)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps({"company": company, "today": today.isoformat(), "start": start.isoformat(),
+                        "scopes": cached}, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        return results
+
     # -- drafting ------------------------------------------------------------
 
     def _chat(self, messages: list[dict[str, str]], schema: Optional[dict] = None) -> str:
         payload: dict[str, Any] = {
             "model": self.model,
             "stream": False,
-            "options": {"temperature": 0, "num_ctx": NUM_CTX},
+            "options": {"temperature": 0, "num_ctx": NUM_CTX, "num_predict": NUM_PREDICT},
             "messages": messages,
         }
         if schema:
             payload["format"] = schema
+        override = _MODEL_CONFIG.get(_model_name(self.model), {})
+        payload["options"] = {**payload["options"], **override.get("options", {})}
+        payload.update({k: v for k, v in override.items() if k != "options"})
         resp = self._http.post(f"{self.ollama_url}/api/chat", json=payload)
         resp.raise_for_status()
         return resp.json()["message"]["content"]
@@ -301,8 +409,12 @@ class LocalProvider(DraftingProvider):
         self._ensure_model()
         aliases = list(aliases or [company])
         warnings: list[str] = []
+        cached = self._load_cache(self._cache_path(company, today)) if self._cache_dir else {}
+        had_cache = bool(cached)  # whether an earlier run left results to reuse (before this run adds any)
         for scope in (SCOPE_IR, SCOPE_WEB):
-            results = self._search(company, ir_domain, scope, start)
+            results = self._search_cached(
+                company, ir_domain, scope, start, today, cached, had_cache, warnings
+            )
             if not results:
                 continue
             res = self._draft_from_results(company, ir_domain, scope, aliases, results, warnings)

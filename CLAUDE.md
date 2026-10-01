@@ -1,12 +1,59 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # Cytonn Weekly Draft Generator
 
 AI tool that drafts the first version of the weekly Cytonn Weekly report by pulling data from spreadsheets, dashboards, past reports, and websites, mapping it into the report's existing format. Produces a ready-to-review draft instead of a blank page. Intern capstone project (Clive Mutende, Vunoh Global AI Intern Program), Option C ("full capstone") scope.
 
-**Status as of 2026-09-29:** Proposal presented to Cytonn; verbal go-ahead to start build, official written approval still outstanding. **Pilot section for the current ~4-5 week build window: Digital Payments** — the one section committed to being built and proven fully end to end (drafting, checking, coordinator review, Word doc summary, publish, distribute) before this window closes. The other four sections (Equities, Fixed Income, Real Estate, Focus) are documented as roadmap, not built now. Digital Payments needs no workbook at all: its only source is Yahoo Finance for the stock table, plus each of 5 companies' own investor relations site (with a general web fallback) for the weekly highlights — see Sources below.
+**Status as of 2026-10-01:** Proposal presented to Cytonn; verbal go-ahead to start build, official written approval still outstanding. **Pilot section for the current ~4-5 week build window: Digital Payments** — the one section committed to being built and proven fully end to end (drafting, checking, coordinator review, Word doc summary, publish, distribute) before this window closes. The other four sections (Equities, Fixed Income, Real Estate, Focus) are documented as roadmap, not built now. Digital Payments needs no workbook at all: its only source is Yahoo Finance for the stock table, plus each of 5 companies' own investor relations site (with a general web fallback) for the weekly highlights — see Sources below.
 
 **The stock table (task 3), the Weekly Highlights drafter (task 5), and the table's checking layer (task 6a) are all built, tested, and — for the table/checking chain — live-proven against real data:** fetch (Yahoo Finance) → format (the real report's actual string conventions) → exact-match check now runs end to end with zero LLM calls and zero API cost, confirmed on a live run of 49 figures across all 7 tracked companies, all clean. What's still gated on Anthropic API budget being approved is narrower than "task 6" as a whole: only the highlights/citation-verification side (task 6b) and the first live drafting run of `highlights.py` in production mode — see Open items. Until that clears, the highlights drafter's live behavior against real (non-mocked) Anthropic search results is unconfirmed.
 
 **The drafting code now lives behind a swappable provider, so the drafting logic itself can be exercised for free while that budget approval is pending.** `highlights.py` takes a `provider` (an Anthropic one for production, a local phi4-mini-via-Ollama one for dev) rather than calling the Anthropic SDK directly — see Sources and Tech stack below. A real dev-mode run already happened and is genuinely informative (zero invented citations across all 5 companies, one company's numeric claims checked exactly against its real source page) but surfaced two real gaps in the local path specifically (word-count misses, citation spans the checking layer can't use) — neither of those apply to the production/Anthropic path, which is unchanged from before this refactor.
+
+**The coordinator-review layer (tasks 8-9, plus a persistence task inserted after) is now built too, scoped to Digital Payments.** `digital_payments/coordinator_review.py` turns a drafted section plus its `CheckReport` into a `CoordinatorReview` — one `ReviewItem` per table row, outlook stat, and highlight claim, each carrying a `status` (`flagged` for anything the checker actually flagged, `clean` for anything checked with no flag, `not_auto_verified` for every highlight claim since task 6b doesn't exist yet) and a coordinator-set `resolution` (`accept`/`fix_needed`). The whole section is approved or rejected as one unit — `is_approvable` requires every item resolved and none `fix_needed` — matching the single-accuracy-pass design below. `src/cytonn_weekly/ui/digital_payments_review.py` is the actual Streamlit screen (`streamlit run src/cytonn_weekly/ui/digital_payments_review.py`), and `digital_payments/review_store.py` persists a `CoordinatorReview` to a `coordinator_reviews` SQLite table so a browser refresh resumes an in-progress review rather than losing it (and so a paid Anthropic draft never has to be re-run just because a tab closed). None of this has been exercised against a live Anthropic draft yet — same budget blocker as the highlights drafter itself.
+
+**The Edwin/Liz Word summary (task 11) is built too:** `digital_payments/summary.py` renders an *approved* review to a `.docx` (highlights with footnote-style sources, the formatted table plus an Average row, the outlook) and raises `SummaryNotAllowed`, writing nothing, for a missing, in-progress, or rejected review. It stops at producing the file — delivery to Edwin/Liz is not built (see Open items).
+
+## Commands
+
+Python >=3.10 (developed on 3.12). No linter or formatter is configured; don't invent one.
+
+```sh
+pip install -e .                  # editable install; scripts and tests import cytonn_weekly without PYTHONPATH
+python -m pytest -q               # whole suite (300 tests, ~10s, no network, no LLM)
+python -m pytest tests/test_digital_payments_checks.py::test_exact_match_passes -q   # one test
+python -m pytest -k "resume" -q   # by keyword
+streamlit run src/cytonn_weekly/ui/digital_payments_review.py                       # coordinator review screen
+python scripts/check_digital_payments_live.py               # live Yahoo fetch, free
+python scripts/check_digital_payments_highlights_live.py    # live drafting: spends Anthropic budget unless CYTONN_LLM_PROVIDER=local
+python -c "from cytonn_weekly.digital_payments.summary import write_latest_summary; print(write_latest_summary())"
+```
+
+`data/app.db` (gitignored) is created and migrated by `sections.init_db()`, which applies `data/schema.sql`; every `review_store` call does this itself. Secrets and `CYTONN_LLM_PROVIDER` live in the gitignored repo-root `.env`.
+
+## How the Digital Payments code fits together
+
+The pieces only make sense read together; the order of data through them is:
+
+`fetcher.fetch_digital_payments()` (raw rows) → `highlights.draft_highlights()` / `draft_outlook()` (via a provider) → `compose_section()` → `checkers.digital_payments.check_digital_payments()` → `coordinator_review.build_coordinator_review()` → `review_store` (SQLite) → Streamlit screen → `summary.write_latest_summary()`. `review_run.build_digital_payments_review()` wires the first five steps; it is the only place that does.
+
+Things that bite if you don't know them:
+
+- **`compose_section()` holds raw fetcher rows, not display strings.** Anything user-facing (the checker's "drafted" side, the screen, the Word doc) must call `fetcher.format_table_rows()` first. The Average row is not a stored row; it comes from `outlook["stats"]`.
+- **`CheckReport` records only flags and a count of figures compared, never what passed.** "Clean" review items are derived as everything in the section that no flag points at, so a check run that skipped a scope would read as all-clean (see Open items).
+- **`ReviewItem.status` and `resolution` are different things:** status is the machine's view (`flagged`/`clean`/`not_auto_verified`), resolution is the coordinator's (`accept`/`fix_needed`). `CoordinatorReview.decide("approved")` needs `is_approvable`; `"rejected"` is always allowed; a decision can be made once. There is no way to edit a drafted value in review, so an approved review means the tool's values were accepted as drafted.
+- **A decided review is frozen in SQLite:** `save_review()` raises `ReviewAlreadyDecided` if a stale copy tries to change it. Saves are insert-then-update on `review.run_id`. `section` in `coordinator_reviews` is a slug (`digital_payments`), unlike `sections.name` ("Digital Payments"); there is no foreign key between them.
+- **`load_latest_review()` returns the newest review whether or not it is decided.** Consumers check `.decision`. `write_latest_summary()` deliberately uses the latest, not the latest approved, so a newer unapproved draft blocks summarizing an older week.
+- **Provider and env loading:** library code reads `os.environ` only; entrypoints (scripts, the Streamlit app) call `env.load_env()`. Local-provider drafts get a DEV MODE banner in the screen and the Word doc.
+- **Streamlit screen:** widgets are re-seeded from the `ReviewItem` objects on every run (the model is the source of truth), and callbacks save through `review_store`. LLM text is rendered with `$` escaped, otherwise Streamlit treats `$...$` as LaTeX.
+
+## Testing conventions
+
+- `tests/conftest.py` autouse-redirects `sections._DEFAULT_DB` to a per-test temp file. Anything that takes `db_path=None` (including the Streamlit app) would otherwise write to the real `data/app.db`; this has happened once, so do not remove the guard.
+- `tests/review_helpers.py` builds real `CoordinatorReview`s by running the real draft/compose/check code on a fake provider and fixed price rows (`make_review(tamper=True)` plants a mismatch and a missing row). Prefer it to hand-built dicts, so tests exercise real `Flag`/`CheckReport` shapes.
+- The Streamlit screen is tested headless with `streamlit.testing.v1.AppTest`; a fresh `AppTest` instance is a new browser session, which is how refresh/resume is tested. Word output is checked by re-opening the saved `.docx` with python-docx and reading paragraphs and tables in order.
 
 ## Non-negotiable rules
 
@@ -30,6 +77,8 @@ Two layers, per section (Equities, Fixed Income, Digital Payments, Real Estate, 
 **Focus of the Week is the exception**: no fixed topic or source. The tool suggests candidate topics from historical reports; the analyst picks from the suggestions (tool doesn't choose unilaterally). Source is either analyst-supplied or tool-found, depending on that section's permission setting — either way it's surfaced to the reviewer, never guessed at silently. This is the least-tested part of the drafting layer.
 
 **Process flow:** Suggest (Focus only) → Select → Draft (all 5 sections) → Check (exact match) → Coordinator review (single accuracy pass, all 5 sections) → Word doc summary to Edwin/Liz (insight only, before publish) → Publish (direct push into Cytonn Report admin CMS) → Distribute (CIM pages, Edwin's socials, Capital Group).
+
+**Coordinator review is whole-section, not per-item**: one approve/reject decision for the entire drafted section at once, not a separate decision per highlight or row. Every `ReviewItem` — flagged, not-yet-auto-verified, or clean — needs an explicit resolution before the section is approvable; nothing can be silently skipped past. A highlight claim's citation isn't automatically checked yet (task 6b is still blocked on API budget), so those items are labeled distinctly as `not_auto_verified` rather than reading as either a pass or a real flag, so the coordinator knows that one still needs their own judgment, not just a glance. See the Digital Payments coordinator-review layer note above.
 
 **Trigger:** automatic on the existing Friday cadence. On-demand ad-hoc ask is a later addition, not needed for the first working version.
 
@@ -59,7 +108,7 @@ Python, end to end:
 - Word doc output (Edwin/Liz summary): `python-docx`
 - Scheduler: `APScheduler` or cron, for the Friday cadence
 - Internal UI (coordinator review, analyst topic pick): **Streamlit** — fastest path to a working review screen for a single-intern ~5-week build; no public-facing UI requirement, so a heavier API+frontend split isn't needed
-- Storage: **SQLite** — permissions config, draft state, historical-report index, run history. No real concurrency at this scale (weekly cadence, one coordinator). No longer used for Forward P/E (that cache was removed — see Sources above).
+- Storage: **SQLite** — permissions config, draft state, historical-report index, run history, and (as of the coordinator-review persistence task) a `coordinator_reviews` table holding the draft content, every `ReviewItem`, and the decision. No real concurrency at this scale (weekly cadence, one coordinator) — two undecided tabs reviewing the same draft is unguarded (last save wins), accepted as fine for a single coordinator. No longer used for Forward P/E (that cache was removed — see Sources above).
 - Hosting: Cytonn's own servers, no separate hosting cost
 - Web search (Digital Payments' narrative highlights, and any future section's open-ended research): **Anthropic Messages API's native web search tool** (`web_search_20250305` or newer) — server-side, no separate search API/account needed, same SDK and billing already in use. Returns mandatory citations (URL, title, cited text) per result, which is what the checking layer uses to verify narrative claims against their source. ~$10/1,000 searches + token cost — negligible at this project's scale. This is the production provider's search mechanism (`providers/anthropic_provider.py`) — see the provider note under Sources above.
 - **Local dev-only drafting provider:** `providers/local_provider.py` runs phi4-mini through a local Ollama instance (`ollama pull phi4-mini`, served over `localhost:11434`), paired with Exa search (`EXA_API_KEY`) for sourcing. Selected via `CYTONN_LLM_PROVIDER=local`. Zero Anthropic API cost, but not a production candidate — see the provider note under Sources above for the specific gaps (word count, empty `cited_text`).
@@ -74,11 +123,12 @@ Python, end to end:
 5. ~~Build the Digital Payments "Weekly Highlights" drafter~~ — **done**, `digital_payments/highlights.py`, refactored behind a swappable provider (188 tests passing, 172 original + 16 new for the provider split — see Sources above). Exactly 4 highlights, scoped to 5 companies with a priority order and IR-domain-first sourcing, plus `draft_outlook()`'s `stats` field. **Live behavior against real (non-mocked) Anthropic search/drafting calls is still unconfirmed** — see task 6 and Open items. A real dev-mode (local-provider) run already happened and is informative but is not a substitute for the production live run.
 6. Design checking-layer comparison logic — **split into 6a (table + outlook `stats`, exact-match, zero API cost) and 6b (highlight-claim citation verification, LLM-judgment).** **6a is done and live-proven**: normalization (precision/units, including the real report's actual string format — no `$`, no `+`, parentheses for negatives), the mismatch-vs-sources-disagree flag split, the round-half-up convention, and exact-match for the outlook's `stats` field are all built, tested (142+ tests), and confirmed clean on a live run of 49 real figures. **6b (citation-based verification for highlight claims) is still blocked on Anthropic API budget being approved** — needs a real (not mocked) live run of task 5's highlights output to design against; see Open items.
 7. Build checking-layer module covering both the table (exact match — **done**, `checkers/digital_payments.py`) and the highlights (citation + `stats` verification — blocked on 6b, see above)
-8. Draft coordinator-review output format (single accuracy pass, scoped to Digital Payments — table and highlights together)
-9. Build the coordinator-review screen (Streamlit), scoped to Digital Payments (depends on: 8)
-10. Build the Edwin/Liz Word-doc-summary generator (python-docx, before-publish, insight-only), scoped to Digital Payments
-11. Scaffold and build admin CMS publish automation (Playwright, SSO-authenticated), scoped to Digital Payments' section of the CMS
-12. End-to-end test, Digital Payments: draft (table + highlights) → check → coordinator review → summary → CMS publish → distribute (depends on: 7, 9, 10, 11)
+8. ~~Draft coordinator-review output format (single accuracy pass, scoped to Digital Payments)~~ — **done**, `digital_payments/coordinator_review.py` (`ReviewItem`, `CoordinatorReview`, `build_coordinator_review()`). Whole-section approval, every item (flagged/clean/not_auto_verified) needs an explicit resolution before approval, task 6b's still-missing citation check gets its own distinct status rather than reading as a pass. 236 tests at landing (24 new), tested against real `CheckReport`s, not just mocks.
+9. ~~Build the coordinator-review screen (Streamlit), scoped to Digital Payments (depends on: 8)~~ — **done**, `src/cytonn_weekly/ui/digital_payments_review.py` + `digital_payments/review_run.py` (`build_digital_payments_review()`). 254 tests at landing (42 new), tested headless via `streamlit.testing.v1.AppTest`.
+10. ~~Persist `CoordinatorReview` to SQLite~~ — **done**, inserted here after task 9's own build note surfaced a real dependency gap: without persistence, a browser refresh loses an in-progress or even a decided review, and tasks 11-12 below need a durable place to read the approved content from. `digital_payments/review_store.py` (`save_review`/`load_review`/`load_latest_review`), new `coordinator_reviews` table in `data/schema.sql`. 281 tests at landing (27 new). Resume-on-refresh confirmed working end to end against a real SQLite file.
+11. ~~Build the Edwin/Liz Word-doc-summary generator (python-docx, before-publish, insight-only), scoped to Digital Payments~~ — **done**, `digital_payments/summary.py` (`write_latest_summary()`, `write_summary()`, `SummaryNotAllowed`); reads the approved review via `review_store.load_latest_review()` and refuses anything not approved. Output goes to `data/summaries/` (gitignored). 300 tests at landing (19 new). Delivery to Edwin/Liz is not part of it.
+12. Scaffold and build admin CMS publish automation (Playwright, SSO-authenticated), scoped to Digital Payments' section of the CMS
+13. End-to-end test, Digital Payments: draft (table + highlights) → check → coordinator review → persist → summary → CMS publish → distribute (depends on: 7, 9, 10, 11, 12)
 
 **Documented as roadmap beyond this window, not built now:**
 - Extending drafting and checking to the remaining four sections (Equities, Fixed Income, Real Estate, Focus) — includes the CBK, NSE T-bill/T-bond, World Bank, NASI, and Ibuka/REIT fetchers, the Focus topic-suggestion logic, and historical-report ingestion
@@ -94,6 +144,9 @@ Python, end to end:
 - Whether Cytonn (CT) would ever open real API/database access, beyond the SSO-driven UI automation — genuinely unasked, not needed for the current plan.
 - Official written approval of the Inception Report is still outstanding despite the verbal go-ahead to start building.
 - Worth confirming the Forward P/E `forwardPE`/`forwardEps` basis with Cytonn directly when convenient — it's a strong reverse-engineered inference from real report data, not a confirmed answer from them.
+- **How the Word summary reaches Edwin and Liz is unspecified** (email, shared drive, …) and not built; also undecided whether CMS publish (task 12) should wait on the summary having gone out. Settle before task 12.
+- The Word summary shows a flagged-but-accepted figure exactly as drafted, with no marking; if Edwin/Liz should see that it was accepted despite a flag, that is a product decision, not yet made.
+- `CheckReport` can't currently distinguish a scope that was never checked from one that checked clean, at a per-scope level (only a blanket zero-checks case is caught by `build_coordinator_review`). A `scopes_checked` field on the checker would close this. Not urgent while `check_digital_payments()` is always called with all three scopes (table, outlook, highlights) together.
 
 ---
 *This file is the current-state reference for coding. The fuller decision history — why each of these calls was made, direct quotes, dates — lives in the "Cytonn Weekly: AI-Assisted Report Generation" Claude Project (`claude/project-status.md`), a separate surface Claude Code can't read directly. Update this file as decisions change; it won't stay in sync automatically.*

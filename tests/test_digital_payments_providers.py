@@ -232,3 +232,200 @@ def test_both_provider_prompts_use_the_same_genuine_announcement_test():
         assert "NOT a genuine" in prompt
     # Anthropic signals "not genuine" the way it signals any non-story: NO_STORY, which triggers the web fallback.
     assert "NO_STORY" in ap._HIGHLIGHTS_SYSTEM
+
+
+# ---------------------------------------------------------------------------
+# Selectable local model (A/B testing): drafted_by and the Ollama request follow the model
+# ---------------------------------------------------------------------------
+
+GEMMA = "gemma4:26b-a4b-it-qat"
+
+
+def test_model_label_shortens_ollama_tags():
+    from cytonn_weekly.digital_payments.providers.local_provider import model_label
+
+    assert model_label("phi4-mini") == "phi4-mini"
+    assert model_label("phi4-mini:latest") == "phi4-mini"
+    assert model_label(GEMMA) == "gemma4-26b-a4b"
+    # Derived from the string passed in, not tied to the 26B variant; "latest" is shown as the E4B it resolves to.
+    assert model_label("gemma4:latest") == "gemma4-e4b" and model_label("gemma4") == "gemma4-e4b"
+    assert model_label("gemma4:e4b") == "gemma4-e4b" and model_label("gemma4:e2b-it-qat") == "gemma4-e2b"
+    assert model_label("llama3:latest") == "llama3"
+    # Namespaced registry names (user/model) are labelled by the model name alone.
+    assert model_label("openbmb/minicpm5-2b") == "minicpm5-2b"
+    assert model_label("openbmb/minicpm5-2b:q8_0") == "minicpm5-2b-q8_0"
+    assert LocalProvider(model="openbmb/minicpm5-2b", exa_api_key="k").drafted_by == "local:minicpm5-2b"
+
+
+@pytest.mark.parametrize("model,label", [("phi4-mini", "local:phi4-mini"), (GEMMA, "local:gemma4-26b-a4b")])
+def test_drafted_by_and_ollama_requests_reflect_the_model_that_ran(model, label):
+    b = Backend({"ir": [exa_result()]}, [genuine(), "outlook " * 100], models=(model,))
+    p = LocalProvider(model=model, exa_api_key="k", http_client=httpx.Client(transport=httpx.MockTransport(b)))
+    assert p.drafted_by == label
+    res = find(p)
+    assert res.drafted_by == label
+    assert p.draft_outlook({"avg_wow_pct": 1.0}, []).drafted_by == label
+    # Both the highlight and outlook calls go to the selected model, with the same structured-output request.
+    assert [c["model"] for c in b.chat_calls] == [model, model]
+    assert b.chat_calls[0]["format"]["required"][:2] == ["is_genuine_announcement", "reasoning"]
+    assert b.chat_calls[0]["options"] == {"temperature": 0, "num_ctx": 8192, "num_predict": 2048}
+    assert b.chat_calls[1]["options"]["num_predict"] == 2048  # the outlook call is capped too
+
+
+def test_default_model_is_phi4_mini():
+    assert LocalProvider(exa_api_key="k").drafted_by == "local:phi4-mini"
+
+
+def test_missing_selected_model_names_that_model_in_the_pull_instruction():
+    with pytest.raises(RuntimeError, match=f"ollama pull {GEMMA}"):
+        find(provider_for(GEMMA, Backend({}, [], models=("phi4-mini:latest",))))
+
+
+def provider_for(model, backend, **kw):
+    return LocalProvider(model=model, exa_api_key="k",
+                         http_client=httpx.Client(transport=httpx.MockTransport(backend)), **kw)
+
+
+def test_factory_local_model_env_override(monkeypatch, capsys):
+    monkeypatch.setenv("CYTONN_LLM_PROVIDER", "local")
+    monkeypatch.setenv("CYTONN_LOCAL_MODEL", GEMMA)
+    p = provider_factory.get_provider()
+    assert p.model == GEMMA and p.drafted_by == "local:gemma4-26b-a4b"
+    out = capsys.readouterr().out
+    assert f"DEV MODE: drafting with local {GEMMA}" in out and "NOT FOR PUBLICATION" in out
+
+
+def test_factory_local_defaults_and_cache_settings(monkeypatch):
+    monkeypatch.setenv("CYTONN_LLM_PROVIDER", "local")
+    monkeypatch.delenv("CYTONN_LOCAL_MODEL", raising=False)
+    monkeypatch.delenv("CYTONN_EXA_REFRESH", raising=False)
+    p = provider_factory.get_provider()
+    assert p.model == "phi4-mini" and p._cache_dir == provider_factory.EXA_CACHE_DIR and not p._refresh_cache
+    monkeypatch.setenv("CYTONN_LOCAL_MODEL", "  ")  # blank means unset
+    monkeypatch.setenv("CYTONN_EXA_REFRESH", "1")
+    p = provider_factory.get_provider()
+    assert p.model == "phi4-mini" and p._refresh_cache
+
+
+def test_local_model_env_is_ignored_for_anthropic(monkeypatch):
+    monkeypatch.setenv("CYTONN_LOCAL_MODEL", GEMMA)
+    for value in (None, "anthropic"):
+        if value is None:
+            monkeypatch.delenv("CYTONN_LLM_PROVIDER", raising=False)
+        else:
+            monkeypatch.setenv("CYTONN_LLM_PROVIDER", value)
+        p = provider_factory.get_provider()
+        assert isinstance(p, AnthropicProvider) and p.drafted_by == "anthropic:claude-sonnet-5"
+
+
+# ---------------------------------------------------------------------------
+# Exa result cache: a second model sees identical search results
+# ---------------------------------------------------------------------------
+
+def test_cache_is_off_by_default_and_writes_nothing(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    b = Backend({"ir": [exa_result()]}, [genuine(), genuine()])
+    p = provider(b)
+    find(p), find(p)
+    assert len(b.exa_calls) == 2 and list(tmp_path.iterdir()) == []
+
+
+def test_second_model_reuses_cached_exa_results_instead_of_querying(tmp_path):
+    first = Backend({"ir": [exa_result()]}, [genuine()])
+    find(provider_for("phi4-mini", first, cache_dir=tmp_path))
+    assert len(first.exa_calls) == 1
+    files = list(tmp_path.glob("*.json"))
+    assert [f.name for f in files] == ["visa_2026-09-29.json"]
+    saved = json.loads(files[0].read_text(encoding="utf-8"))
+    assert saved["company"] == "Visa" and saved["scopes"]["investor_relations"][0]["url"] == VISA_URL
+
+    # Exa now "returns" something else; the cached results must win, and Exa must not be called.
+    second = Backend({"ir": [exa_result("https://other.example.com", "Changed")]}, [genuine()], models=(GEMMA,))
+    res = find(provider_for(GEMMA, second, cache_dir=tmp_path))
+    assert second.exa_calls == []
+    assert res.drafted_by == "local:gemma4-26b-a4b" and res.claims[0]["url"] == VISA_URL
+    # Both models were shown the same search-result text.
+    assert second.chat_calls[0]["messages"][1] == first.chat_calls[0]["messages"][1]
+
+
+def test_cache_records_empty_ir_results_and_the_fallback_scope(tmp_path):
+    b = Backend({"ir": [], "web": [exa_result()]}, [genuine()])
+    res = find(provider_for("phi4-mini", b, cache_dir=tmp_path))
+    assert res.search_scope == "web_fallback" and not any("not in the cache" in w for w in res.draft_warnings)
+    scopes = json.loads((tmp_path / "visa_2026-09-29.json").read_text(encoding="utf-8"))["scopes"]
+    assert scopes["investor_relations"] == [] and len(scopes["web_fallback"]) == 1
+
+    again = Backend({}, [genuine()])
+    res = find(provider_for("phi4-mini", again, cache_dir=tmp_path))
+    assert again.exa_calls == [] and res.search_scope == "web_fallback"
+
+
+def test_scope_missing_from_cache_is_fetched_fresh_and_flagged(tmp_path):
+    find(provider_for("phi4-mini", Backend({"ir": [exa_result()]}, [genuine()]), cache_dir=tmp_path))
+    # A different model rejects the IR results, so it needs the web scope the first run never fetched.
+    b = Backend({"web": [exa_result("https://news.example.com/v")]},
+                [NOT_GENUINE, genuine(paragraph(url="https://news.example.com/v"),
+                                      [{"claim": "x", "url": "https://news.example.com/v"}])], models=(GEMMA,))
+    res = find(provider_for(GEMMA, b, cache_dir=tmp_path))
+    assert [s for s, _ in b.exa_calls] == ["web"]
+    assert any("web_fallback search results were not in the cache" in w for w in res.draft_warnings)
+    assert "web_fallback" in json.loads((tmp_path / "visa_2026-09-29.json").read_text(encoding="utf-8"))["scopes"]
+
+
+def test_refresh_cache_forces_a_fresh_exa_pull_and_overwrites(tmp_path):
+    find(provider_for("phi4-mini", Backend({"ir": [exa_result()]}, [genuine()]), cache_dir=tmp_path))
+    b = Backend({"ir": [exa_result("https://investor.visa.com/new", "New")]},
+                [genuine(paragraph(url="https://investor.visa.com/new"),
+                         [{"claim": "x", "url": "https://investor.visa.com/new"}])])
+    res = find(provider_for("phi4-mini", b, cache_dir=tmp_path, refresh_cache=True))
+    assert len(b.exa_calls) == 1 and res.claims[0]["url"] == "https://investor.visa.com/new"
+    saved = json.loads((tmp_path / "visa_2026-09-29.json").read_text(encoding="utf-8"))
+    assert saved["scopes"]["investor_relations"][0]["url"] == "https://investor.visa.com/new"
+
+
+def test_corrupt_cache_file_is_treated_as_absent(tmp_path):
+    (tmp_path / "visa_2026-09-29.json").write_text("{not json", encoding="utf-8")
+    b = Backend({"ir": [exa_result()]}, [genuine()])
+    assert not find(provider_for("phi4-mini", b, cache_dir=tmp_path)).no_story and len(b.exa_calls) == 1
+
+
+def test_capped_runaway_reply_is_truncated_json_and_discarded_as_invalid():
+    # What a model that never closes its JSON looks like after Ollama stops it at num_predict.
+    truncated = '{"is_genuine_announcement": true, "reasoning": "' + "the company announced " * 300
+    res = find(provider(Backend({"ir": [exa_result()]}, [truncated])))
+    assert res.no_story and any("invalid JSON" in w for w in res.draft_warnings)
+
+
+# ---------------------------------------------------------------------------
+# Per-model request overrides: MiniCPM5-2B gets a higher output cap; thinking stays on
+# ---------------------------------------------------------------------------
+
+def _requests_for(model, models=None):
+    b = Backend({"ir": [exa_result()]}, [genuine(), "outlook " * 100], models=(models or model,))
+    p = LocalProvider(model=model, exa_api_key="k", http_client=httpx.Client(transport=httpx.MockTransport(b)))
+    find(p)
+    p.draft_outlook({"avg_wow_pct": 1.0}, [])
+    return b.chat_calls
+
+
+@pytest.mark.parametrize("model", ["openbmb/minicpm5-2b", "openbmb/minicpm5-2b:latest", "minicpm5-2b:q8_0"])
+def test_minicpm5_2b_gets_the_higher_cap_and_keeps_thinking_on(model):
+    from cytonn_weekly.digital_payments.providers import local_provider as lp
+
+    highlight, outlook = _requests_for(model)
+    for call in (highlight, outlook):
+        assert call["options"] == {"temperature": 0, "num_ctx": 8192, "num_predict": 4096}
+        assert "think" not in call  # thinking is left at the model's default (on)
+    assert highlight["format"] == lp._RESPONSE_SCHEMA
+
+
+@pytest.mark.parametrize("model", ["phi4-mini", "phi4-mini:latest", GEMMA, "gemma4:latest", "openbmb/minicpm5"])
+def test_other_models_requests_are_unchanged_at_the_default_cap(model):
+    from cytonn_weekly.digital_payments.providers import local_provider as lp
+
+    highlight, outlook = _requests_for(model)
+    # Exactly the default request shape: no extra keys, the 2048 cap.
+    options = {"temperature": 0, "num_ctx": 8192, "num_predict": 2048}
+    assert highlight == {"model": model, "stream": False, "options": options, "format": lp._RESPONSE_SCHEMA,
+                         "messages": highlight["messages"]}
+    assert outlook == {"model": model, "stream": False, "options": options, "messages": outlook["messages"]}

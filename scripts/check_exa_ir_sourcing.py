@@ -9,8 +9,9 @@ Requirements: plain `requests` only (already installed as a transitive
 dependency of the project; no changes to pyproject.toml).  If you'd rather use
 the SDK instead, `pip install exa-py` would work, but is not needed here.
 
-Run from the repo root, with your key in the environment:
-    EXA_API_KEY=... python scripts/check_exa_ir_sourcing.py [days]
+Run from the repo root, with EXA_API_KEY in the repo-root .env (loaded
+automatically) or in the shell:
+    PYTHONPATH=src python scripts/check_exa_ir_sourcing.py [days]
 `days` is the look-back window (default 8, i.e. within the 7-10 day range).
 """
 
@@ -19,6 +20,8 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 import requests
+
+from cytonn_weekly.env import load_env
 
 EXA_URL = "https://api.exa.ai/search"
 NUM_RESULTS = 5
@@ -64,9 +67,10 @@ def print_results(results):
 
 
 def main():
+    load_env()
     api_key = os.environ.get("EXA_API_KEY")
     if not api_key:
-        sys.exit("EXA_API_KEY is not set.")
+        sys.exit("EXA_API_KEY is not set (not in the shell, not in .env).")
     days = int(sys.argv[1]) if len(sys.argv) > 1 else 8
     start = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT00:00:00.000Z")
     print(f"Exa sourcing check - published on/after {start} ({days}-day window)\n")
