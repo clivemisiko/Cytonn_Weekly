@@ -28,7 +28,7 @@ TITLE = "Focus of the Week"
 WORDS = (400, 700)
 # The one topic length limit, counted after whitespace is normalized.  The API (api/main.py)
 # refuses a longer topic through clean_topic(), and the web form's MAX_TOPIC
-# (frontend/src/components/review/start-screen.tsx) is the same number.
+# (frontend/src/lib/topic.ts) is the same number, counted the same way.
 MAX_TOPIC_CHARS = 500
 
 
@@ -38,7 +38,7 @@ def clean_topic(topic: Optional[str]) -> str:
     if not t:
         raise ValueError("a Focus of the Week draft needs a topic")
     if len(t) > MAX_TOPIC_CHARS:
-        raise ValueError(f"the topic is {len(t)} characters; keep it under {MAX_TOPIC_CHARS}")
+        raise ValueError(f"the topic is {len(t)} characters; the limit is {MAX_TOPIC_CHARS}")
     return t
 
 

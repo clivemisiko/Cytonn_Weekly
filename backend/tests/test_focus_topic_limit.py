@@ -65,7 +65,7 @@ def test_501_characters_is_refused_by_both_in_the_same_words(client, seen):
     topic = words(501)
     with pytest.raises(ValueError) as exc:
         clean_topic(topic)
-    assert str(exc.value) == "the topic is 501 characters; keep it under 500"
+    assert str(exc.value) == "the topic is 501 characters; the limit is 500"
     r = draft(client, topic)
     assert r.status_code == 422 and r.json()["detail"] == str(exc.value)
     run = client.post("/api/runs", json={"section": "focus", "topic": topic})

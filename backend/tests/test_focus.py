@@ -12,7 +12,7 @@ def test_topic_is_required_and_bounded():
     assert clean_topic("  SSA   Eurobonds ") == "SSA Eurobonds"
     with pytest.raises(ValueError, match="needs a topic"):
         clean_topic("   ")
-    with pytest.raises(ValueError, match="under 500"):
+    with pytest.raises(ValueError, match="the limit is 500"):
         clean_topic("x" * 501)
 
 
