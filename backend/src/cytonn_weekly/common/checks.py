@@ -34,6 +34,7 @@ from cytonn_weekly.checkers.digital_payments import (
     UNSOURCED,
     CheckReport,
     Flag,
+    SourceValue,
     check_figure,
 )
 from cytonn_weekly.common.formatting import TEXT
@@ -47,14 +48,25 @@ def row_subject(table_id: str, key: str) -> str:
     return f"{table_id}/{key}"
 
 
-def check_table_block(block: dict[str, Any]) -> CheckReport:
+def check_table_block(
+    block: dict[str, Any],
+    extra_sources: Optional[dict[tuple[str, str], list[SourceValue]]] = None,
+) -> CheckReport:
     """Exact-match every numeric column of a table block: drafted ``rows`` against ``source_rows``.
 
     Rows are matched on the block's ``key_field``.  A source row with an ``error``
     is a MISSING flag (nothing to check against), a source row absent from the
     draft is MISSING, a drafted row with no source row is UNSOURCED.
+
+    ``extra_sources`` brings in independent second sources, as for the Digital Payments
+    table: a ``{(subject, column key): [SourceValue]}`` mapping, where the subject is the
+    row's flag subject (``row_subject(block id, row key)``).  Each list is handed to
+    ``check_figure`` as it is, so what a second source means is that function's rule and
+    nothing is decided here.  Left out, every figure is checked against its own source
+    row alone.  No caller passes it yet: no second source exists.
     """
     report = CheckReport()
+    extra_sources = extra_sources or {}
     key = block["key_field"]
     numeric = [c for c in block["columns"] if c.get("fmt", TEXT) != TEXT]
     drafted = {r[key]: r for r in block.get("rows", [])}
@@ -74,7 +86,8 @@ def check_table_block(block: dict[str, Any]) -> CheckReport:
             continue
         for c in numeric:
             flag = check_figure(TABLE_SCOPE, subject, c["key"], drow.get(c["key"]), src.get(c["key"]),
-                                c.get("decimals", 1), primary_source=block.get("source", {}).get("name", "primary"))
+                                c.get("decimals", 1), extra_sources=extra_sources.get((subject, c["key"])),
+                                primary_source=block.get("source", {}).get("name", "primary"))
             report.checked += 1
             if flag:
                 report.flags.append(flag)

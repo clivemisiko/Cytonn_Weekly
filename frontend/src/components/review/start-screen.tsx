@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import * as api from "@/lib/api";
 import { elapsed, friendlyTime, weekRange } from "@/lib/format";
+import { MAX_TOPIC, topicLength } from "@/lib/topic";
 import type { AppConfig, Drafting, Overview, ReportChoice, Review, SectionSummary } from "@/lib/types";
 import { DevRibbon, Notice } from "./banners";
 import { isDraftingThis, useDraftingPoll, useLiveElapsed } from "./drafting";
@@ -15,7 +16,6 @@ import { Masthead } from "./masthead";
 
 const EASE = [0.23, 1, 0.32, 1] as const;
 
-const MAX_TOPIC = 200;
 const MAX_TEXT = 10_000;
 
 /** A draft already running on the server (started from another tab, or before this screen was opened). */
@@ -95,6 +95,9 @@ export function StartScreen({
   const [topic, setTopic] = useState("");
   const [text, setText] = useState("");
   const inputMissing = (section.needs_topic && !topic.trim()) || (section.needs_text && !text.trim());
+  // Counted as the API counts it (lib/topic.ts). Nothing is ever cut: an over-long topic stays whole and blocks the draft.
+  const topicCount = topicLength(topic);
+  const topicOver = section.needs_topic && topicCount > MAX_TOPIC;
   const router = useRouter();
   // True from the click until the run view takes over (the start call answers at once).
   const [drafting, setDrafting] = useState(false);
@@ -312,19 +315,32 @@ export function StartScreen({
                       name="topic"
                       type="text"
                       autoComplete="off"
-                      maxLength={MAX_TOPIC}
                       value={topic}
                       disabled={drafting}
-                      onChange={(e) => setTopic(e.target.value)}
+                      onChange={(e) => {
+                        setTopic(e.target.value);
+                        setError(null); // an error from the last attempt is about the topic as it was
+                      }}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter" && !inputMissing && !drafting && !blocked && !providerBlocked) void draft();
+                        if (e.key === "Enter" && !inputMissing && !topicOver && !drafting && !blocked && !providerBlocked) void draft();
                       }}
                       placeholder="e.g. Sub-Saharan Africa Eurobonds performance…"
-                      aria-describedby="focus-topic-hint"
-                      className="flex h-10 w-full rounded-md border border-input bg-card px-3 text-base transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-60 md:text-sm"
+                      aria-invalid={topicOver || undefined}
+                      aria-describedby="focus-topic-hint focus-topic-count"
+                      className="flex h-10 w-full rounded-md border border-input bg-card px-3 text-base transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-60 aria-invalid:border-flag md:text-sm"
                     />
                     <p id="focus-topic-hint" className="text-xs text-muted-foreground">
                       Your editorial call. The tool researches and drafts the topic you give it, with a source for every claim.
+                    </p>
+                    <p id="focus-topic-count" className={cn("text-xs", topicOver ? "font-medium text-flag-fg" : "text-muted-foreground")}>
+                      <span className="font-mono tabular-nums">{topicCount.toLocaleString()}</span> of {MAX_TOPIC.toLocaleString()} characters.
+                      {topicOver && (
+                        <span role="status">
+                          {" "}
+                          Over the limit by <span className="font-mono tabular-nums">{(topicCount - MAX_TOPIC).toLocaleString()}</span>{" "}
+                          {topicCount - MAX_TOPIC === 1 ? "character" : "characters"}. Shorten it to submit.
+                        </span>
+                      )}
                     </p>
                   </div>
                 )}
@@ -357,7 +373,7 @@ export function StartScreen({
                 <Button
                   size="lg"
                   variant={saved ? "outline" : "default"}
-                  disabled={drafting || blocked || providerBlocked || inputMissing}
+                  disabled={drafting || blocked || providerBlocked || inputMissing || topicOver}
                   onClick={() => void draft()}
                 >
                   {draftLabel}

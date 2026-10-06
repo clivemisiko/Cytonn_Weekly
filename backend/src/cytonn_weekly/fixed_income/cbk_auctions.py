@@ -170,7 +170,9 @@ def parse_tbill_results(tables: list, text: str = "") -> dict[str, Any]:
     return {"auction_date": _dated(text), "rows": out}
 
 
-_BOND_CODE = re.compile(r"^[A-Z]{2,4}\d?/\d{4}/\d{2,3}$")
+# An issue number as CBK prints it: "FXD1/2019/020", "IFB1/2023/17", and "IFB1/2023/6.5" (a 6.5-year bond).
+_BOND_CODE_ANY = re.compile(r"[A-Z]{2,4}\d?/\d{4}/\d{1,3}(?:\.\d)?")
+_BOND_CODE = re.compile(rf"^{_BOND_CODE_ANY.pattern}$")
 _TO_MATURITY = re.compile(r"\(([\d.]+)\s*years?\s+to\s+maturity\)", re.I)
 
 
@@ -178,6 +180,20 @@ def _years_to_maturity(tenor: Optional[str]) -> Optional[float]:
     """CBK prints a reopened bond's remaining life in its tenor cell: "Twenty (12.6 years to maturity)"."""
     m = _TO_MATURITY.search(tenor or "")
     return float(m.group(1)) if m else None
+
+
+def _tenor_row_codes(tables: list) -> list[str]:
+    """Every issue number in the TENOR row, in column order, whichever cells they landed in.
+
+    pdfplumber sometimes merges the first issue into the label cell ("TENOR FXD1/2024/010" then
+    "FXD1/2008/020", the 22-07-2024 results), so the codes are read from the whole row.
+    """
+    for table in tables:
+        for row in table:
+            cells = [" ".join(str(c).split()) for c in (row or []) if c and str(c).strip()]
+            if cells and cells[0].upper().startswith("TENOR"):
+                return _BOND_CODE_ANY.findall(" ".join(cells))
+    return []
 
 
 def parse_tbond_results(tables: list, text: str = "") -> dict[str, Any]:
@@ -190,15 +206,25 @@ def parse_tbond_results(tables: list, text: str = "") -> dict[str, Any]:
     Bids Accepted at Cost" and the rate "Allocated average rate".  ``years_to_maturity`` is None
     there rather than derived from the due date (CBK's own figure is not the plain date gap:
     FXD1/2026/030 is "29.6 years to maturity" on 21-09-2026 though it falls due 13-Mar-2056).
+
+    The figures are read by column position under the issue numbers, so the two must line up:
+    if the bids row holds more per-bond figures than there are issue numbers (an issue number
+    that was not recognised), this raises ValueError instead of putting one bond's figures under
+    another's name.  That happened with the 2024 results before 2026-10-06 ("IFB1/2023/6.5" was
+    not read as an issue number, and "TENOR FXD1/2024/010" was merged into the label cell).
     """
     rows = _labelled_rows(tables)
     issues = [c for c in _find(rows, "issuenumber") if c and str(c).strip()]
     tenors = _find(rows, "tenor")
     if not issues:
-        coded = [c for c in tenors if c and _BOND_CODE.match(" ".join(str(c).split()))]
+        coded = _tenor_row_codes(tables)
         if coded:
             issues, tenors = coded, []
     bids = _find(rows, "totalbidsreceived")
+    figures = [c for c in bids if c and str(c).strip()]
+    if issues and len(figures) > len(issues) + 1:  # one figure per bond, and at most one total after them
+        raise ValueError(f"{len(figures)} bid figures under {len(issues)} recognised issue number(s) "
+                         f"({', '.join(' '.join(str(i).split()) for i in issues)}): the columns do not line up")
     accepted = _find(rows, "amountaccepted", "totalbidsacceptedatcost")
     avg = _find(rows, "weightedaveragerateofaccepted", "allocatedaveragerate")
     coupon = _find(rows, "couponrate")
@@ -238,9 +264,13 @@ def link_value_date(url: str) -> Optional[date]:
 
 
 def link_kind(url: str) -> str:
-    """``switch``, ``tap`` (a tap sale) or ``primary``, from the results PDF's file name."""
-    name = url.rsplit("/", 1)[-1].upper()
-    return "switch" if "SWITCH" in name else "tap" if "TAP" in name.replace(" ", "") else "primary"
+    """``switch``, ``buyback``, ``tap`` (a tap sale) or ``primary``, from the results PDF's file name."""
+    name = url.rsplit("/", 1)[-1].upper().replace("%20", " ")
+    if "SWITCH" in name:
+        return "switch"
+    if "BUYBACK" in name.replace(" ", "").replace("-", ""):
+        return "buyback"
+    return "tap" if "TAP" in name.replace(" ", "") else "primary"
 
 
 def fetch_period_tbonds(start: date, end: date, get: Getter = http_get) -> dict[str, Any]:
@@ -251,12 +281,16 @@ def fetch_period_tbonds(start: date, end: date, get: Getter = http_get) -> dict[
     part of the table counts).  Each auction is the parsed PDF plus ``url``, ``kind`` and
     ``value_date``; one whose PDF cannot be read keeps its place with an ``error`` instead
     of vanishing.
+
+    A buyback (CBK lists its results here too: "FEBRUARY BUYBACK AUCTION ... DATED 17-02-2025")
+    is the government retiring bonds, not issuing them, so it is left out: H1'2026's "H1'2025
+    Total" (offered 335.0, accepted 464.1) only reconciles without that one's 50.0 and 50.1.
     """
     links = latest_pdf_links(get(TBOND_LISTING).decode("utf-8", errors="replace"), "historical_treasury_bond_results")
     auctions: list[dict[str, Any]] = []
     for url in links:
         when, kind = link_value_date(url), link_kind(url)
-        if when is None or not start <= when <= end:
+        if when is None or not start <= when <= end or kind == "buyback":
             continue
         auction: dict[str, Any] = {"url": url, "kind": kind, "value_date": when.isoformat()}
         try:
@@ -283,7 +317,7 @@ def fetch_latest_tbill_results(get: Getter = http_get) -> dict[str, Any]:
 def fetch_latest_tbond_results(get: Getter = http_get) -> dict[str, Any]:
     """The newest primary T-bond auction's results (switch and tap-sale results skipped)."""
     links = [u for u in latest_pdf_links(get(TBOND_LISTING).decode("utf-8", errors="replace"), "historical_treasury_bond_results")
-             if not re.search(r"SWITCH|TAP", u, re.I)]
+             if link_kind(u) == "primary"]
     if not links:
         raise LookupError(f"no T-bond results PDF linked from {TBOND_LISTING}")
     tables, text = _tables_and_text(get(links[0]))

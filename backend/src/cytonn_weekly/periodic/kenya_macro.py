@@ -177,16 +177,24 @@ GROWTH_PROJECTIONS_UNBLOCK = "Cytonn's research team supplying its own projectio
 
 PMI_BLOCKED_REASON = (
     "The Stanbic Bank Kenya PMI is compiled and released by S&P Global; its 24-month series (behind the chart) "
-    "is S&P Global's data, and no free machine-readable release has been verified."
+    "is S&P Global's data, and no free machine-readable release has been verified. The issues attribute the "
+    "figures to \"Stanbic Bank\" in the text and print no source line under the chart (Q3'2026 and H1'2026, read "
+    "2026-10-06)."
 )
-PMI_UNBLOCK = "Access to the release itself (S&P Global's PMI feed, or Stanbic's emailed release) for a parser."
+PMI_UNBLOCK = (
+    "The analysts saying where they read the PMI (Stanbic's emailed release, S&P Global's PMI feed, or a press "
+    "report), then access to that release for a parser."
+)
 
 BUDGET_BLOCKED_REASON = (
-    "The budget comparison table sets two years' estimates side by side line by line; which National Treasury or "
-    "Parliament document (Budget Statement, Estimates, Appropriation Act) the analysts use has not been confirmed, "
-    "and its layout has not been inspected."
+    "The budget comparison table sets two years' estimates side by side line by line. Its source line reads "
+    "\"National Treasury of Kenya, www.parliament.go.ke\" and names no document: which one (Budget Statement, "
+    "Estimates, Appropriation Act) the analysts use has not been confirmed, and its layout has not been inspected."
 )
-BUDGET_UNBLOCK = "The exact Treasury/Parliament document behind the table, then a parser written against a real copy."
+BUDGET_UNBLOCK = (
+    "The analysts naming the exact National Treasury or parliament.go.ke document behind the table, then a parser "
+    "written against a real copy."
+)
 
 CREDIT_RATINGS_BLOCKED_REASON = (
     "Kenya's sovereign ratings table (Fitch, S&P Global, Moody's) needs each agency's current rating and outlook; "

@@ -57,6 +57,7 @@ from cytonn_weekly.digital_payments import review_run, review_store
 from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview
 from cytonn_weekly.digital_payments.provider_factory import ENV_VAR as PROVIDER_ENV_VAR
 from cytonn_weekly.env import load_env
+from cytonn_weekly.focus.review_run import clean_topic
 from cytonn_weekly.periodic.executive_summary import SectionsNotApproved
 from cytonn_weekly.report_sections import (
     DraftContext,
@@ -157,7 +158,9 @@ class DraftRequest(BaseModel):
     the weekly report with no period label, is what every draft was before report types.
     """
 
-    topic: Optional[str] = Field(default=None, max_length=500)
+    # No length here: clean_topic() is the one place a topic's length is judged (resolve_draft calls it),
+    # so the API and the pipeline refuse the same topics in the same words.
+    topic: Optional[str] = None
     text: Optional[str] = Field(default=None, max_length=10_000)
     report_type: ReportType = WEEKLY
     period: Optional[str] = Field(default=None, max_length=40)
@@ -316,6 +319,11 @@ def create_app(
         topic = body.topic or None
         if spec.needs_topic and not (topic and topic.strip()):
             raise HTTPException(422, f"{spec.title} needs a topic to draft")
+        if topic and topic.strip():
+            try:
+                topic = clean_topic(topic)  # whitespace-normalized; over focus.review_run.MAX_TOPIC_CHARS is refused
+            except ValueError as exc:
+                raise HTTPException(422, str(exc))
         if spec.needs_text and not (body.text and body.text.strip()):
             raise HTTPException(422, f"{spec.title} needs your text to draft")
         ctx = DraftContext(report_type=report_type, period=period, topic=topic, text=body.text, db_path=db_path)

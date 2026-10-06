@@ -23,11 +23,18 @@ The Bond Issuances table, as the three issues lay it out (and where they disagre
 * switch auctions: Q3'2026 lists them ("FXD4/2019/010-Switch"), Q1'2026 and H1'2026 leave
   them out, and all three leave them out of the totals (Q3'2026's "Total" offer of 380.0
   and "Average" tenor of 15.6 only reconcile without its three switches);
-* tap sales: Q3'2026's "Q3'2025 Total" counts the 25-08-2025 IFB tap sale (offer 250.0,
-  accepted 405.3 and bids 713.1 are the four primary auctions plus the tap, exactly), but
-  H1'2026's table and totals leave out its two June taps.  The newest issue wins: tap
-  sales are listed ("-Tap Sale", CBK's own term) and counted, switches are listed and not
-  counted;
+* tap sales are listed ("-Tap Sale", CBK's own term) and counted; switches are listed and
+  not counted; buybacks are neither (cbk_auctions.fetch_period_tbonds leaves them out).
+  Checked 2026-10-06 against CBK's PDFs for five printed periods
+  (tests/fixtures/sources/cbk_tbond_periods_captured_2026-10-06.json): counting tap sales
+  reproduces the Totals of Q3'2025 (250.0 / 405.3 / 713.1, in the Q3'2025 issue, which lists
+  the 25-08-2025 IFB tap as two "-Tapsale" rows, and again in the Q3'2026 issue), of Q3'2024
+  (145.0 / 150.3 / 199.3, two taps) and the offer and accepted amount of H1'2025 (335.0 /
+  464.1, one tap).  H1'2026 is the exception and is inconsistent with itself: its text says
+  one bond was issued on tap sale, its table has no tap row, and its Totals (460.0 / 510.0 /
+  781.1) are its nine primary auctions alone, where CBK lists two June 2026 tap sales
+  (counted: 495.0 / 547.6 / 820.9).  The rule stays "counts tap sales"; the question is open
+  for the analysts;
 * "Total" sums offer, accepted and bids; "Average" is the plain mean of tenor, coupon and
   yield, while its subscription and acceptance rates are ratios of the totals (H1'2026:
   781.1 / 460.0 = 169.8%, 510.0 / 781.1 = 65.3%), each with the same rows for the same
@@ -115,24 +122,37 @@ CHARTS = {
 # Stubs
 # ---------------------------------------------------------------------------
 
+# Tested 2026-10-06 against CBK's weekly results for two printed quarters (the figures are in
+# tests/fixtures/sources/cbk_tbill_q3_2025_q3_2026_captured_2026-10-06.json, the comparison in
+# tests/test_fixed_income.py).  Several yield methods tie, so by the project's rule the tool does
+# not choose one and the part stays a stub.
 TBILLS_BLOCKED_REASON = (
-    "The period's T-bill paragraph aggregates every weekly auction (overall and per-tenor subscription, "
-    "average yields, acceptance) and compares it with the same period a year earlier. The report does not "
-    "say how it averages the yields (a plain mean of auction results or a bid-weighted one), so computing "
-    "it would mean picking a basis the report may not use."
+    "The period's T-bill paragraph aggregates every weekly auction and compares it with the same period a year "
+    "earlier. Tested against CBK's weekly results for Q3'2026 and Q3'2025 (2026-10-06): the amounts and rates "
+    "are settled, the average yields are not. The 13 auctions with a value date inside the quarter, with each "
+    "rate taken as a ratio of sums (bids over the summed weekly offers, accepted over bids), reproduce every "
+    "printed figure of both quarters exactly (Q3'2026: subscription 163.9% overall, 319.2%, 128.0% and 80.4% by "
+    "tenor, acceptance 83.1%, bids Kshs 590.1 bn, accepted Kshs 490.2 bn; Q3'2025: 110.6%, 174.6%, 59.6%, "
+    "136.1%, acceptance 89.5%). The average yields tie: a plain mean of the weekly average accepted rates, a "
+    "mean weighted by the amount accepted and a mean weighted by the bids received all round to the printed "
+    "8.8%, 8.9%, 9.0% (Q3'2026) and 8.0%, 8.2%, 9.6% (Q3'2025), differing only in the second decimal place, so "
+    "two printed quarters cannot tell them apart and picking one would be a guess."
 )
 TBILLS_UNBLOCK = (
-    "The Fixed Income analysts confirming the aggregation basis; the CBK weekly T-bill results fetcher "
-    "(cbk_auctions.fetch_latest_tbill_results) already parses each auction and would be run over the period."
+    "The Fixed Income analysts confirming how the period's average yield is taken (a plain mean of the weekly "
+    "rates, accepted-weighted or bid-weighted); the amounts, subscription and acceptance rates then come from "
+    "cbk_auctions.parse_tbill_results run over the period's weekly results, which already reproduces them."
 )
 
 SECONDARY_BLOCKED_REASON = (
     "Bond turnover and the yield curve come from NSE secondary-market statistics; which NSE publication "
-    "the analysts read has not been confirmed and no machine-readable source has been verified."
+    "the analysts read has not been confirmed and no machine-readable source has been verified. The issues "
+    "print no source line under the bond turnover chart or the yield curve chart (Q3'2026 and H1'2026, read "
+    "2026-10-06)."
 )
 SECONDARY_UNBLOCK = (
-    "The NSE publication (or the KCB daily email, which carries secondary-market activity) the analysts "
-    "use, then a parser written against a real sample."
+    "The analysts naming where the turnover and yield curve figures come from (the NSE publication, or the KCB "
+    "daily email, which carries secondary-market activity), then a parser written against a real sample."
 )
 
 LIQUIDITY_BLOCKED_REASON = (
@@ -142,10 +162,14 @@ LIQUIDITY_BLOCKED_REASON = (
 LIQUIDITY_UNBLOCK = kcb_email.UNBLOCK
 
 EUROBONDS_BLOCKED_REASON = (
-    "The Kenya Eurobonds Performance table gives each issue's yield over time (source: CBK). CBK's daily "
-    "Eurobond yield publication has not been located and inspected, so its layout is unknown."
+    "The Kenya Eurobonds Performance table gives each issue's yield over time. Its source line reads \"Central "
+    "Bank of Kenya (CBK)\" and names no page or file; CBK's daily Eurobond yield publication has not been "
+    "located and inspected, so its layout is unknown."
 )
-EUROBONDS_UNBLOCK = "The CBK page or file the analysts take Kenya's Eurobond yields from, then a parser for a real sample."
+EUROBONDS_UNBLOCK = (
+    "The analysts naming which CBK page or file they take Kenya's Eurobond yields from, then a parser for a real "
+    "sample."
+)
 
 
 def fetch_period_tbill_summary(ctx: PeriodContext) -> Any:

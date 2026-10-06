@@ -10,19 +10,31 @@ in May 2026.
 The week's highlights reuse the weekly drafter unchanged (IR-first, four companies).
 The table is block-shaped here, so its period columns can be added without touching the
 weekly table the Word summary reads.  Its columns, verified against the issues' own
-figures with Yahoo Finance closes (2026-10-05):
+figures with Yahoo Finance closes (2026-10-05, and again cell by cell on 2026-10-06; the
+printed tables and the closes are in tests/fixtures/sources/cytonn_dp_period_tables_2026-10-06.json):
 
 * Q3'2026: Year Open 2026 | Price 6/30/2026 | Price 8/03/2026 | Price 9/25/2026 | Price
   9/30/2026 | Price 10/03/2026 | w/w | m/m | Q/Q | YTD | Forward P/E.  The 6/30 and 9/30
   columns are the closes on the quarter's eve and last day (Visa 343.1 and 359.3, Mastercard
   513.6 and 551.5, as printed), and Q/Q is the one from the other (American Express 338.3 to
-  304.1: (10.1%), as printed).  "Price 8/03/2026" is the 3 August close (Visa 365.7, which
-  the issue misprints as 3665.7, giving its "(90.2%)" m/m), two months before the issue, so
-  that column's basis is a stub, not a guessed "a month ago".
+  304.1: (10.1%), as printed): the quarter-end close over the previous quarter-end close,
+  minus 1.  All seven printed rows follow that, and w/w = 10/03 over 9/25, YTD = 10/03 over
+  Year Open, m/m = 10/03 over 8/03.  "Price 10/03/2026" is a Saturday: the prices printed
+  under it are the Friday 2 October closes (American Express 302.78, Visa 360.66), so this
+  table, which labels a price column with the date of the close it holds, heads it
+  "Price 10/02/2026".  "Price 8/03/2026" is the 3 August close (Visa 365.7, which the issue
+  misprints as 3665.7, giving its "(90.2%)" m/m), two months before the issue, so that
+  column's basis is a stub, not a guessed "a month ago".
 * H1'2026: Year Open 2026 | Price 6/26/2026 | Price 6/30/2026 | Price 7/3/2026 | HY'2026
-  change | w/w | YTD | P/E.  Its HY change cannot be reproduced from any price it prints
-  (American Express 10.2% beside a Year Open of 372.7 and a 6/30 price of 338.3), so it is
-  a stub as well.
+  change | w/w | YTD | P/E.  The issue printed two of its change columns with the ratio
+  upside down: its "HY'2026 change" is Year Open over the 6/30 price, minus 1 (American
+  Express 372.7 / 338.3 - 1 = 10.2%), and its w/w is the 6/26 price over the 7/3 price, minus
+  1 ((3.3%)), for all six companies.  Its YTD is the right way up.  This table prints the
+  half-year change the right way up, the 6/30 close over Year Open, minus 1 (American
+  Express (9.2%) from the issue's printed 1 dp prices, (9.3%) from the unrounded closes, which
+  is what this table prints), so it differs from the printed H1'2026 column by design
+  (KNOWN_PRINTED_ERRORS, and the warning the review carries).  ("Price 7/3/2026" holds the
+  2 July closes: 3 July 2026 was a market holiday.)
 
 Year Open, the week-ago price, the current price, w/w, YTD and Forward P/E come from the
 weekly fetcher, on its basis.
@@ -59,17 +71,16 @@ CHARTS: dict[str, tuple[str, ...]] = {}  # neither issue has a Digital Payments 
 # ---------------------------------------------------------------------------
 
 MONTH_CHANGE_BLOCKED_REASON = (
-    "Q3'2026's m/m column is measured from a price it labels 8/03/2026, the 3 August close, two months "
-    "before the issue (and misprinted for Visa as 3665.7), so the base date of a \"month\" change is not "
-    "settled by the report."
+    "In the Q3'2026 issue the m/m column compares the 10/03/2026 price with a price it labels 8/03/2026 (all "
+    "seven printed rows are the one over the other, minus 1). That is the 3 August close, two months before the "
+    "issue, not one, so the base looks stale (and Visa's 8/03 price is misprinted as 3665.7, which gives its "
+    "printed (90.2%)). The weekly issues print no m/m column (checked: #37.2026 and #38.2026), so nothing else "
+    "settles what a \"month\" change is measured from."
 )
-MONTH_CHANGE_UNBLOCK = "The Digital Payments analyst confirming the m/m base date (a month before the issue, or another)."
-
-HALF_CHANGE_BLOCKED_REASON = (
-    "H1'2026's \"HY'2026 change\" cannot be reproduced from any price the table prints (American Express: "
-    "10.2% beside a Year Open of 372.7 and a 6/30/2026 price of 338.3), so its base is unknown."
+MONTH_CHANGE_UNBLOCK = (
+    "The Digital Payments analyst confirming the intended m/m base (the close a month before the issue's last "
+    "price, the previous month end, or another date)."
 )
-HALF_CHANGE_UNBLOCK = "The Digital Payments analyst confirming which two prices the half-year change compares."
 
 
 def fetch_month_change(ctx: PeriodContext) -> Any:
@@ -77,18 +88,36 @@ def fetch_month_change(ctx: PeriodContext) -> Any:
     raise NotImplementedError(MONTH_CHANGE_BLOCKED_REASON)
 
 
-def fetch_half_change(ctx: PeriodContext) -> Any:
-    # TODO: needs the half-year change's base confirmed (HALF_CHANGE_UNBLOCK).
-    raise NotImplementedError(HALF_CHANGE_BLOCKED_REASON)
-
-
 STUBS = (
     Stub("month_change", "Stock table: m/m change column", MONTH_CHANGE_BLOCKED_REASON, MONTH_CHANGE_UNBLOCK,
          fetch_month_change),
-    Stub("half_change", "Stock table: HY change column", HALF_CHANGE_BLOCKED_REASON, HALF_CHANGE_UNBLOCK,
-         fetch_half_change),
 )
-_STUB_FOR = {QUARTERLY: "month_change", HALF_YEAR: "half_change"}
+# The stubbed column of each report type's table, if it has one (the half-year table has none).
+_STUB_FOR = {QUARTERLY: "month_change", HALF_YEAR: None}
+
+# ---------------------------------------------------------------------------
+# Where a published issue is known to be wrong
+# ---------------------------------------------------------------------------
+
+# The one documented exception to "this table reproduces the issue": a column the issue printed
+# with its ratio upside down.  The tool's figure is still exact-matched against its own source
+# (the Yahoo closes), like every other figure; what it must never be compared with is the printed
+# column, and a test that finds them different is reading a published error, not a regression.
+# {(report type, period): {column key: what the issue printed, with one worked example}}
+KNOWN_PRINTED_ERRORS: dict[tuple[str, str], dict[str, str]] = {
+    (HALF_YEAR, "H1'2026"): {
+        "period_pct": "ratio inverted (Year Open over the 6/30/2026 price, minus 1): American Express printed "
+                      "10.2%, correct (9.2%)",
+        "wow_pct": "ratio inverted (the 6/26/2026 price over the 7/3/2026 price, minus 1): American Express "
+                   "printed (3.3%), correct 3.4%",
+    },
+}
+
+HALF_CHANGE_WARNING = (
+    "HY change column: Cytonn's H1'2026 issue printed this column with the ratio inverted (American Express "
+    "printed +10.2%, correct -9.2% from the issue's own printed prices), so this table's figures, the half-year "
+    "end close over Year Open minus 1, differ from that issue by design."
+)
 
 # ---------------------------------------------------------------------------
 # Prices
@@ -118,7 +147,14 @@ def _label(d: Optional[date]) -> str:
 
 
 def period_rows(ctx: PeriodContext, base: list[dict[str, Any]], history: History) -> tuple[list[dict[str, Any]], list[str]]:
-    """The weekly fetcher's rows plus the closes on the period's eve and last day, and the period change."""
+    """The weekly fetcher's rows plus the closes on the period's eve and last day, and the period change.
+
+    The period change is the period-end close over its base, minus 1.  Quarterly (Q/Q): the base
+    is the previous quarter-end close (Q3'2026: 9/30 against 6/30, as the issue prints it; the
+    same rule for Q1, whose base is the 31 December close).  Half-year (HY change): the base is
+    Year Open, the weekly fetcher's own (the close of the year's first trading day), which is
+    what the H1'2026 issue's column compares, the right way up (KNOWN_PRINTED_ERRORS).
+    """
     eve = ctx.start - timedelta(days=1)
     rows, warnings = [], []
     for b in base:
@@ -131,11 +167,20 @@ def period_rows(ctx: PeriodContext, base: list[dict[str, Any]], history: History
             try:
                 series = history(b["ticker"], eve - timedelta(days=10), ctx.end)
                 start, end = close_on_or_before(series, eve), close_on_or_before(series, ctx.end)
-                if start is None or end is None:
+                if ctx.report_type == HALF_YEAR:
+                    # The half-year table neither prints nor uses the close on the period's eve (31 December).
+                    start = None
+                    if end is None or end[0] < ctx.start:
+                        raise ValueError(f"no close in the period on or before {ctx.end}")
+                    base_close = row["ytd_open"]
+                elif start is None or end is None:
                     raise ValueError(f"no close on or before {eve if start is None else ctx.end}")
-                row.update(period_start_date=start[0].isoformat(), period_start_close=start[1],
-                           period_end_date=end[0].isoformat(), period_end_close=end[1],
-                           period_pct=pct_change(end[1], start[1]))
+                else:
+                    base_close = start[1]
+                if start is not None:
+                    row.update(period_start_date=start[0].isoformat(), period_start_close=start[1])
+                row.update(period_end_date=end[0].isoformat(), period_end_close=end[1],
+                           period_pct=pct_change(end[1], base_close))
             except Exception as exc:  # noqa: BLE001 - one ticker's failure is that row's, not the table's
                 row["error"] = f"period prices unavailable: {type(exc).__name__}: {exc}"
         rows.append(row)
@@ -159,8 +204,11 @@ def columns(ctx: PeriodContext, rows: list[dict[str, Any]]) -> list[dict[str, An
         cols.append({"key": "period_start_close", "label": f"Price {_label(_first(rows, 'period_start_date'))}", **price})
     cols += [{"key": "prior_close", "label": f"Price {_label(_first(rows, 'prior_close_date'))}", **price},
              {"key": "period_end_close", "label": f"Price {_label(_first(rows, 'period_end_date'))}", **price},
-             {"key": "current_price", "label": f"Price {_label(_first(rows, 'current_price_date'))}", **price},
-             {"key": "wow_pct", "label": "w/w change", "fmt": PCT, "decimals": 1}]
+             {"key": "current_price", "label": f"Price {_label(_first(rows, 'current_price_date'))}", **price}]
+    if ctx.report_type == HALF_YEAR:  # H1'2026 prints it before w/w: "HY'2026 change | w/w change | YTD change"
+        cols.append({"key": "period_pct", "label": f"HY\u2019{year} change", "fmt": PCT, "decimals": 1,
+                     "note": HALF_CHANGE_WARNING})
+    cols.append({"key": "wow_pct", "label": "w/w change", "fmt": PCT, "decimals": 1})
     if ctx.report_type == QUARTERLY:
         cols.append({"key": "period_pct", "label": "Q/Q change", "fmt": PCT, "decimals": 1})
     cols += [{"key": "ytd_pct", "label": "YTD change", "fmt": PCT, "decimals": 1},
@@ -196,7 +244,7 @@ def build_digital_payments_review(
     history: History = yahoo_history,
     on_event: Optional[Observer] = None,
 ) -> CoordinatorReview:
-    """The week's four highlights, the period stock table, the month's other highlights; the unverified change column a stub.
+    """The week's four highlights, the period stock table, the month's other highlights; the quarterly m/m column a stub.
 
     ``on_event`` (common/run_events.py) is told each step as it happens: the weekly price
     fetch, then each company's price history over the period.
@@ -218,7 +266,11 @@ def build_digital_payments_review(
     brief, window = other_highlights_brief(ctx)
     other = draft_pieces([brief], 1, provider=narrative_provider, today=ctx.today, window=window, on_event=on_event)
     blocks = [narrative_block(f"highlight_{n}", _highlight_piece(h)) for n, h in enumerate(week["highlights"])]
-    blocks += [table, {s.id: s for s in STUBS}[_STUB_FOR[ctx.report_type]].block()]
+    blocks.append(table)
+    if _STUB_FOR[ctx.report_type]:
+        blocks.append({s.id: s for s in STUBS}[_STUB_FOR[ctx.report_type]].block())
+    if ctx.report_type == HALF_YEAR:
+        warnings.append(HALF_CHANGE_WARNING)
     blocks += [narrative_block("other_highlights", p) for p in other["pieces"]]
     draft = {"pieces": week["highlights"] + other["pieces"], "shortfall": week["shortfall"] + other["shortfall"],
              "warnings": week["warnings"] + other["warnings"]}
