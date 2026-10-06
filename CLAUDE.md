@@ -110,6 +110,23 @@ It starts a one-off `api` container with `backend/data` mounted read-only at `/f
 
 **After the copy the native app and the Docker app have SEPARATE databases.** A review saved in one is not in the other, and nothing syncs them. `backend/data/app.db` is left as it is.
 
+### Local model speed settings (development only)
+
+Four opt-in environment variables shorten a local (Ollama) draft. They are read in one place, `read_local_settings()` in `digital_payments/providers/local_provider.py`, when a provider is created, and `LocalProvider` and `LocalNarrativeProvider` both use them. The Anthropic provider never reads them. Unset, empty or blank means the default, which is the behaviour before they existed (the requests are pinned by `backend/tests/fixtures/local_provider_requests_before.json`).
+
+| Variable | Range | Default |
+| --- | --- | --- |
+| `CYTONN_LOCAL_MAX_SEARCH_RESULTS` | 1 to 5 | 5 |
+| `CYTONN_LOCAL_RESULT_CHARS` | 500 to 3000 | no extra cut (Exa already returns at most 3000 characters per result) |
+| `CYTONN_LOCAL_NUM_THREAD` | 1 to 16 | not sent (Ollama picks the thread count) |
+| `CYTONN_LOCAL_NUM_PREDICT` | 1024 to 4096 | 2048 |
+
+- **`num_ctx` is fixed at 8192 and has no variable** (4096 breaks drafts). `keep_alive` is not sent, as before. The `num_predict` minimum is 1024 because a cap of 700 truncates Markets Review briefs. A per-model override in `_MODEL_CONFIG` still wins over `CYTONN_LOCAL_NUM_PREDICT`.
+- **An invalid value** (not an integer, or outside the range) logs one warning naming the variable and the range, and the default is used; it is never clamped.
+- **Trimming happens after the search, where the prompt is built** (`_trim_results`), so the Exa request and `backend/data/exa_cache/` are the same whatever the settings. The draft is validated against the trimmed list, so a link or claim citing a result the model was not shown is dropped. A result's text is cut at a word boundary and never inside a number; its title and URL are untouched.
+- Each provider logs its effective values once, at first use (logger `cytonn_weekly.digital_payments.providers.local_provider`): a WARNING when any setting is off its default, so it shows without any logging setup, and INFO when all four are defaults. Nothing of it enters a draft.
+- `docker-compose.yml` forwards the four to the `api` service as `${NAME:-}`, so an unset one arrives empty and is read as unset. The fast preset is in `.env.example`.
+
 ## Architecture
 
 Two layers per section, then a single human review:
@@ -225,7 +242,56 @@ The identity is "a proof desk": warm paper ground, deep teal-black ink, hairline
 - **The run view shows only what the pipeline really did.** Every line is a real run event (`common/run_events.py`); no simulated progress, fake delays or invented steps, in the API or the screen.
 - **No authentication exists, and nothing may pretend otherwise.** Sign-in with Cytonn SSO is a stub (`backend/api/sso.py`); how Cytonn's sign-in works is never guessed.
 - **Publishing is SSO-driven browser automation (Playwright), not a direct API/DB write.** No API or database access has been granted by Cytonn's team (CT).
-- **No git commands from Claude Code;** staging and committing are manual. **Commits and PRs carry no AI attribution**: no "Co-Authored-By: Claude", no "Generated with Claude Code", no session links. Commits read as authored by Clive alone.
+- **Git is allowed only through the "Publishing to GitHub" procedure below and its allow-list;** every other git use is forbidden. **Commits and PRs carry no AI attribution**: no "Co-Authored-By: Claude", no "Generated with Claude Code", no session links. Commits read as authored by Clive alone.
+
+## Publishing to GitHub
+
+The standing procedure for committing and pushing finished work. The **expected identity** is the single author name and email of the commits already on `origin` (Clive Misiko and his GitHub noreply address), which is also what `git config user.name` and `git config user.email` return. Two local hooks in `.git/hooks/` (not tracked, so a fresh clone does not have them) back the procedure: `commit-msg` refuses an empty message, an attribution trailer or a tool footer; `pre-push` refuses a push to main or master, a deletion, a push that is not a fast-forward, and any commit whose author, committer or message breaks the rules. The hooks are a backstop, not a replacement for the gates below.
+
+### B1. When to publish
+
+At the end of every task that changed tracked files and whose own checks passed, publish the work of that task. Skip publishing if the task prompt contains the words NO PUBLISH, if the task was read-only, or if any gate in B3 fails (then stop and report why; do not publish part of a task).
+
+### B2. Allowed git commands (nothing else)
+
+`status`, `diff`, `log`, `show`, `rev-parse`, `rev-list`, `merge-base`, `ls-files`, `check-ignore`, `branch` (list or show-current only), `fetch origin`, `config --get`, `add <explicit file paths>`, `restore --staged <explicit file paths>`, `commit -F <file>`, `push origin <current branch>` (with `-u` only for a branch's first push), `switch -c <new branch>` (only under B4).
+
+Forbidden: `git add -A`, `git add .`, `git add -p` or any interactive form; `reset`, `rebase`, `merge`, `cherry-pick`, `stash`, `clean`, `rm`, `tag`, `checkout`, `filter-branch`; `commit --amend`; `--no-verify` and `-n`; `--author`, `--trailer`, `-s` or `--signoff`; `push` with `--force`, `-f`, `--force-with-lease`, `--delete`, `--mirror`, `--tags`, or any refspec starting with `+`; `remote add`, `remote set-url`; any `git config` write; any `gh` command that creates or changes a PR, issue or repo. Do not open pull requests. Clive does that.
+
+### B3. Gates before anything is staged (all must hold)
+
+1. **Identity:** `git config user.name` and `user.email` equal the expected identity, none of the `GIT_AUTHOR_*`, `GIT_COMMITTER_*` or `EMAIL` variables are set to anything else, and the identity does not contain claude or anthropic. Otherwise stop.
+2. **Tests:** the tests this task ran passed. If the task ran the full suite, it must be green. If it ran only targeted tests, say so in the publish report; do not start a full run just to publish.
+3. **Remote state:** run `git fetch origin`. If `origin/<branch>` exists and has commits that the local branch does not have, stop and report. Never merge or rebase to resolve it.
+4. **Line endings:** for each modified tracked file, if `git diff --numstat` shows changes but `git diff --ignore-space-at-eol --numstat` shows none, the file only changed line endings. Do not stage it; report it.
+5. **Deny list:** never stage any path that matches `.env` or `.env.*` (except `.env.example`), `*.db`, `*.sqlite`, `*.sqlite3`, anything under `backend/data/`, `screenshots/`, `.claude/`, `node_modules/`, `.next/`, `__pycache__/`, `*.log`, `*.pem`, `*.key`, or timing or scratch files. If a path matches, leave it unstaged and name it in the report.
+6. **Secret scan:** scan the diff of the files to be staged (for an untracked file, its full content) for the three kinds of hit below. On a hit stop, and report only the file path, line number and pattern name, never the value.
+   - A private key block is always a hit.
+   - A key prefix (`sk-ant-`, `ghp_`, `github_pat_`, `xox`, `AKIA`) is a hit only when it is followed by at least 16 characters from letters, digits, underscore and hyphen. A prefix mentioned in prose, in a list of patterns, or followed by a backtick, quote or space is not a hit.
+   - An assignment to a name containing PASSWORD, SECRET, TOKEN, API_KEY or SMTP is a hit only when the literal value is at least 12 characters long and contains no spaces. Empty values, placeholders and short test values are not hits.
+
+### B4. Branch
+
+Use the current branch if it is not main or master. If the current branch is main or master, create a new branch with `git switch -c` named `work/<short-topic>` (lowercase, hyphens), and push that. Never push main or master.
+
+### B5. Grouping and commits
+
+- Group the task's changed files into topic commits: backend, frontend, Docker and infrastructure, docs, in dependency order. A test file goes in the commit of the code it tests. Stage whole files only, by explicit path.
+- Write each message to a temporary file outside the repo (the session scratchpad), commit with `git commit -F <file>`, then delete the file.
+- Message format: subject in the imperative, at most 72 characters, no trailing period, then a blank line and a short plain-language body saying what changed and why. Written as the author would write it. No em dashes, no emoji, no trailers, no mention of the tool that produced it.
+- Commit as Clive. Do not pass `--author`. Do not run commit with any flag that skips hooks.
+
+### B6. Push
+
+`git push origin <current branch>` only. If the push is rejected by a hook, auth fails, or the remote refuses, stop and report the exact message (redact credentials). Do not retry with different flags, do not ask for tokens, do not try other credentials, and never bypass a hook. Fix the cause (for example a message that tripped the rule) and try once more only if the fix is inside your own commit text.
+
+### B7. Verify after pushing and report
+
+- `git rev-parse HEAD` equals `git rev-parse origin/<branch>`.
+- For every commit pushed: author name and email, committer name and email, and a scan of the full message for trailers. All must be the expected identity and no trailers.
+- `git status` shows no remaining changes that belonged to this task.
+
+Publish report, in plain text: branch, each commit (short hash and subject), files per commit, tests run and their result, the identity check result, the push result, and anything left unstaged and why.
 
 ## Sources (per section)
 

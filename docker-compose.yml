@@ -21,6 +21,12 @@ services:
       # The local development model (Ollama) runs on the host. Inside the container
       # "localhost" is the container itself, so the host is reached by this name.
       CYTONN_OLLAMA_URL: http://host.docker.internal:11434
+      # Development-only speed settings for the local model (see .env.example). Each is
+      # passed as an empty string when it is not set, and the code reads empty as not set.
+      CYTONN_LOCAL_MAX_SEARCH_RESULTS: ${CYTONN_LOCAL_MAX_SEARCH_RESULTS:-}
+      CYTONN_LOCAL_RESULT_CHARS: ${CYTONN_LOCAL_RESULT_CHARS:-}
+      CYTONN_LOCAL_NUM_THREAD: ${CYTONN_LOCAL_NUM_THREAD:-}
+      CYTONN_LOCAL_NUM_PREDICT: ${CYTONN_LOCAL_NUM_PREDICT:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
