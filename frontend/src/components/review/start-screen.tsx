@@ -15,7 +15,8 @@ import { Masthead } from "./masthead";
 
 const EASE = [0.23, 1, 0.32, 1] as const;
 
-const MAX_TOPIC = 200;
+// The same number as MAX_TOPIC_CHARS in backend/src/cytonn_weekly/focus/review_run.py, which is the limit the API enforces.
+const MAX_TOPIC = 500;
 const MAX_TEXT = 10_000;
 
 /** A draft already running on the server (started from another tab, or before this screen was opened). */
