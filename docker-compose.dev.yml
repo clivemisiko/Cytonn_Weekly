@@ -1,0 +1,49 @@
+# Development override: source folders are mounted into the containers and both servers
+# reload on change.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
+# Ports stay on 127.0.0.1 (set in docker-compose.yml) and the database still lives in the
+# cytonn_data volume. File events do not cross the Windows mount, so both servers poll.
+
+services:
+  api:
+    volumes:
+      - ./backend/src:/app/src:ro
+      - ./backend/api:/app/api:ro
+      - ./backend/scripts:/app/scripts:ro
+    environment:
+      WATCHFILES_FORCE_POLLING: "true"
+    command:
+      - uvicorn
+      - api.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --reload
+      - --reload-dir
+      - /app/src
+      - --reload-dir
+      - /app/api
+      - --reload-dir
+      - /app/scripts
+
+  web:
+    build:
+      target: dev
+    environment:
+      NEXT_PUBLIC_API_URL: http://127.0.0.1:8000
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
+    volumes:
+      - ./frontend/src:/app/src:ro
+      - ./frontend/public:/app/public:ro
+      - ./frontend/next.config.ts:/app/next.config.ts:ro
+      - ./frontend/tsconfig.json:/app/tsconfig.json:ro
+      - ./frontend/postcss.config.mjs:/app/postcss.config.mjs:ro
+      - ./frontend/eslint.config.mjs:/app/eslint.config.mjs:ro
+      - ./frontend/components.json:/app/components.json:ro
+      # Anonymous volumes: the container keeps its own node_modules and build cache.
+      - /app/node_modules
+      - /app/.next

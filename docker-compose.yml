@@ -1,0 +1,50 @@
+# Cytonn Weekly: the review API (api) and the web app (web).
+#
+# SECURITY: this app has no sign-in. Both ports are published on 127.0.0.1 only, so the
+# app is reachable from this machine and nowhere else. Never publish them on 0.0.0.0 or
+# put them behind anything that another machine can reach, until a sign-in exists.
+#
+# Secrets and the provider switches come from the repo-root .env only (env_file). Nothing
+# secret is written in this file.
+#
+#   docker compose up --build        start both
+#   docker compose down              stop both (the cytonn_data volume is kept)
+
+services:
+  api:
+    build:
+      context: ./backend
+    env_file:
+      - ./.env
+    environment:
+      CYTONN_DATA_DIR: /app/data
+      # The local development model (Ollama) runs on the host. Inside the container
+      # "localhost" is the container itself, so the host is reached by this name.
+      CYTONN_OLLAMA_URL: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - cytonn_data:/app/data
+    ports:
+      - "127.0.0.1:8000:8000"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./frontend
+      target: runner
+      args:
+        # Fixed at build time and used by the browser, so it is the address the browser
+        # can reach, not the service name.
+        NEXT_PUBLIC_API_URL: http://127.0.0.1:8000
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  # A Docker named volume, not a bind mount: SQLite on a bind mount under Windows and
+  # OneDrive is unreliable. The database here is separate from backend/data/app.db.
+  cytonn_data:

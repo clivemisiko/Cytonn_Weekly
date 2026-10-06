@@ -1,9 +1,14 @@
-# IDE/agent tooling, not project files
+# IDE/agent tooling, not project files. These stay in the repo root because each tool only
+# looks for its project-level config there: .claude/ (settings.local.json holds the
+# no-AI-attribution commit rule and permissions), .agents/ + skills-lock.json (written
+# together by the skills CLI; .claude/skills/typesafe-ai is a junction into .agents/),
+# .qodo/ (Qodo/Codium extension), .vscode/ (workspace settings, listed under Editors below).
 .agents/
 .claude/
 .qodo/
-claude.exe
 skills-lock.json
+# Local tool binaries do not belong in the working tree; keep them under ~/.local/bin.
+claude.exe
 
 # Python
 __pycache__/
@@ -32,10 +37,10 @@ env/
 .streamlit/secrets.toml
 
 # Cached Exa search results (local dev provider)
-data/exa_cache/
+backend/data/exa_cache/
 
 # Generated Word summaries for Edwin/Liz
-data/summaries/
+backend/data/summaries/
 
 # SQLite
 *.db
@@ -52,3 +57,5 @@ test-results/
 .idea/
 .DS_Store
 Thumbs.db
+
+screenshots/

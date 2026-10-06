@@ -1,0 +1,328 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/* One theme per page, chosen by the system setting (no manual toggle: nothing here is brand expression). */
+@custom-variant dark (@media (prefers-color-scheme: dark));
+
+/* ---------------------------------------------------------------------------
+   Identity: a proof desk. Warm paper ground, deep teal-black ink, hairline rules.
+   Built from `ant` (data-dense enterprise discipline: the type scale, the spacing
+   scale, explicit states) and `stitch` (clean, high-contrast: ink on warm paper).
+
+   Saturation is rationed. The brand is near-neutral ink, so the only loud colours on
+   screen are the three review states: flagged (red), not auto-verified (amber), clean
+   (green). For the same reason figures are never coloured red or green.
+   --------------------------------------------------------------------------- */
+@theme inline {
+  --font-sans: var(--font-jakarta);
+  --font-mono: var(--font-jetbrains);
+  --font-heading: var(--font-jakarta);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-link: var(--link);
+
+  /* The masthead band: the one dark surface in the light theme. */
+  --color-band: var(--band);
+  --color-band-foreground: var(--band-foreground);
+  --color-band-muted: var(--band-muted);
+  --color-band-rule: var(--band-rule);
+
+  /* The three review states. `-fg` is the text-safe shade, `-on` is the text colour on a solid fill. */
+  --color-flag: var(--flag);
+  --color-flag-fg: var(--flag-fg);
+  --color-flag-on: var(--flag-on);
+  --color-warn: var(--warn);
+  --color-warn-fg: var(--warn-fg);
+  --color-ok: var(--ok);
+  --color-ok-fg: var(--ok-fg);
+  --color-ok-on: var(--ok-on);
+
+  /* Type scale: 12 / 14 / 16 / 20 / 24 / 32. Nothing in the app sets a size outside it. */
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 1rem;
+  --text-base--line-height: 1.5rem;
+  --text-lg: 1.25rem;
+  --text-lg--line-height: 1.75rem;
+  --text-xl: 1.5rem;
+  --text-xl--line-height: 2rem;
+  --text-2xl: 2rem;
+  --text-2xl--line-height: 2.5rem;
+
+  /* Shape rule: chips and small boxes 3px, controls 4px, containers 6px, badges and pills round. */
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-xl: 6px;
+  --radius-2xl: 6px;
+  --radius-3xl: 6px;
+  --radius-4xl: 999px;
+}
+
+/* Spacing scale: 4 / 8 / 12 / 16 / 24 / 32 (Tailwind steps 1 / 2 / 3 / 4 / 6 / 8). */
+:root {
+  color-scheme: light dark;
+
+  --background: #efece2;
+  --foreground: #0e1f1e;
+  --card: #fbfaf5;
+  --card-foreground: #0e1f1e;
+  --popover: #fbfaf5;
+  --popover-foreground: #0e1f1e;
+  --primary: #0f3b38;
+  --primary-hover: #1d514d;
+  --primary-foreground: #f5f2e8;
+  --secondary: #e7e3d5;
+  --secondary-foreground: #0e1f1e;
+  --muted: #e7e3d5;
+  --muted-foreground: #4b5a57;
+  --accent: #e7e3d5;
+  --accent-foreground: #0e1f1e;
+  --destructive: #b42318;
+  --border: #d3cebc;
+  --input: #85836f; /* 3:1 against card and paper: a control's edge must be findable */
+  --ring: #0e6b62;
+  --link: #0b5a54;
+
+  --band: #0a2b29;
+  --band-foreground: #efece2;
+  --band-muted: #9ccdc3;
+  --band-rule: #174341;
+
+  --flag: #b42318;
+  --flag-fg: #9a1b12;
+  --flag-on: #fff6f4;
+  --warn: #b26a00;
+  --warn-fg: #7a4700;
+  --ok: #1b7a4b;
+  --ok-fg: #14633c;
+  --ok-on: #f3fbf6;
+
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #091110;
+    --foreground: #eae7db;
+    --card: #0f1a19;
+    --card-foreground: #eae7db;
+    --popover: #142220;
+    --popover-foreground: #eae7db;
+    --primary: #8ed3c6;
+    --primary-hover: #a8e0d5;
+    --primary-foreground: #052321;
+    --secondary: #16262a;
+    --secondary-foreground: #eae7db;
+    --muted: #16262a;
+    --muted-foreground: #9daca8;
+    --accent: #1b2e2c;
+    --accent-foreground: #eae7db;
+    --destructive: #f27f73;
+    --border: #203230;
+    --input: #5a6c68;
+    --ring: #7fd0c2;
+    --link: #8ed3c6;
+
+    --band: #0e2421;
+    --band-foreground: #eae7db;
+    --band-muted: #8fbfb5;
+    --band-rule: #1d3a36;
+
+    --flag: #f27f73;
+    --flag-fg: #f6a59c;
+    --flag-on: #2a0906;
+    --warn: #e8b04f;
+    --warn-fg: #efc57f;
+    --ok: #5fc795;
+    --ok-fg: #8bdbb4;
+    --ok-on: #04160d;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+    /* The sticky status bar (plus the 28px dev ribbon) must not cover a focused element. It holds the decision too,
+       so on a phone it stacks to about 170px; from lg it is a single row. */
+    scroll-padding-top: 13rem;
+    font-variant-numeric: tabular-nums;
+    text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-background text-foreground text-sm;
+    text-rendering: optimizeLegibility;
+    /* Plus Jakarta Sans' space is 0.17em (Arial's is 0.278em): without this, words in running text crowd together. */
+    word-spacing: 0.1em;
+  }
+  /* The UA stylesheet resets word-spacing on form controls, so they would opt out of the correction above. */
+  button, input, select, textarea {
+    word-spacing: inherit;
+  }
+  @media (width >= 64rem) {
+    html {
+      scroll-padding-top: 9rem;
+    }
+  }
+  .font-mono {
+    word-spacing: 0;
+  }
+  h1, h2, h3, h4 {
+    text-wrap: balance;
+  }
+  button, [role="radio"], label {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+  main:focus {
+    outline: none;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--ring) 28%, transparent);
+  }
+}
+
+@layer components {
+  /* Small caps-style label: column heads, tile labels, the masthead kicker. */
+  .eyebrow {
+    font-size: var(--text-xs);
+    line-height: var(--text-xs--line-height);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+  }
+
+  /* ---- The three states, never by colour alone ---------------------------
+     flagged            solid heavy bar + tinted fill + "!" glyph
+     not auto-verified  dashed outline + "?" glyph (dashed = the check is incomplete)
+     clean              hairline only + check glyph (quiet on purpose)          */
+  .state-flagged {
+    --hue: var(--flag);
+    --hue-fg: var(--flag-fg);
+  }
+  .state-not_auto_verified {
+    --hue: var(--warn);
+    --hue-fg: var(--warn-fg);
+  }
+  .state-clean {
+    --hue: var(--ok);
+    --hue-fg: var(--ok-fg);
+  }
+
+  .surface-state {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+  }
+  .surface-state.state-flagged {
+    border-color: color-mix(in srgb, var(--hue) 45%, var(--border));
+    border-left: 6px solid var(--hue);
+    background: color-mix(in srgb, var(--hue) 7%, var(--card));
+  }
+  .surface-state.state-not_auto_verified {
+    border: 1.5px dashed color-mix(in srgb, var(--hue) 70%, transparent);
+    background: color-mix(in srgb, var(--hue) 5%, var(--card));
+  }
+
+  /* A hairline in the state's own hue, for the rule under a group header. */
+  .state-rule {
+    border-color: color-mix(in srgb, var(--hue) 45%, var(--border));
+  }
+
+  .glyph {
+    display: inline-grid;
+    place-items: center;
+    flex: none;
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: 999px;
+    font: 700 0.75rem/1 var(--font-mono);
+    color: var(--hue-fg);
+    border: 1.5px solid var(--hue);
+  }
+  .state-flagged .glyph {
+    background: var(--hue);
+    color: var(--flag-on);
+  }
+  .state-not_auto_verified .glyph {
+    border-style: dashed;
+  }
+
+  .hatch-dev {
+    background: repeating-linear-gradient(-45deg, #ffcf5c 0 14px, #f3b72f 14px 28px);
+  }
+}
+
+/* Press feedback on every pressable thing, quiet when motion is reduced. */
+@media (prefers-reduced-motion: no-preference) {
+  button:not(:disabled):active,
+  [role="radio"]:not(:disabled):active {
+    transform: scale(0.97);
+  }
+}
+
+/* Touch: every pressable control reaches 44px. */
+@media (pointer: coarse) {
+  [data-slot="button"],
+  [role="radio"] {
+    min-height: 2.75rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* The landing page's "ready" dot: a slow ring that fades out from a solid dot. Ink, not a state colour. */
+@keyframes ready-pulse {
+  0% { transform: scale(1); opacity: 0.55; }
+  70%, 100% { transform: scale(2.6); opacity: 0; }
+}
+.ready-dot {
+  position: relative;
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--primary);
+}
+.ready-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--primary);
+  animation: ready-pulse 2.4s var(--ease-out) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ready-dot::after { animation: none; opacity: 0; }
+}
