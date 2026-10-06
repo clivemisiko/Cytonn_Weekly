@@ -124,6 +124,7 @@ class LocalNarrativeProvider(dp_local.LocalProvider, NarrativeProvider):
             results = self._brief_search(brief, preferred, start)
             if not results:
                 continue
+            results = self._trim_results(results)
             res = self._draft(brief, SCOPE_PREFERRED if preferred else SCOPE_WEB, results, warnings)
             if res:
                 res.draft_warnings = warnings

@@ -33,11 +33,13 @@ Uses httpx (already installed with anthropic).
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Any, Optional, Sequence
+from typing import Any, Mapping, Optional, Sequence
 
 import httpx
 
@@ -75,6 +77,82 @@ NUM_CTX = 8192
 # discards as "invalid JSON" instead of hanging.
 NUM_PREDICT = 2048
 OLLAMA_TIMEOUT = 600  # small local models on CPU can be slow
+
+logger = logging.getLogger(__name__)
+
+# Development-only speed settings, each opt-in through one environment variable.  Unset, empty
+# or whitespace-only means today's behaviour.  This table is the one place their names and
+# limits live: (field, variable, minimum, maximum, default).  A default of None means "leave it
+# as it is": no extra trimming of a result's text, and no num_thread option in the request
+# (Ollama picks the thread count).  NUM_CTX is deliberately not here and has no variable:
+# 4096 was tried and breaks drafts.  The num_predict minimum is 1024 because a cap of 700
+# truncates Markets Review briefs (replies reached 949 tokens).
+_SETTING_LIMITS: tuple[tuple[str, str, int, int, Optional[int]], ...] = (
+    ("max_search_results", "CYTONN_LOCAL_MAX_SEARCH_RESULTS", 1, NUM_RESULTS, NUM_RESULTS),
+    ("result_chars", "CYTONN_LOCAL_RESULT_CHARS", 500, CONTEXT_CHARS_PER_RESULT, None),
+    ("num_thread", "CYTONN_LOCAL_NUM_THREAD", 1, 16, None),
+    ("num_predict", "CYTONN_LOCAL_NUM_PREDICT", 1024, 4096, NUM_PREDICT),
+)
+
+
+@dataclass(frozen=True)
+class LocalSettings:
+    """The four speed settings as one provider instance uses them."""
+
+    max_search_results: int = NUM_RESULTS
+    result_chars: Optional[int] = None  # None: only today's cut at CONTEXT_CHARS_PER_RESULT
+    num_thread: Optional[int] = None  # None: the option is left out of the request
+    num_predict: int = NUM_PREDICT
+
+
+def read_local_settings(environ: Optional[Mapping[str, str]] = None) -> LocalSettings:
+    """Read the four settings (the only place they are read).
+
+    A value that is not an integer, or is outside its range, is never used and never
+    replaced by a nearby one: one warning names the variable and the range, and today's
+    default applies.
+    """
+    env = os.environ if environ is None else environ
+    values: dict[str, Optional[int]] = {}
+    for name, var, low, high, default in _SETTING_LIMITS:
+        raw = (env.get(var) or "").strip()
+        values[name] = default
+        if not raw:
+            continue
+        try:
+            value = int(raw)
+        except ValueError:
+            value = None
+        if value is None or not low <= value <= high:
+            logger.warning(
+                "%s=%r is not an integer from %d to %d; using the default (%s)",
+                var, raw, low, high, "unchanged" if default is None else default,
+            )
+            continue
+        values[name] = value
+    return LocalSettings(**values)
+
+
+def truncate_text(text: str, limit: int) -> str:
+    """``text`` with whitespace collapsed, cut to at most ``limit`` characters at a word boundary.
+
+    The cut never splits a number: a figure written with spaces ("1 200 000") is dropped
+    whole rather than kept in part.
+    """
+    words = text.split()
+    kept: list[str] = []
+    length = 0
+    for word in words:
+        added = len(word) + (1 if kept else 0)
+        if length + added > limit:
+            break
+        kept.append(word)
+        length += added
+    if len(kept) < len(words):
+        upcoming = words[len(kept)]
+        while kept and kept[-1][-1].isdigit() and upcoming[0].isdigit():
+            upcoming = kept.pop()
+    return " ".join(kept)
 
 # What an un-tagged / ":latest" Ollama model resolves to, where "latest" hides the variant.
 # gemma4:latest is the E4B build (same registry digests as gemma4:e4b, checked 2026-10-01).
@@ -188,8 +266,30 @@ class LocalProvider(DraftingProvider):
         self._cache_dir = Path(cache_dir) if cache_dir else None
         self._refresh_cache = refresh_cache
         self._model_checked = False
+        self.settings = read_local_settings()
+        self._settings_logged = False
 
     # -- setup ---------------------------------------------------------------
+
+    def _log_settings_once(self) -> None:
+        """One log line, at first use, saying what this provider's drafts run with.
+
+        Nothing in this project configures logging, so an INFO line is not shown by default:
+        the line is a WARNING when any setting is off its default (so a run that used a speed
+        setting always says so) and INFO when every setting is the default.
+        """
+        if self._settings_logged:
+            return
+        self._settings_logged = True
+        s, options = self.settings, self._options()
+        logger.log(
+            logging.INFO if s == LocalSettings() else logging.WARNING,
+            "local provider settings (%s): max_search_results=%d, result_chars=%s, num_thread=%s, "
+            "num_predict=%d, num_ctx=%d",
+            self.model, s.max_search_results,
+            f"unchanged ({CONTEXT_CHARS_PER_RESULT})" if s.result_chars is None else s.result_chars,
+            options.get("num_thread", "Ollama default"), options["num_predict"], options["num_ctx"],
+        )
 
     def _exa_key(self) -> str:
         key = self._exa_api_key or os.environ.get("EXA_API_KEY")
@@ -199,6 +299,7 @@ class LocalProvider(DraftingProvider):
 
     def _ensure_model(self) -> None:
         """Fail with a one-line instruction if Ollama is down or the model is not pulled."""
+        self._log_settings_once()
         if self._model_checked:
             return
         try:
@@ -276,17 +377,44 @@ class LocalProvider(DraftingProvider):
 
     # -- drafting ------------------------------------------------------------
 
+    def _options(self) -> dict[str, Any]:
+        """The Ollama options of every chat call.  A per-model override still wins, as before."""
+        options: dict[str, Any] = {
+            "temperature": 0, "num_ctx": NUM_CTX, "num_predict": self.settings.num_predict,
+        }
+        if self.settings.num_thread is not None:
+            options["num_thread"] = self.settings.num_thread
+        override = _MODEL_CONFIG.get(_model_name(self.model), {})
+        return {**options, **override.get("options", {})}
+
+    def _trim_results(self, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """The search results the model is given, cut down by the speed settings.
+
+        With no setting in force this is ``results`` itself.  Otherwise it is the first
+        ``max_search_results`` of them, each a copy with only its text shortened (title and
+        URL untouched).  The draft is validated against this list, so a link or claim citing a
+        result the model was not shown is dropped like any other URL not in the results.
+        """
+        s = self.settings
+        # At the default nothing is counted off, exactly as before the setting existed.
+        limit = len(results) if s.max_search_results == NUM_RESULTS else s.max_search_results
+        if limit >= len(results) and s.result_chars is None:
+            return results
+        kept = results[:limit]
+        if s.result_chars is None:
+            return kept
+        return [{**r, "text": truncate_text(r.get("text") or "", s.result_chars)} for r in kept]
+
     def _chat(self, messages: list[dict[str, str]], schema: Optional[dict] = None) -> str:
         payload: dict[str, Any] = {
             "model": self.model,
             "stream": False,
-            "options": {"temperature": 0, "num_ctx": NUM_CTX, "num_predict": NUM_PREDICT},
+            "options": self._options(),
             "messages": messages,
         }
         if schema:
             payload["format"] = schema
         override = _MODEL_CONFIG.get(_model_name(self.model), {})
-        payload["options"] = {**payload["options"], **override.get("options", {})}
         payload.update({k: v for k, v in override.items() if k != "options"})
         resp = self._http.post(f"{self.ollama_url}/api/chat", json=payload)
         resp.raise_for_status()
@@ -420,6 +548,7 @@ class LocalProvider(DraftingProvider):
             )
             if not results:
                 continue
+            results = self._trim_results(results)
             res = self._draft_from_results(company, ir_domain, scope, aliases, results, warnings)
             if res:
                 res.draft_warnings = warnings
