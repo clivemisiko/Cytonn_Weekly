@@ -1,0 +1,144 @@
+{
+ "fixture_clean": {
+  "checked": 4,
+  "flags": []
+ },
+ "planted": {
+  "checked": 6,
+  "flags": [
+   {
+    "decimals": 2,
+    "drafted": "29.60",
+    "expected": "29.65",
+    "field": "price",
+    "kind": "mismatch",
+    "message": "price: drafted '29.60' != normalized source 29.65",
+    "scope": "table",
+    "source_value": 29.65,
+    "sources": [],
+    "subject": "t/A"
+   },
+   {
+    "decimals": null,
+    "drafted": null,
+    "expected": null,
+    "field": null,
+    "kind": "missing",
+    "message": "row is absent from the draft",
+    "scope": "table",
+    "source_value": null,
+    "sources": [],
+    "subject": "t/C"
+   },
+   {
+    "decimals": null,
+    "drafted": null,
+    "expected": null,
+    "field": null,
+    "kind": "missing",
+    "message": "source row failed to fetch, cannot check: page did not load",
+    "scope": "table",
+    "source_value": null,
+    "sources": [],
+    "subject": "t/D"
+   },
+   {
+    "decimals": null,
+    "drafted": "35.66",
+    "expected": null,
+    "field": "price",
+    "kind": "missing",
+    "message": "incomplete: sum of 2 of 3 rows",
+    "scope": "table",
+    "source_value": 35.655,
+    "sources": [],
+    "subject": "t/E"
+   },
+   {
+    "decimals": null,
+    "drafted": null,
+    "expected": null,
+    "field": null,
+    "kind": "unsourced",
+    "message": "drafted row has no source row",
+    "scope": "table",
+    "source_value": null,
+    "sources": [],
+    "subject": "t/Z"
+   }
+  ]
+ },
+ "q3_digital_payments/stock_table": {
+  "checked": 72,
+  "flags": []
+ },
+ "q3_equities/indices": {
+  "checked": 15,
+  "flags": []
+ },
+ "q3_fixed_income/bond_issuances": {
+  "checked": 136,
+  "flags": [
+   {
+    "decimals": null,
+    "drafted": null,
+    "expected": null,
+    "field": null,
+    "kind": "missing",
+    "message": "source row failed to fetch, cannot check: 5 of 5 Q3'2025 auction results PDF(s) could not be read (dated 22/09/2025, 08/09/2025, 25/08/2025, 18/08/2025, 14/07/2025), so the Q3'2025 totals would be incomplete",
+    "scope": "table",
+    "source_value": null,
+    "sources": [],
+    "subject": "bond_issuances/Q3'2025 total"
+   },
+   {
+    "decimals": null,
+    "drafted": "15.2",
+    "expected": null,
+    "field": "years_to_maturity",
+    "kind": "missing",
+    "message": "incomplete: average of 9 of 12 bonds: no years_to_maturity for FXD1/2022/010, FXD1/2021/020, FXD1/2026/030",
+    "scope": "table",
+    "source_value": 15.211111111111112,
+    "sources": [],
+    "subject": "bond_issuances/Q3'2026 average"
+   },
+   {
+    "decimals": null,
+    "drafted": null,
+    "expected": null,
+    "field": null,
+    "kind": "missing",
+    "message": "source row failed to fetch, cannot check: 5 of 5 Q3'2025 auction results PDF(s) could not be read (dated 22/09/2025, 08/09/2025, 25/08/2025, 18/08/2025, 14/07/2025), so the Q3'2025 totals would be incomplete",
+    "scope": "table",
+    "source_value": null,
+    "sources": [],
+    "subject": "bond_issuances/Q3'2025 average"
+   }
+  ]
+ },
+ "q3_kenya_macro/major_inflation_changes": {
+  "checked": 8,
+  "flags": []
+ },
+ "q3_real_estate/reits": {
+  "checked": 6,
+  "flags": []
+ },
+ "weekly_equities/gainers": {
+  "checked": 6,
+  "flags": []
+ },
+ "weekly_equities/indices": {
+  "checked": 15,
+  "flags": []
+ },
+ "weekly_equities/losers": {
+  "checked": 4,
+  "flags": []
+ },
+ "weekly_real_estate/reits": {
+  "checked": 6,
+  "flags": []
+ }
+}
