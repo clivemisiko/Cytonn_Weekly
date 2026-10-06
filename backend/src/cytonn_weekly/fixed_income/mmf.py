@@ -22,10 +22,10 @@ from typing import Any, Optional
 from cytonn_weekly.common.formatting import PCT, TEXT, format_rows
 
 BLOCKED_REASON = (
-    "No public, machine-readable Business Daily source for the money market fund yields table was found; "
-    "it appears in the print/e-paper edition and paywalled articles."
+    "The Money Market Fund Yields table's source line reads \"Business Daily\". No public, machine-readable "
+    "Business Daily source for it was found; the table appears in the print/e-paper edition and paywalled articles."
 )
-UNBLOCK = "The exact Business Daily page (and access) the analysts take the table from."
+UNBLOCK = "The exact Business Daily page or e-paper section (and access to it) the analysts take the table from."
 
 # Header and precision follow Cytonn Weekly #38.2026 (published 2026-09-27):
 # "Rank | Fund Manager | Effective Annual Rate", rates to 1 dp ("1 | Cytonn Money

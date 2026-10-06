@@ -38,29 +38,46 @@ CURRENCY_BLOCKED_REASON = (
     "The table's source line is \"Yahoo Finance, Central Banks\", and Yahoo does not reproduce it: for Q3'2026 "
     "Yahoo's Kenya Shilling closes are 129.0, 128.0 and 128.7 where the issue prints CBK's 129.2, 129.1 and "
     "129.8, and its Ugandan Shilling close for end-September 2026 is 3,806.3 against the printed 3,920.0 "
-    "(checked 2026-10-05). Which currency comes from which central bank, at which fixing date, is not stated."
+    "(checked 2026-10-05). Which currency comes from which central bank, at which fixing date, is not stated: "
+    "the columns are months (Sep-25, Jan-26, Sep-26) with no fixing day. The table is also not stable from year "
+    "to year: the Sep-25 values printed in the Q3'2026 issue differ from the Sep-25 values the Q3'2025 issue "
+    "printed for five of the ten currencies (Nigerian Naira 1,470.0 against 1,476.6, Malawian Kwacha 1,751.0 "
+    "against 1,733.7, Botswana Pula 13.2 against 14.2, Tanzanian Shilling 2,453.6 against 2,442.8, Ghanaian Cedi "
+    "12.3 against 12.5; read 2026-10-06)."
 )
 CURRENCY_UNBLOCK = (
-    "The analysts' per-currency source (central bank or Yahoo) and fixing dates for the ten currencies, then one "
-    "fetcher per source, checked against a past issue's table."
+    "The analysts' per-currency source (which central bank, or Yahoo) and the fixing day each month column "
+    "stands for, for the ten currencies, and whether earlier months are restated; then one fetcher per source, "
+    "checked against a past issue's table."
 )
 
 EUROBOND_YIELDS_BLOCKED_REASON = (
     "The African Eurobonds yields chart is sourced \"Bloomberg, CBK\": secondary-market Eurobond yields for the "
-    "other countries are Bloomberg terminal data, which this project has no access to."
+    "other countries are Bloomberg terminal data, which this project has no access to, and which CBK publication "
+    "gives Kenya's is not named."
 )
-EUROBOND_YIELDS_UNBLOCK = "A Bloomberg export of the tracked bonds' yields supplied each period, or another licensed source."
+EUROBOND_YIELDS_UNBLOCK = (
+    "A Bloomberg export of the tracked bonds' yields supplied each period (or another licensed source), and the "
+    "CBK page used for Kenya's."
+)
 
 SSA_EQUITIES_BLOCKED_REASON = (
     "The dollarized equities table needs eight exchanges' index levels a year ago, at the year start and at the "
     "period end, each divided by that day's USD rate (the issue's footnote: \"index values are dollarized for "
     "ease of comparison\"). afx.kwayisi.org shows "
     "current levels only (checked for the NSE, 2026-10-02) and no historical source has been verified; the "
-    "exchange rates have the same per-currency source question as the currency table."
+    "exchange rates have the same per-currency source question as the currency table. The table's source line "
+    "reads \"Cytonn Research, Kwayisi, Yahoo Finance\" without saying which index or rate comes from which. Its "
+    "past values were redone between issues: the Sep-25 values printed in the Q3'2026 issue differ from those "
+    "the Q3'2025 issue printed for four of the eight indices (Zambia 1,056.0 against 844.4, about 25 percent; "
+    "Nigeria 98.31 against 96.6; Ghana 670.16 against 656.1; South Africa 6,371.3 against 6,246.1; read "
+    "2026-10-06), so either the dollarizing rates or the index values changed."
 )
 SSA_EQUITIES_UNBLOCK = (
     "A verified historical index source for NGX, DSE, RSE, USE, GSE, NSE, LuSE and JSE (or the tool capturing "
-    "levels at each period end), plus the currency table's sources."
+    "levels at each period end), the analysts saying which of Cytonn Research, Kwayisi and Yahoo Finance gives "
+    "each index and each dollarizing rate, and why the Sep-25 values were restated; plus the currency table's "
+    "sources."
 )
 
 OUTLOOK_BLOCKED_REASON = (

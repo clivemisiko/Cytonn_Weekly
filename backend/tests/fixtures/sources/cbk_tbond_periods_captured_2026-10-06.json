@@ -1,0 +1,826 @@
+{
+ "_about": "Captured 2026-10-06 from centralbank.go.ke/bills-bonds/treasury-bonds/: every T-bond results PDF (primary, tap sale, switch; buybacks left out) with a value date in each period, as cbk_auctions.fetch_period_tbonds returns it (amounts in KES bn). 'printed' holds the Bond Issuances Total and Average rows of the Cytonn issues, as printed: Q3'2025 and Q3'2024 from cytonnreport.com/research/cytonn-q32025-markets, Q3'2025 again as repeated in cytonnreport.com/research/cytonn-q3-2026, H1'2026 and H1'2025 from cytonnreport.com/research/cytonn-h12026-markets.",
+ "printed": {
+  "Q3'2025": {
+   "offered": "250.0",
+   "accepted": "405.3",
+   "bids": "713.1",
+   "tenor": "14.6",
+   "coupon": "13.1",
+   "yield": "13.8",
+   "subscription": "285.3",
+   "acceptance": "56.8"
+  },
+  "Q3'2025 as repeated in the Q3'2026 issue": {
+   "offered": "250.0",
+   "accepted": "405.3",
+   "bids": "713.1",
+   "tenor": "14.4",
+   "coupon": "13.2",
+   "yield": "13.8",
+   "subscription": "285.3",
+   "acceptance": "56.8"
+  },
+  "H1'2026": {
+   "offered": "460.0",
+   "accepted": "510.0",
+   "bids": "781.1",
+   "tenor": "15.1",
+   "coupon": "13.1",
+   "yield": "13.3",
+   "subscription": "169.8",
+   "acceptance": "65.3"
+  },
+  "H1'2025": {
+   "offered": "335.0",
+   "accepted": "464.1",
+   "bids": "691.7",
+   "tenor": "14.6",
+   "coupon": "13.4",
+   "yield": "14.1",
+   "subscription": "206.5",
+   "acceptance": "67.1"
+  },
+  "Q3'2024": {
+   "offered": "145.0",
+   "accepted": "150.3",
+   "bids": "199.3",
+   "tenor": "9.4",
+   "coupon": "15.5",
+   "yield": "17.5",
+   "subscription": "144.5",
+   "acceptance": "80.5"
+  }
+ },
+ "periods": {
+  "Q3'2025": [
+   {
+    "value_date": "2025-09-22",
+    "kind": "primary",
+    "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/1750319104_RESULTS FXD1-2018-020 AND FXD1-2022-025 DATED 22-09-2025.pdf",
+    "error": null,
+    "total_offered_kes_bn": 40.0,
+    "rows": [
+     {
+      "issue": "FXD1/2018/020",
+      "years_to_maturity": 12.5,
+      "coupon_pct": 13.2,
+      "accepted_kes_bn": 23.50527,
+      "bids_kes_bn": 33.37676,
+      "avg_rate_pct": 13.5831
+     },
+     {
+      "issue": "FXD1/2022/025",
+      "years_to_maturity": 22.2,
+      "coupon_pct": 14.188,
+      "accepted_kes_bn": 37.93437,
+      "bids_kes_bn": 63.90893,
+      "avg_rate_pct": 14.1423
+     }
+    ]
+   },
+   {
+    "value_date": "2025-09-08",
+    "kind": "primary",
+    "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/1846803373_RESULTS SDB1-2011-030 DATED 08-09-2025.pdf",
+    "error": null,
+    "total_offered_kes_bn": 20.0,
+    "rows": [
+     {
+      "issue": "SDB1/2011/030",
+      "years_to_maturity": 15.5,
+      "coupon_pct": 12.0,
+      "accepted_kes_bn": 2.39897,
+      "bids_kes_bn": 8.0693,
+      "avg_rate_pct": 13.9636
+     }
+    ]
+   },
+   {
+    "value_date": "2025-08-25",
+    "kind": "tap",
+    "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/1674878752_TAPSALE RESULTS FOR  TREASURY BOND ISSUE NOs. IFB1-2018-15 AND IFB1-2022-19 DATED 25-08-2025.pdf",
+    "error": null,
+    "total_offered_kes_bn": 50.0,
+    "rows": [
+     {
+      "issue": "IFB1/2018/015",
+      "years_to_maturity": null,
+      "coupon_pct": 12.5,
+      "accepted_kes_bn": 127.98299,
+      "bids_kes_bn": 130.3398,
+      "avg_rate_pct": 12.9934
+     },
+     {
+      "issue": "IFB1/2022/019",
+      "years_to_maturity": null,
+      "coupon_pct": 12.965,
+      "accepted_kes_bn": 51.79191,
+      "bids_kes_bn": 77.11465,
+      "avg_rate_pct": 13.9991
+     }
+    ]
+   },
+   {
+    "value_date": "2025-08-18",
+    "kind": "primary",
+    "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/2002441258_RESULTS IFB1-2018-015 AND IFB1-2022-019 DATED 18-08-2025.pdf",
+    "error": null,
+    "total_offered_kes_bn": 90.0,
+    "rows": [
+     {
+      "issue": "IFB1/2018/015",
+      "years_to_maturity": 7.5,
+      "coupon_pct": 12.5,
+      "accepted_kes_bn": 50.65838,
+      "bids_kes_bn": 215.94168,
+      "avg_rate_pct": 12.9934
+     },
+     {
+      "issue": "IFB1/2022/019",
+      "years_to_maturity": 15.6,
+      "coupon_pct": 12.965,
+      "accepted_kes_bn": 44.35522,
+      "bids_kes_bn": 107.48973,
+      "avg_rate_pct": 13.9991
+     }
+    ]
+   },
+   {
+    "value_date": "2025-07-14",
+    "kind": "primary",
+    "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/1968103295_RESULTS FXD1-2018-020 AND FXD1-2018-025 DATED 14-07-2025.pdf",
+    "error": null,
+    "total_offered_kes_bn": 50.0,
+    "rows": [
+     {
+      "issue": "FXD1/2018/020",
+      "years_to_maturity": null,
+      "coupon_pct": 13.2,
+      "accepted_kes_bn": 30.5724,
+      "bids_kes_bn": 33.07511,
+      "avg_rate_pct": 13.8989
+     },
+     {
+      "issue": "FXD1/2018/025",
+      "years_to_maturity": null,
+      "coupon_pct": 13.4,
+      "accepted_kes_bn": 36.07854,
+      "bids_kes_bn": 43.83249,
+      "avg_rate_pct": 14.3475
+     }
+    ]
+   }
+  ],
+  "H1'2026": [
+   {
+    "value_date": "2026-06-22",
+    "kind": "tap",
+    "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/1690108982_TAP SALE RESULTS FXD1-2018-025 AND FXD1-2021-025 DATED 22-06-2026.pdf",
+    "error": null,
+    "total_offered_kes_bn": 20.0,
+    "rows": [
+     {
+      "issue": "FXD1/2018/020",
+      "years_to_maturity": null,
+      "coupon_pct": 13.2,
+      "accepted_kes_bn": 6.09772,
+      "bids_kes_bn": 6.38735,
+      "avg_rate_pct": 13.9885
+     },
+     {
+      "issue": "FXD1/2021/025",
+      "years_to_maturity": null,
+      "coupon_pct": 13.924,
+      "accepted_kes_bn": 23.14373,
+      "bids_kes_bn": 24.62285,
+      "avg_rate_pct": 14.8636
+     }
+    ]
+   },
+   {
+    "value_date": "2026-06-22",
+    "kind": "primary",
+    "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/1312458656_RESULTS FXD1-2018-020 AND FXD1-2021-025 DATED 22-06-2026.pdf",
+    "error": null,
+    "total_offered_kes_bn": 60.0,
+    "rows": [
+     {
+      "issue": "FXD1/2018/020",
+      "years_to_maturity": 11.8,
+      "coupon_pct": 13.2,
+      "accepted_kes_bn": 19.55861,
+      "bids_kes_bn": 22.67686,
+      "avg_rate_pct": 13.9885
+     },
+     {
+      "issue": "FXD1/2021/025",
+      "years_to_maturity": 20.0,
+      "coupon_pct": 13.924,
+      "accepted_kes_bn": 23.01355,
+      "bids_kes_bn": 54.94911,
+      "avg_rate_pct": 14.8636
+     }
+    ]
+   },
+   {
+    "value_date": "2026-06-15",
+    "kind": "tap",
+    "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/801340435_TAP SALE RESULTS FXD1-2020-015 AND FXD1-2018-025 DATED 15-06-2026.pdf",
+    "error": null,
+    "total_offered_kes_bn": 15.0,
+    "rows": [
+     {
+      "issue": "FXD1/2020/015",
+      "years_to_maturity": null,
+      "coupon_pct": 12.756,
+      "accepted_kes_bn": 5.9474,
+      "bids_kes_bn": 6.12235,
+      "avg_rate_pct": 13.312
+     },
+     {
+      "issue": "FXD1/2018/025",
+      "years_to_maturity": null,
+      "coupon_pct": 13.4,
+      "accepted_kes_bn": 2.49922,
+      "bids_kes_bn": 2.6383,
+      "avg_rate_pct": 14.2304
+     }
+    ]
+   },
+   {
+    "value_date": "2026-06-08",
+    "kind": "primary",
+    "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/2098132710_RESULTS FXD1-2020-015 AND FXD1-2018-025 DATED 08-06-2026.pdf",
+    "error": null,
+    "total_offered_kes_bn": 40.0,
+    "rows": [
+     {
+      "issue": "FXD1/2020/015",
+      "years_to_maturity": 8.7,
+      "coupon_pct": 12.756,
+      "accepted_kes_bn": 20.15545,
+      "bids_kes_bn": 20.15686,
+      "avg_rate_pct": 13.312
+     },
+     {
+      "issue": "FXD1/2018/025",
+      "years_to_maturity": 17.1,
+      "coupon_pct": 13.4,
+      "accepted_kes_bn": 14.22262,
+      "bids_kes_bn": 14.23233,
+      "avg_rate_pct": 14.2304
+     }
+    ]
+   },
+   {
+    "value_date": "2026-05-25",
+    "kind": "primary",
+    "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/801309501_RESULTS FXD3-2019-015 AND FXD1-2021-020 DATED 25-05-2026.pdf",
+    "error": null,
+    "total_offered_kes_bn": 50.0,
+    "rows": [
+     {
+      "issue": "FXD3/2019/015",
+      "years_to_maturity": 8.3,
+      "coupon_pct": 12.34,
+      "accepted_kes_bn": 14.42532,
+      "bids_kes_bn": 20.64195,
+      "avg_rate_pct": 12.9708
+     },
+     {
+      "issue": "FXD1/2021/020",
+      "years_to_maturity": 15.3,
+      "coupon_pct": 13.444,
+      "accepted_kes_bn": 22.16878,
+      "bids_kes_bn": 26.51832,
+      "avg_rate_pct": 13.7421
+     }
+    ]
+   },
+   {
+    "value_date": "2026-05-20",
+    "kind": "switch",
+    "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/268098649_SWITCH RESULTS FXD1-2021-020 DATED 20-05-2026.pdf",
+    "error": null,
+    "total_offered_kes_bn": 10.0,
+    "rows": [
+     {
+      "issue": "FXD1/2021/020",
+      "years_to_maturity": 15.22,
+      "coupon_pct": 13.444,
+      "accepted_kes_bn": 4.52596,
+      "bids_kes_bn": 7.61358,
+      "avg_rate_pct": 13.4116
+     }
+    ]
+   },
+   {
+    "value_date": "2026-05-11",
+    "kind": "primary",
+    "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/1986239307_RESULTS FXD1-2012-020, FXD1-2019-020 AND FXD1-2021-25 DATED 11-05-2026.pdf",
+    "error": null,
+    "total_offered_kes_bn": 80.0,
+    "rows": [
+     {
+      "issue": "FXD1/2012/020",
+      "years_to_maturity": null,
+      "coupon_pct": 12.0,
+      "accepted_kes_bn": 47.52993,
+      "bids_kes_bn": 47.94793,
+      "avg_rate_pct": 12.4573
+     },
+     {
+      "issue": "FXD1/2019/020",
+      "years_to_maturity": null,
+      "coupon_pct": 12.873,
+      "accepted_kes_bn": 14.53936,
+      "bids_kes_bn": 17.57392,
+      "avg_rate_pct": 13.2126
+     },
+     {
+      "issue": "FXD1/2021/025",
+      "years_to_maturity": null,
+      "coupon_pct": 13.924,
+      "accepted_kes_bn": 31.97452,
+      "bids_kes_bn": 40.49664,
+      "avg_rate_pct": 13.6949
+     }
+    ]
+   },
+   {
+    "value_date": "2026-04-20",
+    "kind": "primary",
+    "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/482629457_RESULTS SDB1-2011-030 AND FXD1-2026-030 DATED 20-04-2026.pdf",
+    "error": null,
+    "total_offered_kes_bn": 20.0,
+    "rows": [
+     {
+      "issue": "SDB1/2011/030",
+      "years_to_maturity": 14.9,
+      "coupon_pct": 12.0,
+      "accepted_kes_bn": 6.57081,
+      "bids_kes_bn": 7.05081,
+      "avg_rate_pct": 12.996
+     },
+     {
+      "issue": "FXD1/2026/030",
+      "years_to_maturity": 30.0,
+      "coupon_pct": 12.5,
+      "accepted_kes_bn": 23.4903,
+      "bids_kes_bn": 31.28191,
+      "avg_rate_pct": 13.7554
+     }
+    ]
+   },
+   {
+    "value_date": "2026-04-15",
+    "kind": "switch",
+    "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/376777690_SWITCH RESULTS FXD1-2018-015 DATED 15-04-2026...pdf",
+    "error": null,
+    "total_offered_kes_bn": 20.0,
+    "rows": [
+     {
+      "issue": "FXD1/2018/015",
+      "years_to_maturity": 7.1,
+      "coupon_pct": 12.65,
+      "accepted_kes_bn": 1.75313,
+      "bids_kes_bn": 2.55951,
+      "avg_rate_pct": 11.9662
+     }
+    ]
+   },
+   {
+    "value_date": "2026-04-06",
+    "kind": "primary",
+    "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/1664563265_RESULTS FXD1-2020-015 AND FXD1-2018-025 DATED 06-04-2026.pdf",
+    "error": null,
+    "total_offered_kes_bn": 40.0,
+    "rows": [
+     {
+      "issue": "FXD1/2020/015",
+      "years_to_maturity": 8.9,
+      "coupon_pct": 12.756,
+      "accepted_kes_bn": 36.48654,
+      "bids_kes_bn": 41.42165,
+      "avg_rate_pct": 12.1854
+     },
+     {
+      "issue": "FXD1/2018/025",
+      "years_to_maturity": 17.3,
+      "coupon_pct": 13.4,
+      "accepted_kes_bn": 13.7028,
+      "bids_kes_bn": 33.46957,
+      "avg_rate_pct": 12.9872
+     }
+    ]
+   },
+   {
+    "value_date": "2026-03-18",
+    "kind": "switch",
+    "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/521227439_SWITCH RESULTS FXD3-2019-015 DATED 18-03-2026.pdf",
+    "error": null,
+    "total_offered_kes_bn": 15.0,
+    "rows": [
+     {
+      "issue": "FXD3/2019/015",
+      "years_to_maturity": 8.3,
+      "coupon_pct": 12.34,
+      "accepted_kes_bn": 18.40037,
+      "bids_kes_bn": 22.20877,
+      "avg_rate_pct": 11.5887
+     }
+    ]
+   },
+   {
+    "value_date": "2026-03-16",
+    "kind": "primary",
+    "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/464924189_RESULTS FXD1-2019-020 AND FXD1-2021-025 DATED 16-03-2026.pdf",
+    "error": null,
+    "total_offered_kes_bn": 60.0,
+    "rows": [
+     {
+      "issue": "FXD1/2019/020",
+      "years_to_maturity": 13.1,
+      "coupon_pct": 12.873,
+      "accepted_kes_bn": 44.85148,
+      "bids_kes_bn": 50.49883,
+      "avg_rate_pct": 12.7475
+     },
+     {
+      "issue": "FXD1/2021/025",
+      "years_to_maturity": 20.1,
+      "coupon_pct": 13.924,
+      "accepted_kes_bn": 16.14116,
+      "bids_kes_bn": 66.93545,
+      "avg_rate_pct": 12.9489
+     }
+    ]
+   },
+   {
+    "value_date": "2026-02-16",
+    "kind": "primary",
+    "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/1498944725_RESULTS FXD3-2019-015 AND FXD1-2018-025 DATED 16-02-2026.pdf",
+    "error": null,
+    "total_offered_kes_bn": 50.0,
+    "rows": [
+     {
+      "issue": "FXD3/2019/015",
+      "years_to_maturity": 8.4,
+      "coupon_pct": 12.34,
+      "accepted_kes_bn": 54.78672,
+      "bids_kes_bn": 133.79251,
+      "avg_rate_pct": 12.1835
+     },
+     {
+      "issue": "FXD1/2018/025",
+      "years_to_maturity": 17.3,
+      "coupon_pct": 13.4,
+      "accepted_kes_bn": 45.74883,
+      "bids_kes_bn": 79.94337,
+      "avg_rate_pct": 13.3621
+     }
+    ]
+   },
+   {
+    "value_date": "2026-01-21",
+    "kind": "switch",
+    "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/1661425307_SWITCH RESULTS DATED 21-01-2026.pdf",
+    "error": null,
+    "total_offered_kes_bn": 20.0,
+    "rows": [
+     {
+      "issue": "FXD1/2022/015",
+      "years_to_maturity": 11.3,
+      "coupon_pct": 13.942,
+      "accepted_kes_bn": 25.17383,
+      "bids_kes_bn": 26.49124,
+      "avg_rate_pct": 13.1669
+     }
+    ]
+   },
+   {
+    "value_date": "2026-01-12",
+    "kind": "primary",
+    "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/1812292032_RESULTS FXD1-2019-020 AND FXD1-2022-025 DATED 12-01-2026.pdf",
+    "error": null,
+    "total_offered_kes_bn": 60.0,
+    "rows": [
+     {
+      "issue": "FXD1/2019/020",
+      "years_to_maturity": 13.2,
+      "coupon_pct": 12.873,
+      "accepted_kes_bn": 20.23959,
+      "bids_kes_bn": 23.36301,
+      "avg_rate_pct": 13.2623
+     },
+     {
+      "issue": "FXD1/2022/025",
+      "years_to_maturity": 21.8,
+      "coupon_pct": 14.188,
+      "accepted_kes_bn": 40.34194,
+      "bids_kes_bn": 48.18098,
+      "avg_rate_pct": 13.7561
+     }
+    ]
+   }
+  ],
+  "H1'2025": [
+   {
+    "value_date": "2025-06-23",
+    "kind": "primary",
+    "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/1672578533_RESULTS FXD1-2020-015 AND SDB1-2011-030 DATED 23-06-2025.pdf",
+    "error": null,
+    "total_offered_kes_bn": 50.0,
+    "rows": [
+     {
+      "issue": "FXD1/2020/015",
+      "years_to_maturity": null,
+      "coupon_pct": 12.756,
+      "accepted_kes_bn": 57.87264,
+      "bids_kes_bn": 84.73464,
+      "avg_rate_pct": 13.4866
+     },
+     {
+      "issue": "SDB1/2011/030",
+      "years_to_maturity": null,
+      "coupon_pct": 12.0,
+      "accepted_kes_bn": 13.76611,
+      "bids_kes_bn": 16.62328,
+      "avg_rate_pct": 13.9979
+     }
+    ]
+   },
+   {
+    "value_date": "2025-05-12",
+    "kind": "primary",
+    "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/278230428_RESULTS FXD1-2012-020  DATED 12-05-2025.pdf",
+    "error": null,
+    "total_offered_kes_bn": 30.0,
+    "rows": [
+     {
+      "issue": "FXD1/2012/020",
+      "years_to_maturity": null,
+      "coupon_pct": 12.0,
+      "accepted_kes_bn": 43.52027,
+      "bids_kes_bn": 54.38838,
+      "avg_rate_pct": 13.6489
+     }
+    ]
+   },
+   {
+    "value_date": "2025-05-05",
+    "kind": "primary",
+    "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/1376056348_RESULTS FXD1-2022-015 AND FXD1-2022-025 DATED 05-05-2025.pdf",
+    "error": null,
+    "total_offered_kes_bn": 50.0,
+    "rows": [
+     {
+      "issue": "FXD1/2022/015",
+      "years_to_maturity": null,
+      "coupon_pct": 13.942,
+      "accepted_kes_bn": 25.28099,
+      "bids_kes_bn": 26.41349,
+      "avg_rate_pct": 13.9128
+     },
+     {
+      "issue": "FXD1/2022/025",
+      "years_to_maturity": null,
+      "coupon_pct": 14.188,
+      "accepted_kes_bn": 25.10328,
+      "bids_kes_bn": 30.68172,
+      "avg_rate_pct": 14.5384
+     }
+    ]
+   },
+   {
+    "value_date": "2025-04-14",
+    "kind": "tap",
+    "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/1789977118_TAP SALE APRIL TREASURY BOND RESULTS FXD1-2020-015 DATED 14-04-2025.pdf",
+    "error": null,
+    "total_offered_kes_bn": 10.0,
+    "rows": [
+     {
+      "issue": "FXD1/2020/015",
+      "years_to_maturity": null,
+      "coupon_pct": 12.756,
+      "accepted_kes_bn": 12.59255,
+      "bids_kes_bn": 13.23965,
+      "avg_rate_pct": 13.6652
+     }
+    ]
+   },
+   {
+    "value_date": "2025-04-07",
+    "kind": "primary",
+    "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/1473158245_RESULTS FXD1-2020-015 FXD1-2022-15 AND FXD1-2022-025 DATED 07-04-2025.pdf",
+    "error": null,
+    "total_offered_kes_bn": 70.0,
+    "rows": [
+     {
+      "issue": "FXD1/2020/015",
+      "years_to_maturity": null,
+      "coupon_pct": 12.756,
+      "accepted_kes_bn": 20.88212,
+      "bids_kes_bn": 20.89678,
+      "avg_rate_pct": 13.6652
+     },
+     {
+      "issue": "FXD1/2022/015",
+      "years_to_maturity": null,
+      "coupon_pct": 13.942,
+      "accepted_kes_bn": 17.98034,
+      "bids_kes_bn": 18.1484,
+      "avg_rate_pct": 13.8275
+     },
+     {
+      "issue": "FXD1/2022/025",
+      "years_to_maturity": null,
+      "coupon_pct": 14.188,
+      "accepted_kes_bn": 32.53617,
+      "bids_kes_bn": 32.6837,
+      "avg_rate_pct": 14.2342
+     }
+    ]
+   },
+   {
+    "value_date": "2025-03-10",
+    "kind": "primary",
+    "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/1677110489_MARCH TREASURY BOND RESULTS FXD1-2018-025 DATED 10-03-2025.pdf",
+    "error": null,
+    "total_offered_kes_bn": 25.0,
+    "rows": [
+     {
+      "issue": "FXD1/2018/025",
+      "years_to_maturity": null,
+      "coupon_pct": 13.4,
+      "accepted_kes_bn": 35.24822,
+      "bids_kes_bn": 47.01161,
+      "avg_rate_pct": 13.8033
+     }
+    ]
+   },
+   {
+    "value_date": "2025-02-17",
+    "kind": "primary",
+    "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/2066379370_RESULTS IFB1-2022-014 AND IFB1-2023-017 DATED 17-02-2025.pdf",
+    "error": null,
+    "total_offered_kes_bn": 70.0,
+    "rows": [
+     {
+      "issue": "IFB1/2022/014",
+      "years_to_maturity": null,
+      "coupon_pct": 13.938,
+      "accepted_kes_bn": 65.25575,
+      "bids_kes_bn": 93.13202,
+      "avg_rate_pct": 13.9784
+     },
+     {
+      "issue": "IFB1/2023/017",
+      "years_to_maturity": null,
+      "coupon_pct": 14.399,
+      "accepted_kes_bn": 65.55312,
+      "bids_kes_bn": 100.76593,
+      "avg_rate_pct": 14.2806
+     }
+    ]
+   },
+   {
+    "value_date": "2025-01-20",
+    "kind": "primary",
+    "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/56116132_RESULTS FXD1-2015-018 AND FXD1-2022-025 DATED 20-01-2025.pdf",
+    "error": null,
+    "total_offered_kes_bn": 30.0,
+    "rows": [
+     {
+      "issue": "FXD1/2018/015",
+      "years_to_maturity": null,
+      "coupon_pct": 12.65,
+      "accepted_kes_bn": 23.75307,
+      "bids_kes_bn": 30.5766,
+      "avg_rate_pct": 14.2096
+     },
+     {
+      "issue": "FXD1/2022/025",
+      "years_to_maturity": null,
+      "coupon_pct": 14.188,
+      "accepted_kes_bn": 24.72861,
+      "bids_kes_bn": 28.42149,
+      "avg_rate_pct": 15.6833
+     }
+    ]
+   }
+  ],
+  "Q3'2024": [
+   {
+    "value_date": "2024-09-23",
+    "kind": "primary",
+    "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/2083219128_RESULTS FOR RE-OPEN FXD1-2024-10  AND FXD1-2016-20 DATED 23-09-2024.pdf",
+    "error": null,
+    "total_offered_kes_bn": 30.0,
+    "rows": [
+     {
+      "issue": "FXD1/2024/010",
+      "years_to_maturity": null,
+      "coupon_pct": 16.0,
+      "accepted_kes_bn": 11.56537,
+      "bids_kes_bn": 13.396,
+      "avg_rate_pct": 16.8696
+     },
+     {
+      "issue": "FXD1/2016/020",
+      "years_to_maturity": null,
+      "coupon_pct": 14.0,
+      "accepted_kes_bn": 7.71112,
+      "bids_kes_bn": 9.2461,
+      "avg_rate_pct": 17.2854
+     }
+    ]
+   },
+   {
+    "value_date": "2024-09-02",
+    "kind": "tap",
+    "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/987838813_RESULTS FOR TAP SALE IFB1-2023-017 DATED 02-09-2024.pdf",
+    "error": null,
+    "total_offered_kes_bn": 15.0,
+    "rows": [
+     {
+      "issue": "IFB1/2023/017",
+      "years_to_maturity": null,
+      "coupon_pct": 14.399,
+      "accepted_kes_bn": 32.02423,
+      "bids_kes_bn": 35.1857,
+      "avg_rate_pct": 17.7279
+     }
+    ]
+   },
+   {
+    "value_date": "2024-08-19",
+    "kind": "primary",
+    "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/107706422_RESULTS FOR REOPENED IFB1-2023-6.5 AND IFB1-2023-17 DATED 19-08-2024.pdf",
+    "error": null,
+    "total_offered_kes_bn": 50.0,
+    "rows": [
+     {
+      "issue": "IFB1/2023/6.5",
+      "years_to_maturity": null,
+      "coupon_pct": 17.9327,
+      "accepted_kes_bn": 74.1676,
+      "bids_kes_bn": 96.86191,
+      "avg_rate_pct": 18.2989
+     },
+     {
+      "issue": "IFB1/2023/17",
+      "years_to_maturity": null,
+      "coupon_pct": 14.399,
+      "accepted_kes_bn": 14.53092,
+      "bids_kes_bn": 29.46052,
+      "avg_rate_pct": 17.7279
+     }
+    ]
+   },
+   {
+    "value_date": "2024-07-22",
+    "kind": "primary",
+    "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/1616223794_RESULTS FOR REOPENED FXD1-2024-010 AND FXD1-2008-020 DATED 22-07-2024.pdf",
+    "error": null,
+    "total_offered_kes_bn": 30.0,
+    "rows": [
+     {
+      "issue": "FXD1/2024/010",
+      "years_to_maturity": null,
+      "coupon_pct": 16.0,
+      "accepted_kes_bn": 6.75215,
+      "bids_kes_bn": 7.06773,
+      "avg_rate_pct": 16.5923
+     },
+     {
+      "issue": "FXD1/2008/020",
+      "years_to_maturity": null,
+      "coupon_pct": 13.75,
+      "accepted_kes_bn": 3.01408,
+      "bids_kes_bn": 7.61451,
+      "avg_rate_pct": 18.2904
+     }
+    ]
+   },
+   {
+    "value_date": "2024-07-08",
+    "kind": "tap",
+    "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/452999614_July 2024 TAP SALE FXD1-2023-002 DATED 08-07-2024.pdf",
+    "error": null,
+    "total_offered_kes_bn": 20.0,
+    "rows": [
+     {
+      "issue": "FXD1/2023/002",
+      "years_to_maturity": null,
+      "coupon_pct": 16.9723,
+      "accepted_kes_bn": 0.48648,
+      "bids_kes_bn": 0.4875,
+      "avg_rate_pct": 17.1225
+     }
+    ]
+   }
+  ]
+ }
+}

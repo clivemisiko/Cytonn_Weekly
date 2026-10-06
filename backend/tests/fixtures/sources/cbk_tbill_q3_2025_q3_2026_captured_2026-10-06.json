@@ -1,0 +1,851 @@
+{
+ "_about": "Captured 2026-10-06 from centralbank.go.ke/bills-bonds/treasury-bills/: each weekly T-bill results PDF with a value date (the date in its file name) from 30-06-2025 to 06-10-2025 and from 29-06-2026 to 05-10-2026, parsed by cbk_auctions.parse_tbill_results (amounts in KES bn, the weighted average rate of accepted bids in %). The quarter's own auctions are the 13 with a value date inside it; one more on each side is kept so other windows can be tested. 'printed' holds the quarterly T-bill figures of two Cytonn issues, as printed (cytonnreport.com/research/cytonn-q3-2026 and cytonnreport.com/research/cytonn-q32025-markets).",
+ "printed": {
+  "Q3'2026": {
+   "overall_subscription_pct": "163.9",
+   "subscription_pct": {
+    "91-day": "319.2",
+    "182-day": "128.0",
+    "364-day": "80.4"
+   },
+   "bids_91_day_kes_bn": "319.2",
+   "offered_91_day_kes_bn": "100.0",
+   "average_yield_pct": {
+    "91-day": "8.8",
+    "182-day": "8.9",
+    "364-day": "9.0"
+   },
+   "acceptance_pct": "83.1",
+   "bids_kes_bn": "590.1",
+   "accepted_kes_bn": "490.2"
+  },
+  "Q3'2025": {
+   "overall_subscription_pct": "110.6",
+   "subscription_pct": {
+    "91-day": "174.6",
+    "182-day": "59.6",
+    "364-day": "136.1"
+   },
+   "average_yield_pct": {
+    "91-day": "8.0",
+    "182-day": "8.2",
+    "364-day": "9.6"
+   },
+   "acceptance_pct": "89.5",
+   "bids_kes_bn": "345.1",
+   "accepted_kes_bn": "308.9"
+  }
+ },
+ "auctions": [
+  {
+   "value_date": "2025-06-30",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/440750711_RESULTS 2636-091 2610-182 2564-364 DATED 30-06-2025.pdf",
+   "rows": [
+    {
+     "tenor": "91-day",
+     "offered_kes_bn": 4.0,
+     "bids_kes_bn": 1.44926,
+     "accepted_kes_bn": 1.44277,
+     "avg_rate_pct": 8.1387
+    },
+    {
+     "tenor": "182-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 1.20039,
+     "accepted_kes_bn": 1.19853,
+     "avg_rate_pct": 8.4613
+    },
+    {
+     "tenor": "364-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 11.83957,
+     "accepted_kes_bn": 11.79848,
+     "avg_rate_pct": 9.7221
+    }
+   ]
+  },
+  {
+   "value_date": "2025-07-07",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/538521723_RESULTS 2637-091 2611-182 2565-364 DATED 07-07-2025.pdf",
+   "rows": [
+    {
+     "tenor": "91-day",
+     "offered_kes_bn": 4.0,
+     "bids_kes_bn": 2.69495,
+     "accepted_kes_bn": 2.68879,
+     "avg_rate_pct": 8.1454
+    },
+    {
+     "tenor": "182-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 11.1744,
+     "accepted_kes_bn": 11.12649,
+     "avg_rate_pct": 8.45
+    },
+    {
+     "tenor": "364-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 7.95584,
+     "accepted_kes_bn": 7.95406,
+     "avg_rate_pct": 9.7134
+    }
+   ]
+  },
+  {
+   "value_date": "2025-07-14",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/1106176148_RESULTS 2638-091 2612-182 2566-364 DATED 14-07-2025.pdf",
+   "rows": [
+    {
+     "tenor": "91-day",
+     "offered_kes_bn": 4.0,
+     "bids_kes_bn": 4.15067,
+     "accepted_kes_bn": 4.13394,
+     "avg_rate_pct": 8.1421
+    },
+    {
+     "tenor": "182-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 8.97256,
+     "accepted_kes_bn": 8.96446,
+     "avg_rate_pct": 8.4404
+    },
+    {
+     "tenor": "364-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 9.65503,
+     "accepted_kes_bn": 9.65503,
+     "avg_rate_pct": 9.7218
+    }
+   ]
+  },
+  {
+   "value_date": "2025-07-21",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/1590359015_RESULTS 2639-091 2613-182 2567-364 DATED 21-07-2025.pdf",
+   "rows": [
+    {
+     "tenor": "91-day",
+     "offered_kes_bn": 4.0,
+     "bids_kes_bn": 1.96297,
+     "accepted_kes_bn": 1.94758,
+     "avg_rate_pct": 8.1283
+    },
+    {
+     "tenor": "182-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 7.62207,
+     "accepted_kes_bn": 7.57409,
+     "avg_rate_pct": 8.431
+    },
+    {
+     "tenor": "364-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 18.23479,
+     "accepted_kes_bn": 14.5851,
+     "avg_rate_pct": 9.7276
+    }
+   ]
+  },
+  {
+   "value_date": "2025-07-28",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/435720971_RESULTS 2640-091 2614-182 2568-364 DATED 28-07-2025.pdf",
+   "rows": [
+    {
+     "tenor": "91-day",
+     "offered_kes_bn": 4.0,
+     "bids_kes_bn": 16.23331,
+     "accepted_kes_bn": 16.19791,
+     "avg_rate_pct": 8.1168
+    },
+    {
+     "tenor": "182-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 3.19638,
+     "accepted_kes_bn": 3.17468,
+     "avg_rate_pct": 8.4186
+    },
+    {
+     "tenor": "364-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 20.58796,
+     "accepted_kes_bn": 6.14389,
+     "avg_rate_pct": 9.7193
+    }
+   ]
+  },
+  {
+   "value_date": "2025-08-04",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/1427603375_RESULTS 2641-091 2615-182 2569-364 DATED 04-08-2025.pdf",
+   "rows": [
+    {
+     "tenor": "91-day",
+     "offered_kes_bn": 4.0,
+     "bids_kes_bn": 1.97368,
+     "accepted_kes_bn": 1.96982,
+     "avg_rate_pct": 8.1106
+    },
+    {
+     "tenor": "182-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 2.14104,
+     "accepted_kes_bn": 2.10268,
+     "avg_rate_pct": 8.4095
+    },
+    {
+     "tenor": "364-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 11.9781,
+     "accepted_kes_bn": 11.95123,
+     "avg_rate_pct": 9.7178
+    }
+   ]
+  },
+  {
+   "value_date": "2025-08-11",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/1345368197_RESULTS 2642-091 2616-182 2570-364 DATED 11-08-2025.pdf",
+   "rows": [
+    {
+     "tenor": "91-day",
+     "offered_kes_bn": 4.0,
+     "bids_kes_bn": 3.98765,
+     "accepted_kes_bn": 3.97233,
+     "avg_rate_pct": 8.0799
+    },
+    {
+     "tenor": "182-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 7.41117,
+     "accepted_kes_bn": 7.41117,
+     "avg_rate_pct": 8.1732
+    },
+    {
+     "tenor": "364-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 12.02265,
+     "accepted_kes_bn": 11.86072,
+     "avg_rate_pct": 9.713
+    }
+   ]
+  },
+  {
+   "value_date": "2025-08-18",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/309970541_RESULTS 2643-091 2617-182 2571-364 DATED 18-08-2025.pdf",
+   "rows": [
+    {
+     "tenor": "91-day",
+     "offered_kes_bn": 4.0,
+     "bids_kes_bn": 4.92744,
+     "accepted_kes_bn": 4.91092,
+     "avg_rate_pct": 8.0107
+    },
+    {
+     "tenor": "182-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 7.45656,
+     "accepted_kes_bn": 7.45656,
+     "avg_rate_pct": 8.1195
+    },
+    {
+     "tenor": "364-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 10.79619,
+     "accepted_kes_bn": 10.7926,
+     "avg_rate_pct": 9.5824
+    }
+   ]
+  },
+  {
+   "value_date": "2025-08-25",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/1943911766_RESULTS 2644-091 2618-182 2572-364 DATED 25-08-2025.pdf",
+   "rows": [
+    {
+     "tenor": "91-day",
+     "offered_kes_bn": 4.0,
+     "bids_kes_bn": 7.77305,
+     "accepted_kes_bn": 7.68668,
+     "avg_rate_pct": 8.0
+    },
+    {
+     "tenor": "182-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 12.08044,
+     "accepted_kes_bn": 9.20242,
+     "avg_rate_pct": 8.0706
+    },
+    {
+     "tenor": "364-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 7.38829,
+     "accepted_kes_bn": 7.37756,
+     "avg_rate_pct": 9.5734
+    }
+   ]
+  },
+  {
+   "value_date": "2025-09-01",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/465803400_RESULTS 2645-091 2619-182 2573-364 DATED 01-09-2025.pdf",
+   "rows": [
+    {
+     "tenor": "91-day",
+     "offered_kes_bn": 4.0,
+     "bids_kes_bn": 19.96998,
+     "accepted_kes_bn": 19.87857,
+     "avg_rate_pct": 7.9999
+    },
+    {
+     "tenor": "182-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 1.80438,
+     "accepted_kes_bn": 1.78288,
+     "avg_rate_pct": 8.05
+    },
+    {
+     "tenor": "364-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 10.25491,
+     "accepted_kes_bn": 10.2506,
+     "avg_rate_pct": 9.5691
+    }
+   ]
+  },
+  {
+   "value_date": "2025-09-08",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/1813564302_RESULTS 2646-091 2620-182 2574-364 DATED 08-09-2025.pdf",
+   "rows": [
+    {
+     "tenor": "91-day",
+     "offered_kes_bn": 4.0,
+     "bids_kes_bn": 5.86662,
+     "accepted_kes_bn": 5.55446,
+     "avg_rate_pct": 7.9865
+    },
+    {
+     "tenor": "182-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 4.90926,
+     "accepted_kes_bn": 4.90926,
+     "avg_rate_pct": 8.0331
+    },
+    {
+     "tenor": "364-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 23.10123,
+     "accepted_kes_bn": 19.0841,
+     "avg_rate_pct": 9.579
+    }
+   ]
+  },
+  {
+   "value_date": "2025-09-15",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/419236484_RESULTS 2647-091 2621-182 2575-364 DATED 15-09-2025.pdf",
+   "rows": [
+    {
+     "tenor": "91-day",
+     "offered_kes_bn": 4.0,
+     "bids_kes_bn": 15.40746,
+     "accepted_kes_bn": 14.72858,
+     "avg_rate_pct": 7.9716
+    },
+    {
+     "tenor": "182-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 3.1271,
+     "accepted_kes_bn": 3.1271,
+     "avg_rate_pct": 8.0194
+    },
+    {
+     "tenor": "364-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 20.23258,
+     "accepted_kes_bn": 11.05763,
+     "avg_rate_pct": 9.5483
+    }
+   ]
+  },
+  {
+   "value_date": "2025-09-22",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/1346416084_RESULTS 2648-091 2622-182 2576-364 DATED 22-09-2025.pdf",
+   "rows": [
+    {
+     "tenor": "91-day",
+     "offered_kes_bn": 4.0,
+     "bids_kes_bn": 4.24756,
+     "accepted_kes_bn": 4.11723,
+     "avg_rate_pct": 7.9461
+    },
+    {
+     "tenor": "182-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 5.58112,
+     "accepted_kes_bn": 5.57576,
+     "avg_rate_pct": 8.0098
+    },
+    {
+     "tenor": "364-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 13.13274,
+     "accepted_kes_bn": 13.02465,
+     "avg_rate_pct": 9.5366
+    }
+   ]
+  },
+  {
+   "value_date": "2025-09-29",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/26021458_RESULTS 2649-091 2623-182 2577-364 DATED 29-09-2025.pdf",
+   "rows": [
+    {
+     "tenor": "91-day",
+     "offered_kes_bn": 4.0,
+     "bids_kes_bn": 1.62159,
+     "accepted_kes_bn": 1.54379,
+     "avg_rate_pct": 7.9143
+    },
+    {
+     "tenor": "182-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 1.93933,
+     "accepted_kes_bn": 1.92707,
+     "avg_rate_pct": 7.9851
+    },
+    {
+     "tenor": "364-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 11.5321,
+     "accepted_kes_bn": 11.51014,
+     "avg_rate_pct": 9.533
+    }
+   ]
+  },
+  {
+   "value_date": "2025-10-06",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/1163282809_RESULTS 2650-091 2624-182 2578-364 DATED 06-10-2025.pdf",
+   "rows": [
+    {
+     "tenor": "91-day",
+     "offered_kes_bn": 4.0,
+     "bids_kes_bn": 1.61414,
+     "accepted_kes_bn": 1.60877,
+     "avg_rate_pct": 7.9239
+    },
+    {
+     "tenor": "182-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 6.13486,
+     "accepted_kes_bn": 6.13071,
+     "avg_rate_pct": 7.9849
+    },
+    {
+     "tenor": "364-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 7.38498,
+     "accepted_kes_bn": 7.37642,
+     "avg_rate_pct": 9.5406
+    }
+   ]
+  },
+  {
+   "value_date": "2026-06-29",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/1468422124_RESULTS 2688-091 2662-182 2617-364 DATED 29-06-2026.pdf",
+   "rows": [
+    {
+     "tenor": "91-day",
+     "offered_kes_bn": 4.0,
+     "bids_kes_bn": 23.01348,
+     "accepted_kes_bn": 14.18731,
+     "avg_rate_pct": 8.8275
+    },
+    {
+     "tenor": "182-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 2.26816,
+     "accepted_kes_bn": 0.83316,
+     "avg_rate_pct": 8.8438
+    },
+    {
+     "tenor": "364-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 2.77687,
+     "accepted_kes_bn": 2.40542,
+     "avg_rate_pct": 8.9932
+    }
+   ]
+  },
+  {
+   "value_date": "2026-07-06",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/2083267917_RESULTS 2689-091 2663-182 2618-364 DATED 06-07-2026.pdf",
+   "rows": [
+    {
+     "tenor": "91-day",
+     "offered_kes_bn": 4.0,
+     "bids_kes_bn": 25.61406,
+     "accepted_kes_bn": 16.12552,
+     "avg_rate_pct": 8.8347
+    },
+    {
+     "tenor": "182-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 2.48519,
+     "accepted_kes_bn": 1.52122,
+     "avg_rate_pct": 8.9616
+    },
+    {
+     "tenor": "364-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 7.09209,
+     "accepted_kes_bn": 7.08383,
+     "avg_rate_pct": 8.9953
+    }
+   ]
+  },
+  {
+   "value_date": "2026-07-13",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/1045804532_RESULTS 2690-091 2664-182 2619-364 DATED 13-07-2026.pdf",
+   "rows": [
+    {
+     "tenor": "91-day",
+     "offered_kes_bn": 8.0,
+     "bids_kes_bn": 34.79862,
+     "accepted_kes_bn": 15.60775,
+     "avg_rate_pct": 8.825
+    },
+    {
+     "tenor": "182-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 8.88284,
+     "accepted_kes_bn": 8.88093,
+     "avg_rate_pct": 8.9711
+    },
+    {
+     "tenor": "364-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 6.03815,
+     "accepted_kes_bn": 6.03633,
+     "avg_rate_pct": 8.9923
+    }
+   ]
+  },
+  {
+   "value_date": "2026-07-20",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/1898554537_RESULTS 2691-091 2665-182 2620-364 DATED 20-07-2026.pdf",
+   "rows": [
+    {
+     "tenor": "91-day",
+     "offered_kes_bn": 8.0,
+     "bids_kes_bn": 24.35509,
+     "accepted_kes_bn": 12.88774,
+     "avg_rate_pct": 8.7986
+    },
+    {
+     "tenor": "182-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 15.15281,
+     "accepted_kes_bn": 13.22866,
+     "avg_rate_pct": 8.9695
+    },
+    {
+     "tenor": "364-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 4.51233,
+     "accepted_kes_bn": 4.5056,
+     "avg_rate_pct": 9.0415
+    }
+   ]
+  },
+  {
+   "value_date": "2026-07-27",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/1670849091_RESULTS 2692-091 2666-182 2621-364 DATED 27-07-2026.pdf",
+   "rows": [
+    {
+     "tenor": "91-day",
+     "offered_kes_bn": 8.0,
+     "bids_kes_bn": 22.05903,
+     "accepted_kes_bn": 13.27563,
+     "avg_rate_pct": 8.7821
+    },
+    {
+     "tenor": "182-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 11.55605,
+     "accepted_kes_bn": 11.45101,
+     "avg_rate_pct": 8.9545
+    },
+    {
+     "tenor": "364-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 4.88304,
+     "accepted_kes_bn": 4.52866,
+     "avg_rate_pct": 9.0361
+    }
+   ]
+  },
+  {
+   "value_date": "2026-08-03",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/1524841578_RESULTS 2693-091 2667-182 2622-364 DATED 03-08-2026.pdf",
+   "rows": [
+    {
+     "tenor": "91-day",
+     "offered_kes_bn": 8.0,
+     "bids_kes_bn": 14.40322,
+     "accepted_kes_bn": 14.33017,
+     "avg_rate_pct": 8.7882
+    },
+    {
+     "tenor": "182-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 8.17164,
+     "accepted_kes_bn": 8.17164,
+     "avg_rate_pct": 8.9545
+    },
+    {
+     "tenor": "364-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 4.79257,
+     "accepted_kes_bn": 4.78406,
+     "avg_rate_pct": 9.0169
+    }
+   ]
+  },
+  {
+   "value_date": "2026-08-10",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/1732181511_RESULTS 2694-091 2668-182 2623-364 DATED 10-08-2026.pdf",
+   "rows": [
+    {
+     "tenor": "91-day",
+     "offered_kes_bn": 8.0,
+     "bids_kes_bn": 13.59222,
+     "accepted_kes_bn": 13.10301,
+     "avg_rate_pct": 8.782
+    },
+    {
+     "tenor": "182-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 10.16735,
+     "accepted_kes_bn": 9.20754,
+     "avg_rate_pct": 8.95
+    },
+    {
+     "tenor": "364-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 6.20919,
+     "accepted_kes_bn": 6.20525,
+     "avg_rate_pct": 9.0042
+    }
+   ]
+  },
+  {
+   "value_date": "2026-08-17",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/1797505205_RESULTS 2695-091 2669-182 2624-364 DATED 17-08-2026.pdf",
+   "rows": [
+    {
+     "tenor": "91-day",
+     "offered_kes_bn": 8.0,
+     "bids_kes_bn": 18.23631,
+     "accepted_kes_bn": 16.36421,
+     "avg_rate_pct": 8.7734
+    },
+    {
+     "tenor": "182-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 8.99335,
+     "accepted_kes_bn": 7.09267,
+     "avg_rate_pct": 8.95
+    },
+    {
+     "tenor": "364-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 13.56093,
+     "accepted_kes_bn": 13.56093,
+     "avg_rate_pct": 9.0365
+    }
+   ]
+  },
+  {
+   "value_date": "2026-08-24",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/537994578_RESULTS 2696-091 2670-182 2625-364 DATED 24-08-2026.pdf",
+   "rows": [
+    {
+     "tenor": "91-day",
+     "offered_kes_bn": 8.0,
+     "bids_kes_bn": 37.67442,
+     "accepted_kes_bn": 32.43912,
+     "avg_rate_pct": 8.77
+    },
+    {
+     "tenor": "182-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 18.57164,
+     "accepted_kes_bn": 9.74821,
+     "avg_rate_pct": 8.948
+    },
+    {
+     "tenor": "364-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 15.40595,
+     "accepted_kes_bn": 15.40595,
+     "avg_rate_pct": 9.0356
+    }
+   ]
+  },
+  {
+   "value_date": "2026-08-31",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/757296039_RESULTS 2697-091 2671-182 2626-364 DATED 31-08-2026.pdf",
+   "rows": [
+    {
+     "tenor": "91-day",
+     "offered_kes_bn": 8.0,
+     "bids_kes_bn": 23.69772,
+     "accepted_kes_bn": 23.10863,
+     "avg_rate_pct": 8.7692
+    },
+    {
+     "tenor": "182-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 26.8762,
+     "accepted_kes_bn": 15.05379,
+     "avg_rate_pct": 8.94
+    },
+    {
+     "tenor": "364-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 6.16129,
+     "accepted_kes_bn": 6.15948,
+     "avg_rate_pct": 9.0323
+    }
+   ]
+  },
+  {
+   "value_date": "2026-09-07",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/787941500_RESULTS 2698-091 2672-182 2627-364 DATED 07-09-2026.xlsx.pdf",
+   "rows": [
+    {
+     "tenor": "91-day",
+     "offered_kes_bn": 8.0,
+     "bids_kes_bn": 34.24563,
+     "accepted_kes_bn": 29.20596,
+     "avg_rate_pct": 8.7687
+    },
+    {
+     "tenor": "182-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 19.76782,
+     "accepted_kes_bn": 19.58594,
+     "avg_rate_pct": 8.9331
+    },
+    {
+     "tenor": "364-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 2.23832,
+     "accepted_kes_bn": 2.23148,
+     "avg_rate_pct": 9.0737
+    }
+   ]
+  },
+  {
+   "value_date": "2026-09-14",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/890035777_RESULTS 2699-091 2673-182 2628-364 DATED 14-09-2026.pdf",
+   "rows": [
+    {
+     "tenor": "91-day",
+     "offered_kes_bn": 8.0,
+     "bids_kes_bn": 29.58325,
+     "accepted_kes_bn": 29.38558,
+     "avg_rate_pct": 8.7674
+    },
+    {
+     "tenor": "182-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 12.96738,
+     "accepted_kes_bn": 11.31236,
+     "avg_rate_pct": 8.9296
+    },
+    {
+     "tenor": "364-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 12.95544,
+     "accepted_kes_bn": 12.58363,
+     "avg_rate_pct": 9.0665
+    }
+   ]
+  },
+  {
+   "value_date": "2026-09-21",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/1951910008_RESULTS 2700-091 2674-182 2629-364 DATED 21-09-2026.pdf",
+   "rows": [
+    {
+     "tenor": "91-day",
+     "offered_kes_bn": 8.0,
+     "bids_kes_bn": 23.24566,
+     "accepted_kes_bn": 23.23101,
+     "avg_rate_pct": 8.7837
+    },
+    {
+     "tenor": "182-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 10.04613,
+     "accepted_kes_bn": 10.04613,
+     "avg_rate_pct": 8.9099
+    },
+    {
+     "tenor": "364-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 9.42751,
+     "accepted_kes_bn": 9.41569,
+     "avg_rate_pct": 9.0566
+    }
+   ]
+  },
+  {
+   "value_date": "2026-09-28",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/2049865152_RESULTS 2700-091 2675-182 2630-364 DATED 28-09-2026.pdf",
+   "rows": [
+    {
+     "tenor": "91-day",
+     "offered_kes_bn": 8.0,
+     "bids_kes_bn": 17.73993,
+     "accepted_kes_bn": 16.54614,
+     "avg_rate_pct": 8.7781
+    },
+    {
+     "tenor": "182-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 12.75612,
+     "accepted_kes_bn": 10.26023,
+     "avg_rate_pct": 8.8949
+    },
+    {
+     "tenor": "364-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 11.22823,
+     "accepted_kes_bn": 6.54385,
+     "avg_rate_pct": 9.0431
+    }
+   ]
+  },
+  {
+   "value_date": "2026-10-05",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/2069542746_RESULTS 2702-091 2676-182 2631-364 DATED 05-10-2026.pdf",
+   "rows": [
+    {
+     "tenor": "91-day",
+     "offered_kes_bn": 8.0,
+     "bids_kes_bn": 17.98323,
+     "accepted_kes_bn": 12.87506,
+     "avg_rate_pct": 8.7694
+    },
+    {
+     "tenor": "182-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 19.14741,
+     "accepted_kes_bn": 17.90087,
+     "avg_rate_pct": 8.8856
+    },
+    {
+     "tenor": "364-day",
+     "offered_kes_bn": 10.0,
+     "bids_kes_bn": 10.58604,
+     "accepted_kes_bn": 10.42091,
+     "avg_rate_pct": 9.0397
+    }
+   ]
+  }
+ ]
+}

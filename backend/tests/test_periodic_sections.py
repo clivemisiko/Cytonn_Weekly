@@ -231,7 +231,12 @@ def test_half_year_digital_payments_follows_h1s_columns():
     table = next(b for b in review.section["blocks"] if b["kind"] == "table")
     labels = [c["label"] for c in table["columns"]]
     assert "Q/Q change" not in labels and labels[-1] == "P/E" and "Price 6/30/2026" not in labels[2:3]
-    assert "half_change" in [b["id"] for b in review.section["blocks"]]
+    # HY change is a column now (the 6/30 close over Year Open, minus 1), not a stub: 80.0 / 90.0 - 1.
+    assert labels[-4:] == ["HY’2026 change", "w/w change", "YTD change", "P/E"]
+    visa = next(r for r in table["rows"] if r["ticker"] == "V")
+    assert (visa["period_end_close"], visa["ytd_open"], visa["period_pct"]) == ("80.0", "90.0", "(11.1%)")
+    assert [b["id"] for b in review.section["blocks"] if b["kind"] == "unavailable"] == []
+    assert all(i.status == CLEAN for i in review.review_items if i.kind == "table_row")
 
 
 def test_company_updates_is_carried_verbatim_and_never_verified():
