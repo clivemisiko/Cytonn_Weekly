@@ -90,10 +90,17 @@ def _inputs(ctx: DraftContext) -> dict[str, Any]:
     return {**_week(ctx), **({} if ctx.inputs_root is None else {"inputs_root": ctx.inputs_root})}
 
 
+def _as_of(ctx: DraftContext) -> dict[str, Any]:
+    """``today`` set to the week's Friday, only when the period names a week, so Real Estate, Digital
+    Payments and Focus search and fetch for that week instead of the seven days ending today.
+    (Digital Payments' forward P/E is still Yahoo's current consensus: it has no history.)"""
+    return {} if ctx.week_ending is None else {"today": ctx.week_ending}
+
+
 def _digital_payments(ctx: DraftContext) -> CoordinatorReview:
     from cytonn_weekly.digital_payments.review_run import build_digital_payments_review
 
-    return build_digital_payments_review(**_observer(ctx))
+    return build_digital_payments_review(**_as_of(ctx), **_observer(ctx))
 
 
 def _company_updates(ctx: DraftContext) -> CoordinatorReview:
@@ -117,13 +124,13 @@ def _equities(ctx: DraftContext) -> CoordinatorReview:
 def _real_estate(ctx: DraftContext) -> CoordinatorReview:
     from cytonn_weekly.real_estate.review_run import build_real_estate_review
 
-    return build_real_estate_review(**_observer(ctx))
+    return build_real_estate_review(**_as_of(ctx), **_observer(ctx))
 
 
 def _focus(ctx: DraftContext) -> CoordinatorReview:
     from cytonn_weekly.focus.review_run import build_focus_review
 
-    return build_focus_review(ctx.topic or "", **_observer(ctx))
+    return build_focus_review(ctx.topic or "", **_as_of(ctx), **_observer(ctx))
 
 
 _YOUR_REVIEW = ("Your review", "You resolve each item, then approve or reject the whole section.")
