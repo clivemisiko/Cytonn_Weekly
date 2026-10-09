@@ -59,3 +59,52 @@ def no_ambient_settings(monkeypatch):
 @pytest.fixture(autouse=True)
 def isolated_default_db(tmp_path, monkeypatch):
     monkeypatch.setattr(sections, "_DEFAULT_DB", tmp_path / "default_app.db")
+
+
+@pytest.fixture(autouse=True)
+def isolated_weekly_inputs(tmp_path, monkeypatch):
+    """The weekly inputs (uploaded workbooks and reports) default to a folder under the real data
+    directory; no test may read or write there, so the default is a per-test temp folder."""
+    from cytonn_weekly.weekly import inputs
+
+    monkeypatch.setattr(inputs, "_DEFAULT_ROOT", tmp_path / "inputs" / "weekly")
+
+
+_LOCAL_HOSTS = ("127.0.0.1", "::1", "localhost")
+
+
+def _block_network() -> None:
+    """No test reaches a real site, for the whole session and from every thread.
+
+    The weekly Fixed Income and Equities builders fetch from CBK, NSE and cytonnreport.com, and
+    every drafting provider calls its model over HTTP, unless a test replaces them.  A test that
+    forgets to gets a refused connection (which the builders report as a source that did not
+    answer), never a live request.
+
+    It is done at the socket, because the HTTP clients differ (the fetchers use httpx; the
+    Anthropic SDK brings its own transport), and it is set once, when conftest is imported, and
+    never undone: a per-test patch is removed when the test ends, while a run started through
+    POST /api/runs keeps working in its own thread after that.  On 2026-10-09 such a thread
+    reached the Anthropic API with the placeholder key and was refused; this is what stops it.
+    FastAPI's TestClient opens no socket and is unaffected; loopback stays open.
+    """
+    import socket
+
+    real_connect, real_getaddrinfo = socket.socket.connect, socket.getaddrinfo
+
+    def connect(self, address, *args, **kwargs):
+        host = address[0] if isinstance(address, tuple) else address
+        if host in _LOCAL_HOSTS:
+            return real_connect(self, address, *args, **kwargs)
+        raise ConnectionRefusedError(f"network access in a test: {address!r}")
+
+    def getaddrinfo(host, *args, **kwargs):
+        if host in _LOCAL_HOSTS or host is None:
+            return real_getaddrinfo(host, *args, **kwargs)
+        raise socket.gaierror(f"network access in a test: {host!r}")
+
+    socket.socket.connect = connect
+    socket.getaddrinfo = getaddrinfo
+
+
+_block_network()

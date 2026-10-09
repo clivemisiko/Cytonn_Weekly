@@ -9,9 +9,15 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
+# The one pair of system packages: OpenCV (pulled in by rapidocr-onnxruntime, which reads the scanned
+# NSE daily price list) loads libGL and GLib even though nothing is ever displayed.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
 # Dependencies first, from pyproject alone, so this layer is rebuilt only when it changes.
 # The package is installed editable against an empty stub; the real source is copied below.
-# Every dependency installs from a wheel on this image, so no system packages are needed.
+# Every Python dependency installs from a wheel on this image (the OCR models are inside their wheel).
 # The playwright package is a pinned dependency but nothing imports it: no browsers are installed.
 COPY pyproject.toml ./
 RUN mkdir -p src/cytonn_weekly \

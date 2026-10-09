@@ -20,6 +20,9 @@ dependencies = [
     "fastapi==0.142.2",
     "uvicorn==0.54.0",
     "httpx==0.28.1",
+    # OCR for the NSE daily price list, which is a scanned image (weekly/nse_price_list.py).  Its
+    # models ship inside the wheel: no system binary and nothing downloaded at run time.
+    "rapidocr-onnxruntime==1.4.4",
 ]
 
 [project.optional-dependencies]
