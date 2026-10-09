@@ -93,9 +93,9 @@ MARKETS_REVIEW = ["executive_summary", "company_updates", "global_markets", "ssa
 
 
 def test_each_type_has_its_own_section_list_in_report_order():
-    assert [s.slug for s in rs.sections_for("weekly")] == ["fixed_income", "equities", "digital_payments",
-                                                         "real_estate", "focus"]
-    assert rs.sections_for("weekly") is rs.SECTIONS  # unchanged
+    assert [s.slug for s in rs.sections_for("weekly")] == ["company_updates", "fixed_income", "equities", "real_estate",
+                                                         "digital_payments", "focus"]   # #38.2026's order
+    assert rs.sections_for("weekly") is rs.SECTIONS
     assert [s.slug for s in rs.sections_for("quarterly")] == MARKETS_REVIEW + ["digital_payments"]
     assert [s.slug for s in rs.sections_for("half_year")] == MARKETS_REVIEW + ["digital_payments"]
     # FY'2025 predates the Digital Payments section, which first ran in May 2026.
@@ -107,7 +107,8 @@ def test_each_type_has_its_own_section_list_in_report_order():
 
 def test_the_same_slug_is_a_different_spec_per_type():
     weekly, quarterly = rs.spec_for("weekly", "fixed_income"), rs.spec_for("quarterly", "fixed_income")
-    assert weekly.available is False and "KCB" in weekly.reason       # the weekly section is still blocked
+    assert weekly.available is True and weekly.build is not None and weekly is not quarterly  # each has its own builder
+    assert weekly.subsections[0] == "Money Markets, T-Bills Primary Auction:"
     assert quarterly.available is True and quarterly.build is not None  # the quarter's bond table is CBK's
     assert rs.spec_for("annual", "digital_payments") is None
     assert rs.spec_for("quarterly", "focus") is None                    # Markets Reviews have no Focus of the Week
@@ -171,7 +172,7 @@ def test_every_stub_fails_loudly_with_its_reason(module):
 
 
 def test_stub_reasons_are_the_module_constants():
-    """The kcb_email.py pattern: each stub's reason and unblock are named module constants."""
+    """The documented-stub pattern: each stub's reason and unblock are named module constants."""
     assert fixed_income.STUBS[0].blocked_reason is fixed_income.TBILLS_BLOCKED_REASON
     assert {s.id: s.blocked_reason for s in ssa.STUBS}["currency_performance"] is ssa.CURRENCY_BLOCKED_REASON
     assert {s.id: s.unblock for s in kenya_macro.STUBS}["pmi"] is kenya_macro.PMI_UNBLOCK

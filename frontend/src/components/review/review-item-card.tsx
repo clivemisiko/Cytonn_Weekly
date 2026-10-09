@@ -76,6 +76,29 @@ function Detail({ item }: { item: ReviewItem }) {
         </p>
       )}
       {ctx.cited_text && <p className="text-xs text-muted-foreground">Cited text: “{ctx.cited_text}”</p>}
+      {ctx.inputs && Object.keys(ctx.inputs).length > 0 && (
+        <div className="space-y-1">
+          <p className="eyebrow">Worked out from</p>
+          <ul className="space-y-1 text-xs">
+            {Object.entries(ctx.inputs)
+              .slice(0, 12)
+              .map(([name, input]) => (
+                <li key={name} className="[overflow-wrap:anywhere]">
+                  <span className="font-mono font-medium">{String(input.value)}</span>{" "}
+                  <span className="text-muted-foreground">
+                    {input.origin === "ocr" ? "read by OCR from " : ""}
+                    {input.source}
+                    {input.second ? `; also ${String(input.second.value)} in ${input.second.source}` : ""}
+                  </span>
+                </li>
+              ))}
+            {Object.keys(ctx.inputs).length > 12 && (
+              <li className="text-muted-foreground">and {Object.keys(ctx.inputs).length - 12} more inputs of the same kind.</li>
+            )}
+          </ul>
+          {ctx.note && <p className="text-xs text-muted-foreground">{ctx.note}</p>}
+        </div>
+      )}
       {item.status === "not_auto_verified" && typeof item.detail === "string" && (
         <p className="text-xs text-muted-foreground">{item.detail}</p>
       )}

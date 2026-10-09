@@ -11,6 +11,7 @@ from api.draft_slot import DraftSlot
 from api.main import create_app
 from cytonn_weekly.digital_payments import review_store, summary
 from cytonn_weekly.equities import review_run as eq_run
+from cytonn_weekly.equities import weekly as eq_weekly
 from cytonn_weekly.periodic import (
     company_updates as p_cu,
     digital_payments as p_dp,
@@ -36,7 +37,7 @@ def db(tmp_path):
 
 @pytest.fixture
 def client(db, monkeypatch):
-    monkeypatch.setattr(eq_run, "build_equities_review", lambda: sh.equities_review())
+    monkeypatch.setattr(eq_weekly, "build_equities_weekly_review", lambda: sh.equities_review())
     monkeypatch.setattr(re_run, "build_real_estate_review", lambda: sh.real_estate_review())
     for module, name, builder in [
         (p_gm, "build_global_markets_review", ph.global_markets_review),
@@ -71,9 +72,13 @@ def approve(client, run_id):
 
 def test_the_overview_defaults_to_the_weekly_report_as_before(client):
     body = overview(client).json()
-    assert body["report"] == {"type": "weekly", "title": "Weekly", "period": "", "kind": None,
-                              "published_as": "Cytonn Weekly #38.2026 (27 Sept 2026)"}
-    assert [s["slug"] for s in body["sections"]] == ["fixed_income", "equities", "digital_payments", "real_estate", "focus"]
+    report = body["report"]
+    assert {k: report[k] for k in ("type", "title", "period", "kind", "published_as")} == {
+        "type": "weekly", "title": "Weekly", "period": "", "kind": None,
+        "published_as": "Cytonn Weekly #38.2026 (27 Sept 2026)"}
+    assert report["week_ending"] is None and report["suggested_week_ending"]   # no week named; a Friday is suggested
+    assert [s["slug"] for s in body["sections"]] == ["company_updates", "fixed_income", "equities", "real_estate",
+                                                     "digital_payments", "focus"]
     assert [t["slug"] for t in body["report_types"]] == ["weekly", "quarterly", "half_year", "annual", "companion"]
     assert len(body["companion_kinds"]) == 4
     assert client.get("/api/report-types").json()["report_types"] == body["report_types"]
@@ -131,8 +136,7 @@ def test_quarterly_and_weekly_reviews_of_the_same_section_coexist(client, db):
     assert latest()["decision"] is None and latest(**Q3)["decision"] == "approved"
 
 
-def test_the_weekly_fixed_income_stays_blocked_while_the_quarterly_one_drafts(client):
-    assert client.post("/api/sections/fixed_income/draft").status_code == 409
+def test_the_quarterly_fixed_income_is_its_own_section(client):
     r = client.post("/api/sections/fixed_income/draft", json=Q3)
     assert r.status_code == 200
     sec = r.json()["section"]

@@ -12,7 +12,11 @@ import { MAX_TOPIC, topicLength } from "@/lib/topic";
 import type { AppConfig, Drafting, Overview, ReportChoice, Review, SectionSummary } from "@/lib/types";
 import { DevRibbon, Notice } from "./banners";
 import { isDraftingThis, useDraftingPoll, useLiveElapsed } from "./drafting";
+import { InputsPanel } from "./inputs-panel";
 import { Masthead } from "./masthead";
+
+/** The weekly sections worked out from the week's uploaded inputs. */
+const USES_INPUTS = ["fixed_income", "equities"];
 
 const EASE = [0.23, 1, 0.32, 1] as const;
 
@@ -74,6 +78,8 @@ export function StartScreen({
   report,
   saved,
   drafting: initialDrafting,
+  week,
+  onWeek,
   onOpen,
   onRecheck,
   onHome,
@@ -85,6 +91,10 @@ export function StartScreen({
   saved: Review | null;
   /** The draft running on the server when this screen was opened, if any. */
   drafting: Drafting | null;
+  /** Weekly only: the Friday the report week ends on (the period's, or the latest Friday). */
+  week: string | null;
+  /** Choose another report week; the report on screen changes with it. */
+  onWeek: (weekEnding: string) => void;
   onOpen: (review: Review) => void;
   onRecheck: () => Promise<void>;
   onHome: () => void;
@@ -177,7 +187,10 @@ export function StartScreen({
             : `Draft ${thisRun} section, check it, and review it here.`}
         </Masthead>
 
-        <div className="mx-auto w-full max-w-275 px-4 pt-8 pb-16 sm:px-6">
+        <div className="mx-auto w-full max-w-275 space-y-8 px-4 pt-8 pb-16 sm:px-6">
+          {report.type === "weekly" && week && USES_INPUTS.includes(section.slug) && (
+            <InputsPanel key={week} week={week} onWeek={onWeek} disabled={drafting} />
+          )}
           <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-12">
             <div className="space-y-6">
               <section aria-labelledby="flow-title">

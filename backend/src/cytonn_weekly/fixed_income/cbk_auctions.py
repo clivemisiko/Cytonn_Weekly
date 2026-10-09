@@ -1,9 +1,9 @@
 """CBK primary-auction results for Treasury bills and bonds (public, free).
 
-Free-standing: not wired into a Fixed Income weekly run, which waits on the KCB
-email samples (see kcb_email.py).  Once that run exists, these results are the
-independent second source for the auction figures the KCB emails report, which
-is exactly what the checker's ``extra_sources`` / sources-disagree path is for.
+Used by the weekly Fixed Income section (fixed_income/weekly.py) for the week's T-bond
+results, and by the Markets Reviews for the period's bond table.  The weekly T-bill
+figures come from the CBK Weekly Bulletin's Table 4 (weekly/cbk_bulletin.py), which
+prints this week's and the previous week's auctions side by side.
 
 Where the results live (checked 2026-10-02):
 

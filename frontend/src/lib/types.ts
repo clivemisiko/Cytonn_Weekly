@@ -2,7 +2,15 @@
 
 export type Status = "flagged" | "not_auto_verified" | "clean";
 export type Resolution = "accept" | "fix_needed" | null;
-export type ItemKind = "table_row" | "outlook_stat" | "highlight_claim" | "claim" | "unavailable_part" | "supplied_text";
+export type ItemKind =
+  | "table_row"
+  | "outlook_stat"
+  | "highlight_claim"
+  | "claim"
+  | "unavailable_part"
+  | "supplied_text"
+  | "computed_figure"
+  | "carried_text";
 
 // ---- Report types (report_types.py): which report a review belongs to ----
 
@@ -47,11 +55,22 @@ export interface Flag {
   sources: { source: string; value: unknown; normalized: unknown }[];
 }
 
+/** One input of a computed figure: its value, where it was read, and (if any) a second reading of it. */
+export interface FigureInput {
+  value: unknown;
+  origin: "source" | "analyst_input" | "ocr";
+  source: string;
+  second?: { value: unknown; source: string; origin?: string } | null;
+}
+
 export interface ClaimContext {
   text?: string;
   url?: string;
   title?: string;
   cited_text?: string;
+  /** Computed figures only: what the figure was worked out from. */
+  inputs?: Record<string, FigureInput>;
+  note?: string;
 }
 
 export interface ReviewItem {
@@ -141,8 +160,42 @@ export interface TableBlock {
   title: string;
   columns: TableColumn[];
   key_field: string;
-  rows: (Record<string, string> & { flagged: boolean; error: string | null })[];
+  /** `typed`: the row's figures match their source, but the source is a cell an analyst typed. */
+  rows: (Record<string, string> & { flagged: boolean; error: string | null; typed?: boolean })[];
   source: { name: string; url: string | null; as_of: string | null };
+  footnotes?: string[] | null;
+  notes?: string[] | null;
+}
+
+/** One figure of a computed paragraph, with what it was made from. */
+export interface ComputedFigure {
+  key: string;
+  label: string;
+  display: string;
+  note?: string;
+  inputs: Record<string, FigureInput>;
+}
+
+/** A paragraph the tool worked out from published figures; every figure in it is a review item. */
+export interface ComputedBlock {
+  numeral: string;
+  kind: "computed";
+  id: string;
+  title: string;
+  body_md: string;
+  figures: ComputedFigure[];
+  sources: { name: string; url?: string | null }[];
+  notes: string[];
+}
+
+/** Text copied from the previous issue: always flagged "carried forward, edit before approving". */
+export interface CarriedBlock {
+  numeral: string;
+  kind: "carried";
+  id: string;
+  title: string;
+  body_md: string;
+  carried_from: { issue_id: number | null; url: string | null; published: string | null };
 }
 
 export interface NarrativeBlock {
@@ -176,9 +229,11 @@ export interface SuppliedBlock {
   title: string;
   body_md: string;
   supplied_by: string;
+  /** Shown beside the text as context only (the NSE curve beside the analysts' bidding range). */
+  context?: string | null;
 }
 
-export type Block = TableBlock | NarrativeBlock | UnavailableBlock | SuppliedBlock;
+export type Block = TableBlock | NarrativeBlock | UnavailableBlock | SuppliedBlock | ComputedBlock | CarriedBlock;
 
 export interface NotCovered {
   section: string;
@@ -194,6 +249,8 @@ export interface NotCovered {
 export interface BlocksSection {
   week_start: string;
   week_end: string;
+  /** The weekly sections worked out from the week's inputs: the Friday the week ends on. */
+  week_ending?: string | null;
   /** Markets Reviews only: the period the section covers. */
   period_start?: string | null;
   period_end?: string | null;
@@ -212,6 +269,57 @@ export interface BlocksSection {
 }
 
 export const isBlocksSection = (s: Section | BlocksSection): s is BlocksSection => "blocks" in s;
+
+/** One stored weekly input: what was received and the date the API read from the file itself. */
+export interface InputFile {
+  stored_name: string;
+  read_date: string | null;
+  /** Whether the file's own date is this week's. */
+  matches: boolean;
+  note: string;
+  size: number;
+  original_name: string;
+  received_at: string;
+  fetched_from: string | null;
+}
+
+export interface InputSlot {
+  slug: string;
+  title: string;
+  kind: "pdf" | "xlsx";
+  optional: boolean;
+  /** One file per trading day (the KCB IB daily reports). */
+  per_day: boolean;
+  /** The API can fetch it itself (the CBK Weekly Bulletin). */
+  fetchable: boolean;
+  help: string;
+  received: boolean;
+  complete: boolean;
+  file?: InputFile | null;
+  days?: { date: string; weekday: string; received: boolean; file: InputFile | null }[];
+}
+
+/** Whether the week's report can be exported, with each weekly section's state. */
+export interface ExportStatus {
+  period: string;
+  ready: boolean;
+  sections: { slug: string; title: string; state: "approved" | "in_review" | "rejected" | "not_drafted"; run_id: number | null }[];
+  is_dev_draft: boolean;
+  dev_sections: string[];
+  dev_mode_label: string | null;
+  can_send: boolean;
+  file_name: string;
+}
+
+/** "This week's inputs" for one report week. */
+export interface WeeklyInputs {
+  week_ending: string;
+  monday: string;
+  previous_friday: string;
+  slots: InputSlot[];
+  notes: { bidding_range?: string; previous_issue?: string };
+  max_bytes: number;
+}
 
 export interface StatusCounts {
   total: number;
@@ -237,6 +345,8 @@ export interface Review {
   progress: { total: number; resolved: number; unresolved: number; fix_needed: number };
   counts: Record<Status, StatusCounts>;
   section: Section | BlocksSection;
+  /** The section's summary for the CMS, composed from its own lead paragraphs ("" when it has none). */
+  summary?: string;
   review_items: ReviewItem[];
 }
 
@@ -354,7 +464,16 @@ export interface Overview {
   today: string;
   drafting: Drafting | null;
   /** The report these sections belong to, as the API normalized it. */
-  report: { type: ReportType; title: string; period: string; kind: string | null; published_as: string };
+  report: {
+    type: ReportType;
+    title: string;
+    period: string;
+    kind: string | null;
+    published_as: string;
+    /** Weekly only: the Friday the period names ("Week ending 2026-10-02"), and the Friday to suggest. */
+    week_ending?: string | null;
+    suggested_week_ending?: string;
+  };
   report_types: ReportTypeInfo[];
   companion_kinds: CompanionKind[];
   sections: SectionSummary[];

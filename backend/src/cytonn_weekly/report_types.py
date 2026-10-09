@@ -19,6 +19,11 @@ Q3'2026 Fixed Income review and a weekly Fixed Income review are different revie
 Labels are stored normalized, with a straight apostrophe: "Q3'2026", "H1'2026",
 "FY'2025", "Weekly #38.2026".  A weekly review may have no label (every review saved
 before report types existed has none); every other type requires one.
+
+A weekly report may also be labelled by the Friday its week ends on, "Week ending
+2026-10-02": that is the label the weekly inputs (weekly/inputs.py) are filed under, so
+the sections drafted from one week's uploads share one period and can be exported
+together.  ``week_ending_of`` reads the date back.
 """
 
 from __future__ import annotations
@@ -72,6 +77,8 @@ class PeriodError(ValueError):
 
 _APOS = r"\s*['’‘`]?\s*"
 _WEEKLY_RE = re.compile(r"^(?:weekly)?\s*#?\s*(\d{1,2})\s*[./]\s*(\d{4})$", re.I)
+_WEEK_ENDING_RE = re.compile(r"^(?:week\s+ending|w/e)?\s*(\d{4}-\d{2}-\d{2})$", re.I)
+WEEK_ENDING_PREFIX = "Week ending "
 _QUARTER_RE = re.compile(r"^Q\s*([1-4])" + _APOS + r"(\d{4})$", re.I)
 _HALF_RE = re.compile(r"^H\s*([12])" + _APOS + r"(\d{4})$", re.I)
 _ANNUAL_RE = re.compile(r"^(?:FY" + _APOS + r")?(\d{4})$", re.I)
@@ -90,6 +97,14 @@ def normalize_period(report_type: str, period: Optional[str]) -> str:
         if spec.period_required:
             raise PeriodError(f"the {spec.title} needs a period, e.g. {spec.period_hint}")
         return ""
+    if report_type == WEEKLY and _WEEK_ENDING_RE.match(raw):
+        try:
+            day = date.fromisoformat(_WEEK_ENDING_RE.match(raw).group(1))
+        except ValueError:
+            raise PeriodError(f"{raw!r} is not a date; write the week as Week ending 2026-10-02")
+        if day.weekday() != 4:
+            raise PeriodError(f"{day.isoformat()} is a {day.strftime('%A')}; a weekly report's week ends on a Friday")
+        return f"{WEEK_ENDING_PREFIX}{day.isoformat()}"
     if report_type in (WEEKLY, COMPANION):
         m = _WEEKLY_RE.match(raw)
         if not m or not 1 <= int(m.group(1)) <= 53:
@@ -116,6 +131,16 @@ def normalize_period(report_type: str, period: Optional[str]) -> str:
     if not m:
         raise PeriodError(f"{raw!r} is not a year; write it as {spec.period_hint}")
     return f"FY'{m.group(1)}"
+
+
+def week_ending_of(period: str) -> Optional[date]:
+    """The Friday a "Week ending 2026-10-02" label names; None for any other label."""
+    if not (period or "").startswith(WEEK_ENDING_PREFIX):
+        return None
+    try:
+        return date.fromisoformat(period[len(WEEK_ENDING_PREFIX):])
+    except ValueError:
+        return None
 
 
 def period_window(report_type: str, period: str) -> Optional[tuple[date, date]]:

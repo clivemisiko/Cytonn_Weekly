@@ -59,3 +59,9 @@ test-results/
 Thumbs.db
 
 screenshots/
+
+# Confidential inputs: the analysts' workbooks and KCB IB's reports.  "sample data/" holds the
+# samples; uploaded weekly inputs, OCR readings and exported reports are kept under the data
+# directory (CYTONN_DATA_DIR, backend/data by default).  None of it is ever committed.
+sample data/
+backend/data/

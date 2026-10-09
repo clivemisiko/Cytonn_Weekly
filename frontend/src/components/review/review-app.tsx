@@ -16,7 +16,7 @@ type Phase =
   | { name: "booting" }
   | { name: "unreachable"; message: string }
   | { name: "overview"; config: AppConfig; overview: Overview }
-  | { name: "start"; config: AppConfig; section: SectionSummary; saved: Review | null; drafting: Drafting | null }
+  | { name: "start"; config: AppConfig; section: SectionSummary; saved: Review | null; drafting: Drafting | null; week: string | null }
   | { name: "review"; review: Review };
 
 const EASE = [0.23, 1, 0.32, 1] as const;
@@ -140,7 +140,9 @@ export function ReviewApp() {
       if (!section) return { name: "overview", config, overview };
       const run = section.latest;
       const saved = run && (run.current ?? run.this_week) ? await api.getReview(run.run_id) : null;
-      return { name: "start", config, section, saved, drafting: overview.drafting };
+      // The weekly report's week: the Friday its period names, else the latest Friday (what an unlabelled draft uses).
+      const week = overview.report.type === "weekly" ? (overview.report.week_ending ?? overview.report.suggested_week_ending ?? null) : null;
+      return { name: "start", config, section, saved, drafting: overview.drafting, week };
     } catch (err) {
       return { name: "unreachable", message: messageOf(err) };
     }
@@ -211,6 +213,18 @@ export function ReviewApp() {
     [phase, fetchStart],
   );
 
+  /** On a start screen, switch the weekly report to the week ending on another Friday and show that week's section. */
+  const chooseWeek = useCallback(
+    async (slug: string, weekEnding: string) => {
+      const next: ReportChoice = { type: "weekly", period: api.weekPeriod(weekEnding), kind: null };
+      reportRef.current = next;
+      setReport(next);
+      reportToUrl(next);
+      setPhase(await fetchStart(slug));
+    },
+    [fetchStart],
+  );
+
   /** A polled overview replaces the shown one in place (same phase, so no screen transition). */
   const refreshOverview = useCallback(
     (overview: Overview) => setPhase((p) => (p.name === "overview" ? { ...p, overview } : p)),
@@ -251,6 +265,8 @@ export function ReviewApp() {
               report={report}
               saved={phase.saved}
               drafting={phase.drafting}
+              week={phase.week}
+              onWeek={(weekEnding) => void chooseWeek(phase.section.slug, weekEnding)}
               onOpen={(review) => setPhase({ name: "review", review })}
               onRecheck={async () => setPhase(await fetchStart(phase.section.slug))}
               onHome={home}

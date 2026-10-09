@@ -1,8 +1,10 @@
-import type { AppConfig, Decision, Overview, ReportChoice, Resolution, Review, Run } from "./types";
+import type { AppConfig, Decision, ExportStatus, Overview, ReportChoice, Resolution, Review, Run, WeeklyInputs } from "./types";
 
 export const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000").replace(/\/$/, "");
 
 const READ_TIMEOUT_MS = 30_000;
+/** An upload is read and checked by the API before it answers (a workbook takes a few seconds). */
+const UPLOAD_TIMEOUT_MS = 180_000;
 
 /** `status` is null when no HTTP response arrived (network down, API not running, timeout). */
 export class ApiError extends Error {
@@ -116,3 +118,55 @@ export const acceptClean = (runId: number) =>
 
 export const decide = (runId: number, decision: Decision) =>
   request<Review>(`/api/reviews/${runId}/decide`, { method: "POST", body: JSON.stringify({ decision }) });
+
+/** "Week ending 2026-10-02": the weekly report period that names its week. */
+export const weekPeriod = (weekEnding: string) => `Week ending ${weekEnding}`;
+
+const inputsPath = (weekEnding: string) => `/api/inputs/weekly/${encodeURIComponent(weekEnding)}`;
+
+/** What has been received for one report week. */
+export const getInputs = (weekEnding: string) => request<WeeklyInputs>(inputsPath(weekEnding));
+
+/** Upload one input: the file is the request body. The API checks and reads it; a refusal carries its reason. */
+export const uploadInput = (weekEnding: string, slot: string, file: File) =>
+  request<WeeklyInputs>(
+    `${inputsPath(weekEnding)}/${encodeURIComponent(slot)}?filename=${encodeURIComponent(file.name.slice(0, 200))}`,
+    { method: "PUT", body: file, headers: { "Content-Type": "application/octet-stream" } },
+    UPLOAD_TIMEOUT_MS,
+  );
+
+export const removeInput = (weekEnding: string, storedName: string) =>
+  request<WeeklyInputs>(`${inputsPath(weekEnding)}/${encodeURIComponent(storedName)}`, { method: "DELETE" });
+
+/** Have the API fetch the week's CBK Weekly Bulletin from centralbank.go.ke. */
+export const fetchBulletin = (weekEnding: string) =>
+  request<WeeklyInputs>(`${inputsPath(weekEnding)}/cbk_bulletin/fetch`, { method: "POST" }, UPLOAD_TIMEOUT_MS);
+
+export const saveInputNotes = (weekEnding: string, notes: { bidding_range?: string; previous_issue?: string }) =>
+  request<WeeklyInputs>(`${inputsPath(weekEnding)}/notes`, { method: "PUT", body: JSON.stringify(notes) });
+
+const exportPath = (period: string) => `/api/export/weekly${period ? `?period=${encodeURIComponent(period)}` : ""}`;
+
+/** Whether the week's report can be exported: every weekly section's state. */
+export const getExportStatus = (period: string) => request<ExportStatus>(exportPath(period));
+
+/** The approved weekly report as a Word file. The API refuses (409, naming each section) unless all are approved. */
+export const exportWeekly = async (period: string): Promise<{ blob: Blob; name: string }> => {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${exportPath(period)}`, { method: "POST", cache: "no-store" });
+  } catch {
+    throw new ApiError(`Could not reach the review API at ${API_BASE}. Is it running?`, null);
+  }
+  if (!res.ok) {
+    let body: unknown = null;
+    try {
+      body = await res.json();
+    } catch {
+      /* not JSON: keep the status text */
+    }
+    throw new ApiError(detailText(body, `${res.status} ${res.statusText}`), res.status);
+  }
+  const named = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "");
+  return { blob: await res.blob(), name: named ? named[1] : "Cytonn-Weekly.docx" };
+};

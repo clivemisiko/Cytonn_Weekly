@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 from api.main import create_app
 from cytonn_weekly.digital_payments import review_store
 from cytonn_weekly.equities import review_run as eq_run
+from cytonn_weekly.equities import weekly as eq_weekly
 from cytonn_weekly.real_estate import review_run as re_run
 from tests import section_helpers as sh
 
@@ -41,7 +42,7 @@ def clock():
 
 @pytest.fixture
 def app(db, clock, monkeypatch):
-    monkeypatch.setattr(eq_run, "build_equities_review", lambda: sh.equities_review())
+    monkeypatch.setattr(eq_weekly, "build_equities_weekly_review", lambda: sh.equities_review())
     monkeypatch.setattr(re_run, "build_real_estate_review", lambda: sh.real_estate_review())
     return create_app(db_path=db, load_dotenv=False, draft_stale_after=STALE_AFTER, clock=clock)
 
@@ -80,10 +81,10 @@ def test_a_draft_that_crashes_mid_run_frees_the_slot(client, db, monkeypatch):
     def crash():
         raise RuntimeError("afx went away mid-fetch")
 
-    monkeypatch.setattr(eq_run, "build_equities_review", crash)
+    monkeypatch.setattr(eq_weekly, "build_equities_weekly_review", crash)
     assert client.post("/api/sections/equities/draft").status_code == 502
     assert client.get("/api/sections").json()["drafting"] is None
-    monkeypatch.setattr(eq_run, "build_equities_review", lambda: sh.equities_review())
+    monkeypatch.setattr(eq_weekly, "build_equities_weekly_review", lambda: sh.equities_review())
     assert client.post("/api/sections/equities/draft").status_code == 200
 
 
@@ -106,7 +107,7 @@ def test_a_draft_killed_by_a_non_exception_error_still_frees_the_slot(app, monke
 
 
 def test_a_server_restart_mid_draft_leaves_no_slot_behind(app, db, clock, monkeypatch):
-    entered, release = hang(monkeypatch, eq_run, "build_equities_review")
+    entered, release = hang(monkeypatch, eq_weekly, "build_equities_weekly_review")
     t, _ = start_in_background(app, "/api/sections/equities/draft")
     try:
         assert entered.wait(timeout=10)
@@ -120,7 +121,7 @@ def test_a_server_restart_mid_draft_leaves_no_slot_behind(app, db, clock, monkey
 
 
 def test_a_running_draft_is_shown_on_the_overview_and_named_in_the_refusal(app, client, clock, monkeypatch):
-    entered, release = hang(monkeypatch, eq_run, "build_equities_review")
+    entered, release = hang(monkeypatch, eq_weekly, "build_equities_weekly_review")
     t, first = start_in_background(app, "/api/sections/equities/draft")
     try:
         assert entered.wait(timeout=10)
@@ -141,7 +142,7 @@ def test_a_running_draft_is_shown_on_the_overview_and_named_in_the_refusal(app, 
 
 
 def test_a_hung_draft_goes_stale_is_replaced_and_its_late_result_is_discarded(app, client, db, clock, monkeypatch):
-    entered, release = hang(monkeypatch, eq_run, "build_equities_review")
+    entered, release = hang(monkeypatch, eq_weekly, "build_equities_weekly_review")
     t, hung = start_in_background(app, "/api/sections/equities/draft")
     try:
         assert entered.wait(timeout=10)
@@ -165,7 +166,7 @@ def test_a_hung_draft_goes_stale_is_replaced_and_its_late_result_is_discarded(ap
 
 def test_a_late_stuck_run_cannot_release_its_replacements_claim(app, client, clock, monkeypatch):
     """Stuck run A is replaced by B; A finishing while B still runs must not let C start beside B."""
-    a_in, a_go = hang(monkeypatch, eq_run, "build_equities_review")
+    a_in, a_go = hang(monkeypatch, eq_weekly, "build_equities_weekly_review")
     ta, ra = start_in_background(app, "/api/sections/equities/draft")
     assert a_in.wait(timeout=10)
     clock.t += STALE_AFTER
@@ -191,7 +192,7 @@ def test_a_draft_without_an_anthropic_key_is_refused_before_it_starts(client, mo
     monkeypatch.delenv("ANTHROPIC_API_KEY")
     monkeypatch.delenv("CYTONN_LLM_PROVIDER", raising=False)
     called = []
-    monkeypatch.setattr(eq_run, "build_equities_review", lambda: called.append(1))
+    monkeypatch.setattr(eq_weekly, "build_equities_weekly_review", lambda: called.append(1))
     r = client.post("/api/sections/equities/draft")
     assert r.status_code == 409 and "ANTHROPIC_API_KEY" in r.json()["detail"]
     assert called == [] and client.get("/api/sections").json()["drafting"] is None  # nothing fetched, slot never taken

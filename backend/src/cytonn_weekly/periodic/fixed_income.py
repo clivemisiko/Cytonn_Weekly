@@ -63,7 +63,7 @@ from cytonn_weekly.common.formatting import NUMBER, PCT, TEXT
 from cytonn_weekly.common.review import build_review, check_section, narrative_block, table_block
 from cytonn_weekly.common.run_events import SOURCE_FAILED, Observer, emit, fetch_source, report_blocks
 from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview
-from cytonn_weekly.fixed_income import cbk_auctions, kcb_email, mmf
+from cytonn_weekly.fixed_income import cbk_auctions, mmf
 from cytonn_weekly.narrative.base import NarrativeProvider
 from cytonn_weekly.periodic.common import PeriodContext, Stub, compose, draft_period, period_brief
 from cytonn_weekly.report_types import ANNUAL, HALF_YEAR, QUARTERLY, period_window
@@ -151,15 +151,23 @@ SECONDARY_BLOCKED_REASON = (
     "2026-10-06)."
 )
 SECONDARY_UNBLOCK = (
-    "The analysts naming where the turnover and yield curve figures come from (the NSE publication, or the KCB "
-    "daily email, which carries secondary-market activity), then a parser written against a real sample."
+    "The analysts naming where the turnover and yield curve figures come from (which NSE publication), then a "
+    "parser written against a real sample.  KCB IB's trading reports cover NSE equities only, so they are not it."
 )
 
+# The weekly report works these out (fixed_income/weekly.py: the CBK Weekly Bulletin's Table 3 and the fixed
+# income workbook's daily interbank rates).  The Markets Review needs the same over a quarter, half or year,
+# which means the period's averages against the same period a year earlier: not built.
 LIQUIDITY_BLOCKED_REASON = (
-    "Liquidity (the interbank rate and volumes) and the rest of the week's Fixed Income paragraphs are "
-    "drafted from KCB's daily email in the weekly report. " + kcb_email.BLOCKED_REASON
+    "Liquidity over the period (the average interbank rate and volumes against the same period a year earlier) and the "
+    "week's own Fixed Income paragraphs are not carried into the Markets Review yet. The weekly report works the week's "
+    "paragraphs out from the CBK Weekly Bulletin and the fixed income workbook; the period averages have not been built "
+    "or checked against a published review."
 )
-LIQUIDITY_UNBLOCK = kcb_email.UNBLOCK
+LIQUIDITY_UNBLOCK = (
+    "Building the period averages from the fixed income workbook's 'Liquidity Indicators' sheet, checked against a "
+    "published review, and carrying the weekly Fixed Income section's paragraphs into the review."
+)
 
 EUROBONDS_BLOCKED_REASON = (
     "The Kenya Eurobonds Performance table gives each issue's yield over time. Its source line reads \"Central "
@@ -178,12 +186,12 @@ def fetch_period_tbill_summary(ctx: PeriodContext) -> Any:
 
 
 def fetch_secondary_market(ctx: PeriodContext) -> Any:
-    # TODO: needs the NSE (or KCB) secondary-market source identified and a real sample (SECONDARY_UNBLOCK).
+    # TODO: needs the NSE secondary-market source identified and a real sample (SECONDARY_UNBLOCK).
     raise NotImplementedError(SECONDARY_BLOCKED_REASON)
 
 
 def fetch_liquidity(ctx: PeriodContext) -> Any:
-    # TODO: waits on the KCB email extraction (fixed_income/kcb_email.py).
+    # TODO: the period's averages from the workbook's daily interbank rows (LIQUIDITY_UNBLOCK).
     raise NotImplementedError(LIQUIDITY_BLOCKED_REASON)
 
 

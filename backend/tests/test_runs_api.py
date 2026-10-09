@@ -18,6 +18,7 @@ from api.runs import RunRegistry
 from cytonn_weekly.common import run_events as ev
 from cytonn_weekly.digital_payments import review_run, review_store
 from cytonn_weekly.equities import review_run as eq_run
+from cytonn_weekly.equities import weekly as eq_weekly
 from cytonn_weekly.focus import review_run as focus_run
 from cytonn_weekly.periodic import (
     digital_payments as p_dp,
@@ -84,7 +85,7 @@ def clock():
 @pytest.fixture
 def app(db, clock, monkeypatch):
     dp_pipeline(monkeypatch)
-    monkeypatch.setattr(eq_run, "build_equities_review", lambda on_event=None: sh.equities_review(on_event=on_event))
+    monkeypatch.setattr(eq_weekly, "build_equities_weekly_review", lambda on_event=None: sh.equities_review(on_event=on_event))
     monkeypatch.setattr(re_run, "build_real_estate_review", lambda on_event=None: sh.real_estate_review(on_event=on_event))
     monkeypatch.setattr(focus_run, "build_focus_review",
                         lambda topic, on_event=None: sh.focus_review(topic=topic, on_event=on_event))
@@ -211,7 +212,7 @@ def test_a_source_that_fails_outright_fails_the_run_as_the_pipeline_does(client,
     def down():
         raise RuntimeError("afx listing page did not parse")
 
-    monkeypatch.setattr(eq_run, "build_equities_review", lambda on_event=None: REAL_EQ(
+    monkeypatch.setattr(eq_weekly, "build_equities_weekly_review", lambda on_event=None: REAL_EQ(
         provider=sh.FakeNarrativeProvider(), today=sh.TODAY, fetch_market=down, on_event=on_event))
     run = run_to_end(client, section="equities")
     assert kinds(run) == ["run_started", "source_started", "source_failed", "run_failed"]
@@ -228,7 +229,7 @@ def test_afx_down_still_finishes_the_run_and_saves_a_review_without_its_tables(c
     def down():
         raise ConnectionError("afx.kwayisi.org did not answer")
 
-    monkeypatch.setattr(eq_run, "build_equities_review", lambda on_event=None: REAL_EQ(
+    monkeypatch.setattr(eq_weekly, "build_equities_weekly_review", lambda on_event=None: REAL_EQ(
         provider=sh.FakeNarrativeProvider(), today=sh.TODAY, fetch_market=down, on_event=on_event))
     run = run_to_end(client, section="equities")
     assert kinds(run)[:3] == ["run_started", "source_started", "source_failed"]
@@ -320,7 +321,9 @@ def test_a_run_is_refused_for_the_reasons_a_draft_is(client, monkeypatch):
     cases = [
         ({"section": "no_such_section"}, "/api/sections/no_such_section/draft", None, 404),
         ({"section": "executive_summary"}, "/api/sections/executive_summary/draft", None, 404),  # not in the weekly
-        ({"section": "fixed_income"}, "/api/sections/fixed_income/draft", None, 409),  # unavailable (KCB email)
+        ({"section": "reits.section_1", "report_type": "companion", "period": "#33.2026", "kind": "reits"},
+         "/api/sections/reits.section_1/draft", {"report_type": "companion", "period": "#33.2026", "kind": "reits"},
+         409),  # unavailable (a companion report's sections are stubs)
         ({"section": "focus"}, "/api/sections/focus/draft", None, 422),  # no topic
         ({"section": "company_updates", **Q3}, "/api/sections/company_updates/draft", Q3, 422),  # no text
         ({"section": "equities", "report_type": "companion", "kind": "nope"}, "/api/sections/equities/draft",
@@ -407,7 +410,8 @@ def test_runs_are_in_memory_only_so_a_restart_forgets_them(app, client, db, cloc
     assert restarted.get(f"/api/runs/{run['run_id']}").status_code == 404
     # the review it saved is in the database, so nothing that matters is lost
     assert restarted.get(f"/api/reviews/{run['review_id']}").status_code == 200
-    assert restarted.get("/api/sections").json()["sections"][2]["latest"]["run_id"] == run["review_id"]
+    saved = next(s for s in restarted.get("/api/sections").json()["sections"] if s["slug"] == "digital_payments")
+    assert saved["latest"]["run_id"] == run["review_id"]
 
 
 def test_the_registry_keeps_only_recent_ended_runs_and_never_drops_a_running_one():

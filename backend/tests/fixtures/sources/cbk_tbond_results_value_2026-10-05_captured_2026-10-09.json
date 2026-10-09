@@ -1,0 +1,66 @@
+{
+ "_note": "CBK's Treasury bond auction results with a value date of 3 to 9 October 2026, as cbk_auctions.fetch_period_tbonds returned them from centralbank.go.ke on 2026-10-09 (public figures).",
+ "listing_url": "https://www.centralbank.go.ke/bills-bonds/treasury-bonds/",
+ "start": "2026-10-03",
+ "end": "2026-10-09",
+ "auctions": [
+  {
+   "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/1036982453_SWITCH RESULTS FXD1-2018-015 DATED 07-10-2026.pdf",
+   "kind": "switch",
+   "value_date": "2026-10-07",
+   "auction_date": "2026-10-07",
+   "total_offered_kes_bn": 10.0,
+   "total_subscription_pct": null,
+   "rows": [
+    {
+     "issue": "FXD1/2018/015",
+     "tenor": "Fifteen (6.6 years to maturity)",
+     "bids_kes_bn": 9.08058,
+     "subscription_pct": 90.8058,
+     "accepted_kes_bn": 8.96383,
+     "avg_rate_pct": 12.6112,
+     "coupon_pct": 12.65,
+     "years_to_maturity": 6.6,
+     "acceptance_pct": 98.71428917536105,
+     "error": null
+    }
+   ],
+   "error": null
+  },
+  {
+   "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/250350777_RESULTS FOR FXD3-2019-015 AND  FXD1-2019-020 DATED 05-10-2026.pdf",
+   "kind": "primary",
+   "value_date": "2026-10-05",
+   "auction_date": "2026-10-05",
+   "total_offered_kes_bn": 50.0,
+   "total_subscription_pct": 161.12474,
+   "rows": [
+    {
+     "issue": "FXD3/2019/015",
+     "tenor": "Fifteen (7.8 years to maturity)",
+     "bids_kes_bn": 34.55926,
+     "subscription_pct": 69.11852,
+     "accepted_kes_bn": 28.6025,
+     "avg_rate_pct": 12.7338,
+     "coupon_pct": 12.34,
+     "years_to_maturity": 7.8,
+     "acceptance_pct": 82.76363556395594,
+     "error": null
+    },
+    {
+     "issue": "FXD1/2019/020",
+     "tenor": "Twenty (12.5 years to maturity)",
+     "bids_kes_bn": 46.00311,
+     "subscription_pct": 92.00622,
+     "accepted_kes_bn": 28.90251,
+     "avg_rate_pct": 13.6016,
+     "coupon_pct": 12.873,
+     "years_to_maturity": 12.5,
+     "acceptance_pct": 62.827295806740025,
+     "error": null
+    }
+   ],
+   "error": null
+  }
+ ]
+}

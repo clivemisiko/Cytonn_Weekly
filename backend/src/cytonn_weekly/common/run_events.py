@@ -147,11 +147,11 @@ def report_failed_rows(on_event: Optional[Observer], rows: Iterable[dict[str, An
 
 
 def report_blocks(on_event: Optional[Observer], content: dict[str, Any]) -> None:
-    """Report a block-shaped section's tables (built) and unavailable parts (skipped), in report order."""
+    """Report a block-shaped section's tables and computed paragraphs (built) and unavailable parts (skipped), in report order."""
     if on_event is None:
         return
     for b in content.get("blocks", []):
-        if b["kind"] == "table":
+        if b["kind"] in ("table", "computed"):
             emit(on_event, PIECE_FINISHED, b["title"])
         elif b["kind"] == "unavailable":
             emit(on_event, PART_SKIPPED, b["title"], detail=b["reason"])
