@@ -30,6 +30,7 @@ from cytonn_weekly.digital_payments.fetcher import format_table_rows
 from cytonn_weekly.digital_payments.highlights import N_HIGHLIGHTS
 from cytonn_weekly.report_sections import section_slug, spec_for
 from cytonn_weekly.report_types import TYPES, WEEKLY
+from cytonn_weekly.weekly.summaries import section_summary
 
 LOCAL_PREFIX = "local:"
 DEV_MODE_LABEL = "DEV MODE DRAFT (local model): NOT FOR PUBLICATION OR CIRCULATION"
@@ -107,13 +108,17 @@ def _serialize_section(review: CoordinatorReview) -> dict[str, Any]:
     }
 
 
-_TABLE_FIELDS = ("numeral", "kind", "id", "title", "columns", "key_field", "rows", "source")
+_TABLE_FIELDS = ("numeral", "kind", "id", "title", "columns", "key_field", "rows", "source", "footnotes", "notes")
+# A paragraph the tool worked out, with each figure and what it was made from (common/computed.py).
+_COMPUTED_FIELDS = ("numeral", "kind", "id", "title", "body_md", "figures", "sources", "notes")
+# Text copied from the previous issue, with where it came from.
+_CARRIED_FIELDS = ("numeral", "kind", "id", "title", "body_md", "carried_from")
 _NARRATIVE_FIELDS = ("numeral", "kind", "id", "topic", "headline", "body_md", "claims", "warnings",
                      "search_scope", "preferred_domains", "drafted_by",
                      # Executive Summary only: which approved section and run the piece was carried from.
                      "source_section", "source_run_id", "source_headline")
 _UNAVAILABLE_FIELDS = ("numeral", "kind", "id", "title", "reason", "unblock")
-_SUPPLIED_FIELDS = ("numeral", "kind", "id", "title", "body_md", "supplied_by")
+_SUPPLIED_FIELDS = ("numeral", "kind", "id", "title", "body_md", "supplied_by", "context")
 
 
 def _flagged_rows(review: CoordinatorReview) -> set[str]:
@@ -133,9 +138,15 @@ def _serialize_blocks(review: CoordinatorReview) -> dict[str, Any]:
             errors = {r[key]: r.get("error") for r in b.get("source_rows", [])}
             out["columns"] = [{"key": c["key"], "label": c["label"], "numeric": c.get("fmt", "text") != "text"}
                               for c in b["columns"]]
-            out["rows"] = [{**r, "flagged": f"{b['id']}/{r[key]}" in flagged, "error": errors.get(r[key])}
+            typed = {r[key] for r in b.get("source_rows", []) if (r.get("_origin") or b.get("row_origin")) == "analyst_input"}
+            out["rows"] = [{**r, "flagged": f"{b['id']}/{r[key]}" in flagged, "error": errors.get(r[key]),
+                            "typed": r[key] in typed}
                            for r in b.get("rows", [])]
             blocks.append(out)
+        elif b["kind"] == "computed":
+            blocks.append({k: b.get(k) for k in _COMPUTED_FIELDS})
+        elif b["kind"] == "carried":
+            blocks.append({k: b.get(k) for k in _CARRIED_FIELDS})
         elif b["kind"] == "narrative":
             blocks.append({k: b.get(k) for k in _NARRATIVE_FIELDS})
         elif b["kind"] == "supplied":
@@ -145,6 +156,7 @@ def _serialize_blocks(review: CoordinatorReview) -> dict[str, Any]:
     return {
         "week_start": sec.get("week_start"),
         "week_end": sec.get("week_end"),
+        "week_ending": sec.get("week_ending"),
         "period_start": sec.get("period_start"),
         "period_end": sec.get("period_end"),
         "topic": sec.get("topic"),
@@ -202,5 +214,7 @@ def serialize_review(review: CoordinatorReview) -> dict[str, Any]:
         # The weekly Digital Payments content has its own shape; every other section, the
         # Markets Reviews' Digital Payments included, is made of blocks.
         "section": _serialize_blocks(review) if "blocks" in review.section else _serialize_section(review),
+        # The section's summary for the CMS (composed, never drafted): weekly/summaries.py.
+        "summary": section_summary(review.section),
         "review_items": [{"index": n, **item.to_dict()} for n, item in enumerate(items)],
     })

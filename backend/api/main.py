@@ -13,6 +13,10 @@ for any of them.  /api/report-types lists the types and the companion report kin
 (common/run_events.py) and /api/runs/{run_id} returns the same as plain JSON.  The runs
 live in memory only (api/runs.py).  The synchronous draft routes above are unchanged.
 
+/api/inputs/weekly/{week_ending} is "This week's inputs": the files a coordinator uploads
+for one report week (cytonn_weekly/weekly/inputs.py).  An upload is sent as the request
+body itself (no multipart form), checked, and kept under the data directory.
+
 Run from backend/ (the package is installed editable):
 
     uvicorn api.main:app --port 8000
@@ -47,9 +51,10 @@ from datetime import date
 from pathlib import Path
 from typing import Callable, Literal, Optional, Union
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from cytonn_weekly.common.run_events import RUN_STARTED, describe, review_counts
@@ -78,7 +83,12 @@ from cytonn_weekly.report_types import (
     PeriodError,
     normalize_period,
     suggested_period,
+    week_ending_of,
 )
+from cytonn_weekly.weekly import cbk_bulletin
+from cytonn_weekly.weekly import export as weekly_export
+from cytonn_weekly.weekly import inputs as weekly_inputs
+from cytonn_weekly.weekly.week import NotAFriday, Week, latest_friday
 
 from api.draft_slot import DRAFT_STALE_AFTER_SECONDS, Claim, DraftBusy, DraftSlot, busy_message
 from api.runs import SSE_KEEPALIVE_SECONDS, Run, RunAlreadyRunning, RunRegistry
@@ -167,6 +177,13 @@ class DraftRequest(BaseModel):
     kind: Optional[str] = Field(default=None, max_length=40)
 
 
+class InputNotes(BaseModel):
+    """What the coordinator types beside the week's files.  A field left out is kept; blank clears it."""
+
+    bidding_range: Optional[str] = Field(default=None, max_length=weekly_inputs.MAX_NOTE)
+    previous_issue: Optional[str] = Field(default=None, max_length=weekly_inputs.MAX_NOTE)
+
+
 class RunRequest(DraftRequest):
     """POST /api/runs: the draft route's inputs, with the section in the body.
 
@@ -197,12 +214,20 @@ def create_app(
     draft_stale_after: float = DRAFT_STALE_AFTER_SECONDS,
     clock: Callable[[], float] = time.time,
     run_keepalive: float = SSE_KEEPALIVE_SECONDS,
+    inputs_root: Optional[Union[Path, str]] = None,
+    fetch_bulletin: Callable[[date], tuple[bytes, str]] = cbk_bulletin.fetch_bulletin,
+    export_root: Optional[Union[Path, str]] = None,
 ) -> FastAPI:
     """Build the app.  ``db_path`` defaults to data/app.db; tests pass a temp file.
 
     ``draft_stale_after`` and ``clock`` set when a running draft counts as stuck
     (api/draft_slot.py); tests pass a fake clock instead of waiting an hour.  ``run_keepalive``
     is how often an idle run stream sends its keepalive comment (api/runs.py).
+
+    ``inputs_root`` is where the weekly inputs are kept (default: under the data directory;
+    tests pass a temp folder) and ``fetch_bulletin`` how the CBK Weekly Bulletin is fetched
+    (tests pass a fake, so none reaches CBK).  ``export_root`` is where exported weekly reports
+    are written (default: under the data directory).
 
     ``load_dotenv`` loads the repo-root .env first, before anything here reads os.environ,
     as every entrypoint does: CYTONN_WEB_ORIGINS is read right below, and the pipeline
@@ -215,7 +240,9 @@ def create_app(
 
     app = FastAPI(title="Cytonn Weekly: coordinator review")
     origins = [o.strip() for o in os.environ.get(CORS_ENV_VAR, DEFAULT_WEB_ORIGINS).split(",") if o.strip()]
-    app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["*"], allow_headers=["*"])
+    # Content-Disposition is exposed so the web app can read the exported report's file name.
+    app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["*"], allow_headers=["*"],
+                       expose_headers=["Content-Disposition"])
 
     write_lock = threading.Lock()
     draft_slot = DraftSlot(stale_after=draft_stale_after, clock=clock)
@@ -326,7 +353,8 @@ def create_app(
                 raise HTTPException(422, str(exc))
         if spec.needs_text and not (body.text and body.text.strip()):
             raise HTTPException(422, f"{spec.title} needs your text to draft")
-        ctx = DraftContext(report_type=report_type, period=period, topic=topic, text=body.text, db_path=db_path)
+        ctx = DraftContext(report_type=report_type, period=period, topic=topic, text=body.text, db_path=db_path,
+                           week_ending=week_ending_of(period) if report_type == WEEKLY else None, inputs_root=root)
         return spec, ctx, report_type, period
 
     def find_run(run_id: str) -> Run:
@@ -463,8 +491,12 @@ def create_app(
                 "subsections": list(spec.subsections), "charts": list(spec.charts),
                 "steps": [{"title": t, "body": b} for t, b in spec.steps], "latest": latest,
             })
+        week = week_ending_of(period) if report_type == WEEKLY else None
         report = {"type": report_type, "title": TYPES[report_type].title, "period": period, "kind": kind,
-                  "published_as": TYPES[report_type].published_as}
+                  "published_as": TYPES[report_type].published_as,
+                  # The weekly report's week: the Friday its period names, and the Friday to suggest.
+                  "week_ending": week.isoformat() if week else None,
+                  "suggested_week_ending": latest_friday(today).isoformat()}
         # The draft running right now, if any (one at a time across every section and report): it
         # is not saved until it finishes, so without this the overview could not show it at all.
         return {"today": today.isoformat(), "drafting": draft_slot.status(), "report": report,
@@ -473,6 +505,110 @@ def create_app(
     @app.get("/api/reviews/{run_id}")
     def get_review(run_id: int) -> dict:
         return serialize_review(load(run_id))
+
+    # -- this week's inputs -------------------------------------------------
+
+    root = Path(inputs_root) if inputs_root is not None else None
+
+    def week_of(week_ending: str) -> Week:
+        try:
+            return Week(date.fromisoformat(week_ending))
+        except NotAFriday as exc:
+            raise HTTPException(422, str(exc))
+        except ValueError:
+            raise HTTPException(422, f"{week_ending!r} is not a date; write the week as 2026-10-02")
+
+    def slot_of(slug: str) -> weekly_inputs.Slot:
+        slot = weekly_inputs.BY_SLUG.get(slug)
+        if slot is None:
+            raise HTTPException(404, f"no weekly input {slug!r}")
+        return slot
+
+    @app.get("/api/inputs/weekly/{week_ending}")
+    def inputs_status(week_ending: str) -> dict:
+        """What has been received for the week ending ``week_ending``: per input, the date read from it and whether it fits."""
+        return weekly_inputs.status(week_of(week_ending), root)
+
+    @app.put("/api/inputs/weekly/{week_ending}/notes")
+    def put_input_notes(week_ending: str, body: InputNotes) -> dict:
+        week = week_of(week_ending)
+        try:
+            weekly_inputs.write_notes(week, {k: getattr(body, k) for k in body.model_fields_set}, root)
+        except weekly_inputs.InputError as exc:
+            raise HTTPException(422, str(exc))
+        return weekly_inputs.status(week, root)
+
+    @app.put("/api/inputs/weekly/{week_ending}/{slot}")
+    async def upload_input(week_ending: str, slot: str, request: Request,
+                           filename: str = Query(default="", max_length=260)) -> dict:
+        """Upload one input: the file is the request body.  It is checked and read before it is kept.
+
+        413 if it is over the size limit, 422 (with the reason) if it is not the document the
+        slot takes, or is a KCB daily report for a day outside the week.
+        """
+        week, spec = week_of(week_ending), slot_of(slot)
+        declared = request.headers.get("content-length")
+        if declared and declared.isdigit() and int(declared) > weekly_inputs.MAX_BYTES:
+            raise HTTPException(413, f"{spec.title}: the file is over the {weekly_inputs.MAX_BYTES // 1_048_576} MB limit")
+        data = await request.body()
+        if len(data) > weekly_inputs.MAX_BYTES:
+            raise HTTPException(413, f"{spec.title}: the file is over the {weekly_inputs.MAX_BYTES // 1_048_576} MB limit")
+        try:
+            await run_in_threadpool(weekly_inputs.store, week, slot, data, filename, root)
+        except weekly_inputs.InputError as exc:
+            raise HTTPException(422, str(exc))
+        return weekly_inputs.status(week, root)
+
+    @app.post("/api/inputs/weekly/{week_ending}/cbk_bulletin/fetch")
+    def fetch_bulletin_input(week_ending: str) -> dict:
+        """Fetch the week's CBK Weekly Bulletin from centralbank.go.ke and keep it as an input."""
+        week = week_of(week_ending)
+        try:
+            data, url = fetch_bulletin(week.ending)
+        except LookupError as exc:
+            raise HTTPException(404, f"{exc}. Upload the bulletin once CBK has published it.")
+        except Exception as exc:  # noqa: BLE001 - shown to the coordinator, not swallowed
+            raise HTTPException(502, f"The bulletin could not be fetched from CBK: {describe(exc)}")
+        try:
+            weekly_inputs.store(week, weekly_inputs.CBK_BULLETIN, data, url.rsplit("/", 1)[-1], root, fetched_from=url)
+        except weekly_inputs.InputError as exc:
+            raise HTTPException(502, f"CBK's file could not be read as the bulletin: {exc}")
+        return weekly_inputs.status(week, root)
+
+    # -- export: the approved weekly report as one Word file ---------------------
+
+    def weekly_period(period: Optional[str]) -> str:
+        try:
+            return normalize_period(WEEKLY, period)
+        except PeriodError as exc:
+            raise HTTPException(422, str(exc))
+
+    @app.get("/api/export/weekly")
+    def export_weekly_status(period: Optional[str] = Query(default=None, max_length=40)) -> dict:
+        """Whether the week's report can be exported: every weekly section's state, and whether it is a dev-mode draft."""
+        return weekly_export.export_status(db_path, weekly_period(period))
+
+    @app.post("/api/export/weekly")
+    def export_weekly(period: Optional[str] = Query(default=None, max_length=40)) -> FileResponse:
+        """Write the approved weekly report and return the .docx.  409, naming each section, unless all are approved.
+
+        Nothing is sent or published: the file is handed to the coordinator who asked for it.  A dev-mode
+        draft is exported with its watermark and banner.
+        """
+        normalized = weekly_period(period)
+        try:
+            path = weekly_export.write_weekly_report(db_path, normalized, export_root)
+        except weekly_export.ExportNotAllowed as exc:
+            raise HTTPException(409, str(exc))
+        return FileResponse(path, filename=path.name,
+                            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+    @app.delete("/api/inputs/weekly/{week_ending}/{stored_name}")
+    def delete_input(week_ending: str, stored_name: str) -> dict:
+        week = week_of(week_ending)
+        if not weekly_inputs.remove(week, stored_name, root):
+            raise HTTPException(404, f"no stored input {stored_name!r} for the week ending {week.ending.isoformat()}")
+        return weekly_inputs.status(week, root)
 
     # -- writes -----------------------------------------------------------
 

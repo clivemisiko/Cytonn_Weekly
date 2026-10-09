@@ -10,8 +10,10 @@ subsection headings and charts, and the function that builds the review.
 
 Orders are the real reports' own (CLAUDE.md, "Report types", records where each was read):
 
-* weekly: Fixed Income, Equities, Digital Payments, Real Estate, Focus of the Week
-  (unchanged; ``SECTIONS`` and ``BY_SLUG`` are this list).
+* weekly: Company Updates, Fixed Income, Equities, Real Estate, Digital Payments Weekly
+  Highlights, Focus of the Week, as #38.2026 orders them (``SECTIONS`` and ``BY_SLUG`` are
+  this list).  Fixed Income and Equities are worked out from the week's uploaded inputs
+  (weekly/inputs.py) and published sources; Company Updates is the coordinator's own text.
 * quarterly and half_year: Executive Summary, Company Updates, Global Markets Review,
   Sub-Saharan Africa Region Review, Kenya Macro Economic Review, Fixed Income, Equities,
   Real Estate, Digital Payments.
@@ -44,6 +46,11 @@ class DraftContext:
     today: Optional[date] = None
     # Told each real step of the run (common/run_events.py).  None, the default, is a plain draft.
     on_event: Optional[Observer] = None
+    # The Friday a weekly report's week ends on, when its period names one ("Week ending
+    # 2026-10-02"); None means the latest week that has ended.
+    week_ending: Optional[date] = None
+    # Where the weekly inputs are kept, when it is not the default under the data directory (tests).
+    inputs_root: Optional[Union[Path, str]] = None
 
 
 @dataclass(frozen=True)
@@ -73,16 +80,38 @@ def _observer(ctx: DraftContext) -> dict[str, Any]:
     return {} if ctx.on_event is None else {"on_event": ctx.on_event}
 
 
+def _week(ctx: DraftContext) -> dict[str, Any]:
+    """``week_ending`` as a keyword argument, only when the period names a week."""
+    return {} if ctx.week_ending is None else {"week_ending": ctx.week_ending}
+
+
+def _inputs(ctx: DraftContext) -> dict[str, Any]:
+    """``week_ending`` and ``inputs_root`` for the sections worked out from the week's uploaded inputs."""
+    return {**_week(ctx), **({} if ctx.inputs_root is None else {"inputs_root": ctx.inputs_root})}
+
+
 def _digital_payments(ctx: DraftContext) -> CoordinatorReview:
     from cytonn_weekly.digital_payments.review_run import build_digital_payments_review
 
     return build_digital_payments_review(**_observer(ctx))
 
 
-def _equities(ctx: DraftContext) -> CoordinatorReview:
-    from cytonn_weekly.equities.review_run import build_equities_review
+def _company_updates(ctx: DraftContext) -> CoordinatorReview:
+    from cytonn_weekly.weekly import company_updates
 
-    return build_equities_review(**_observer(ctx))
+    return company_updates.build_company_updates_weekly_review(ctx.text or "", **_week(ctx))
+
+
+def _fixed_income(ctx: DraftContext) -> CoordinatorReview:
+    from cytonn_weekly.fixed_income import weekly
+
+    return weekly.build_fixed_income_review(**_inputs(ctx), **_observer(ctx))
+
+
+def _equities(ctx: DraftContext) -> CoordinatorReview:
+    from cytonn_weekly.equities import weekly
+
+    return weekly.build_equities_weekly_review(**_inputs(ctx), **_observer(ctx))
 
 
 def _real_estate(ctx: DraftContext) -> CoordinatorReview:
@@ -99,24 +128,66 @@ def _focus(ctx: DraftContext) -> CoordinatorReview:
 
 _YOUR_REVIEW = ("Your review", "You resolve each item, then approve or reject the whole section.")
 
+_INPUTS_CHECK = ("Check", "Every figure is worked out again from its inputs and must match. A figure that rests on a "
+                 "typed workbook cell is marked analyst input, never clean.")
+
+# The weekly's own headings and charts, read from #38.2026 (the builders hold the same lists).
+_FI_SUBSECTIONS = ("Money Markets, T-Bills Primary Auction:", "T-Bonds Primary Market:", "Money Market Performance:",
+                   "Liquidity:", "Kenya Eurobonds:", "Kenya Shilling:", "Weekly Highlights")
+_FI_CHARTS = (
+    "The chart below shows the yield growth rate for the 91-day paper over the last year",
+    "The chart below shows the performance of the 91-day, 182-day and 364-day papers over the last two years",
+    "The chart below compares the overall average T-bill subscription rates obtained in 2023, 2024, 2025 and 2026 Year-to-date (YTD)",
+    "Money market yields (uncaptioned chart under the Money Market Performance paragraph)",
+    "The chart below shows the interbank rates in the market over the years",
+    "The chart below summarizes the evolution of Kenya's months of import cover over the last two years",
+)
+_EQ_SUBSECTIONS = ("Market Performance:", "Universe of Coverage:", "Weekly highlights")
+_EQ_CHARTS = ("The charts below indicate the historical P/E and dividend yields of the market (P/E chart)",
+              "The charts below indicate the historical P/E and dividend yields of the market (dividend yield chart)")
+
 SECTIONS: tuple[SectionSpec, ...] = (
     SectionSpec(
-        slug="fixed_income", title="Fixed Income", available=False,
-        reason=("The weekly section is drafted from KCB's daily email, and none of the 20 requested sample "
-                "emails has arrived, so its extraction cannot be written without guessing the format."),
-        unblock="The 20 KCB daily email samples, then an inbox or forwarding rule for the live feed.",
-        built_parts=(
-            "CBK T-bill primary auction results fetcher (91/182/364-day)",
-            "CBK T-bond primary auction results fetcher",
-            "Money market fund yields ranking and formatting (its Business Daily fetch is a stub: no public source found)",
+        slug="company_updates", title="Company Updates", available=True, needs_text=True, build=_company_updates,
+        subsections=("Investment Updates:", "Hospitality Updates:"),
+        steps=(
+            ("Your text", "Paste the Investment Updates and Hospitality Updates. The tool never drafts Cytonn's own copy."),
+            _YOUR_REVIEW,
+        ),
+    ),
+    SectionSpec(
+        slug="fixed_income", title="Fixed Income", available=True, build=_fixed_income,
+        subsections=_FI_SUBSECTIONS, charts=_FI_CHARTS,
+        steps=(
+            ("This week's inputs", "The fixed income workbook and the CBK Weekly Bulletin (fetched from CBK if you have not "
+                                   "uploaded it). A missing input leaves its part marked unavailable; nothing is filled in."),
+            ("Fetch", "CBK's Treasury bond results and daily US dollar rates, and the previous issue for the carried-forward text."),
+            ("Work out", "T-bills, T-bonds, money markets, liquidity, Eurobonds, the shilling and net domestic borrowing, "
+                         "each figure with the inputs it was made from."),
+            ("Draft highlights", "Up to two monetary, fiscal and market stories from the week, each with its source."),
+            _INPUTS_CHECK, _YOUR_REVIEW,
         ),
     ),
     SectionSpec(
         slug="equities", title="Equities", available=True, build=_equities,
+        subsections=_EQ_SUBSECTIONS, charts=_EQ_CHARTS,
         steps=(
-            ("Fetch the market", "NASI, NSE 25/20/10 and banking index changes, plus every share's weekly move, from afx.kwayisi.org."),
+            ("This week's inputs", "The equities workbook and KCB IB's weekly and daily trading reports. A missing input "
+                                   "leaves its part marked unavailable; nothing is filled in."),
+            ("Fetch", "The NSE daily price list for the two Fridays and the year's first trading day (read by OCR, for the "
+                      "NSE 10 and the Banking index), and CBK's daily US dollar rates."),
+            ("Work out", "Index moves, large-cap movers, turnover and foreign flows in USD, valuation, and the Universe "
+                         "of Coverage table."),
             ("Draft highlights", "Up to three NSE company, banking and regulatory stories from the week, each with its source."),
-            ("Check", "Every table figure exact-matched to its source; every claim's figures matched to its cited text."),
+            _INPUTS_CHECK, _YOUR_REVIEW,
+        ),
+    ),
+    SectionSpec(
+        slug="real_estate", title="Real Estate", available=True, build=_real_estate,
+        steps=(
+            ("Draft subsections", "Up to four of this week's housing, mortgage, hospitality, infrastructure and other stories."),
+            ("Fetch REITs", "Acorn D-REIT, Acorn I-REIT and ILAM Fahari prices from the NSE Ibuka weekly PDF."),
+            ("Check", "REIT figures exact-matched to the PDF; every claim's figures matched to its cited text."),
             _YOUR_REVIEW,
         ),
     ),
@@ -126,15 +197,6 @@ SECTIONS: tuple[SectionSpec, ...] = (
             ("Fetch prices", "Share prices for the seven tracked companies, from Yahoo Finance."),
             ("Draft highlights", "Four highlights from company investor pages, each with its source."),
             ("Exact-match check", "Every table figure compared with its source. No tolerance band."),
-            _YOUR_REVIEW,
-        ),
-    ),
-    SectionSpec(
-        slug="real_estate", title="Real Estate", available=True, build=_real_estate,
-        steps=(
-            ("Draft subsections", "Up to four of this week's housing, mortgage, hospitality, infrastructure and other stories."),
-            ("Fetch REITs", "Acorn D-REIT, Acorn I-REIT and ILAM Fahari prices from the NSE Ibuka weekly PDF."),
-            ("Check", "REIT figures exact-matched to the PDF; every claim's figures matched to its cited text."),
             _YOUR_REVIEW,
         ),
     ),

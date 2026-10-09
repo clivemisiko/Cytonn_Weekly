@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from api.main import create_app
 from cytonn_weekly.digital_payments import review_store
 from cytonn_weekly.equities import review_run as eq_run
+from cytonn_weekly.equities import weekly as eq_weekly
 from cytonn_weekly.focus import review_run as focus_run
 from cytonn_weekly.real_estate import review_run as re_run
 from tests import section_helpers as sh
@@ -25,17 +26,21 @@ def db(tmp_path):
 
 @pytest.fixture
 def client(db, monkeypatch):
-    monkeypatch.setattr(eq_run, "build_equities_review", lambda: sh.equities_review())
+    monkeypatch.setattr(eq_weekly, "build_equities_weekly_review", lambda: sh.equities_review())
     monkeypatch.setattr(re_run, "build_real_estate_review", lambda: sh.real_estate_review())
     monkeypatch.setattr(focus_run, "build_focus_review", lambda topic: sh.focus_review(topic=topic))
     return TestClient(create_app(db_path=db, load_dotenv=False))
 
 
-def test_overview_lists_five_sections_in_report_order(client):
+def test_overview_lists_the_weekly_sections_in_report_order(client):
     body = client.get("/api/sections").json()
-    assert [s["slug"] for s in body["sections"]] == ["fixed_income", "equities", "digital_payments", "real_estate", "focus"]
-    fi = body["sections"][0]
-    assert fi["available"] is False and "KCB" in fi["reason"] and fi["unblock"] and len(fi["built_parts"]) == 3
+    assert [s["slug"] for s in body["sections"]] == ["company_updates", "fixed_income", "equities", "real_estate",
+                                                     "digital_payments", "focus"]   # as #38.2026 orders them
+    updates, fi = body["sections"][0], body["sections"][1]
+    assert updates["needs_text"] is True and updates["uses_provider"] is False
+    # Fixed Income is drafted from the week's inputs and CBK: nothing blocks it any more.
+    assert fi["available"] is True and fi["reason"] is None and fi["built_parts"] == []
+    assert fi["subsections"][0] == "Money Markets, T-Bills Primary Auction:" and len(fi["charts"]) == 6
     assert all(s["latest"] is None for s in body["sections"])
     focus = body["sections"][-1]
     assert focus["needs_topic"] is True and focus["steps"][0]["title"] == "Your topic"
@@ -66,8 +71,10 @@ def test_generic_section_serialization(client):
 
 
 def test_unavailable_section_cannot_be_drafted(client):
-    r = client.post("/api/sections/fixed_income/draft")
-    assert r.status_code == 409 and "KCB" in r.json()["detail"]
+    # Every weekly section can be drafted now; a companion report's sections are still stubs.
+    r = client.post("/api/sections/reits.section_1/draft",
+                    json={"report_type": "companion", "period": "#33.2026", "kind": "reits"})
+    assert r.status_code == 409 and "cannot be drafted yet" in r.json()["detail"]
     assert client.post("/api/sections/nope/draft").status_code == 404
 
 
@@ -119,7 +126,7 @@ def test_old_review_is_not_this_week(client, db):
 
 
 def test_dev_mode_draft_is_marked(client, monkeypatch):
-    monkeypatch.setattr(eq_run, "build_equities_review",
+    monkeypatch.setattr(eq_weekly, "build_equities_weekly_review",
                         lambda: sh.equities_review(sh.LocalFakeNarrativeProvider()))
     body = client.post("/api/sections/equities/draft").json()
     assert body["is_dev_draft"] is True and body["dev_mode_label"]
@@ -129,7 +136,7 @@ def test_failed_draft_is_reported_not_saved(client, db, monkeypatch):
     def boom():
         raise RuntimeError("afx down")
 
-    monkeypatch.setattr(eq_run, "build_equities_review", boom)
+    monkeypatch.setattr(eq_weekly, "build_equities_weekly_review", boom)
     r = client.post("/api/sections/equities/draft")
     assert r.status_code == 502 and "afx down" in r.json()["detail"]
     assert review_store.load_latest_review("equities", db_path=db) is None
@@ -154,7 +161,7 @@ def test_conftest_guard_covers_new_sections(monkeypatch):
 
     from cytonn_weekly import sections
 
-    monkeypatch.setattr(eq_run, "build_equities_review", lambda: sh.equities_review())
+    monkeypatch.setattr(eq_weekly, "build_equities_weekly_review", lambda: sh.equities_review())
     real_db = Path(__file__).parents[1] / "data" / "app.db"
     assert Path(sections._DEFAULT_DB) != real_db
     run_id = TestClient(create_app(load_dotenv=False)).post("/api/sections/equities/draft").json()["run_id"]
