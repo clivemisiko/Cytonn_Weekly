@@ -7,6 +7,7 @@ import { friendlyDate, plural, reportName, weekRange } from "@/lib/format";
 import type { AppConfig, Drafting, Overview, ReportChoice, SectionSummary } from "@/lib/types";
 import { DevRibbon, Notice } from "./banners";
 import { DraftingBanner, DraftingChip, isDraftingThis, useDraftingPoll } from "./drafting";
+import { ExportBar } from "./export-bar";
 import { Masthead } from "./masthead";
 import { ReportPicker } from "./report-picker";
 
@@ -263,6 +264,12 @@ export function OverviewScreen({
             </Notice>
           )}
           <Tally overview={overview} />
+          {overview.report.type === "weekly" && (
+            <ExportBar
+              period={overview.report.period}
+              refreshKey={overview.sections.map((s) => `${s.latest?.run_id ?? ""}:${s.latest?.decision ?? ""}`).join("|")}
+            />
+          )}
           <ol className="space-y-3">
             {overview.sections.map((s, i) => (
               <SectionRow

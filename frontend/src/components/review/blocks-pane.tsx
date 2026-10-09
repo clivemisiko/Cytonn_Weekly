@@ -1,7 +1,17 @@
 import { ChartBarIcon, LockSimpleIcon } from "@phosphor-icons/react";
 import { cn } from "cn";
 import { SCOPE_LABELS, friendlyDate, friendlyTime, weekRange } from "@/lib/format";
-import type { BlocksSection, NarrativeBlock, NotCovered, Review, SuppliedBlock, TableBlock, UnavailableBlock } from "@/lib/types";
+import type {
+  BlocksSection,
+  CarriedBlock,
+  ComputedBlock,
+  NarrativeBlock,
+  NotCovered,
+  Review,
+  SuppliedBlock,
+  TableBlock,
+  UnavailableBlock,
+} from "@/lib/types";
 import { DevAlert, Notice } from "./banners";
 import { DataTable, Numeral, Warnings } from "./draft-pane";
 import { Markdown } from "./markdown";
@@ -73,12 +83,76 @@ function Table({ block }: { block: TableBlock }) {
           </>
         )}
       </p>
+      {block.rows.some((r) => r.typed) && (
+        <p className="text-xs text-warn-fg">
+          Analyst input: {block.rows.filter((r) => r.typed).length} of {block.rows.length} rows rest on cells typed in the
+          workbook. They are checked against the workbook, which is not a published source.
+        </p>
+      )}
+      {(block.footnotes ?? []).map((f) => (
+        <p key={f} className="text-xs text-muted-foreground">
+          {f}
+        </p>
+      ))}
+      {(block.notes ?? []).map((n) => (
+        <p key={n} className="text-xs text-muted-foreground">
+          {n}
+        </p>
+      ))}
       {failed.map((r) => (
         <p key={String(r[block.key_field])} className="text-sm text-flag-fg">
           {String(r[block.columns[0].key])}: {r.error}
         </p>
       ))}
     </section>
+  );
+}
+
+/** A paragraph the tool worked out, not drafted: fixed wording around figures, each one a review item. */
+function Computed({ block }: { block: ComputedBlock }) {
+  const origins = new Set(block.figures.flatMap((f) => Object.values(f.inputs).map((i) => i.origin)));
+  const sources = block.sources.map((s) => s.name).join("; ");
+  return (
+    <article className="space-y-3 border-t px-4 py-6 sm:px-6" aria-labelledby={`blk-${block.id}`}>
+      <h3 id={`blk-${block.id}`} className="flex items-start gap-3 text-base font-semibold">
+        <Numeral>{block.numeral}</Numeral>
+        <span>{block.title}</span>
+      </h3>
+      <Markdown className="max-w-[68ch] text-base leading-7 md:pl-11">{block.body_md}</Markdown>
+      <Provenance
+        parts={[
+          { text: "Worked out by the tool", style: "name" },
+          { text: `${block.figures.length} ${block.figures.length === 1 ? "figure" : "figures"} checked` },
+          { text: origins.has("analyst_input") ? "includes analyst input" : "" },
+          { text: origins.has("ocr") ? "includes OCR readings" : "" },
+          { text: sources ? `Sources: ${sources}` : "" },
+        ]}
+      />
+      {block.notes.map((n) => (
+        <p key={n} className="text-xs text-muted-foreground md:pl-11">
+          {n}
+        </p>
+      ))}
+    </article>
+  );
+}
+
+/** Text copied from the previous issue. It was not written for this week, so it is always flagged. */
+function Carried({ block }: { block: CarriedBlock }) {
+  const from = block.carried_from;
+  return (
+    <article className="space-y-3 border-t px-4 py-6 sm:px-6" aria-labelledby={`blk-${block.id}`}>
+      <h3 id={`blk-${block.id}`} className="flex flex-wrap items-start gap-3 text-base font-semibold">
+        <Numeral>{block.numeral}</Numeral>
+        <span>{block.title}</span>
+      </h3>
+      <Notice tone="flag" className="font-medium md:ml-11">
+        Carried forward, edit before approving. Copied from{" "}
+        {from.issue_id ? `issue ${from.issue_id} on cytonnreport.com` : "the previous issue"}
+        {from.published ? `, published ${friendlyDate(from.published)}` : ""}.
+      </Notice>
+      <Markdown className="max-w-[68ch] text-base leading-7 md:pl-11">{block.body_md}</Markdown>
+    </article>
   );
 }
 
@@ -114,6 +188,7 @@ function Supplied({ block }: { block: SuppliedBlock }) {
       </h3>
       <Markdown className="max-w-[68ch] text-base leading-7 md:pl-11">{block.body_md}</Markdown>
       <Provenance parts={[{ text: "Supplied by you", style: "name" }, { text: "Not drafted and not checked by the tool" }]} />
+      {block.context && <p className="text-xs text-muted-foreground md:pl-11">{block.context}</p>}
     </article>
   );
 }
@@ -235,9 +310,25 @@ export function BlocksPane({ review, section: sec }: { review: Review; section: 
           <Table key={b.id} block={b} />
         ) : b.kind === "supplied" ? (
           <Supplied key={b.id} block={b} />
+        ) : b.kind === "computed" ? (
+          <Computed key={b.id} block={b} />
+        ) : b.kind === "carried" ? (
+          <Carried key={b.id} block={b} />
         ) : (
           <Unavailable key={b.id} block={b} />
         ),
+      )}
+      {review.summary && (
+        <section aria-labelledby="summary-title" className="space-y-2 border-t px-4 py-6 sm:px-6">
+          <h3 id="summary-title" className="text-base font-semibold">
+            Section summary for the CMS
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            Composed from this section’s own lead paragraphs; nothing here is newly written. The website builds the issue’s
+            Executive Summary from these.
+          </p>
+          <Markdown className="max-w-[68ch] text-sm leading-6">{review.summary}</Markdown>
+        </section>
       )}
     </section>
   );
