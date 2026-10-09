@@ -1,4 +1,4 @@
-"""Fixed Income: CBK auction-result parsers against real PDFs, the MMF ranking, the KCB stub."""
+"""Fixed Income: CBK auction-result parsers against real PDFs, and the MMF ranking."""
 
 from pathlib import Path
 
@@ -6,7 +6,7 @@ import pytest
 
 from cytonn_weekly.common.formatting import format_rows
 from cytonn_weekly.fixed_income import cbk_auctions as cbk
-from cytonn_weekly.fixed_income import kcb_email, mmf
+from cytonn_weekly.fixed_income import mmf
 
 SOURCES = Path(__file__).parent / "fixtures" / "sources"
 TBILL_PDF = (SOURCES / "cbk_tbill_2026-09-28.pdf").read_bytes()
@@ -132,7 +132,11 @@ def test_mmf_display_ties_still_rank_sequentially_as_cytonn_weekly_38_2026_did()
 def test_unbuilt_sources_fail_loudly():
     with pytest.raises(NotImplementedError, match="Business Daily"):
         mmf.fetch_mmf_yields()
-    with pytest.raises(NotImplementedError, match="sample emails"):
-        kcb_email.extract_kcb_email("From: KCB\n\nbody")
-    with pytest.raises(NotImplementedError, match="sample emails"):
-        kcb_email.build_fixed_income_review()
+
+
+def test_the_kcb_email_stub_is_retired():
+    """Its premise was wrong: KCB IB's reports cover NSE equities only, and the weekly section is built without them."""
+    import importlib.util
+
+    assert importlib.util.find_spec("cytonn_weekly.fixed_income.kcb_email") is None
+    assert importlib.util.find_spec("cytonn_weekly.fixed_income.weekly") is not None

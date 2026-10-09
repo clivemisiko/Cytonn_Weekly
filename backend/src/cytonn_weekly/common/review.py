@@ -32,6 +32,20 @@ Block kinds:
 * ``supplied``    -- text the coordinator typed in, carried verbatim and never drafted or checked
                      (Company Updates, Cytonn's own promotional copy): {id, numeral, title, body_md,
                      supplied_by}.  It is one review item, never marked verified.
+* ``computed``    -- a paragraph the tool worked out from published figures (common/computed.py):
+                     {id, numeral, title, body_md, figures, sources, notes}.  One review item per
+                     figure: clean when it is made only of published inputs and equals what the
+                     checker works out again; not auto-verified when it rests on a typed workbook
+                     cell; flagged on any mismatch, an unconfirmed OCR reading or disagreeing sources.
+* ``carried``     -- text copied from the previous issue (common/computed.py): {id, numeral, title,
+                     body_md, carried_from}.  Always one flagged item, "carried forward, edit
+                     before approving".
+
+A table block may also say where its rows came from.  ``row_origin: "analyst_input"`` with an
+``origin_note`` (or ``_origin`` / ``_note`` on one source row) makes a row that passes its
+exact-match not auto-verified instead of clean: the figures match their source, but the source is
+a cell someone typed.  ``second_sources`` (``[{row, column, source, value}]``) are independent
+second readings handed to the table check, which flags any that disagree.
 
 The quarterly, half-year and annual reviews (periodic/) add, at the top level,
 ``report_type``, ``period``, ``period_start``/``period_end`` and ``chart_notes``: the real
@@ -48,6 +62,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from cytonn_weekly.checkers.digital_payments import NOT_IMPLEMENTED, UNSOURCED, CheckReport, Flag
+from cytonn_weekly.checkers.digital_payments import SourceValue
 from cytonn_weekly.common.checks import (
     CLAIM_SCOPE,
     TABLE_SCOPE,
@@ -55,6 +70,14 @@ from cytonn_weekly.common.checks import (
     check_claim,
     check_table_block,
     row_subject,
+)
+from cytonn_weekly.common.computed import (
+    ANALYST,
+    CARRIED_SCOPE,
+    COMPUTED_SCOPE,
+    carried_flag,
+    check_figure_record,
+    figure_subject,
 )
 from cytonn_weekly.common.formatting import format_rows
 from cytonn_weekly.common.run_events import CHECK_FINISHED, CHECK_STARTED, Observer, emit
@@ -71,6 +94,11 @@ from cytonn_weekly.digital_payments.coordinator_review import (
 CLAIM = "claim"
 UNAVAILABLE_PART = "unavailable_part"
 SUPPLIED_TEXT = "supplied_text"
+COMPUTED_FIGURE = "computed_figure"
+CARRIED_TEXT = "carried_text"
+
+ANALYST_ROW_NOTE = ("Not auto-verified: this row's figures match their source exactly, but the source is typed by "
+                    "an analyst, not published. Check it against the workbook before accepting.")
 
 SUPPLIED_NOTE = (
     "Supplied by you and carried verbatim. The tool neither drafts nor checks this text, so read it "
@@ -109,6 +137,20 @@ def supplied_block(block_id: str, title: str, text: str) -> dict[str, Any]:
     return {"kind": "supplied", "id": block_id, "title": title, "body_md": text, "supplied_by": "coordinator"}
 
 
+def second_sources(block: dict[str, Any]) -> dict[tuple[str, str], list[SourceValue]]:
+    """A table block's ``second_sources`` as check_table_block takes them."""
+    out: dict[tuple[str, str], list[SourceValue]] = {}
+    for s in block.get("second_sources") or []:
+        out.setdefault((row_subject(block["id"], s["row"]), s["column"]), []).append(SourceValue(s["source"], s["value"]))
+    return out
+
+
+def row_origin(block: dict[str, Any], src: dict[str, Any]) -> tuple[Optional[str], str]:
+    """(origin, note) of one table row: its own ``_origin`` / ``_note``, else the block's."""
+    origin = src.get("_origin") or block.get("row_origin")
+    return origin, (src.get("_note") or block.get("origin_note") or ANALYST_ROW_NOTE)
+
+
 def check_section(content: dict[str, Any], on_event: Optional[Observer] = None) -> CheckReport:
     """Every check this section supports: table exact-match, claim figures, and a flag per missing part.
 
@@ -121,15 +163,30 @@ def check_section(content: dict[str, Any], on_event: Optional[Observer] = None) 
     for b in content.get("blocks", []):
         if b["kind"] == "table":
             emit(on_event, CHECK_STARTED, b["title"])
-            part = check_table_block(b)
+            part = check_table_block(b, second_sources(b))
             report.flags.extend(part.flags)
             report.checked += part.checked
             key = b["key_field"]
             rows = {r[key] for r in b.get("source_rows", [])} | {r[key] for r in b.get("rows", [])}
             flagged = {f.subject for f in part.flags}
             flagged_rows = sum(1 for k in rows if row_subject(b["id"], k) in flagged)
-            emit(on_event, CHECK_FINISHED, b["title"],
-                 counts={"clean": len(rows) - flagged_rows, "flagged": flagged_rows})
+            typed = sum(1 for r in b.get("source_rows", []) if row_origin(b, r)[0] == ANALYST
+                        and row_subject(b["id"], r[key]) not in flagged)
+            counts = {"clean": len(rows) - flagged_rows - typed, "flagged": flagged_rows}
+            if typed:
+                counts["not_auto_verified"] = typed
+            emit(on_event, CHECK_FINISHED, b["title"], counts=counts)
+        elif b["kind"] == "computed":
+            emit(on_event, CHECK_STARTED, b["title"])
+            counts = {"clean": 0, "flagged": 0, "not_auto_verified": 0}
+            for fig in b.get("figures", []):
+                flags, note = check_figure_record(b, fig)
+                report.flags.extend(flags)
+                report.checked += 1
+                counts["flagged" if flags else "not_auto_verified" if note else "clean"] += 1
+            emit(on_event, CHECK_FINISHED, b["title"], counts=counts)
+        elif b["kind"] == "carried":
+            report.flags.append(carried_flag(b))
         elif b["kind"] == "narrative":
             emit(on_event, CHECK_STARTED, b.get("headline", ""))
             claims = b.get("claims") or []
@@ -168,7 +225,7 @@ def build_review(content: dict[str, Any], report: CheckReport) -> CoordinatorRev
     """
     by_subject: dict[tuple[str, str], list[Flag]] = {}
     for f in report.flags:
-        if f.scope not in (TABLE_SCOPE, CLAIM_SCOPE, UNAVAILABLE_SCOPE):
+        if f.scope not in (TABLE_SCOPE, CLAIM_SCOPE, UNAVAILABLE_SCOPE, COMPUTED_SCOPE, CARRIED_SCOPE):
             raise ValueError(f"flag with unrecognised scope {f.scope!r}: {f.message}")
         by_subject.setdefault((f.scope, f.subject), []).append(f)
 
@@ -191,8 +248,32 @@ def build_review(content: dict[str, Any], report: CheckReport) -> CoordinatorRev
                 name = src.get(label) or k
                 ref = f"{b['title']}: {name}"
                 flags = by_subject.get(subject, [])
-                items.append(ReviewItem(kind=TABLE_ROW, ref=ref, status=FLAGGED if flags else CLEAN,
-                                        detail=flags or None))
+                origin, note = row_origin(b, src)
+                if flags:
+                    items.append(ReviewItem(kind=TABLE_ROW, ref=ref, status=FLAGGED, detail=flags))
+                elif origin == ANALYST:
+                    items.append(ReviewItem(kind=TABLE_ROW, ref=ref, status=NOT_AUTO_VERIFIED, detail=note))
+                else:
+                    items.append(ReviewItem(kind=TABLE_ROW, ref=ref, status=CLEAN, detail=None))
+        elif b["kind"] == "computed":
+            for fig in b.get("figures", []):
+                subject = (COMPUTED_SCOPE, figure_subject(b["id"], fig["key"]))
+                used.add(subject)
+                ref = f"{b['title']}: {fig['label']} ({fig.get('display', '')})"
+                flags = by_subject.get(subject, [])
+                context = {"text": b.get("body_md", ""), "inputs": fig.get("inputs", {}), "note": fig.get("note", "")}
+                if flags:
+                    items.append(ReviewItem(kind=COMPUTED_FIGURE, ref=ref, status=FLAGGED, detail=flags, context=context))
+                    continue
+                note = check_figure_record(b, fig)[1]
+                items.append(ReviewItem(kind=COMPUTED_FIGURE, ref=ref, status=NOT_AUTO_VERIFIED if note else CLEAN,
+                                        detail=note or None, context=context))
+        elif b["kind"] == "carried":
+            subject = (CARRIED_SCOPE, b["id"])
+            used.add(subject)
+            items.append(ReviewItem(kind=CARRIED_TEXT, ref=f"{b['title']} (carried forward)", status=FLAGGED,
+                                    detail=by_subject.get(subject) or [carried_flag(b)],
+                                    context={"text": b.get("body_md", "")}))
         elif b["kind"] == "narrative":
             for n, claim in enumerate(b.get("claims") or []):
                 subject = (CLAIM_SCOPE, f"{b['id']}#{n}")

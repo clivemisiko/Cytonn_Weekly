@@ -30,6 +30,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Optional
 
 from cytonn_weekly.checkers.digital_payments import (
+    MISMATCH,
     MISSING,
     UNSOURCED,
     CheckReport,
@@ -37,7 +38,8 @@ from cytonn_weekly.checkers.digital_payments import (
     SourceValue,
     check_figure,
 )
-from cytonn_weekly.common.formatting import TEXT
+from cytonn_weekly.common.computed import ComputeError, evaluate
+from cytonn_weekly.common.formatting import TEXT, round_half_up
 
 TABLE_SCOPE = "table"
 CLAIM_SCOPE = "claim"
@@ -91,6 +93,41 @@ def check_table_block(
             report.checked += 1
             if flag:
                 report.flags.append(flag)
+            # A column that says how it is worked out (``expr`` over the row's own raw fields) is worked
+            # out again here, so a derived figure is checked against its inputs, not only against itself.
+            if c.get("expr") is not None and src.get(c["key"]) is not None:
+                decimals = c.get("decimals", 1)
+                try:
+                    worked = round_half_up(evaluate(c["expr"], src), decimals)
+                    same = worked == round_half_up(src[c["key"]], decimals)
+                    reason = f"is {src[c['key']]!r} in the row but {worked} worked out from the row's inputs"
+                except (ComputeError, ValueError, ArithmeticError) as exc:
+                    worked, same = None, False
+                    reason = f"cannot be worked out from the row's inputs: {exc}"
+                if not same:
+                    report.flags.append(Flag(kind=MISMATCH, scope=TABLE_SCOPE, subject=subject, field=c["key"],
+                                             drafted=drow.get(c["key"]), expected=None if worked is None else str(worked),
+                                             source_value=src.get(c["key"]), decimals=decimals,
+                                             message=f"{c['key']} {reason}"))
+        # A row can also say how single cells were worked out (``_derived``: {column: {expr, inputs}}),
+        # for a row made from other rows (a "Weekly Change" row); each is worked out again here.
+        for fld, how in (src.get("_derived") or {}).items():
+            column = next((c for c in numeric if c["key"] == fld), None)
+            if column is None or src.get(fld) is None:
+                continue
+            decimals = column.get("decimals", 1)
+            try:
+                worked = round_half_up(evaluate(how["expr"], how.get("inputs") or {}), decimals)
+                same = worked == round_half_up(src[fld], decimals)
+                reason = f"is {src[fld]!r} in the row but {worked} worked out from its inputs"
+            except (ComputeError, ValueError, ArithmeticError) as exc:
+                worked, same = None, False
+                reason = f"cannot be worked out from its inputs: {exc}"
+            report.checked += 1
+            if not same:
+                report.flags.append(Flag(kind=MISMATCH, scope=TABLE_SCOPE, subject=subject, field=fld, drafted=drow.get(fld),
+                                         expected=None if worked is None else str(worked), source_value=src.get(fld),
+                                         decimals=decimals, message=f"{fld} {reason}"))
         # A figure derived from several inputs (a Total, an Average) matches its own source exactly
         # even when some inputs were missing and left out, so it would read clean.  The source row
         # says which figures are incomplete and why; each one is flagged, whatever the match.

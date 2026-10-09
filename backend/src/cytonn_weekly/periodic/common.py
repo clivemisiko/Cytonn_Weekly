@@ -91,7 +91,7 @@ class Stub:
     """A real part of the report the tool cannot produce, with why and what would change that.
 
     ``fetch`` is the module's own function that raises NotImplementedError with the
-    module's ``*_BLOCKED_REASON`` (the kcb_email.py pattern); ``block()`` is how the
+    module's ``*_BLOCKED_REASON`` (the documented-stub pattern); ``block()`` is how the
     coordinator sees it: an ``unavailable`` block they must explicitly acknowledge.
     """
 
