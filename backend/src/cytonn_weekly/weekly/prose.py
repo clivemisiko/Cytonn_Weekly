@@ -12,7 +12,6 @@ from typing import Any, Callable, Optional, TypeVar
 
 from cytonn_weekly.common.computed import ANALYST, OCR, SOURCE, Expr, a_figure, an_input
 from cytonn_weekly.common.run_events import Observer, fetch_source
-from cytonn_weekly.weekly.workbook import Cell
 
 T = TypeVar("T")
 
@@ -46,11 +45,22 @@ def published(value: Any, source: str, *, second: Optional[dict[str, Any]] = Non
     return an_input(value, SOURCE, source, second=second, decimals=decimals)
 
 
-def typed(cell: Cell, workbook: str, *, scale: float = 1.0, second: Optional[dict[str, Any]] = None,
+def typed_source(cell: Any, workbook: str) -> str:
+    """Where a typed value was read: a workbook cell, or the weekly analyst inputs form (weekly/analyst.py)."""
+    return getattr(cell, "source", None) or f"analyst input from {workbook} {cell.ref}"
+
+
+def typed(cell: Any, workbook: str, *, scale: float = 1.0, second: Optional[dict[str, Any]] = None,
           decimals: Optional[int] = None) -> dict[str, Any]:
-    """An input read from a typed workbook cell: "analyst input from <workbook> <sheet>!<cell>"."""
+    """An input an analyst typed: "analyst input from <workbook> <sheet>!<cell>", or "... typed on the weekly form".
+
+    A value typed on the form carries the uploaded workbook's cell when the two differ; that cell
+    is then the input's second reading, so the difference is a "sources disagree" flag.
+    """
     value = cell.number * scale if cell.number is not None else cell.value
-    return an_input(value, ANALYST, f"analyst input from {workbook} {cell.ref}", second=second, decimals=decimals)
+    if getattr(cell, "source", None) is not None:
+        second, decimals = typed_second(getattr(cell, "other", None), workbook, scale), None
+    return an_input(value, ANALYST, typed_source(cell, workbook), second=second, decimals=decimals)
 
 
 def scanned(value: Any, source: str, *, second: Optional[dict[str, Any]] = None,
@@ -63,10 +73,10 @@ def second_reading(value: Any, source: str, origin: str = SOURCE) -> dict[str, A
     return {"value": value, "source": source, "origin": origin}
 
 
-def typed_second(cell: Optional[Cell], workbook: str, scale: float = 1.0) -> Optional[dict[str, Any]]:
+def typed_second(cell: Any, workbook: str, scale: float = 1.0) -> Optional[dict[str, Any]]:
     if cell is None or cell.number is None:
         return None
-    return second_reading(cell.number * scale, f"analyst input from {workbook} {cell.ref}", ANALYST)
+    return second_reading(cell.number * scale, typed_source(cell, workbook), ANALYST)
 
 
 def direction(change: float, up: str, down: str, flat: str = "remained unchanged") -> str:

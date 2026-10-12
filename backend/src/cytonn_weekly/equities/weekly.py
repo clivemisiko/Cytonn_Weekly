@@ -26,8 +26,9 @@ Where each figure comes from:
   "Equities TO" indicator, which includes ETFs on the weekly report), else the CBK
   bulletin's Table 6, else the NSE price list (OCR).  Foreign net flows by weekday are in
   KCB's weekly report.
-* The year-to-date totals, the P/E and dividend yield series and every Universe of Coverage
-  input: the equities workbook, typed by the analysts (analyst input, never clean).
+* The year-to-date totals, the P/E and dividend yield series, the large-cap list and every
+  Universe of Coverage input: typed by the analysts, on the weekly analyst inputs form or in
+  the equities workbook (weekly/analyst.py; analyst input, never clean).
 
 Week windows: Monday to Friday throughout.
 """
@@ -56,7 +57,7 @@ from cytonn_weekly.equities.review_run import BRIEFS
 from cytonn_weekly.fixed_income.weekly import _carried
 from cytonn_weekly.narrative.base import NarrativeProvider
 from cytonn_weekly.narrative.drafter import draft_pieces
-from cytonn_weekly.weekly import cbk_bulletin, cbk_rates, equities_workbook, fi_workbook, kcb, nse_price_list, previous_issue
+from cytonn_weekly.weekly import analyst, cbk_bulletin, cbk_rates, equities_workbook, fi_workbook, kcb, nse_price_list, previous_issue
 from cytonn_weekly.weekly.inputs import WeeklyInputs
 from cytonn_weekly.weekly.prose import (
     Figures,
@@ -68,6 +69,7 @@ from cytonn_weekly.weekly.prose import (
     try_fetch,
     typed,
     typed_second,
+    typed_source,
 )
 from cytonn_weekly.weekly.week import Week, week_for
 from cytonn_weekly.weekly.workbook import WorkbookError
@@ -84,7 +86,6 @@ CHART_REFERENCE = "Cytonn Weekly #38.2026"
 CHART_AFTER = {"valuation": list(CHARTS)}   # both charts follow the valuation paragraph in #38.2026
 
 UPLOAD = "Upload it under \"This week's inputs\" on the start screen and draft again."
-NEED_WORKBOOK = (f"The {WB.lower()} for this week is not among this week's inputs.", f"The analysts' {WB.lower()}. {UPLOAD}")
 NEED_KCB_WEEKLY = ("KCB IB's weekly trading report for this week is not among this week's inputs.",
                    f"KCB IB's weekly report for the Friday. {UPLOAD}")
 
@@ -96,7 +97,7 @@ FOOTNOTES = ("*Target Price as per Cytonn Analyst estimates", "**Upside/ (Downsi
 LARGE_CAP_TICKERS = {"safaricom": "SCOM", "equity group": "EQTY", "kcb": "KCB", "co-operative": "COOP", "absa bank": "ABSA",
                      "standard chartered": "SCBK", "i&m holdings": "IMH", "stanbic": "SBIC", "dtbk": "DTK", "ncba": "NCBA",
                      "hfcb group": "HFCK"}
-LARGE_CAP_FLAG = ("check the names: this sentence names the biggest movers among the workbook's large-cap list, which is the "
+LARGE_CAP_FLAG = ("check the names: this sentence names the biggest movers among the team's large-cap list, which is the "
                   "equities team's stated rule, but the published issues have not always followed it (they have named EABL, "
                   "which is not on the list, and passed over bigger movers)")
 PE_FLAG = "typed from Bloomberg's NASI P/E, which the tool cannot read (login pending)"
@@ -116,6 +117,14 @@ class Fetchers:
     bulletin: Callable[[date], tuple[bytes, str]] = cbk_bulletin.fetch_bulletin
     previous_issue: Callable[[date, Optional[str]], previous_issue.Issue] = (
         lambda day, ref: previous_issue.find_previous_issue(day, reference=ref))
+
+
+def _typed_sources(inputs: WeeklyInputs, *cells: Any) -> list[dict[str, Any]]:
+    """The analysts' sources a part rests on: the workbook when one is uploaded, the form when a value was typed."""
+    names = [WB] if inputs.equities_book is not None else []
+    if any(analyst.is_typed(c) for c in cells):
+        names.append(analyst.FORM)
+    return [{"name": n} for n in names]
 
 
 # ---------------------------------------------------------------------------
@@ -325,14 +334,10 @@ def large_caps_block(m: Market) -> dict[str, Any]:
     report = m.inputs.kcb_weekly
     if report is None:
         return unavailable_block("large_caps", title, *NEED_KCB_WEEKLY)
-    book = m.inputs.equities_book
-    if book is None:
-        return unavailable_block("large_caps", title, "The large-cap list is read from the equities workbook, which is not among "
-                                 "this week's inputs.", f"The analysts' {WB.lower()}. {UPLOAD}")
-    try:
-        names = equities_workbook.read_large_caps(book)
-    except WorkbookError as exc:
-        return unavailable_block("large_caps", title, str(exc), f"The {WB.lower()} with its large-cap list. {UPLOAD}")
+    form = m.inputs.analyst
+    names = form.field("large_caps")
+    if not names:
+        return unavailable_block("large_caps", title, *form.why(analyst.EQ, ["large_caps"]))
     src = f"{kcb.SOURCE_NAME} weekly report, {report.report_date.isoformat()}"
     movers, unknown = [], []
     for cell in names:
@@ -346,8 +351,8 @@ def large_caps_block(m: Market) -> dict[str, Any]:
     losers = sorted((x for x in movers if x[0] < 0), key=lambda x: x[0])[:3]
     gainers = sorted((x for x in movers if x[0] > 0), key=lambda x: -x[0])[:3]
     if not losers and not gainers:
-        return unavailable_block("large_caps", title, "None of the workbook's large caps moved over the week in KCB IB's weekly "
-                                 "report, or none could be matched to a ticker.", "Check the workbook's large-cap list.")
+        return unavailable_block("large_caps", title, "None of the listed large caps moved over the week in KCB IB's weekly "
+                                 "report, or none could be matched to a ticker.", "Check the large-cap list.")
     figs = Figures()
 
     def listed(group: list[tuple[float, str, str]]) -> tuple[str, str]:
@@ -367,10 +372,12 @@ def large_caps_block(m: Market) -> dict[str, Any]:
         c, d = listed(other)
         text += (f" However, the performance was {'supported' if down else 'weighed down'} by {other_word} recorded by "
                  f"large-cap stocks such as {c} of {d}.")
-    notes = ["The large-cap list is read from the equities workbook ('Market PE & Dividend Yield')."]
+    notes = [f"The large-cap list is the one typed under \"{analyst.FORM}\"." if analyst.is_typed(names[0]) else
+             "The large-cap list is read from the equities workbook ('Market PE & Dividend Yield')."]
     if unknown:
         notes.append(f"Not matched to a ticker in KCB's report and left out: {join_names(unknown)}.")
-    return computed_block("large_caps", title, text, figs.items, sources=[{"name": src}, {"name": WB}], notes=notes)
+    return computed_block("large_caps", title, text, figs.items, sources=[{"name": src}] + _typed_sources(m.inputs, *names),
+                          notes=notes)
 
 
 # ---------------------------------------------------------------------------
@@ -430,12 +437,8 @@ def turnover_block(m: Market) -> dict[str, Any]:
         return unavailable_block("turnover", title, why, f"KCB IB's daily trading report for each missing day. {UPLOAD}")
     figs = Figures()
     book = m.inputs.equities_book
-    series = None
-    if book is not None:
-        try:
-            series = equities_workbook.read_turnover(book, week)
-        except WorkbookError:
-            series = None
+    form = m.inputs.analyst
+    series = form.wb_turnover()
     now = figs.add("turnover", "Equities turnover over the week (USD mn)", PLAIN, 1, inputs, expr)
     if series is not None and series.total is not None:
         figs.items[-1]["second"] = {"value": series.total.number, "source": f"analyst input from {WB} {series.total.ref}", "decimals": 1}
@@ -453,16 +456,19 @@ def turnover_block(m: Market) -> dict[str, Any]:
         moved = figs.value("turnover_change")
         text = (f"During the week, equities turnover {direction(moved, 'increased', 'decreased', 'was unchanged')} by {change} to USD "
                 f"{now} mn from USD {was} mn recorded the previous week")
-    if series is not None and series.ytd is not None:
-        ytd = figs.add("turnover_ytd", "Year-to-date equities turnover (USD mn)", PLAIN, 1, {"ytd": typed(series.ytd, WB)})
+    running = form.field("turnover_ytd")
+    if running is not None:
+        ytd = figs.add("turnover_ytd", "Year-to-date equities turnover (USD mn)", PLAIN, 1, {"ytd": typed(running, WB)})
         text += f", taking the YTD total turnover to USD {ytd} mn"
     text += "."
     notes = ["Each day's equities turnover in KES is divided by that day's CBK rate; Monday to Friday."]
-    if series is None or series.ytd is None:
-        notes.append(f"The year-to-date total is left out: it is the running total in the {WB.lower()}, which has no row for this week.")
+    if running is None:
+        notes.append(f"The year-to-date total is left out: it is the analysts' running total, which is neither typed under "
+                     f"\"{analyst.FORM}\" nor in an {WB.lower()} updated for this week.")
     return computed_block("turnover", title, text, figs.items,
                           sources=[{"name": f"{kcb.SOURCE_NAME} daily reports"}, {"name": f"{cbk_bulletin.SOURCE_NAME}, Table 6"},
-                                   {"name": cbk_rates.SOURCE_NAME, "url": cbk_rates.PAGE}, {"name": WB}], notes=notes)
+                                   {"name": cbk_rates.SOURCE_NAME, "url": cbk_rates.PAGE}] + _typed_sources(m.inputs, running),
+                          notes=notes)
 
 
 def _day_flow(m: Market, day: date) -> Optional[dict[str, Any]]:
@@ -508,62 +514,63 @@ def foreign_block(m: Market) -> dict[str, Any]:
                "this week's inputs, and neither is that day's daily report.")
         return unavailable_block("foreign", title, why, f"KCB IB's weekly report, or the daily report for each missing day. {UPLOAD}")
     figs = Figures()
-    book = m.inputs.equities_book
-    series = None
-    if book is not None:
-        try:
-            series = equities_workbook.read_foreign_flows(book, week)
-        except WorkbookError:
-            series = None
+    form = m.inputs.analyst
+    series = form.wb_foreign()
     net = figs.add("net_flow", "Foreign investors' net position over the week (USD mn)", PLAIN, 1, inputs, expr)
     if series is not None and series.total is not None:
         figs.items[-1]["second"] = {"value": series.total.number, "source": f"analyst input from {WB} {series.total.ref}", "decimals": 1}
     value = figs.value("net_flow")
     notes = ["Each day's net foreign flow in KES is divided by that day's CBK rate; Monday to Friday."]
-    earlier = [(d, t, c) for d, t, _, c in (series.history if series else []) if d < week.monday]
+    earlier = form.foreign_history()   # the analysts' weekly sums before this week: (the Friday, USD mn, its cell)
+    on_form = any(analyst.is_typed(c) for _, _, c in earlier)
     previous = earlier[-1] if earlier and earlier[-1][0] == week.previous_friday else None
     if previous is None:
         text = f"During the week, foreign investors recorded a {_position(value)} position of USD {net} mn"
-        notes.append(f"The previous week and the streak are left out: they come from the weekly sums in the {WB.lower()}.")
+        notes.append(f"The previous week and the streak are left out: they come from the analysts' weekly sums, typed under "
+                     f"\"{analyst.FORM}\" or in the {WB.lower()}.")
     else:
-        # The previous week's sum is in the row left of its running total.
-        prev_cell = book.sheet(equities_workbook.FOREIGN_SHEET).cell(previous[2].row, 2) if previous[2] is not None else None
-        prev_in = {"last_week": typed(prev_cell, WB)} if prev_cell is not None else {"last_week": {"value": previous[1], "origin": ANALYST,
+        prev_in = {"last_week": typed(previous[2], WB)} if previous[2] is not None else {"last_week": {"value": previous[1], "origin": ANALYST,
                                                                                                "source": f"analyst input from {WB} '{equities_workbook.FOREIGN_SHEET}' weekly sum"}}
         was = figs.add("previous_net_flow", "Foreign investors' net position, previous week (USD mn)", PLAIN, 1, prev_in)
         same = (previous[1] > 0) == (value > 0)
-        if same:
-            streak = 1
-            for _, total, _ in reversed(earlier):
-                if (total > 0) != (value > 0):
-                    break
-                streak += 1
-            lead = f"Foreign investors remained {_position(value)[:-3]}ers for the {_ordinal_word(streak)} consecutive week"
-            notes.append(f"Streak: {streak} consecutive weeks of {_position(value)}, counted from the weekly sums in the {WB.lower()}.")
+        # Count back to the last change of direction: the streak when last week went the same way, else the gap.
+        count, reached = 1, False
+        for _, total, _ in reversed(earlier):
+            if ((total > 0) == (value > 0)) != same:
+                reached = True
+                break
+            count += 1
+        if on_form and not reached:
+            # Typed sums that stop before the change of direction cannot say how long the run is; none is made up.
+            lead = f"During the week, foreign investors recorded a {_position(value)} position of USD {net} mn"
+            text = f"{lead}, from a {_position(previous[1])} position of USD {was} mn recorded the previous week"
+            notes.append(f"The streak is left out: the weekly positions typed under \"{analyst.FORM}\" do not reach back to the "
+                         "last change of direction. Add earlier weeks to state it.")
         else:
-            gap = 1
-            for _, total, _ in reversed(earlier):
-                if (total > 0) == (value > 0):
-                    break
-                gap += 1
-            lead = f"Foreign investors became {_position(value)[:-3]}ers for the first time in {_count_word(gap)} weeks"
-            notes.append(f"The last week of {_position(value)} before this one was {gap} weeks ago, counted from the weekly sums in "
-                         f"the {WB.lower()}.")
-        text = (f"{lead} with a {_position(value)} position of USD {net} mn, from a {_position(previous[1])} position of USD {was} mn "
-                "recorded the previous week")
-    if series is not None and series.ytd is not None:
-        ytd = figs.add("net_flow_ytd", "Year-to-date foreign net position (USD mn)", PLAIN, 1, {"ytd": typed(series.ytd, WB)})
-        text += f", taking the YTD foreign {_position(series.ytd.number)} position to USD {ytd} mn"
-        prior = equities_workbook.prior_year_total(series, week.ending.year)
+            if same:
+                lead = f"Foreign investors remained {_position(value)[:-3]}ers for the {_ordinal_word(count)} consecutive week"
+                notes.append(f"Streak: {count} consecutive weeks of {_position(value)}, counted from the analysts' weekly sums.")
+            else:
+                lead = f"Foreign investors became {_position(value)[:-3]}ers for the first time in {_count_word(count)} weeks"
+                notes.append(f"The last week of {_position(value)} before this one was {count} weeks ago, counted from the "
+                             "analysts' weekly sums.")
+            text = (f"{lead} with a {_position(value)} position of USD {net} mn, from a {_position(previous[1])} position of USD {was} mn "
+                    "recorded the previous week")
+    running = form.field("foreign_ytd")
+    if running is not None:
+        ytd = figs.add("net_flow_ytd", "Year-to-date foreign net position (USD mn)", PLAIN, 1, {"ytd": typed(running, WB)})
+        text += f", taking the YTD foreign {_position(running.number)} position to USD {ytd} mn"
+        prior = form.field("foreign_prior_year")
         if prior is not None:
             was_year = figs.add("net_flow_prior_year", f"Foreign net position recorded in {week.ending.year - 1} (USD mn)", PLAIN, 1,
                                 {"prior_year": typed(prior, WB)},
-                                note="The running total on the last weekly row before the workbook's count restarted for this year.")
+                                note=("Typed on the weekly form." if analyst.is_typed(prior) else
+                                      "The running total on the last weekly row before the workbook's count restarted for this year."))
             text += f", compared to a {_position(prior.number)} position of USD {was_year} mn recorded in {week.ending.year - 1}"
     text += "."
     return computed_block("foreign", title, text, figs.items,
-                          sources=[{"name": f"{kcb.SOURCE_NAME} weekly report"}, {"name": cbk_rates.SOURCE_NAME, "url": cbk_rates.PAGE},
-                                   {"name": WB}], notes=notes)
+                          sources=[{"name": f"{kcb.SOURCE_NAME} weekly report"}, {"name": cbk_rates.SOURCE_NAME, "url": cbk_rates.PAGE}]
+                          + _typed_sources(m.inputs, running, *(c for _, _, c in earlier)), notes=notes)
 
 
 # ---------------------------------------------------------------------------
@@ -572,25 +579,25 @@ def foreign_block(m: Market) -> dict[str, Any]:
 
 def valuation_block(m: Market) -> dict[str, Any]:
     title = "Market Performance: valuation"
-    book = m.inputs.equities_book
-    if book is None:
-        return unavailable_block("valuation", title, *NEED_WORKBOOK)
-    try:
-        v = equities_workbook.read_valuation(book, m.week)
-    except WorkbookError as exc:
-        return unavailable_block("valuation", title, str(exc), f"The {WB.lower()} updated for this week. {UPLOAD}")
+    form = m.inputs.analyst
+    keys = ("pe", "pe_average", "dividend_yield", "dividend_yield_average")
+    cells = {key: form.field(key) for key in keys}
+    missing = [key for key in keys if cells[key] is None]
+    if missing:
+        return unavailable_block("valuation", title, *form.why(analyst.EQ, missing))
+    v = form.wb_valuation()   # the workbook's own cross-checks (its averages worked out again, its PEG cell), when uploaded
 
     def average(key: str, scale: float = 1.0) -> dict[str, Any]:
         worked = v.get(f"{key}_recomputed")
         second = None
         if worked is not None:
             second = second_reading(worked[0] * scale, f"the average of {worked[1]} figures in {worked[2]}, worked out by the tool", ANALYST)
-        return typed(v[key], WB, scale=scale, second=second, decimals=6)
+        return typed(cells[key], WB, scale=scale, second=second, decimals=6)
 
     figs = Figures()
-    pe_in = {"pe": typed(v["pe"], WB)}
+    pe_in = {"pe": typed(cells["pe"], WB)}
     pe_avg_in = {"pe_average": average("pe_average")}
-    dy_in = {"dividend_yield": typed(v["dividend_yield"], WB, scale=100)}
+    dy_in = {"dividend_yield": typed(cells["dividend_yield"], WB, scale=100)}
     dy_avg_in = {"dividend_yield_average": average("dividend_yield_average", 100)}
     pe = figs.add("pe", "Market P/E", MULTIPLE, 1, pe_in, note=PE_FLAG)
     gap = figs.add("pe_vs_average", "P/E against its historical average", PLAIN_PCT, 1, {**pe_in, **pe_avg_in}, pct_change("pe", "pe_average"))
@@ -607,7 +614,7 @@ def valuation_block(m: Market) -> dict[str, Any]:
             f"{direction(figs.value('pe_vs_average'), 'above', 'below', 'in line with')} the historical average of {pe_avg}, and a "
             f"dividend yield of {dy}, {dy_gap} {direction(figs.value('dividend_yield_vs_average'), 'above', 'below', 'in line with')} "
             f"the historical average of {dy_avg}. Key to note, NASI’s PEG ratio currently stands at {peg}. {PEG_TEXT}")
-    return computed_block("valuation", title, text, figs.items, sources=[{"name": WB}])
+    return computed_block("valuation", title, text, figs.items, sources=_typed_sources(m.inputs, *cells.values()))
 
 
 # ---------------------------------------------------------------------------
@@ -634,14 +641,14 @@ _UPSIDE = ["mul", ["add", ["div", "dps", "price"], ["sub", ["div", "target", "pr
 
 def universe_block(m: Market, warnings: list[str]) -> dict[str, Any]:
     title = "Cytonn Report: Equities Universe of Coverage"
-    book = m.inputs.equities_book
-    if book is None:
-        return unavailable_block("universe_of_coverage", title, *NEED_WORKBOOK)
-    try:
-        data = equities_workbook.read_universe(book, m.week)
-    except WorkbookError as exc:
-        return unavailable_block("universe_of_coverage", title, str(exc), f"The {WB.lower()} updated for this week. {UPLOAD}")
+    form = m.inputs.analyst
+    data = form.universe()
+    if data is None:
+        return unavailable_block("universe_of_coverage", title, *form.why(analyst.EQ, ["universe"]))
+    if data["month_end"] is None:
+        return unavailable_block("universe_of_coverage", title, *form.why(analyst.EQ, ["universe_month_end"]))
     week = m.week
+    labels = {c.key: c.label.lower() for c in analyst.TABLES["universe"].columns}
     columns = [
         {"key": "company", "label": "Company", "fmt": TEXT},
         {"key": "last_price", "label": f"Price as at {week.previous_friday.strftime('%d/%m/%Y')}", "fmt": PRICE, "decimals": 1},
@@ -657,10 +664,16 @@ def universe_block(m: Market, warnings: list[str]) -> dict[str, Any]:
         {"key": "recommendation", "label": "Recommendation", "fmt": TEXT},
     ]
     rows = []
+    seconds = []
     for c in data["companies"]:
         raw = {k: c[k].number for k in ("price", "last_price", "month_end_price", "year_open", "target", "dps", "shares_bn", "tbv_bn")}
         name = " ".join(str(c["company"].value).split())
+        on_form = analyst.is_typed(c["company"])
         gaps = [k for k, v in raw.items() if v is None or (k in ("price", "last_price", "month_end_price", "year_open", "shares_bn", "tbv_bn") and not v)]
+        if gaps and on_form:
+            rows.append({"company": name, "error": f"no usable {', '.join(labels[k] for k in gaps)} for {name}: type "
+                                                   f"{'it' if len(gaps) == 1 else 'them'} under \"{analyst.FORM}\""})
+            continue
         if gaps:
             rows.append({"company": name, "error": f"the workbook has no usable {', '.join(gaps)} for {name} (row {c['price'].row})"})
             continue
@@ -675,6 +688,18 @@ def universe_block(m: Market, warnings: list[str]) -> dict[str, Any]:
         if rec is None:
             row["incomplete"] = {"recommendation": "the workbook's rule gives no recommendation for an upside between 0% and 0.1%; "
                                                    "the analysts must give one"}
+        if on_form:
+            # A typed row: the cells left empty on the form are the uploaded workbook's, and say so.
+            theirs = [k for k in raw if not analyst.is_typed(c[k])]
+            row["_note"] = (f"Not auto-verified: {c['company'].source}"
+                            + (f"; {', '.join(labels[k] for k in theirs)} from {WB} '{equities_workbook.UNIVERSE_SHEET}' row "
+                               f"{c[theirs[0]].row}" if theirs else "")
+                            + ". The changes, yield, upside and multiple are worked out again from them; the typed values are "
+                              "not checked.")
+            seconds += [{"row": name, "column": k, "source": typed_source(c[k].other, WB), "value": c[k].other.number}
+                        for k in ("last_price", "price", "year_open", "target") if getattr(c[k], "other", None) is not None]
+            rows.append(row)
+            continue
         row["_note"] = (f"Not auto-verified: analyst input from {WB} '{equities_workbook.UNIVERSE_SHEET}' row {c['price'].row} "
                         f"(prices {c['last_price'].a1} and {c['price'].a1}, month-end {c['month_end_price'].a1}, Year Open "
                         f"{c['year_open'].a1}, target {c['target'].a1}, DPS {c['dps'].a1}, tangible book {c['tbv_bn'].a1}, shares "
@@ -683,13 +708,17 @@ def universe_block(m: Market, warnings: list[str]) -> dict[str, Any]:
         rows.append(row)
     rows.sort(key=lambda r: -(r.get("upside") if r.get("upside") is not None else float("-inf")))
     block = table_block("universe_of_coverage", title, columns, rows, "company", "company",
-                        {"name": f"{WB}, '{equities_workbook.UNIVERSE_SHEET}'", "url": None, "as_of": week.ending.isoformat()})
+                        {"name": f"{analyst.FORM}, Universe of Coverage" if data["typed"] else f"{WB}, '{equities_workbook.UNIVERSE_SHEET}'",
+                         "url": None, "as_of": week.ending.isoformat()})
     block["row_origin"] = ANALYST
+    block["second_sources"] = seconds   # a typed price or target that differs from the uploaded workbook's
     block["footnotes"] = list(FOOTNOTES)
-    block["notes"] = [f"m/m change is against the close of {data['month_end'].strftime('%d/%m/%Y')}, the previous month's last "
-                      "price column in the workbook."]
+    typed_base = analyst.is_typed(form.field("universe_month_end")) and data["typed"]
+    block["notes"] = [f"m/m change is against the close of {data['month_end'].strftime('%d/%m/%Y')}, "
+                      + ("the month-end date typed on the form." if typed_base else
+                         "the previous month's last price column in the workbook.")]
     if (week.ending.replace(day=1) - data["month_end"]).days > 5:
-        warnings.append(f"Universe of Coverage: the m/m base is the workbook's {data['month_end'].isoformat()} column, which is "
+        warnings.append(f"Universe of Coverage: the m/m base is the {data['month_end'].isoformat()} close, which is "
                         "not the previous month's last trading day; check the m/m column.")
     return block
 
@@ -788,7 +817,8 @@ def build_equities_weekly_review(
         "section": SECTION, "title": TITLE, "week_ending": week.ending.isoformat(),
         "week_start": drafted["week_start"], "week_end": drafted["week_end"],
         "blocks": numbered(blocks), "pieces_found": len(drafted["pieces"]), "pieces_expected": N_HIGHLIGHTS,
-        "shortfall": drafted["shortfall"], "warnings": list(drafted["warnings"]) + warnings + problems,
+        "shortfall": drafted["shortfall"],
+        "warnings": list(drafted["warnings"]) + warnings + inputs.analyst.difference_lines() + problems,
         "chart_notes": list(CHARTS), "chart_reference": CHART_REFERENCE, "chart_after": CHART_AFTER,
         "summary": compose_summary(blocks),
     }

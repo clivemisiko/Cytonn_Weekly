@@ -162,3 +162,20 @@ def test_a_run_of_a_weekly_section_carries_the_week_too(api):
             break
     assert run["status"] == "finished" and calls[-1][1]["week_ending"] == date(2026, 10, 2)
     assert callable(calls[-1][1]["on_event"])
+
+
+def test_the_older_sections_are_drafted_for_the_named_week_too(tmp_path, monkeypatch):
+    from cytonn_weekly.digital_payments import review_run as dp_run
+    from cytonn_weekly.focus import review_run as focus_run
+    from cytonn_weekly.real_estate import review_run as re_run
+
+    seen = {}
+    monkeypatch.setattr(re_run, "build_real_estate_review", lambda **kw: (seen.__setitem__("real_estate", kw), sh.real_estate_review())[1])
+    monkeypatch.setattr(dp_run, "build_digital_payments_review", lambda **kw: (seen.__setitem__("digital_payments", kw), make_review())[1])
+    monkeypatch.setattr(focus_run, "build_focus_review", lambda topic, **kw: (seen.__setitem__("focus", kw), sh.focus_review(topic=topic))[1])
+    client = TestClient(create_app(db_path=tmp_path / "app.db", load_dotenv=False))
+    for slug, body in (("real_estate", {}), ("digital_payments", {}), ("focus", {"topic": "SSA Eurobonds"})):
+        assert client.post(f"/api/sections/{slug}/draft", json={**body, "period": "2026-10-02"}).status_code == 200
+        assert seen.pop(slug) == {"today": date(2026, 10, 2)}
+        assert client.post(f"/api/sections/{slug}/draft", json=body).status_code == 200   # no week named: as before
+        assert seen.pop(slug) == {}

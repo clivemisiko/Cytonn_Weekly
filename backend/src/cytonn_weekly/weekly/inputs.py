@@ -163,12 +163,12 @@ def identify(slot: Slot, data: bytes, week: Week) -> dict[str, Any]:
     try:
         if slot.slug == EQUITIES_WORKBOOK:
             read = equities_workbook_date(equities_workbook.open_equities_workbook(data, slot.title))
-            return _found(read, read == week.ending, "equities_workbook.xlsx",
-                          "The newest Friday its P/E series has a row for.")
+            # its date: the newest Friday its P/E series has a row for
+            return _found(read, read == week.ending, "equities_workbook.xlsx", "")
         if slot.slug == FI_WORKBOOK:
             read = fi_workbook_date(fi_workbook.open_fi_workbook(data, slot.title))
-            return _found(read, read == week.ending, "fi_workbook.xlsx",
-                          "The date its money market fund table is published on.")
+            # its date: the date its money market fund table is published on
+            return _found(read, read == week.ending, "fi_workbook.xlsx", "")
         if slot.slug in (KCB_DAILY, KCB_WEEKLY):
             report = kcb.parse_kcb_pdf(data)
             wanted = kcb.DAILY if slot.slug == KCB_DAILY else kcb.WEEKLY
@@ -370,6 +370,13 @@ class WeeklyInputs:
     @property
     def notes(self) -> dict[str, str]:
         return self._once("notes", lambda: read_notes(self.week, self.root))
+
+    @property
+    def analyst(self):
+        """The analysts' own figures: typed on the weekly form, else read from the uploaded workbook (weekly/analyst.py)."""
+        from cytonn_weekly.weekly.analyst import Analyst   # analyst.py imports this module
+
+        return self._once("analyst", lambda: Analyst(self))
 
     def matches(self, stored_name: str) -> Optional[bool]:
         """Whether a stored file's own date is this week's (None if it is not stored)."""

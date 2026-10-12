@@ -279,7 +279,10 @@ def test_missing_inputs_leave_named_unavailable_parts(tmp_path):
     assert list(by) == ["indices", "large_caps", "banking", "turnover", "foreign", "valuation", "universe_of_coverage", "outlook"]
     assert {b["kind"] for b in by.values()} == {"unavailable"}
     assert by["large_caps"]["reason"] == "KCB IB's weekly trading report for this week is not among this week's inputs."
-    assert by["valuation"]["reason"] == "The equities workbook for this week is not among this week's inputs."
+    assert by["valuation"]["reason"] == (
+        "The market P/E, the historical average P/E, the market dividend yield and the historical average dividend yield have "
+        "not been typed under \"Weekly analyst inputs\", and the equities workbook for this week is not among this week's inputs.")
+    assert by["universe_of_coverage"]["reason"].startswith("The Universe of Coverage inputs have not been typed")
     assert by["foreign"]["reason"].startswith("No foreign net flow was found for Monday 28 September")
     assert {i.status for i in review.review_items} == {"flagged"} and len(review.review_items) == 8
     assert review.section["summary"] == ""

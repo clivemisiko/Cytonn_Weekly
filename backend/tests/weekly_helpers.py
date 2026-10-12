@@ -401,6 +401,48 @@ def fi_workbook_bytes(week: Week = WEEK, updated: bool = True, funds: Optional[l
     return out.getvalue()
 
 
+def typed_from_workbooks(week: Week, root: Path, section: Optional[str] = None) -> dict[str, Any]:
+    """What a coordinator would type to stand in for the workbooks stored under ``root``.
+
+    Every item of the weekly analyst inputs form, with the value the uploaded workbook holds
+    for it (as the form shows it), ready for ``analyst.save_form``.  Used to check that typing
+    a workbook's figures gives the section the workbook gives.
+    """
+    from cytonn_weekly.weekly import analyst
+
+    changes: dict[str, Any] = {"fields": {}, "tables": {}}
+    for group in analyst.status(week, root, section)["groups"]:
+        for item in group["items"]:
+            if item["type"] == "field" and item["workbook"] is not None:
+                changes["fields"][item["key"]] = item["workbook"]["value"]
+            elif item["type"] == "table" and item["workbook_rows"]:
+                changes["tables"][item["key"]] = {"rows": item["workbook_rows"]}
+    return changes
+
+
+def printed(review) -> dict[str, Any]:
+    """What a section prints and how each item was judged, with nothing that only names a source.
+
+    Per block: its text, each figure as displayed and as worked out, each table's rows as displayed
+    and the raw figures behind them; then each review item's status.  Source names, notes and
+    second readings are left out: they are what differs between a workbook and the form.
+    """
+    blocks = []
+    for b in review.section["blocks"]:
+        view: dict[str, Any] = {k: b.get(k) for k in ("id", "kind", "title", "body_md", "reason") if b.get(k) is not None}
+        if b["kind"] == "computed":
+            view["figures"] = [(f["key"], f["label"], f["display"], f["value"], str(f["expr"]),
+                                sorted((k, v["value"]) for k, v in f["inputs"].items())) for f in b["figures"]]
+        if b["kind"] == "table":
+            view["columns"] = [(c["key"], c["label"]) for c in b["columns"]]
+            view["rows"] = b["rows"]
+            view["raw"] = [{k: v for k, v in r.items() if not k.startswith("_")} for r in b["source_rows"]]
+            view["export_grid"] = b.get("export_grid")
+        blocks.append(view)
+    return {"blocks": blocks, "summary": review.section["summary"],
+            "items": [(i.ref, i.status) for i in review.review_items]}
+
+
 def no_draft(briefs, target, **kwargs) -> dict[str, Any]:
     """Stands in for narrative drafting: nothing found, so no model is called."""
     return {"week_start": (WEEK.ending - timedelta(days=6)).isoformat(), "week_end": WEEK.ending.isoformat(), "pieces": [],

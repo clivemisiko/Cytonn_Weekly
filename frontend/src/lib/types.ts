@@ -321,6 +321,75 @@ export interface WeeklyInputs {
   max_bytes: number;
 }
 
+/** One typed field of the "Weekly analyst inputs" form, with what an uploaded workbook holds for it. */
+export interface AnalystField {
+  type: "field";
+  key: string;
+  label: string;
+  kind: "number" | "date" | "names";
+  unit: string;
+  min: number | null;
+  max: number | null;
+  /** Where the analysts read it ("Business Daily", "Bloomberg NASI P/E"). */
+  source: string;
+  help: string;
+  /** The part of the section that prints it. */
+  used_in: string;
+  /** As typed (a list for the large-cap names); null when nothing is typed. */
+  value: string | string[] | null;
+  workbook: { value: string | string[]; ref: string } | null;
+  /** Why the uploaded workbook could not supply it, if it could not. */
+  workbook_note: string | null;
+  /** Typed values that differ from the uploaded workbook's, in the API's words. */
+  differences: string[];
+}
+
+export interface AnalystColumn {
+  key: string;
+  label: string;
+  kind: "text" | "number" | "date" | "month" | "rank";
+  unit: string;
+  min: number | null;
+  max: number | null;
+  required: boolean;
+}
+
+export type AnalystRow = Record<string, string>;
+
+/** One table of the form: pasted lines (the fund table) or a grid typed cell by cell (the Universe of Coverage). */
+export interface AnalystTable {
+  type: "table";
+  key: string;
+  label: string;
+  mode: "paste" | "grid";
+  source: string;
+  help: string;
+  example: string;
+  used_in: string;
+  columns: AnalystColumn[];
+  /** A grid whose rows are given (the five Eurobond issues); empty for a grid of any number of rows. */
+  fixed_rows: { key: string; label: string }[];
+  rows: AnalystRow[] | null;
+  /** The typed rows as lines the paste box reads back. */
+  text: string;
+  workbook_rows: AnalystRow[] | null;
+  workbook_ref: string | null;
+  workbook_note: string | null;
+  warnings: string[];
+  differences: string[];
+}
+
+export type AnalystItem = AnalystField | AnalystTable;
+
+export interface AnalystForm {
+  form: string;
+  week_ending: string;
+  saved_at: string | null;
+  groups: { section: string; key: string; title: string; items: AnalystItem[] }[];
+  /** Whether each section's workbook is among the week's uploads. */
+  workbooks: Record<string, boolean>;
+}
+
 export interface StatusCounts {
   total: number;
   unresolved: number;

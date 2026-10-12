@@ -31,7 +31,9 @@ const CHIP: Record<State, { label: string; className: string; glyph?: string; st
 };
 
 /** "this week" for the unlabelled weekly report, "for Q3'2026" once a period is chosen. */
-const when = (period: string) => (period ? `for ${period}` : "this week");
+/** "for Q3'2026", "this week", or (a weekly period naming its Friday) the short "for w/e 2 Oct 2026". */
+const when = (period: string) =>
+  period.startsWith("Week ending ") ? `for w/e ${friendlyDate(period.slice(12))}` : period ? `for ${period}` : "this week";
 
 function StateChip({ state, period }: { state: State; period: string }) {
   const c = CHIP[state];
