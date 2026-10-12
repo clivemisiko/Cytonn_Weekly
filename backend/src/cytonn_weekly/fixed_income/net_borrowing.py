@@ -247,6 +247,29 @@ def fetch_releases(start: date, end: date, cache_dir: Path, get: Getter = http_g
             "downloaded": list(cache.downloaded), "listings": [cbk_auctions.TBILL_LISTING, cbk_auctions.TBOND_LISTING]}
 
 
+SNAPSHOT = "releases.json"
+
+
+def write_snapshot(cache_dir: Path, fetched: dict[str, Any]) -> None:
+    """Remember what was last read from CBK, so the analyst inputs form can list the switch auctions without a fetch."""
+    folder = Path(cache_dir)
+    folder.mkdir(parents=True, exist_ok=True)
+    kept = {"start": fetched.get("start"), "end": fetched.get("end"), "releases": fetched.get("releases") or [],
+            "fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    (folder / SNAPSHOT).write_text(json.dumps(kept, indent=1), encoding="utf-8")
+
+
+def read_snapshot(cache_dir: Path) -> Optional[dict[str, Any]]:
+    path = Path(cache_dir) / SNAPSHOT
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError:
+        return None
+    return data if isinstance(data, dict) and isinstance(data.get("releases"), list) else None
+
+
 # ---------------------------------------------------------------------------
 # The log
 # ---------------------------------------------------------------------------
@@ -518,7 +541,7 @@ def log_block(log: Log) -> dict[str, Any]:
         f"One row per CBK result with a value date from {log.fy_start.isoformat()} to {log.limit.isoformat()}. Net is accepted "
         "minus redemptions; CBK's \"New Borrowing/Net Repayment\" is printed unsigned and is not used. A T-bond's accepted "
         "amount is the sum of its issues' accepted amounts. A switch auction's results state no redemptions.",
-        "A switch auction is counted only when it is chosen under \"Weekly analyst inputs\".",
+        "A switch auction is counted only when it is ticked under \"Weekly analyst inputs\" (Switch auctions).",
     ]
     return block
 

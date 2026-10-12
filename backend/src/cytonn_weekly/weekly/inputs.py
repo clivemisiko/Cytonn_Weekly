@@ -387,3 +387,8 @@ class WeeklyInputs:
     def cache_dir(self) -> Path:
         """Where slow readings (OCR) of fetched documents are remembered, beside the weekly inputs."""
         return inputs_root(self.root).parent / "ocr_cache"
+
+    @property
+    def results_dir(self) -> Path:
+        """Where CBK's auction result files are kept with their hashes (fixed_income/net_borrowing.py)."""
+        return inputs_root(self.root).parent / "cbk_results"

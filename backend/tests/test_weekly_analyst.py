@@ -498,7 +498,7 @@ def test_the_form_is_read_and_saved_through_the_api(client, tmp_path):
 # ---------------------------------------------------------------------------
 
 NEXT = Week(date(2026, 10, 9))
-SLOW = {"large_caps", "foreign_prior_year", "universe_month_end", "eurobond_issues", "eurobond_yields", "remittances", "universe", "cmmf_last_week"}
+SLOW = {"large_caps", "foreign_prior_year", "universe_month_end", "fiscal_year_start", "eurobond_issues", "eurobond_yields", "remittances", "universe", "cmmf_last_week"}
 WEEKLY = {"placements", "pe", "pe_average", "dividend_yield", "dividend_yield_average", "borrowing_target", "mmf", "interbank",
           "borrowing_log", "foreign_history"}
 

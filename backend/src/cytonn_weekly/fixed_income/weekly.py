@@ -957,11 +957,12 @@ def _carried(issue: Optional[previous_issue.Issue], block_id: str, title: str,
 
 BORROWING_TITLE = "Net domestic borrowing against the pro-rated target"
 SWITCH_FLAG = ("none of these switch auctions is counted in the net borrowing. The team has not said which switches count; "
-               "one is counted only when it is chosen under \"Weekly analyst inputs\"")
+               "one is counted only when it is ticked under \"Weekly analyst inputs\" (Switch auctions)")
 
 
 def _borrowing_sentence(figs: Figures, flows: dict[str, dict], net_expr: list, target_cell: Any, fy_start: date, as_at: date,
-                        net_flag: str = "", net_note: str = "", net_second: Optional[dict[str, Any]] = None) -> str:
+                        net_flag: str = "", net_note: str = "", net_second: Optional[dict[str, Any]] = None,
+                        start_note: str = "") -> str:
     """The closing sentence's three figures, whatever the log came from; "is at X% of", never "ahead of"."""
     days = (as_at - fy_start).days
     target = {"target": typed(target_cell, WB)}
@@ -971,11 +972,18 @@ def _borrowing_sentence(figs: Figures, flows: dict[str, dict], net_expr: list, t
         figs.items[-1]["second"] = net_second
     prorated = figs.add("prorated_target", "Pro-rated net domestic borrowing target (Kshs bn)", PLAIN, 1, target, prorated_expr,
                         flag=TARGET_FLAG, note=f"{days} days from {fy_start.isoformat()} to the latest auction's "
-                                                f"value date, {as_at.isoformat()}, over a 364-day year.")
+                                                f"value date, {as_at.isoformat()}, over a 364-day year.{start_note}")
     ratio = figs.add("ratio", "Net borrowing as a share of the pro-rated target", PLAIN_PCT, 1, {**flows, **target},
                      ["mul", ["div", net_expr, prorated_expr], 100], flag=TARGET_FLAG)
     return (f"The government is at {ratio} of its pro-rated net domestic borrowing target of Kshs {prorated} bn, with a net "
             f"borrowing position of Kshs {net} bn (inclusive of T-bills).")
+
+
+def _start_note(data: dict[str, Any]) -> str:
+    """Said on the pro-rated target when the fiscal year's start is the analysts' own date, not 1 July."""
+    if not data.get("fy_start_typed"):
+        return ""
+    return f" The fiscal year's start, {data['fy_start'].day.isoformat()}, is an {data['fy_start'].source}."
 
 
 def _cbk_borrowing(inputs: WeeklyInputs, data: dict[str, Any], log: net_borrowing.Log) -> list[dict[str, Any]]:
@@ -987,7 +995,7 @@ def _cbk_borrowing(inputs: WeeklyInputs, data: dict[str, Any], log: net_borrowin
             f"auctions, {log.counted - bills - len(log.counted_switches)} Treasury bond auctions"
             f"{f', and the switch of {counted} chosen by the analysts' if counted else ''}): accepted amounts less redemptions.")
     text = _borrowing_sentence(figs, log.inputs, log.net_expr, data["target_bn"], log.fy_start, log.as_at,
-                               net_flag="; ".join(log.flags), net_note=note)
+                               net_flag="; ".join(log.flags), net_note=note, start_note=_start_note(data))
     if log.uncounted_switches:
         found = {f"switch {s['value_date']}": published(s["accepted_kes_m"], net_borrowing.release_source(s))
                  for s in log.uncounted_switches if s.get("accepted_kes_m") is not None}
@@ -1029,7 +1037,7 @@ def _typed_borrowing(inputs: WeeklyInputs, week: Week, data: dict[str, Any],
         second = {"value": float(round(cbk.net_bn, 3)), "decimals": 3,
                   "source": f"{net_borrowing.SOURCE_NAME} ({cbk.counted} results to {cbk.as_at.isoformat()})"}
     text = _borrowing_sentence(figs, flows, ["div", ["sum", *flows], 1000], data["target_bn"], data["fy_start"].day, latest,
-                               net_second=second)
+                               net_second=second, start_note=_start_note(data))
     cells = [data["target_bn"]] + [r["accepted"] for r in log]
     return computed_block("borrowing", title, text, figs.items, sources=_typed_sources(inputs, *cells))
 
@@ -1053,6 +1061,10 @@ def borrowing_blocks(inputs: WeeklyInputs, week: Week, fetched: Optional[dict[st
         log = net_borrowing.build_log(fetched["releases"], data["fy_start"].day, window[1], switches=data.get("switches"),
                                       workbook_log=wb["log"] if wb else None, cell_source=lambda cell: typed_source(cell, WB))
         warnings.extend(fetched.get("warnings") or [])
+        listed = {r["value_date"] for r in fetched["releases"] if r.get("kind") == net_borrowing.SWITCH}
+        for day in sorted(set(data.get("switches") or {}) - listed):
+            warnings.append(f"Net domestic borrowing: the switch auction of {day} is ticked under \"{analyst.FORM}\", but CBK's "
+                            "results list no switch auction with that value date; nothing is counted for it.")
         if log.problems:
             cbk_problem = "; ".join(log.problems) + "."
         elif log.as_at is None or log.as_at < window[0]:
@@ -1164,7 +1176,12 @@ def build_fixed_income_review(
     blocks.append(_carried(issue, "outlook", "Rates and outlook (closing paragraph)", outlook_text))
     fy_start = inputs.analyst.borrowing()["fy_start"].day
     releases = try_fetch(on_event, net_borrowing.SOURCE_NAME, fetchers.releases, fy_start, week.value_date_window[1],
-                         inputs.cache_dir.parent / "cbk_results", problems=problems)
+                         inputs.results_dir, problems=problems)
+    if releases is not None:
+        try:   # so the analyst inputs form can list the switch auctions found
+            net_borrowing.write_snapshot(inputs.results_dir, releases)
+        except OSError as exc:
+            warnings.append(f"CBK auction results: what was read could not be kept for the form ({type(exc).__name__}).")
     blocks += borrowing_blocks(inputs, week, releases, warnings)
 
     content = {
