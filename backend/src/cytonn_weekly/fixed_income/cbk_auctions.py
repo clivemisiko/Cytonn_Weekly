@@ -148,8 +148,38 @@ def _dated(text: str) -> Optional[str]:
     return f"{m.group(3)}-{m.group(2)}-{m.group(1)}" if m else None
 
 
+def _mn(cells: list[Optional[str]], i: int) -> Optional[float]:
+    """A KSh mn amount cell as the net borrowing log reads it: the figure, 0.0 for a printed "-", None if absent."""
+    if i < 0 or i >= len(cells) or cells[i] is None or not str(cells[i]).strip():
+        return None
+    if str(cells[i]).strip() in ("-", "–", "—"):
+        return 0.0
+    try:
+        return clean_pdf_number(cells[i])
+    except ArithmeticError:
+        return None
+
+
+def _total(parts: list[Optional[float]]) -> Optional[float]:
+    """The exact sum of printed amounts (Decimal on each one's shortest form), or None if any is missing."""
+    if not parts or any(p is None for p in parts):
+        return None
+    return float(sum((Decimal(repr(p)) for p in parts), Decimal(0)))
+
+
+_NEXT_DATED = re.compile(r"NEXT\s+TREASURY\s+BILLS?\s+AUCTIONS?.*?DATED\s+(\d{2})/(\d{2})/(\d{4})", re.I | re.S)
+
+
 def parse_tbill_results(tables: list, text: str = "") -> dict[str, Any]:
-    """One row per tenor (91/182/364-day) from a T-bill results PDF's tables."""
+    """One row per tenor (91/182/364-day) from a T-bill results PDF's tables.
+
+    For the net domestic borrowing log (fixed_income/net_borrowing.py), also, in KSh mn as
+    printed: ``accepted_kes_m`` and ``redemptions_kes_m`` (section A's "Total Amount Accepted"
+    and "Rollover / Redemptions", per tenor and ``total``, the printed TOTAL cell), and
+    ``next_week_redemptions_kes_m`` with ``next_value_date`` (section C's "Redemptions" for the
+    next auction).  A printed "-" is 0.0; a figure that is not found is None.  The printed
+    "New Borrowing/Net Repayment" is unsigned and is never read.
+    """
     rows = _labelled_rows(tables)
     offered = _find(rows, "amountoffered")
     bids = _find(rows, "bidsreceived")
@@ -167,7 +197,16 @@ def parse_tbill_results(tables: list, text: str = "") -> dict[str, Any]:
         if row["avg_rate_pct"] is None:
             row["error"] = f"{tenor} average rate not found in the results PDF"
         out.append(row)
-    return {"auction_date": _dated(text), "rows": out}
+    redeemed = _find(rows, "rolloverredemptions")
+    upcoming = _find(rows, "redemptions")   # section C's row; section A's label starts "Rollover"
+    nxt = _NEXT_DATED.search(text or "")
+    return {
+        "auction_date": _dated(text), "rows": out,
+        "accepted_kes_m": {**{t: _mn(accepted, i) for i, t in enumerate(TENORS)}, "total": _mn(accepted, len(TENORS))},
+        "redemptions_kes_m": {**{t: _mn(redeemed, i) for i, t in enumerate(TENORS)}, "total": _mn(redeemed, len(TENORS))},
+        "next_week_redemptions_kes_m": _mn(upcoming, 0),
+        "next_value_date": f"{nxt.group(3)}-{nxt.group(2)}-{nxt.group(1)}" if nxt else None,
+    }
 
 
 # An issue number as CBK prints it: "FXD1/2019/020", "IFB1/2023/17", and "IFB1/2023/6.5" (a 6.5-year bond).
@@ -212,9 +251,16 @@ def parse_tbond_results(tables: list, text: str = "") -> dict[str, Any]:
     that was not recognised), this raises ValueError instead of putting one bond's figures under
     another's name.  That happened with the 2024 results before 2026-10-06 ("IFB1/2023/6.5" was
     not read as an issue number, and "TENOR FXD1/2024/010" was merged into the label cell).
+
+    For the net domestic borrowing log, also, in KSh mn: ``accepted_kes_m``, the sum of the
+    per-issue accepted cells (the printed total is rounded to a whole million where there are
+    several issues: 17-08-2026 prints 312,027 for 312,027.34), and ``redemptions_kes_m``, the
+    "Redemptions" row under "Purpose/ Application of funds" (0.0 for a printed "-"; None when the
+    results state none, as a switch auction's do not).  "New Borrowing/Net Repayment" is printed
+    unsigned and is never read.
     """
     rows = _labelled_rows(tables)
-    issues = [c for c in _find(rows, "issuenumber") if c and str(c).strip()]
+    issues =[c for c in _find(rows, "issuenumber") if c and str(c).strip()]
     tenors = _find(rows, "tenor")
     if not issues:
         coded = _tenor_row_codes(tables)
@@ -246,11 +292,14 @@ def parse_tbond_results(tables: list, text: str = "") -> dict[str, Any]:
         if row["avg_rate_pct"] is None:
             row["error"] = f"{row['issue']} average rate not found in the results PDF"
         out.append(row)
+    redeemed = [c for c in _find(rows, "redemptions") if c and str(c).strip()]
     return {
         "auction_date": _dated(text) or _dated(text.replace("\n", " ")),
         "total_offered_kes_bn": _bn(total_offered),
         "total_subscription_pct": _subscription(_num(bids, len(issues)), total_offered),
         "rows": out,
+        "accepted_kes_m": _total([_mn(accepted, i) for i in range(len(issues))]),
+        "redemptions_kes_m": _mn(redeemed, len(redeemed) - 1),
     }
 
 
@@ -303,6 +352,31 @@ def fetch_period_tbonds(start: date, end: date, get: Getter = http_get) -> dict[
         auctions.append(auction)
     auctions.sort(key=lambda a: a["value_date"], reverse=True)
     return {"listing_url": TBOND_LISTING, "start": start.isoformat(), "end": end.isoformat(), "auctions": auctions}
+
+
+def fetch_period_tbills(start: date, end: date, get: Getter = http_get) -> dict[str, Any]:
+    """Every weekly T-bill auction with a value date in ``start``..``end``, newest first.
+
+    The counterpart of fetch_period_tbonds: each results PDF is taken by the value date in its
+    file name ("... DATED 28-09-2026.pdf"), parsed, and returned with its ``url`` and
+    ``value_date``; one that cannot be read keeps its place with an ``error``.  Files of 2024
+    and before write the date with dots and are not matched, which no caller needs.
+    """
+    links = latest_pdf_links(get(TBILL_LISTING).decode("utf-8", errors="replace"), "91_day_historical_treasury_bill_results")
+    auctions: list[dict[str, Any]] = []
+    for url in links:
+        when = link_value_date(url)
+        if when is None or not start <= when <= end:
+            continue
+        auction: dict[str, Any] = {"url": url, "kind": "tbill", "value_date": when.isoformat()}
+        try:
+            tables, text = _tables_and_text(get(url))
+            auction.update(parse_tbill_results(tables, text), error=None)
+        except Exception as exc:  # noqa: BLE001 - one unreadable PDF must not hide the others
+            auction.update(rows=[], error=f"{type(exc).__name__}: {exc}")
+        auctions.append(auction)
+    auctions.sort(key=lambda a: a["value_date"], reverse=True)
+    return {"listing_url": TBILL_LISTING, "start": start.isoformat(), "end": end.isoformat(), "auctions": auctions}
 
 
 def fetch_latest_tbill_results(get: Getter = http_get) -> dict[str, Any]:

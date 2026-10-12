@@ -15,8 +15,9 @@ Read from #38.2026 (cytonnreport.com id 891) and the Q3'2026 review's weekly par
    shilling (remittances, reserves) and what pressures it (carried forward), and the
    week's change in reserves.
 7. "Weekly Highlights": cited narrative, drafted like every other section's.
-8. The closing paragraph: the net domestic borrowing sentence, worked out, and the rest of
-   the outlook carried forward from the previous issue.
+8. The closing paragraph: the net domestic borrowing sentence, worked out from CBK's auction
+   results of the fiscal year (fixed_income/net_borrowing.py), and the rest of the outlook
+   carried forward from the previous issue.
 
 Sources: the CBK Weekly Bulletin (Tables 2, 3, 4, 6) and CBK's own auction results and
 daily rate table, which are published; the fixed income workbook, which is typed by the
@@ -58,7 +59,7 @@ from cytonn_weekly.common.review import (
 )
 from cytonn_weekly.common.run_events import Observer, report_blocks
 from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview
-from cytonn_weekly.fixed_income import cbk_auctions
+from cytonn_weekly.fixed_income import cbk_auctions, net_borrowing
 from cytonn_weekly.narrative.base import NarrativeBrief, NarrativeProvider
 from cytonn_weekly.narrative.drafter import draft_pieces
 from cytonn_weekly.weekly import analyst, cbk_bulletin, cbk_rates, fi_workbook, previous_issue
@@ -149,6 +150,8 @@ class Fetchers:
     usd_rates: Callable[[], dict[date, float]] = cbk_rates.fetch_usd_rates
     bulletin: Callable[[date], tuple[bytes, str]] = cbk_bulletin.fetch_bulletin
     tbonds: Callable[[date, date], dict[str, Any]] = cbk_auctions.fetch_period_tbonds
+    # every T-bill and T-bond result of the fiscal year so far, kept under the data folder (the net borrowing log)
+    releases: Callable[[date, date, Any], dict[str, Any]] = net_borrowing.fetch_releases
     previous_issue: Callable[[date, Optional[str]], previous_issue.Issue] = (
         lambda day, ref: previous_issue.find_previous_issue(day, reference=ref))
 
@@ -952,13 +955,57 @@ def _carried(issue: Optional[previous_issue.Issue], block_id: str, title: str,
 # 8. Net domestic borrowing
 # ---------------------------------------------------------------------------
 
-def borrowing_block(inputs: WeeklyInputs, week: Week) -> dict[str, Any]:
-    title = "Net domestic borrowing against the pro-rated target"
-    form = inputs.analyst
-    data = form.borrowing()
-    missing = [key for key, found in (("borrowing_target", data["target_bn"]), ("borrowing_log", data["log"])) if found is None]
-    if missing:
-        return unavailable_block("borrowing", title, *form.why(analyst.FI, missing))
+BORROWING_TITLE = "Net domestic borrowing against the pro-rated target"
+SWITCH_FLAG = ("none of these switch auctions is counted in the net borrowing. The team has not said which switches count; "
+               "one is counted only when it is chosen under \"Weekly analyst inputs\"")
+
+
+def _borrowing_sentence(figs: Figures, flows: dict[str, dict], net_expr: list, target_cell: Any, fy_start: date, as_at: date,
+                        net_flag: str = "", net_note: str = "", net_second: Optional[dict[str, Any]] = None) -> str:
+    """The closing sentence's three figures, whatever the log came from; "is at X% of", never "ahead of"."""
+    days = (as_at - fy_start).days
+    target = {"target": typed(target_cell, WB)}
+    prorated_expr = ["mul", ["div", "target", 364], days]
+    net = figs.add("net_borrowing", "Net domestic borrowing (Kshs bn)", PLAIN, 1, flows, net_expr, flag=net_flag, note=net_note)
+    if net_second is not None:
+        figs.items[-1]["second"] = net_second
+    prorated = figs.add("prorated_target", "Pro-rated net domestic borrowing target (Kshs bn)", PLAIN, 1, target, prorated_expr,
+                        flag=TARGET_FLAG, note=f"{days} days from {fy_start.isoformat()} to the latest auction's "
+                                                f"value date, {as_at.isoformat()}, over a 364-day year.")
+    ratio = figs.add("ratio", "Net borrowing as a share of the pro-rated target", PLAIN_PCT, 1, {**flows, **target},
+                     ["mul", ["div", net_expr, prorated_expr], 100], flag=TARGET_FLAG)
+    return (f"The government is at {ratio} of its pro-rated net domestic borrowing target of Kshs {prorated} bn, with a net "
+            f"borrowing position of Kshs {net} bn (inclusive of T-bills).")
+
+
+def _cbk_borrowing(inputs: WeeklyInputs, data: dict[str, Any], log: net_borrowing.Log) -> list[dict[str, Any]]:
+    """The sentence from CBK's results, and the log it rests on (shown on the review screen, not exported)."""
+    figs = Figures()
+    bills = sum(1 for r in log.rows if r["kind"] == net_borrowing.KINDS[net_borrowing.TBILL])
+    counted = net_borrowing.switches_listed(log.counted_switches)
+    note = (f"{log.counted} CBK results from {log.fy_start.isoformat()} to {log.as_at.isoformat()} ({bills} Treasury bill "
+            f"auctions, {log.counted - bills - len(log.counted_switches)} Treasury bond auctions"
+            f"{f', and the switch of {counted} chosen by the analysts' if counted else ''}): accepted amounts less redemptions.")
+    text = _borrowing_sentence(figs, log.inputs, log.net_expr, data["target_bn"], log.fy_start, log.as_at,
+                               net_flag="; ".join(log.flags), net_note=note)
+    if log.uncounted_switches:
+        found = {f"switch {s['value_date']}": published(s["accepted_kes_m"], net_borrowing.release_source(s))
+                 for s in log.uncounted_switches if s.get("accepted_kes_m") is not None}
+        if found:
+            figs.add("switches_not_counted", f"Switch auctions found, not counted: "
+                     f"{net_borrowing.switches_listed(log.uncounted_switches)}; in all, Kshs bn", PLAIN, 1, found,
+                     ["div", ["sum", *found], 1000], in_text=False, flag=SWITCH_FLAG)
+    sources = [{"name": net_borrowing.SOURCE_NAME, "url": cbk_auctions.TBILL_LISTING}] + _typed_sources(inputs, data["target_bn"])
+    notes = ["Net borrowing is worked out from CBK's Treasury bill and bond auction results: accepted amounts less "
+             "redemptions, release by release (the log below)."]
+    return [computed_block("borrowing", BORROWING_TITLE, text, figs.items, sources=sources, notes=notes),
+            net_borrowing.log_block(log)]
+
+
+def _typed_borrowing(inputs: WeeklyInputs, week: Week, data: dict[str, Any],
+                     cbk: Optional[net_borrowing.Log]) -> dict[str, Any]:
+    """The sentence from the analysts' own log: typed on the form, else the uploaded workbook's (analyst input)."""
+    title = BORROWING_TITLE
     limit = week.value_date_window[1]
     log = [r for r in data["log"] if data["fy_start"].day <= r["date"] <= limit]
     latest = max(r["date"] for r in log) if log else None
@@ -971,25 +1018,66 @@ def borrowing_block(inputs: WeeklyInputs, week: Week) -> dict[str, Any]:
         return unavailable_block("borrowing", title, f"'{fi_workbook.BORROWING_SHEET}' logs no auction settling in the week after "
                                  f"{week.ending.isoformat()} (latest value date: {shown}): workbook not yet updated for this week.",
                                  f"The {WB.lower()} updated for this week. {UPLOAD}")
-    days = (latest - data["fy_start"].day).days
     figs = Figures()
     flows = {}
     for i, r in enumerate(log):
         flows[f"accepted_{i}"] = typed(r["accepted"], WB)
         flows[f"redemptions_{i}"] = typed(r["redemptions"], WB)
-    target = {"target": typed(data["target_bn"], WB)}
-    net_expr = ["div", ["sum", *flows], 1000]
-    prorated_expr = ["mul", ["div", "target", 364], days]
-    net = figs.add("net_borrowing", "Net domestic borrowing (Kshs bn)", PLAIN, 1, flows, net_expr)
-    prorated = figs.add("prorated_target", "Pro-rated net domestic borrowing target (Kshs bn)", PLAIN, 1, target, prorated_expr,
-                        flag=TARGET_FLAG, note=f"{days} days from {data['fy_start'].day.isoformat()} to the latest auction's "
-                                                f"value date, {latest.isoformat()}, over a 364-day year.")
-    ratio = figs.add("ratio", "Net borrowing as a share of the pro-rated target", PLAIN_PCT, 1, {**flows, **target},
-                     ["mul", ["div", net_expr, prorated_expr], 100], flag=TARGET_FLAG)
-    text = (f"The government is at {ratio} of its pro-rated net domestic borrowing target of Kshs {prorated} bn, with a net "
-            f"borrowing position of Kshs {net} bn (inclusive of T-bills).")
+    # CBK's own net, when its results could be read, is the second reading of a log the analysts typed.
+    second = None
+    if cbk is not None and cbk.usable:
+        second = {"value": float(round(cbk.net_bn, 3)), "decimals": 3,
+                  "source": f"{net_borrowing.SOURCE_NAME} ({cbk.counted} results to {cbk.as_at.isoformat()})"}
+    text = _borrowing_sentence(figs, flows, ["div", ["sum", *flows], 1000], data["target_bn"], data["fy_start"].day, latest,
+                               net_second=second)
     cells = [data["target_bn"]] + [r["accepted"] for r in log]
     return computed_block("borrowing", title, text, figs.items, sources=_typed_sources(inputs, *cells))
+
+
+def borrowing_blocks(inputs: WeeklyInputs, week: Week, fetched: Optional[dict[str, Any]],
+                     warnings: list[str]) -> list[dict[str, Any]]:
+    """The net domestic borrowing sentence, and the log it is worked out from.
+
+    The log is CBK's auction results (``fetched``, net_borrowing.fetch_releases).  A log the
+    analysts typed on the form overrides it, as analyst input, with CBK's net as its second
+    reading.  When CBK's results cannot be fetched or read, the typed log, else the uploaded
+    workbook's, is the fallback.  The full-year target is always the analysts' figure.
+    """
+    title = BORROWING_TITLE
+    form = inputs.analyst
+    data = form.borrowing()
+    window = week.value_date_window
+    log, cbk_problem = None, "CBK's auction results could not be fetched from centralbank.go.ke."
+    if fetched is not None:
+        wb = form.wb_borrowing()
+        log = net_borrowing.build_log(fetched["releases"], data["fy_start"].day, window[1], switches=data.get("switches"),
+                                      workbook_log=wb["log"] if wb else None, cell_source=lambda cell: typed_source(cell, WB))
+        warnings.extend(fetched.get("warnings") or [])
+        if log.problems:
+            cbk_problem = "; ".join(log.problems) + "."
+        elif log.as_at is None or log.as_at < window[0]:
+            shown = log.as_at.isoformat() if log.as_at else "none"
+            cbk_problem = (f"CBK's results list no auction settling in the week after {week.ending.isoformat()} (latest value "
+                           f"date: {shown}).")
+            log.problems.append(cbk_problem)
+    usable = log is not None and log.usable
+    missing = [key for key, found in (("borrowing_target", data["target_bn"]), ("borrowing_log", data["log"] or usable or None))
+               if found is None]
+    if missing:
+        reason, unblock = form.why(analyst.FI, missing)
+        if "borrowing_log" in missing:
+            reason = f"{reason} {cbk_problem}"
+        return [unavailable_block("borrowing", title, reason, unblock)]
+    if data["typed_log"]:
+        warnings.append(f"Net domestic borrowing: the auction log typed under \"{analyst.FORM}\" is used instead of CBK's "
+                        "auction results. It is analyst input; clear it to have the log built from CBK's results.")
+        block = _typed_borrowing(inputs, week, data, log)
+        return [block] + ([net_borrowing.log_block(log)] if usable and block["kind"] == "computed" else [])
+    if usable:
+        warnings.extend(log.warnings)
+        return _cbk_borrowing(inputs, data, log)
+    warnings.append(f"Net domestic borrowing: {cbk_problem} The {WB.lower()}'s own log is used instead, as analyst input.")
+    return [_typed_borrowing(inputs, week, data, None)]
 
 
 # ---------------------------------------------------------------------------
@@ -1074,7 +1162,10 @@ def build_fixed_income_review(
                                       window=(week.ending - timedelta(days=6), week.ending), on_event=on_event)
     blocks += [narrative_block(f"highlight_{p['brief_id']}", p) for p in drafted["pieces"]]
     blocks.append(_carried(issue, "outlook", "Rates and outlook (closing paragraph)", outlook_text))
-    blocks.append(borrowing_block(inputs, week))
+    fy_start = inputs.analyst.borrowing()["fy_start"].day
+    releases = try_fetch(on_event, net_borrowing.SOURCE_NAME, fetchers.releases, fy_start, week.value_date_window[1],
+                         inputs.cache_dir.parent / "cbk_results", problems=problems)
+    blocks += borrowing_blocks(inputs, week, releases, warnings)
 
     content = {
         "section": SECTION, "title": TITLE, "week_ending": week.ending.isoformat(),

@@ -567,12 +567,19 @@ def test_a_carried_weekly_value_is_read_by_no_builder_until_it_is_confirmed(last
     assert form.field("placements") is None and form.field("pe") is None and form.mmf() is None and form.interbank() == []
     assert form.borrowing()["target_bn"] is None and form.foreign_history() == []
     assert form.field("large_caps") and form.universe() is not None and any(form.eurobonds())      # slow ones are used at once
-    borrowing = fi.fiw.borrowing_block(waiting, NEXT)
+    borrowing = fi.fiw.borrowing_blocks(waiting, NEXT, None, [])[0]
     assert borrowing["kind"] == "unavailable" and borrowing["reason"] == (
         "Net domestic borrowing target for the fiscal year is carried from the week ending 2026-10-02 and has not been "
         "confirmed for this week. Auction log for the fiscal year is carried from the week ending 2026-10-02 and has not been "
-        "confirmed for this week.")
+        "confirmed for this week. CBK's auction results could not be fetched from centralbank.go.ke.")
     assert borrowing["unblock"] == "Complete or confirm it under \"Weekly analyst inputs\" on the start screen and draft again."
+    # with CBK's results the log is not needed: only the target still waits
+    from tests.test_net_borrowing import RELEASES
+    settled = RELEASES + [dict(r, value_date="2026-10-12") for r in RELEASES if (r["value_date"], r["kind"]) == ("2026-10-05", "tbill")]
+    with_cbk = fi.fiw.borrowing_blocks(inputs.WeeklyInputs(NEXT, last_week), NEXT, {"releases": settled, "warnings": []}, [])
+    assert [b["kind"] for b in with_cbk] == ["unavailable"] and with_cbk[0]["reason"] == (
+        "Net domestic borrowing target for the fiscal year is carried from the week ending 2026-10-02 and has not been "
+        "confirmed for this week.")
     # confirming a value as it stands, or typing over it, makes it this week's
     save_week(last_week, NEXT, confirm=["borrowing_target", "pe"], fields={"placements": "9.25"})
     form = inputs.WeeklyInputs(NEXT, last_week).analyst

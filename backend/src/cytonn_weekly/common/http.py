@@ -44,6 +44,16 @@ def http_get(url: str) -> bytes:
         return _get(client, url)
 
 
+def http_head(url: str) -> dict[str, str]:
+    """HEAD ``url``: its response headers, names in lower case (size and modification time, without the body)."""
+    with _client() as client:
+        resp = client.head(safe_url(url))
+        if resp.status_code == 404:
+            raise NotFound(url)
+        resp.raise_for_status()
+        return {k.lower(): v for k, v in resp.headers.items()}
+
+
 @contextmanager
 def http_session() -> Iterator[Callable[[str], bytes]]:
     """A ``get`` like http_get that keeps one connection open, for a fetcher reading many pages of one site."""

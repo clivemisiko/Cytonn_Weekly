@@ -1,0 +1,773 @@
+{
+ "_about": "Captured 2026-10-12 from centralbank.go.ke: every Treasury bill and Treasury bond result (primary, tap sale, switch; buybacks left out) with a value date from 1 July to 9 October 2026, as net_borrowing.fetch_releases returns it from CBK's result PDFs (public figures, amounts in KSh mn as printed; each file's sha256 as downloaded).",
+ "start": "2026-07-01",
+ "end": "2026-10-09",
+ "releases": [
+  {
+   "value_date": "2026-07-06",
+   "kind": "tbill",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/2083267917_RESULTS 2689-091 2663-182 2618-364 DATED 06-07-2026.pdf",
+   "error": null,
+   "accepted_parts": [
+    {
+     "label": "91-day",
+     "kes_m": 16125.52
+    },
+    {
+     "label": "182-day",
+     "kes_m": 1521.22
+    },
+    {
+     "label": "364-day",
+     "kes_m": 7083.83
+    }
+   ],
+   "accepted_kes_m": 24730.57,
+   "accepted_printed_kes_m": 24730.58,
+   "redemptions_kes_m": 21420.6,
+   "redemptions_parts": [
+    {
+     "label": "91-day",
+     "kes_m": 1179.85
+    },
+    {
+     "label": "182-day",
+     "kes_m": 11716.4
+    },
+    {
+     "label": "364-day",
+     "kes_m": 8524.35
+    }
+   ],
+   "next_week_redemptions_kes_m": 28482.25,
+   "next_value_date": "2026-07-13",
+   "file": "2083267917_RESULTS 2689-091 2663-182 2618-364 DATED 06-07-2026.pdf",
+   "sha256": "71d743f5314b1f9134ebb6c2bdcfac995d8024ff12c0ba306e7f29302da363fb"
+  },
+  {
+   "value_date": "2026-07-13",
+   "kind": "tbill",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/1045804532_RESULTS 2690-091 2664-182 2619-364 DATED 13-07-2026.pdf",
+   "error": null,
+   "accepted_parts": [
+    {
+     "label": "91-day",
+     "kes_m": 15607.75
+    },
+    {
+     "label": "182-day",
+     "kes_m": 8880.93
+    },
+    {
+     "label": "364-day",
+     "kes_m": 6036.33
+    }
+   ],
+   "accepted_kes_m": 30525.01,
+   "accepted_printed_kes_m": 30525.02,
+   "redemptions_kes_m": 28482.25,
+   "redemptions_parts": [
+    {
+     "label": "91-day",
+     "kes_m": 8057.6
+    },
+    {
+     "label": "182-day",
+     "kes_m": 9884.1
+    },
+    {
+     "label": "364-day",
+     "kes_m": 10540.55
+    }
+   ],
+   "next_week_redemptions_kes_m": 19104.45,
+   "next_value_date": "2026-07-20",
+   "file": "1045804532_RESULTS 2690-091 2664-182 2619-364 DATED 13-07-2026.pdf",
+   "sha256": "abd265ce3885bdad588e794ec3757a30147d97fbc030e10d7ce08c3704c3abd4"
+  },
+  {
+   "value_date": "2026-07-13",
+   "kind": "primary",
+   "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/1097140849_RESULTS FXD1-2022-010, FXD1-2021-020 AND FXD1-2026-30 DATED 13-07-2026.pdf",
+   "error": null,
+   "accepted_parts": [
+    {
+     "label": "FXD1/2022/010",
+     "kes_m": 51029.49
+    },
+    {
+     "label": "FXD1/2021/020",
+     "kes_m": 13535.92
+    },
+    {
+     "label": "FXD1/2026/030",
+     "kes_m": 6033.84
+    }
+   ],
+   "accepted_kes_m": 70599.25,
+   "redemptions_kes_m": 0.0,
+   "file": "1097140849_RESULTS FXD1-2022-010, FXD1-2021-020 AND FXD1-2026-30 DATED 13-07-2026.pdf",
+   "sha256": "031775e4bf553b53df3277dc776dcd89389875d856ee8f89b3ca7236e5ae9edc"
+  },
+  {
+   "value_date": "2026-07-15",
+   "kind": "switch",
+   "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/1306587647_SWITCH RESULTS FXD1-2012-020 DATED 15-07-2026.pdf",
+   "error": null,
+   "accepted_parts": [
+    {
+     "label": "FXD1/2012/020",
+     "kes_m": 7954.71
+    }
+   ],
+   "accepted_kes_m": 7954.71,
+   "redemptions_kes_m": null,
+   "file": "1306587647_SWITCH RESULTS FXD1-2012-020 DATED 15-07-2026.pdf",
+   "sha256": "36a2a07a9eb32e7458fb841e288de90a89a4dc846069ad2cb7ddca872530f3d5"
+  },
+  {
+   "value_date": "2026-07-20",
+   "kind": "tbill",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/1898554537_RESULTS 2691-091 2665-182 2620-364 DATED 20-07-2026.pdf",
+   "error": null,
+   "accepted_parts": [
+    {
+     "label": "91-day",
+     "kes_m": 12887.74
+    },
+    {
+     "label": "182-day",
+     "kes_m": 13228.66
+    },
+    {
+     "label": "364-day",
+     "kes_m": 4505.6
+    }
+   ],
+   "accepted_kes_m": 30622.0,
+   "accepted_printed_kes_m": 30621.99,
+   "redemptions_kes_m": 19104.45,
+   "redemptions_parts": [
+    {
+     "label": "91-day",
+     "kes_m": 2558.4
+    },
+    {
+     "label": "182-day",
+     "kes_m": 558.15
+    },
+    {
+     "label": "364-day",
+     "kes_m": 15987.9
+    }
+   ],
+   "next_week_redemptions_kes_m": 25122.05,
+   "next_value_date": "2026-07-27",
+   "file": "1898554537_RESULTS 2691-091 2665-182 2620-364 DATED 20-07-2026.pdf",
+   "sha256": "e847571091484502db474f80064d048df9094e83db752acaf7166389772c0260"
+  },
+  {
+   "value_date": "2026-07-27",
+   "kind": "tbill",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/1670849091_RESULTS 2692-091 2666-182 2621-364 DATED 27-07-2026.pdf",
+   "error": null,
+   "accepted_parts": [
+    {
+     "label": "91-day",
+     "kes_m": 13275.63
+    },
+    {
+     "label": "182-day",
+     "kes_m": 11451.01
+    },
+    {
+     "label": "364-day",
+     "kes_m": 4528.66
+    }
+   ],
+   "accepted_kes_m": 29255.3,
+   "accepted_printed_kes_m": 29255.3,
+   "redemptions_kes_m": 25122.05,
+   "redemptions_parts": [
+    {
+     "label": "91-day",
+     "kes_m": 9348.1
+    },
+    {
+     "label": "182-day",
+     "kes_m": 9132.65
+    },
+    {
+     "label": "364-day",
+     "kes_m": 6641.3
+    }
+   ],
+   "next_week_redemptions_kes_m": 23480.1,
+   "next_value_date": "2026-08-03",
+   "file": "1670849091_RESULTS 2692-091 2666-182 2621-364 DATED 27-07-2026.pdf",
+   "sha256": "7654b569c73e43a98e1a70ae0858d263c5a86897c782fbc4782046aeae1b3b8e"
+  },
+  {
+   "value_date": "2026-07-27",
+   "kind": "primary",
+   "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/1725223368_RESULTS FXD1-2019-020 AND FXD1-2022-025 DATED 27-07-2026.pdf",
+   "error": null,
+   "accepted_parts": [
+    {
+     "label": "FXD1/2019/020",
+     "kes_m": 12249.13
+    },
+    {
+     "label": "FXD1/2022/025",
+     "kes_m": 51034.12
+    }
+   ],
+   "accepted_kes_m": 63283.25,
+   "redemptions_kes_m": 0.0,
+   "file": "1725223368_RESULTS FXD1-2019-020 AND FXD1-2022-025 DATED 27-07-2026.pdf",
+   "sha256": "103a38ff3f0e865d73de559161f45612eb7fa80640142da023f1f327c1f19de4"
+  },
+  {
+   "value_date": "2026-08-03",
+   "kind": "tbill",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/1524841578_RESULTS 2693-091 2667-182 2622-364 DATED 03-08-2026.pdf",
+   "error": null,
+   "accepted_parts": [
+    {
+     "label": "91-day",
+     "kes_m": 14330.17
+    },
+    {
+     "label": "182-day",
+     "kes_m": 8171.64
+    },
+    {
+     "label": "364-day",
+     "kes_m": 4784.06
+    }
+   ],
+   "accepted_kes_m": 27285.87,
+   "accepted_printed_kes_m": 27285.87,
+   "redemptions_kes_m": 23480.1,
+   "redemptions_parts": [
+    {
+     "label": "91-day",
+     "kes_m": 8086.3
+    },
+    {
+     "label": "182-day",
+     "kes_m": 2303.15
+    },
+    {
+     "label": "364-day",
+     "kes_m": 13090.65
+    }
+   ],
+   "next_week_redemptions_kes_m": 23295.4,
+   "next_value_date": "2026-08-10",
+   "file": "1524841578_RESULTS 2693-091 2667-182 2622-364 DATED 03-08-2026.pdf",
+   "sha256": "e01d550830899cd3d6f0ab693ace5be7162efb36b7b17a0efd3ba736ccb61287"
+  },
+  {
+   "value_date": "2026-08-10",
+   "kind": "tbill",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/1732181511_RESULTS 2694-091 2668-182 2623-364 DATED 10-08-2026.pdf",
+   "error": null,
+   "accepted_parts": [
+    {
+     "label": "91-day",
+     "kes_m": 13103.01
+    },
+    {
+     "label": "182-day",
+     "kes_m": 9207.54
+    },
+    {
+     "label": "364-day",
+     "kes_m": 6205.25
+    }
+   ],
+   "accepted_kes_m": 28515.8,
+   "accepted_printed_kes_m": 28515.8,
+   "redemptions_kes_m": 23295.4,
+   "redemptions_parts": [
+    {
+     "label": "91-day",
+     "kes_m": 9856.6
+    },
+    {
+     "label": "182-day",
+     "kes_m": 464.75
+    },
+    {
+     "label": "364-day",
+     "kes_m": 12974.05
+    }
+   ],
+   "next_week_redemptions_kes_m": 26259.5,
+   "next_value_date": "2026-08-17",
+   "file": "1732181511_RESULTS 2694-091 2668-182 2623-364 DATED 10-08-2026.pdf",
+   "sha256": "0e055fd2bfbeb0d9ceab9f16f94735d2f5de97b048ad12f8b883a11ae8cd004e"
+  },
+  {
+   "value_date": "2026-08-17",
+   "kind": "tbill",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/1797505205_RESULTS 2695-091 2669-182 2624-364 DATED 17-08-2026.pdf",
+   "error": null,
+   "accepted_parts": [
+    {
+     "label": "91-day",
+     "kes_m": 16364.21
+    },
+    {
+     "label": "182-day",
+     "kes_m": 7092.67
+    },
+    {
+     "label": "364-day",
+     "kes_m": 13560.93
+    }
+   ],
+   "accepted_kes_m": 37017.81,
+   "accepted_printed_kes_m": 37017.81,
+   "redemptions_kes_m": 26259.5,
+   "redemptions_parts": [
+    {
+     "label": "91-day",
+     "kes_m": 7402.8
+    },
+    {
+     "label": "182-day",
+     "kes_m": 7079.0
+    },
+    {
+     "label": "364-day",
+     "kes_m": 11777.7
+    }
+   ],
+   "next_week_redemptions_kes_m": 31874.0,
+   "next_value_date": "2026-08-24",
+   "file": "1797505205_RESULTS 2695-091 2669-182 2624-364 DATED 17-08-2026.pdf",
+   "sha256": "b83cd1fba0489667ef640380564213bfd82138c9f20f12ff548f588792b6d96c"
+  },
+  {
+   "value_date": "2026-08-17",
+   "kind": "primary",
+   "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/1214594764_RESULTS IFB1-2019-016 IFB1-2021-018 AND IFB1-2021-021 DATED 17-08-2026.pdf",
+   "error": null,
+   "accepted_parts": [
+    {
+     "label": "IFB1/2019/016",
+     "kes_m": 112636.78
+    },
+    {
+     "label": "IFB1/2021/018",
+     "kes_m": 105537.34
+    },
+    {
+     "label": "IFB1/2021/021",
+     "kes_m": 93853.22
+    }
+   ],
+   "accepted_kes_m": 312027.34,
+   "redemptions_kes_m": 118137.0,
+   "file": "1214594764_RESULTS IFB1-2019-016 IFB1-2021-018 AND IFB1-2021-021 DATED 17-08-2026.pdf",
+   "sha256": "6bf4d7973f57eab34ea00b048b06efe188c9d920c6a14be670707bb8738a2cf5"
+  },
+  {
+   "value_date": "2026-08-24",
+   "kind": "tbill",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/537994578_RESULTS 2696-091 2670-182 2625-364 DATED 24-08-2026.pdf",
+   "error": null,
+   "accepted_parts": [
+    {
+     "label": "91-day",
+     "kes_m": 32439.12
+    },
+    {
+     "label": "182-day",
+     "kes_m": 9748.21
+    },
+    {
+     "label": "364-day",
+     "kes_m": 15405.95
+    }
+   ],
+   "accepted_kes_m": 57593.28,
+   "accepted_printed_kes_m": 57593.28,
+   "redemptions_kes_m": 31874.15,
+   "redemptions_parts": [
+    {
+     "label": "91-day",
+     "kes_m": 12164.5
+    },
+    {
+     "label": "182-day",
+     "kes_m": 11675.0
+    },
+    {
+     "label": "364-day",
+     "kes_m": 8034.65
+    }
+   ],
+   "next_week_redemptions_kes_m": 26293.4,
+   "next_value_date": "2026-08-31",
+   "file": "537994578_RESULTS 2696-091 2670-182 2625-364 DATED 24-08-2026.pdf",
+   "sha256": "612f55aaab412eb53ce8e49074b309519a28113af1f8668514e4e8dd70bc731b"
+  },
+  {
+   "value_date": "2026-08-26",
+   "kind": "switch",
+   "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/1872718579_SWITCH RESULTS FXD4-2019-010 DATED 26-08-2026 Final.pdf",
+   "error": null,
+   "accepted_parts": [
+    {
+     "label": "FXD4/2019/010",
+     "kes_m": 21816.46
+    }
+   ],
+   "accepted_kes_m": 21816.46,
+   "redemptions_kes_m": null,
+   "file": "1872718579_SWITCH RESULTS FXD4-2019-010 DATED 26-08-2026 Final.pdf",
+   "sha256": "9040af2ef17645983a0f14e44b07415c28dece294f6bdbb24eae75b835f2dc28"
+  },
+  {
+   "value_date": "2026-08-31",
+   "kind": "tbill",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/757296039_RESULTS 2697-091 2671-182 2626-364 DATED 31-08-2026.pdf",
+   "error": null,
+   "accepted_parts": [
+    {
+     "label": "91-day",
+     "kes_m": 23108.63
+    },
+    {
+     "label": "182-day",
+     "kes_m": 15053.79
+    },
+    {
+     "label": "364-day",
+     "kes_m": 6159.48
+    }
+   ],
+   "accepted_kes_m": 44321.9,
+   "accepted_printed_kes_m": 44321.9,
+   "redemptions_kes_m": 26293.4,
+   "redemptions_parts": [
+    {
+     "label": "91-day",
+     "kes_m": 14294.95
+    },
+    {
+     "label": "182-day",
+     "kes_m": 807.8
+    },
+    {
+     "label": "364-day",
+     "kes_m": 11190.65
+    }
+   ],
+   "next_week_redemptions_kes_m": 57528.5,
+   "next_value_date": "2026-09-07",
+   "file": "757296039_RESULTS 2697-091 2671-182 2626-364 DATED 31-08-2026.pdf",
+   "sha256": "c79b4bc1950c66eacf6a1943bd27965df1fc593dbd96c884a5b778663048eb70"
+  },
+  {
+   "value_date": "2026-09-07",
+   "kind": "tbill",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/787941500_RESULTS 2698-091 2672-182 2627-364 DATED 07-09-2026.xlsx.pdf",
+   "error": null,
+   "accepted_parts": [
+    {
+     "label": "91-day",
+     "kes_m": 29205.96
+    },
+    {
+     "label": "182-day",
+     "kes_m": 19585.94
+    },
+    {
+     "label": "364-day",
+     "kes_m": 2231.48
+    }
+   ],
+   "accepted_kes_m": 51023.38,
+   "accepted_printed_kes_m": 51023.38,
+   "redemptions_kes_m": 57528.5,
+   "redemptions_parts": [
+    {
+     "label": "91-day",
+     "kes_m": 31428.8
+    },
+    {
+     "label": "182-day",
+     "kes_m": 15714.05
+    },
+    {
+     "label": "364-day",
+     "kes_m": 10385.65
+    }
+   ],
+   "next_week_redemptions_kes_m": 47568.1,
+   "next_value_date": "2026-09-14",
+   "file": "787941500_RESULTS 2698-091 2672-182 2627-364 DATED 07-09-2026.xlsx.pdf",
+   "sha256": "f7eb0808862fc830375bc0b1bb0026d2d420097cd60d487a5bc92d55de320ca4"
+  },
+  {
+   "value_date": "2026-09-07",
+   "kind": "primary",
+   "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/1225544087_RESULTS FXD3-2019-015 AND SDB1-2011-030 DATED 07-09-2026.pdf",
+   "error": null,
+   "accepted_parts": [
+    {
+     "label": "FXD3/2019/015",
+     "kes_m": 41139.13
+    },
+    {
+     "label": "SDB1/2011/030",
+     "kes_m": 6609.37
+    }
+   ],
+   "accepted_kes_m": 47748.5,
+   "redemptions_kes_m": 0.0,
+   "file": "1225544087_RESULTS FXD3-2019-015 AND SDB1-2011-030 DATED 07-09-2026.pdf",
+   "sha256": "1c6582c6768471b7da2929c291ccaa2c7aba45844a4592e78c0bf97523f4cb1a"
+  },
+  {
+   "value_date": "2026-09-09",
+   "kind": "switch",
+   "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/593081049_SWITCH RESULTS FXD4-2019-010 DATED 09-09-2026 -.pdf",
+   "error": null,
+   "accepted_parts": [
+    {
+     "label": "FXD4/2019/010",
+     "kes_m": 11020.44
+    }
+   ],
+   "accepted_kes_m": 11020.44,
+   "redemptions_kes_m": null,
+   "file": "593081049_SWITCH RESULTS FXD4-2019-010 DATED 09-09-2026 -.pdf",
+   "sha256": "c517fa70bcdfa57c1cd7856cb10e391636a752ccb844e3763942a6c779ec9580"
+  },
+  {
+   "value_date": "2026-09-14",
+   "kind": "tbill",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/890035777_RESULTS 2699-091 2673-182 2628-364 DATED 14-09-2026.pdf",
+   "error": null,
+   "accepted_parts": [
+    {
+     "label": "91-day",
+     "kes_m": 29385.58
+    },
+    {
+     "label": "182-day",
+     "kes_m": 11312.36
+    },
+    {
+     "label": "364-day",
+     "kes_m": 12583.63
+    }
+   ],
+   "accepted_kes_m": 53281.57,
+   "accepted_printed_kes_m": 53281.57,
+   "redemptions_kes_m": 47568.1,
+   "redemptions_parts": [
+    {
+     "label": "91-day",
+     "kes_m": 27415.2
+    },
+    {
+     "label": "182-day",
+     "kes_m": 8194.2
+    },
+    {
+     "label": "364-day",
+     "kes_m": 11958.7
+    }
+   ],
+   "next_week_redemptions_kes_m": 48448.2,
+   "next_value_date": "2026-09-21",
+   "file": "890035777_RESULTS 2699-091 2673-182 2628-364 DATED 14-09-2026.pdf",
+   "sha256": "b1550e8144713bc9f7bb32f98388271e6456bba51f20c456e519e72042464c49"
+  },
+  {
+   "value_date": "2026-09-21",
+   "kind": "tbill",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/1951910008_RESULTS 2700-091 2674-182 2629-364 DATED 21-09-2026.pdf",
+   "error": null,
+   "accepted_parts": [
+    {
+     "label": "91-day",
+     "kes_m": 23231.01
+    },
+    {
+     "label": "182-day",
+     "kes_m": 10046.13
+    },
+    {
+     "label": "364-day",
+     "kes_m": 9415.69
+    }
+   ],
+   "accepted_kes_m": 42692.83,
+   "accepted_printed_kes_m": 42692.83,
+   "redemptions_kes_m": 48448.2,
+   "redemptions_parts": [
+    {
+     "label": "91-day",
+     "kes_m": 24101.45
+    },
+    {
+     "label": "182-day",
+     "kes_m": 10199.5
+    },
+    {
+     "label": "364-day",
+     "kes_m": 14147.25
+    }
+   ],
+   "next_week_redemptions_kes_m": 29550.95,
+   "next_value_date": "2026-09-28",
+   "file": "1951910008_RESULTS 2700-091 2674-182 2629-364 DATED 21-09-2026.pdf",
+   "sha256": "072208cd266bbb6442a0e1450329cc57e07bf534319b6084be10acb155ca212f"
+  },
+  {
+   "value_date": "2026-09-21",
+   "kind": "primary",
+   "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/1905119114_RESULTS FXD1-2019-020 AND FXD1-2026-030 DATED 21-09-2026.pdf",
+   "error": null,
+   "accepted_parts": [
+    {
+     "label": "FXD1/2019/020",
+     "kes_m": 33456.74
+    },
+    {
+     "label": "FXD1/2026/030",
+     "kes_m": 16718.32
+    }
+   ],
+   "accepted_kes_m": 50175.06,
+   "redemptions_kes_m": 0.0,
+   "file": "1905119114_RESULTS FXD1-2019-020 AND FXD1-2026-030 DATED 21-09-2026.pdf",
+   "sha256": "85c4cae59ce512481d48820ba8bd25fe49a79b1be235adc815f0735dfb07501e"
+  },
+  {
+   "value_date": "2026-09-28",
+   "kind": "tbill",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/2049865152_RESULTS 2700-091 2675-182 2630-364 DATED 28-09-2026.pdf",
+   "error": null,
+   "accepted_parts": [
+    {
+     "label": "91-day",
+     "kes_m": 16546.14
+    },
+    {
+     "label": "182-day",
+     "kes_m": 10260.23
+    },
+    {
+     "label": "364-day",
+     "kes_m": 6543.85
+    }
+   ],
+   "accepted_kes_m": 33350.22,
+   "accepted_printed_kes_m": 33350.22,
+   "redemptions_kes_m": 29550.95,
+   "redemptions_parts": [
+    {
+     "label": "91-day",
+     "kes_m": 14471.4
+    },
+    {
+     "label": "182-day",
+     "kes_m": 2731.85
+    },
+    {
+     "label": "364-day",
+     "kes_m": 12347.7
+    }
+   ],
+   "next_week_redemptions_kes_m": 33890.45,
+   "next_value_date": "2026-10-05",
+   "file": "2049865152_RESULTS 2700-091 2675-182 2630-364 DATED 28-09-2026.pdf",
+   "sha256": "d19847e6bc8e826d25a391351dc6309d3188b476879b269ff098ff897324406e"
+  },
+  {
+   "value_date": "2026-10-05",
+   "kind": "tbill",
+   "url": "https://www.centralbank.go.ke/uploads/91_day_historical_treasury_bill_results/2069542746_RESULTS 2702-091 2676-182 2631-364 DATED 05-10-2026.pdf",
+   "error": null,
+   "accepted_parts": [
+    {
+     "label": "91-day",
+     "kes_m": 12875.06
+    },
+    {
+     "label": "182-day",
+     "kes_m": 17900.87
+    },
+    {
+     "label": "364-day",
+     "kes_m": 10420.91
+    }
+   ],
+   "accepted_kes_m": 41196.84,
+   "accepted_printed_kes_m": 41196.84,
+   "redemptions_kes_m": 33890.45,
+   "redemptions_parts": [
+    {
+     "label": "91-day",
+     "kes_m": 16454.1
+    },
+    {
+     "label": "182-day",
+     "kes_m": 9412.1
+    },
+    {
+     "label": "364-day",
+     "kes_m": 8024.25
+    }
+   ],
+   "next_week_redemptions_kes_m": 48062.0,
+   "next_value_date": "2026-10-12",
+   "file": "2069542746_RESULTS 2702-091 2676-182 2631-364 DATED 05-10-2026.pdf",
+   "sha256": "320f31b309bb365e4884fd00be633b1b42aba93b3d096a31d2bfb5c9cc524262"
+  },
+  {
+   "value_date": "2026-10-05",
+   "kind": "primary",
+   "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/250350777_RESULTS FOR FXD3-2019-015 AND  FXD1-2019-020 DATED 05-10-2026.pdf",
+   "error": null,
+   "accepted_parts": [
+    {
+     "label": "FXD3/2019/015",
+     "kes_m": 28602.5
+    },
+    {
+     "label": "FXD1/2019/020",
+     "kes_m": 28902.51
+    }
+   ],
+   "accepted_kes_m": 57505.01,
+   "redemptions_kes_m": 0.0,
+   "file": "250350777_RESULTS FOR FXD3-2019-015 AND  FXD1-2019-020 DATED 05-10-2026.pdf",
+   "sha256": "7ed7211c22215c0e1e19c54af9e0969f138ebe56394800ede4ee85e813c25cf3"
+  },
+  {
+   "value_date": "2026-10-07",
+   "kind": "switch",
+   "url": "https://www.centralbank.go.ke/uploads/historical_treasury_bond_results/1036982453_SWITCH RESULTS FXD1-2018-015 DATED 07-10-2026.pdf",
+   "error": null,
+   "accepted_parts": [
+    {
+     "label": "FXD1/2018/015",
+     "kes_m": 8963.83
+    }
+   ],
+   "accepted_kes_m": 8963.83,
+   "redemptions_kes_m": null,
+   "file": "1036982453_SWITCH RESULTS FXD1-2018-015 DATED 07-10-2026.pdf",
+   "sha256": "f89967731d048753d0be1e0d5737f18ea99b43117af15b240c6c94cf3df3625f"
+  }
+ ]
+}

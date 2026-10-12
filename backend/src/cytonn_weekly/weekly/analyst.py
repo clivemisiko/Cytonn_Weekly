@@ -1179,7 +1179,8 @@ class Analyst:
                     log.append({"date": day, "accepted": self._cell(table, cols["accepted"], r, what, base.get("accepted")),
                                 "redemptions": self._cell(table, cols["redemptions"], r, what, base.get("redemptions"))})
             start = wb["fy_start"] if wb else Typed(fiscal_year_start(self.week), "start of the fiscal year", "1 July")
-            return {"target_bn": self.field("borrowing_target"), "log": log, "fy_start": start, "typed_log": bool(rows)}
+            return {"target_bn": self.field("borrowing_target"), "log": log, "fy_start": start, "typed_log": bool(rows),
+                    "switches": {}}   # which switch auctions count: none, until the analysts choose
 
         return self._once("borrowing", load)
 
