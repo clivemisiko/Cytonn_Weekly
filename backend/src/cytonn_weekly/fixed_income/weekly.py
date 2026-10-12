@@ -61,9 +61,19 @@ from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview
 from cytonn_weekly.fixed_income import cbk_auctions
 from cytonn_weekly.narrative.base import NarrativeBrief, NarrativeProvider
 from cytonn_weekly.narrative.drafter import draft_pieces
-from cytonn_weekly.weekly import cbk_bulletin, cbk_rates, fi_workbook, previous_issue
+from cytonn_weekly.weekly import analyst, cbk_bulletin, cbk_rates, fi_workbook, previous_issue
 from cytonn_weekly.weekly.inputs import CBK_BULLETIN, WeeklyInputs, store
-from cytonn_weekly.weekly.prose import Figures, direction, join_names, published, second_reading, try_fetch, typed, typed_second
+from cytonn_weekly.weekly.prose import (
+    Figures,
+    direction,
+    join_names,
+    published,
+    second_reading,
+    try_fetch,
+    typed,
+    typed_second,
+    typed_source,
+)
 from cytonn_weekly.weekly.week import Week, ordinal, table_date, week_for
 from cytonn_weekly.weekly.workbook import WorkbookError
 
@@ -89,7 +99,6 @@ CHART_REFERENCE = "Cytonn Weekly #38.2026"
 CHART_AFTER = {"tbills": list(CHARTS[0:3]), "money_market": [CHARTS[3]], "liquidity": [CHARTS[4]], "shilling_support": [CHARTS[5]]}
 
 UPLOAD = "Upload it under \"This week's inputs\" on the start screen and draft again."
-NEED_WORKBOOK = (f"The {WB.lower()} for this week is not among this week's inputs.", f"The analysts' {WB.lower()}. {UPLOAD}")
 NEED_BULLETIN = ("The CBK Weekly Bulletin for this week is not among this week's inputs and could not be fetched.",
                  f"The bulletin CBK publishes on the Friday. {UPLOAD}")
 
@@ -100,7 +109,8 @@ TARGET_FLAG = ("the team has not confirmed whether the net domestic borrowing ta
 
 # "Yields at Issue" is not in the workbook's issue list.  These are the figures #38.2026 printed,
 # by column; that table's fixed rows are known to be stale or shifted, so every one needs the
-# fixed income analysts' confirmation, and the row is flagged until they give it.
+# fixed income analysts' confirmation, and the row is flagged until they give it.  A yield typed
+# under "Weekly analyst inputs" replaces the figure here, as an analyst input.
 YIELDS_AT_ISSUE = {"2018_10y": 7.3, "2018_30y": 8.3, "2019_12y": 6.2, "2021_13y": 10.4, "2024_7y": 9.9}
 YIELDS_AT_ISSUE_NOTE = ("Not confirmed: \"Yields at Issue\" is not in the workbook's issue list. These are the figures "
                         "printed in Cytonn Weekly #38.2026, whose fixed rows are known to be stale or shifted. "
@@ -149,6 +159,14 @@ def _missing(block_id: str, title: str, reason_unblock: tuple[str, str]) -> dict
 
 def _bulletin_src(table: int) -> str:
     return f"{cbk_bulletin.SOURCE_NAME}, Table {table}"
+
+
+def _typed_sources(inputs: WeeklyInputs, *cells: Any) -> list[dict[str, Any]]:
+    """The analysts' sources a part rests on: the workbook when one is uploaded, the form when a value was typed."""
+    names = [WB] if inputs.fi_book is not None else []
+    if any(analyst.is_typed(c) for c in cells):
+        names.append(analyst.FORM)
+    return [{"name": n} for n in names]
 
 
 # ---------------------------------------------------------------------------
@@ -395,14 +413,11 @@ def _top_five(table: dict[str, Any], figs: Figures, key: str, label: str) -> str
 def money_market_blocks(inputs: WeeklyInputs, tbill_inputs: Optional[dict[str, dict]], week: Week,
                         previous: Optional[WeeklyInputs], warnings: list[str]) -> list[dict[str, Any]]:
     title = "Money Market Performance"
-    book = inputs.fi_book
-    if book is None:
-        return [_missing("money_market", title, NEED_WORKBOOK)]
-    try:
-        table = fi_workbook.read_mmf_table(book, week)
-        placements = fi_workbook.read_placements(book)
-    except WorkbookError as exc:
-        return [unavailable_block("money_market", title, str(exc), f"The {WB.lower()} updated for this week. {UPLOAD}")]
+    form = inputs.analyst
+    table, placements = form.mmf(), form.field("placements")
+    missing = [key for key, found in (("mmf", table), ("placements", placements)) if found is None]
+    if missing:
+        return [unavailable_block("money_market", title, *form.why(analyst.FI, missing))]
     figs = Figures()
     place = figs.add("placements", "3-month bank placements", PLAIN_PCT, 1, {"placements": typed(placements, WB, scale=100)},
                      flag=PLACEMENTS_FLAG)
@@ -417,7 +432,7 @@ def money_market_blocks(inputs: WeeklyInputs, tbill_inputs: Optional[dict[str, d
         warnings.append("Money Market Performance: the fund table has no Cytonn Money Market Fund row, so its yield is left out.")
     else:
         now = figs.add("cmmf", "Cytonn Money Market Fund yield", PLAIN_PCT, 1, {"cmmf": typed(cytonn["rate"], WB, scale=100)})
-        last = fi_workbook.read_mmf_last_week(book)
+        last = form.field("cmmf_last_week")
         if last is None:
             text.append(f"The yield on the Cytonn Money Market Fund closed the week at {now}.")
         else:
@@ -432,17 +447,12 @@ def money_market_blocks(inputs: WeeklyInputs, tbill_inputs: Optional[dict[str, d
                         f"The yield on the Cytonn Money Market Fund {direction(change, 'increased', 'decreased')} by {bps} to "
                         f"{now} from {was} recorded the previous week.")
     top = _top_five(table, figs, "top5", "Average yield of the Top 5 Money Market Funds")
-    prev_table = None
-    if previous is not None and previous.fi_book is not None:
-        try:
-            prev_table = fi_workbook.read_mmf_table(previous.fi_book, week.previous)
-        except WorkbookError:
-            prev_table = None
+    prev_table = previous.analyst.mmf() if previous is not None else None
     if prev_table is None:
         text.append(f"The average yield on the Top 5 Money Market Funds stood at {top}.")
         warnings.append("Money Market Performance: the Top 5 average is not compared with the previous week, because the "
-                        f"previous week's {WB.lower()} is not among the inputs for the week ending "
-                        f"{week.previous_friday.isoformat()}.")
+                        f"previous week's fund table is neither typed nor in a {WB.lower()} among the inputs for the week "
+                        f"ending {week.previous_friday.isoformat()}.")
     else:
         was = _top_five(prev_table, figs, "top5_last", "Average yield of the Top 5 Money Market Funds, previous week")
         change = (figs.value("top5") - figs.value("top5_last")) * 100
@@ -454,21 +464,25 @@ def money_market_blocks(inputs: WeeklyInputs, tbill_inputs: Optional[dict[str, d
                                 ["mean", *[k for k in both if k.startswith("last_")]]], 100])
         text.append(f"The average yield on the Top 5 Money Market Funds {direction(change, 'increased', 'decreased', 'was unchanged')} "
                     f"by {bps} to {top} from {was} recorded the previous week.")
+    rates = [f["rate"] for f in table["funds"]]
     blocks = [computed_block("money_market", title, " ".join(text), figs.items,
-                             sources=[{"name": WB}, {"name": _bulletin_src(4), "url": cbk_bulletin.LISTING}],
+                             sources=_typed_sources(inputs, placements, *rates) + [{"name": _bulletin_src(4), "url": cbk_bulletin.LISTING}],
                              notes=["The Top 5 average is the average of this week's five highest rates in the fund table."])]
     rows = [{"rank": str(int(f["rank"].number)) if f["rank"].number is not None else str(f["rank"].value),
              "fund": " ".join(str(f["fund"].value).replace("( ", "(").split()), "rate": f["rate"].number * 100}
             for f in table["funds"]]
-    first, last_cell = table["funds"][0]["rank"], table["funds"][-1]["rate"]
     block = table_block(
         "mmf_table", table["title"],
         [{"key": "rank", "label": "Rank", "fmt": TEXT}, {"key": "fund", "label": "Fund Manager", "fmt": TEXT},
          {"key": "rate", "label": "Effective Annual Rate", "fmt": PCT, "decimals": 1}],
         rows, "fund", "fund", {"name": "Business Daily", "url": None, "as_of": table["published"].isoformat()})
     block["row_origin"] = ANALYST
-    block["origin_note"] = (f"Not auto-verified: analyst input from {WB} {first.ref}:{last_cell.a1}, typed from Business "
-                            "Daily. The tool cannot read Business Daily (login pending), so check the row against the paper.")
+    block["origin_note"] = (f"Not auto-verified: {table['origin']}. The tool cannot read Business Daily (login pending), "
+                            "so check the row against the paper.")
+    # A typed rate that differs from the uploaded workbook's is shown to the reviewer on its row.
+    block["second_sources"] = [{"row": row["fund"], "column": "rate", "source": typed_source(f["rate"].other, WB),
+                                "value": f["rate"].other.number * 100}
+                               for row, f in zip(rows, table["funds"]) if getattr(f["rate"], "other", None) is not None]
     if any(a["rate"] < b["rate"] for a, b in zip(rows, rows[1:])):
         warnings.append("The money market fund table is not in descending order of rate as typed; check its ranks.")
     return blocks + [block]
@@ -491,18 +505,15 @@ def liquidity_block(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bullet
                                  "The bulletin issued on this week's Friday.")
     src = _bulletin_src(3)
     figs = Figures()
-    book = inputs.fi_book
-    days = {}
-    if book is not None:
-        try:
-            rows = fi_workbook.read_interbank(book, week.previous.previous_friday, week.thursday)
-            days = {"now": [r for r in rows if week.previous_friday <= r["date"] <= week.thursday],
-                    "last": [r for r in rows if week.previous.previous_friday <= r["date"] <= week.previous.thursday]}
-        except WorkbookError as exc:
-            warnings.append(f"Liquidity: {exc}")
+    form = inputs.analyst
+    daily = form.interbank()
+    if "interbank" in form.errors:
+        warnings.append(f"Liquidity: {form.errors['interbank']}")
+    days = {"now": [r for r in daily if week.previous_friday <= r["date"] <= week.thursday],
+            "last": [r for r in daily if week.previous.previous_friday <= r["date"] <= week.previous.thursday]}
 
     def mean_volume(key: str) -> Optional[dict[str, Any]]:
-        rows = days.get(key) or []
+        rows = [r for r in days.get(key) or [] if r.get("volume") is not None]   # typed rows carry the rate only
         if not rows:
             return None
         return second_reading(sum(r["volume"].number for r in rows) / len(rows),
@@ -527,8 +538,9 @@ def liquidity_block(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bullet
     else:
         kesonia = figs.add("kesonia", "KESONIA, weekly average", PLAIN_PCT, 2, {"kesonia": published(this_week["kesonia"], src)})
         text.append(f"During the week, the Kenya Shilling Overnight Interbank Average (KESONIA) averaged {kesonia}.")
-        warnings.append(f"Liquidity: the change in the average interbank rate is left out; it needs the {WB.lower()}'s daily "
-                        "rates (the bulletin prints KESONIA to two decimals only).")
+        warnings.append("Liquidity: the change in the average interbank rate is left out; it needs the daily interbank rates, "
+                        f"typed under \"{analyst.FORM}\" or in the {WB.lower()} (the bulletin prints KESONIA to two decimals "
+                        "only).")
     change = figs.add("volume_change", "Average interbank volumes change", PLAIN_PCT, 1, vol, pct_change("value", "previous"))
     now = figs.add("volume_bn", "Average interbank volumes (Kshs bn)", PLAIN, 1, {"value": vol["value"]}, ["div", "value", 1000])
     was = figs.add("prev_volume_bn", "Average interbank volumes, previous week (Kshs bn)", PLAIN, 1,
@@ -537,7 +549,7 @@ def liquidity_block(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bullet
     text.append(f"The average interbank volumes traded {direction(moved, 'increased', 'decreased', 'were unchanged')} by "
                 f"{change} to Kshs {now} bn from Kshs {was} bn recorded the previous week.")
     return computed_block("liquidity", title, " ".join(text), figs.items,
-                          sources=[{"name": src, "url": cbk_bulletin.LISTING}, {"name": WB}],
+                          sources=[{"name": src, "url": cbk_bulletin.LISTING}] + _typed_sources(inputs, *(r["rate"] for r in daily)),
                           notes=[f"Friday to Thursday: {week.previous_friday.isoformat()} to {week.thursday.isoformat()}."])
 
 
@@ -546,31 +558,37 @@ def liquidity_block(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bullet
 # ---------------------------------------------------------------------------
 
 def _yield_on(series: Optional[fi_workbook.EurobondSeries], bulletin: Optional[cbk_bulletin.Bulletin], day: date,
-              maturity: int) -> tuple[Optional[float], Optional[str], Optional[float]]:
-    """(yield %, where it was read, the workbook's own figure for the same day) for one issue on one day."""
+              maturity: int) -> tuple[Optional[float], Optional[str], Optional[float], Optional[str]]:
+    """(yield %, where it was read, the analysts' own figure for the same day, where that was read) for one issue on one day."""
     row = next((r for r in (bulletin.market if bulletin else []) if r["date"] == day), None)
     typed_cell = series.yields.get(day) if series is not None else None
     typed_value = typed_cell.number * 100 if typed_cell is not None else None
+    where = typed_source(typed_cell, WB) if typed_cell is not None else None
     if row is not None and maturity in row["eurobond_yields"]:
-        return row["eurobond_yields"][maturity], _bulletin_src(6), typed_value
+        return row["eurobond_yields"][maturity], _bulletin_src(6), typed_value, where
     if typed_cell is not None:
-        return typed_value, f"analyst input from {WB} {typed_cell.ref}", None
-    return None, None, None
+        return typed_value, where, None, None
+    return None, None, None, None
+
+
+def _typed_yields(wheres: list[Optional[str]]) -> str:
+    """How a row's note names the analysts' yields it rests on."""
+    if any(w and "typed on the weekly form" in w for w in wheres):
+        return "analyst input typed on the weekly form"
+    return f"analyst input from the {WB} 'Eurobond' sheet"
 
 
 def eurobond_blocks(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bulletin], week: Week,
                     warnings: list[str]) -> list[dict[str, Any]]:
     title = "Kenya Eurobonds"
-    book = inputs.fi_book
-    series_list: list[Optional[fi_workbook.EurobondSeries]] = [None] * len(fi_workbook.EUROBOND_ISSUES)
-    if book is not None:
-        try:
-            series_list = list(fi_workbook.read_eurobonds(book))
-        except WorkbookError as exc:
-            warnings.append(f"Kenya Eurobonds: {exc}")
+    form = inputs.analyst
+    series_list = form.eurobonds()
+    if "eurobonds" in form.errors:
+        warnings.append(f"Kenya Eurobonds: {form.errors['eurobonds']}")
     if bulletin is None and not any(series_list):
         return [unavailable_block("eurobonds", title, "Neither the CBK Weekly Bulletin nor the fixed income workbook for this "
-                                  "week is among this week's inputs.", f"Either of them. {UPLOAD}")]
+                                  f"week is among this week's inputs, and no Eurobond yields are typed under \"{analyst.FORM}\".",
+                                  f"The bulletin or the workbook. {UPLOAD}")]
     issues = [{"key": spec[0], "head": spec[1], "maturity": spec[5], "series": s}
               for spec, s in zip(fi_workbook.EUROBOND_ISSUES, series_list)]
     # The table's days: the last six trading days up to the week's Thursday that any source has.
@@ -583,10 +601,15 @@ def eurobond_blocks(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bullet
         return [unavailable_block("eurobonds", title, f"No Eurobond yields up to {week.thursday.isoformat()} were found in this "
                                   "week's inputs.", f"The bulletin issued on this week's Friday. {UPLOAD}")]
     last, first = days[-1], days[0]
-    year_base = next((d for d in sorted({d for it in issues if it["series"] for d in it["series"].yields})
-                      if d.year == last.year), None)
-    month_base = next((d for d in sorted({d for it in issues if it["series"] for d in it["series"].yields})
-                       if (d.year, d.month) == (last.year, last.month)), None)
+    # The year's and the month's first trading day, as the analysts' series has them.  A series that starts later
+    # (typed for a few days only) has neither, and that change row is left out rather than worked out from a later day.
+    typed_days = sorted({d for it in issues if it["series"] for d in it["series"].yields})
+    year_base = next((d for d in typed_days if d.year == last.year), None)
+    if year_base is not None and not (year_base.month == 1 and year_base.day <= 8):
+        year_base = None
+    month_base = next((d for d in typed_days if (d.year, d.month) == (last.year, last.month)), None)
+    if month_base is not None and month_base.day > 7:
+        month_base = None
 
     columns = [{"key": "label", "label": "", "fmt": TEXT}] + [
         {"key": it["key"], "label": f"{it['head'][0]} {it['head'][1]}", "fmt": PCT, "decimals": 1} for it in issues]
@@ -595,17 +618,19 @@ def eurobond_blocks(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bullet
 
     def day_row(day: date) -> dict[str, Any]:
         row: dict[str, Any] = {"label": table_date(day)}
-        typed_only = False
+        wheres = []
         for it in issues:
-            value, where, second = _yield_on(it["series"], bulletin, day, it["maturity"])
+            value, where, second, second_where = _yield_on(it["series"], bulletin, day, it["maturity"])
             row[it["key"]] = value
             if where and where.startswith("analyst input"):
-                typed_only = True
+                wheres.append(where)
             if second is not None:
-                seconds.append({"row": row["label"], "column": it["key"], "source": WB, "value": second})
-        if typed_only:
+                seconds.append({"row": row["label"], "column": it["key"],
+                                "source": WB if second_where.startswith(f"analyst input from {WB}") else second_where,
+                                "value": second})
+        if wheres:
             row["_origin"] = ANALYST
-            row["_note"] = (f"Not auto-verified: this day's yields are analyst input from the {WB} 'Eurobond' sheet "
+            row["_note"] = (f"Not auto-verified: this day's yields are {_typed_yields(wheres)} "
                             "(the bulletin for this week does not print the day). Check them before accepting.")
         return row
 
@@ -618,27 +643,28 @@ def eurobond_blocks(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bullet
         if base is None:
             return None
         row: dict[str, Any] = {"label": label, "_derived": {}}
-        typed_only = False
+        wheres = []
         for it in issues:
-            a, where_a, _ = _yield_on(it["series"], bulletin, last, it["maturity"])
-            b, where_b, _ = _yield_on(it["series"], bulletin, base, it["maturity"])
+            a, where_a, _, _ = _yield_on(it["series"], bulletin, last, it["maturity"])
+            b, where_b, _, _ = _yield_on(it["series"], bulletin, base, it["maturity"])
             if a is None or b is None:
                 row[it["key"]] = None
                 continue
             how = {"expr": ["sub", "last", "base"], "inputs": {"last": a, "base": b}}
             row[it["key"]] = float(evaluate(how["expr"], how["inputs"]))   # exact, as the checker works it out
             row["_derived"][it["key"]] = how
-            typed_only = typed_only or any(w and w.startswith("analyst input") for w in (where_a, where_b))
-        if typed_only:
+            wheres += [w for w in (where_a, where_b) if w and w.startswith("analyst input")]
+        if wheres:
             row["_origin"] = ANALYST
-            row["_note"] = (f"Not auto-verified: worked out from yields that are analyst input from the {WB} 'Eurobond' sheet. "
+            row["_note"] = (f"Not auto-verified: worked out from yields that are {_typed_yields(wheres)}. "
                             "The subtraction is checked; the typed yields are not.")
         return row
 
     for label, base in (("Weekly Change", first), ("MTD Change", month_base), ("YTD Change", year_base)):
         row = change_row(label, base)
         if row is None:
-            warnings.append(f"Kenya Eurobonds: the {label} row is left out; it needs the {WB.lower()}'s daily yields.")
+            warnings.append(f"Kenya Eurobonds: the {label} row is left out; it needs the yields on the period's first trading "
+                            f"day, typed under \"{analyst.FORM}\" or in the {WB.lower()}.")
         else:
             rows.append(row)
     performance = table_block("eurobonds_table", "Cytonn Report: Kenya Eurobonds Performance", columns, rows, "label", "label",
@@ -651,8 +677,8 @@ def eurobond_blocks(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bullet
     # The week's biggest mover, from the first and last of the six days.
     moves = []
     for it in issues:
-        a, where_a, sa = _yield_on(it["series"], bulletin, last, it["maturity"])
-        b, where_b, sb = _yield_on(it["series"], bulletin, first, it["maturity"])
+        a, where_a, *sa = _yield_on(it["series"], bulletin, last, it["maturity"])
+        b, where_b, *sb = _yield_on(it["series"], bulletin, first, it["maturity"])
         if a is not None and b is not None:
             moves.append((abs(a - b), it, a, b, where_a, where_b, sa, sb))
     if moves:
@@ -662,7 +688,10 @@ def eurobond_blocks(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bullet
         def reading(value, where, second):
             if where.startswith("analyst input"):
                 return {"value": value, "origin": ANALYST, "source": where}
-            return published(value, where, second=second_reading(second, WB, ANALYST) if second is not None else None, decimals=3)
+            if second[0] is None:
+                return published(value, where, decimals=3)
+            label = WB if second[1].startswith(f"analyst input from {WB}") else second[1]
+            return published(value, where, second=second_reading(second[0], label, ANALYST), decimals=3)
 
         pair = {"last": reading(a, where_a, sa), "first": reading(b, where_b, sb)}
         bps = figs.add("biggest_bps", f"{EUROBOND_NAMES[it['key']]} yield change", BPS, 1, pair, ["mul", ["sub", "last", "first"], 100])
@@ -675,39 +704,52 @@ def eurobond_blocks(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bullet
                 f"recorded the previous week. The table below shows the summary performance of the Kenyan Eurobonds as of "
                 f"{ordinal(last)}:")
         blocks.append(computed_block("eurobonds", title, text, figs.items,
-                                     sources=[{"name": _bulletin_src(6), "url": cbk_bulletin.LISTING}, {"name": WB}]))
+                                     sources=[{"name": _bulletin_src(6), "url": cbk_bulletin.LISTING}]
+                                     + _typed_sources(inputs, *(c for i in issues if i["series"] for c in i["series"].yields.values()))))
 
-    # The table's fixed rows, per issue: amount issued and years to maturity from the workbook's issue list.
+    # The table's fixed rows, per issue: amount issued and years to maturity from the analysts' issue list
+    # (the workbook's, or the one typed on the form).
     detail_rows = []
+    typed_cells = []
     for it in issues:
         s = it["series"]
         issue = s.issue if s is not None else None
-        row: dict[str, Any] = {"issue": f"{it['head'][0]} {it['head'][1]}", "amount_bn": None, "years": None,
-                               "yield_at_issue": YIELDS_AT_ISSUE.get(it["key"]), "_origin": ANALYST,
-                               "_note": YIELDS_AT_ISSUE_NOTE, "incomplete": {"yield_at_issue": "not confirmed by the analysts "
-                                                                              "(printed in #38.2026, whose fixed rows are stale)"}}
+        at_issue = s.yield_at_issue if s is not None else None
+        row: dict[str, Any] = {"issue": f"{it['head'][0]} {it['head'][1]}", "amount_bn": None, "years": None, "_origin": ANALYST}
+        if at_issue is not None:
+            row["yield_at_issue"] = at_issue.number
+            row["_note"] = (f"Not auto-verified: the yield at issue is an {at_issue.source}. The amount and years to maturity "
+                            "are worked out again from the issue list; the typed values are not checked.")
+        else:
+            row.update({"yield_at_issue": YIELDS_AT_ISSUE.get(it["key"]), "_note": YIELDS_AT_ISSUE_NOTE,
+                        "incomplete": {"yield_at_issue": "not confirmed by the analysts (printed in #38.2026, whose fixed rows "
+                                                         "are stale)"}})
+        typed_cells += [at_issue] + list((issue or {}).values())
         if issue is not None and issue["amount_before"].number is not None and issue["maturity"].day is not None:
             row["amount_mn"] = issue["amount_before"].number
             row["days_to_maturity"] = (issue["maturity"].day - last).days
             row["amount_bn"] = float(evaluate(["div", "amount_mn", 1000], row))
             row["years"] = float(evaluate(["div", "days_to_maturity", 365], row))
         detail_rows.append(row)
-    if any(r["amount_bn"] is not None for r in detail_rows):
+    on_form = any(analyst.is_typed(c) for c in typed_cells)
+    if any(r["amount_bn"] is not None or "incomplete" not in r for r in detail_rows):
         details = table_block(
             "eurobonds_issues", "Kenya Eurobonds: amount issued, years to maturity and yield at issue",
             [{"key": "issue", "label": "Issue", "fmt": TEXT},
              {"key": "amount_bn", "label": "Amount Issued (USD bn)", "fmt": NUMBER, "decimals": 1, "expr": ["div", "amount_mn", 1000]},
              {"key": "years", "label": "Years to Maturity", "fmt": NUMBER, "decimals": 1, "expr": ["div", "days_to_maturity", 365]},
              {"key": "yield_at_issue", "label": "Yields at Issue", "fmt": PCT, "decimals": 1}],
-            detail_rows, "issue", "issue", {"name": f"{WB}, 'Eurobond' issue list", "url": None, "as_of": last.isoformat()})
+            detail_rows, "issue", "issue",
+            {"name": f"{analyst.FORM}, Eurobond issues" if on_form else f"{WB}, 'Eurobond' issue list", "url": None,
+             "as_of": last.isoformat()})
         details["notes"] = [f"Years to maturity are to {ordinal(last)}, the table's last day.",
-                            "The amount is the amount before buyback in the workbook's issue list."]
+                            "The amount is the amount before buyback in the analysts' issue list."]
         # Reviewed here row by row; the Word export prints these rows inside the performance table, as the issue does.
         details["export"] = False
         blocks.append(details)
     else:
-        warnings.append(f"Kenya Eurobonds: the Amount Issued, Years to Maturity and Yields at Issue rows are left out; they need "
-                        f"the {WB.lower()}'s issue list.")
+        warnings.append("Kenya Eurobonds: the Amount Issued, Years to Maturity and Yields at Issue rows are left out; they need "
+                        f"the Eurobond issues, typed under \"{analyst.FORM}\" or in the {WB.lower()}'s issue list.")
         detail_rows = []
     performance["export_grid"] = _eurobond_grid(issues, detail_rows, performance)
     return blocks + [performance]
@@ -803,12 +845,11 @@ def shilling_blocks(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bullet
     # What supports the shilling: remittances (workbook) and reserves (bulletin).
     figs = Figures()
     support = []
-    if book is not None:
-        try:
-            months = fi_workbook.read_remittances(book)
-        except WorkbookError as exc:
-            months = []
-            warnings.append(f"Kenya Shilling: {exc}")
+    form = inputs.analyst
+    months = form.remittances()
+    if "remittances" in form.errors:
+        warnings.append(f"Kenya Shilling: {form.errors['remittances']}")
+    if months or book is not None:
         if len(months) >= 24:
             latest = months[0]
             this = {f"m{i}": typed(m["total"], WB) for i, m in enumerate(months[:12])}
@@ -825,7 +866,7 @@ def shilling_blocks(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bullet
                            f"{direction(diff, 'higher than', 'lower than', 'unchanged from')} the USD {before} mn recorded over the "
                            f"same period a year earlier. In the {month} figures, North America accounted for {share} of remittances.")
         else:
-            warnings.append("Kenya Shilling: the remittances bullet is left out; the workbook lists fewer than 24 months.")
+            warnings.append("Kenya Shilling: the remittances bullet is left out; fewer than 24 months are listed.")
     reserves_text = None
     if bulletin is not None and len(bulletin.reserves) >= 2:
         latest, earlier = bulletin.reserves[-1], bulletin.reserves[-2]
@@ -854,11 +895,12 @@ def shilling_blocks(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bullet
         if reserves_text:
             body += "\n\n" + reserves_text
         blocks.append(computed_block("shilling_support", "Kenya Shilling: support, and the week's reserves", body, figs.items,
-                                     sources=[{"name": WB}, {"name": _bulletin_src(2), "url": cbk_bulletin.LISTING}]))
+                                     sources=_typed_sources(inputs, *(m["total"] for m in months[:1]))
+                                     + [{"name": _bulletin_src(2), "url": cbk_bulletin.LISTING}]))
     else:
         blocks.append(unavailable_block("shilling_support", "Kenya Shilling: support, and the week's reserves",
-                                        "Neither the bulletin's reserves (Table 2) nor the workbook's remittances are among this "
-                                        "week's inputs.", f"The bulletin or the {WB.lower()}. {UPLOAD}"))
+                                        "Neither the bulletin's reserves (Table 2) nor the remittances (typed, or in the "
+                                        "workbook) are among this week's inputs.", f"The bulletin or the {WB.lower()}. {UPLOAD}"))
     blocks.append(_carried(issue, "shilling_pressure", "Kenya Shilling: what pressures the shilling", shilling_pressure_text))
     return blocks
 
@@ -912,18 +954,20 @@ def _carried(issue: Optional[previous_issue.Issue], block_id: str, title: str,
 
 def borrowing_block(inputs: WeeklyInputs, week: Week) -> dict[str, Any]:
     title = "Net domestic borrowing against the pro-rated target"
-    book = inputs.fi_book
-    if book is None:
-        return _missing("borrowing", title, NEED_WORKBOOK)
-    try:
-        data = fi_workbook.read_borrowing(book)
-    except WorkbookError as exc:
-        return unavailable_block("borrowing", title, str(exc), f"The {WB.lower()} updated for this week. {UPLOAD}")
+    form = inputs.analyst
+    data = form.borrowing()
+    missing = [key for key, found in (("borrowing_target", data["target_bn"]), ("borrowing_log", data["log"])) if found is None]
+    if missing:
+        return unavailable_block("borrowing", title, *form.why(analyst.FI, missing))
     limit = week.value_date_window[1]
-    log = [r for r in data["log"] if r["date"] <= limit]
+    log = [r for r in data["log"] if data["fy_start"].day <= r["date"] <= limit]
     latest = max(r["date"] for r in log) if log else None
     if latest is None or latest < week.value_date_window[0]:
         shown = latest.isoformat() if latest else "none"
+        if data["typed_log"]:
+            return unavailable_block("borrowing", title, f"The auction log typed under \"{analyst.FORM}\" has no auction settling "
+                                     f"in the week after {week.ending.isoformat()} (latest value date: {shown}).",
+                                     "Add this week's auction to the typed log and draft again.")
         return unavailable_block("borrowing", title, f"'{fi_workbook.BORROWING_SHEET}' logs no auction settling in the week after "
                                  f"{week.ending.isoformat()} (latest value date: {shown}): workbook not yet updated for this week.",
                                  f"The {WB.lower()} updated for this week. {UPLOAD}")
@@ -944,7 +988,8 @@ def borrowing_block(inputs: WeeklyInputs, week: Week) -> dict[str, Any]:
                      ["mul", ["div", net_expr, prorated_expr], 100], flag=TARGET_FLAG)
     text = (f"The government is at {ratio} of its pro-rated net domestic borrowing target of Kshs {prorated} bn, with a net "
             f"borrowing position of Kshs {net} bn (inclusive of T-bills).")
-    return computed_block("borrowing", title, text, figs.items, sources=[{"name": WB}])
+    cells = [data["target_bn"]] + [r["accepted"] for r in log]
+    return computed_block("borrowing", title, text, figs.items, sources=_typed_sources(inputs, *cells))
 
 
 # ---------------------------------------------------------------------------
@@ -1035,7 +1080,8 @@ def build_fixed_income_review(
         "section": SECTION, "title": TITLE, "week_ending": week.ending.isoformat(),
         "week_start": drafted["week_start"], "week_end": drafted["week_end"],
         "blocks": numbered(blocks), "pieces_found": len(drafted["pieces"]), "pieces_expected": N_HIGHLIGHTS,
-        "shortfall": drafted["shortfall"], "warnings": list(drafted["warnings"]) + warnings + problems,
+        "shortfall": drafted["shortfall"],
+        "warnings": list(drafted["warnings"]) + warnings + inputs.analyst.difference_lines() + problems,
         "chart_notes": list(CHARTS), "chart_reference": CHART_REFERENCE, "chart_after": CHART_AFTER,
         "summary": compose_summary(blocks),
     }

@@ -16,6 +16,8 @@ live in memory only (api/runs.py).  The synchronous draft routes above are uncha
 /api/inputs/weekly/{week_ending} is "This week's inputs": the files a coordinator uploads
 for one report week (cytonn_weekly/weekly/inputs.py).  An upload is sent as the request
 body itself (no multipart form), checked, and kept under the data directory.
+/api/inputs/weekly/{week_ending}/analyst is the "Weekly analyst inputs" form beside them: the
+figures only the analysts hold, typed when no workbook is sent (cytonn_weekly/weekly/analyst.py).
 
 Run from backend/ (the package is installed editable):
 
@@ -49,7 +51,7 @@ import time
 from dataclasses import replace
 from datetime import date
 from pathlib import Path
-from typing import Callable, Literal, Optional, Union
+from typing import Any, Callable, Literal, Optional, Union
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
@@ -87,6 +89,7 @@ from cytonn_weekly.report_types import (
 )
 from cytonn_weekly.weekly import cbk_bulletin
 from cytonn_weekly.weekly import export as weekly_export
+from cytonn_weekly.weekly import analyst as weekly_analyst
 from cytonn_weekly.weekly import inputs as weekly_inputs
 from cytonn_weekly.weekly.week import NotAFriday, Week, latest_friday
 
@@ -182,6 +185,17 @@ class InputNotes(BaseModel):
 
     bidding_range: Optional[str] = Field(default=None, max_length=weekly_inputs.MAX_NOTE)
     previous_issue: Optional[str] = Field(default=None, max_length=weekly_inputs.MAX_NOTE)
+
+
+class AnalystInputs(BaseModel):
+    """What was typed on the weekly analyst inputs form.  An item left out is kept; null or empty clears it.
+
+    ``fields`` maps a field to its typed value; ``tables`` maps a table to ``{"text": pasted lines}``
+    or ``{"rows": [...]}``.  What each may hold is cytonn_weekly/weekly/analyst.py's to judge.
+    """
+
+    fields: dict[str, Any] = Field(default_factory=dict)
+    tables: dict[str, Any] = Field(default_factory=dict)
 
 
 class RunRequest(DraftRequest):
@@ -537,6 +551,27 @@ def create_app(
         except weekly_inputs.InputError as exc:
             raise HTTPException(422, str(exc))
         return weekly_inputs.status(week, root)
+
+    def form_section(section: Optional[str]) -> Optional[str]:
+        if section is not None and section not in weekly_analyst.WORKBOOKS:
+            raise HTTPException(422, f"no weekly analyst inputs for section {section!r}")
+        return section
+
+    @app.get("/api/inputs/weekly/{week_ending}/analyst")
+    def analyst_inputs(week_ending: str, section: Optional[str] = Query(default=None, max_length=40)) -> dict:
+        """The weekly analyst inputs form: each item with what was typed, what an uploaded workbook holds, and where they differ."""
+        return weekly_analyst.status(week_of(week_ending), root, form_section(section))
+
+    @app.put("/api/inputs/weekly/{week_ending}/analyst")
+    def put_analyst_inputs(week_ending: str, body: AnalystInputs,
+                           section: Optional[str] = Query(default=None, max_length=40)) -> dict:
+        """Keep what was typed.  422, with every reason (one a line), if any value is refused; nothing is stored then."""
+        week, section = week_of(week_ending), form_section(section)
+        try:
+            weekly_analyst.save_form(week, {"fields": body.fields, "tables": body.tables}, root)
+        except weekly_inputs.InputError as exc:
+            raise HTTPException(422, str(exc))
+        return weekly_analyst.status(week, root, section)
 
     @app.put("/api/inputs/weekly/{week_ending}/{slot}")
     async def upload_input(week_ending: str, slot: str, request: Request,

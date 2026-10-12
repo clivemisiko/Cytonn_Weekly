@@ -388,7 +388,13 @@ def test_with_no_inputs_and_no_sources_every_part_is_a_named_unavailable_block(t
     assert list(by) == ["tbills", "tbonds", "bidding_range", "money_market", "liquidity", "eurobonds", "shilling",
                         "shilling_support", "shilling_pressure", "outlook", "borrowing"]
     assert by["tbills"]["reason"] == "The CBK Weekly Bulletin for this week is not among this week's inputs and could not be fetched."
-    assert by["money_market"]["reason"] == "The fixed income workbook for this week is not among this week's inputs."
+    assert by["money_market"]["reason"] == (
+        "The money market fund table and the 3-month bank placements rate have not been typed under \"Weekly analyst inputs\", "
+        "and the fixed income workbook for this week is not among this week's inputs.")
+    assert by["borrowing"]["reason"].startswith("The net domestic borrowing target for the fiscal year and the fiscal year's "
+                                                "auction log have not been typed")
+    assert by["borrowing"]["unblock"] == ("Type them under \"Weekly analyst inputs\" on the start screen, or upload the fixed "
+                                          "income workbook updated for this week, and draft again.")
     assert by["tbonds"]["reason"] == "CBK T-bond results: ConnectionError: no route to host"
     assert "there is no text to carry forward" in by["outlook"]["reason"]
     assert len(review.review_items) == len(by) and {i.status for i in review.review_items} == {"flagged"}

@@ -371,6 +371,13 @@ class WeeklyInputs:
     def notes(self) -> dict[str, str]:
         return self._once("notes", lambda: read_notes(self.week, self.root))
 
+    @property
+    def analyst(self):
+        """The analysts' own figures: typed on the weekly form, else read from the uploaded workbook (weekly/analyst.py)."""
+        from cytonn_weekly.weekly.analyst import Analyst   # analyst.py imports this module
+
+        return self._once("analyst", lambda: Analyst(self))
+
     def matches(self, stored_name: str) -> Optional[bool]:
         """Whether a stored file's own date is this week's (None if it is not stored)."""
         entry = read_manifest(self.week, self.root).get(stored_name)

@@ -105,6 +105,7 @@ class WeeklySeries:
     ytd: Optional[Cell] = None        # the running year-to-date figure on that row
     # (the week's last day, its total, the running figure, that figure's cell), oldest first
     history: list[tuple[date, float, Optional[float], Optional[Cell]]] = field(default_factory=list)
+    sums: dict[date, Cell] = field(default_factory=dict)   # each weekly row's own figure, by the week's last day
 
 
 def _weekly_rows(sheet: Sheet, ytd_col: int) -> list[tuple[date, int]]:
@@ -130,6 +131,7 @@ def read_daily_series(book: Workbook, sheet_name: str, week: Week, ytd_col: int,
     for last_day, row in weekly[-weeks_back:]:
         ytd = sheet.value(row, ytd_col)
         has = isinstance(ytd, (int, float))
+        series.sums[last_day] = sheet.cell(row, 2)
         series.history.append((last_day, float(sheet.value(row, 2)), float(ytd) if has else None,
                                sheet.cell(row, ytd_col) if has else None))
     this = next((row for last_day, row in weekly if week.monday <= last_day <= week.ending), None)
@@ -294,4 +296,5 @@ def read_universe(book: Workbook, week: Week) -> dict[str, Any]:
     if not companies:
         raise WorkbookError(f"'{UNIVERSE_SHEET}' lists no companies under its 'Company' header")
     return {"companies": companies, "month_end": month_end, "week_ending": week.ending,
-            "previous_friday": week.previous_friday}
+            "previous_friday": week.previous_friday,
+            "month_end_cell": Cell(month_end, sheet.name, HEADER_ROW, prices[month_end])}

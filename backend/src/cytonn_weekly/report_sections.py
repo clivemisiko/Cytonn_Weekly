@@ -166,8 +166,9 @@ SECTIONS: tuple[SectionSpec, ...] = (
         slug="fixed_income", title="Fixed Income", available=True, build=_fixed_income,
         subsections=_FI_SUBSECTIONS, charts=_FI_CHARTS,
         steps=(
-            ("This week's inputs", "The fixed income workbook and the CBK Weekly Bulletin (fetched from CBK if you have not "
-                                   "uploaded it). A missing input leaves its part marked unavailable; nothing is filled in."),
+            ("This week's inputs", "The CBK Weekly Bulletin (fetched from CBK if you have not uploaded it) and the analysts' own "
+                                   "figures: typed under Weekly analyst inputs, or read from the fixed income workbook if it "
+                                   "is uploaded. A missing input leaves its part marked unavailable; nothing is filled in."),
             ("Fetch", "CBK's Treasury bond results and daily US dollar rates, and the previous issue for the carried-forward text."),
             ("Work out", "T-bills, T-bonds, money markets, liquidity, Eurobonds, the shilling and net domestic borrowing, "
                          "each figure with the inputs it was made from."),
@@ -179,8 +180,9 @@ SECTIONS: tuple[SectionSpec, ...] = (
         slug="equities", title="Equities", available=True, build=_equities,
         subsections=_EQ_SUBSECTIONS, charts=_EQ_CHARTS,
         steps=(
-            ("This week's inputs", "The equities workbook and KCB IB's weekly and daily trading reports. A missing input "
-                                   "leaves its part marked unavailable; nothing is filled in."),
+            ("This week's inputs", "KCB IB's weekly and daily trading reports and the analysts' own figures: typed under "
+                                   "Weekly analyst inputs, or read from the equities workbook if it is uploaded. A missing "
+                                   "input leaves its part marked unavailable; nothing is filled in."),
             ("Fetch", "The NSE daily price list for the two Fridays and the year's first trading day (read by OCR, for the "
                       "NSE 10 and the Banking index), and CBK's daily US dollar rates."),
             ("Work out", "Index moves, large-cap movers, turnover and foreign flows in USD, valuation, and the Universe "

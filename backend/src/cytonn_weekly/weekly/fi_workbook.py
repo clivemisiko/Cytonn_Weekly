@@ -147,7 +147,7 @@ def read_mmf_table(book: Workbook, week: Week) -> dict[str, Any]:
                       "rate": sheet.number(r, rate.col, f"rate of {name.strip()}")})
     if not funds:
         raise WorkbookError(f"'{MMF_SHEET}' fund table at {title.ref} has no rows")
-    return {"published": published, "title": " ".join(str(title.value).split()), "funds": funds}
+    return {"published": published, "title": " ".join(str(title.value).split()), "funds": funds, "title_cell": title}
 
 
 def read_mmf_last_week(book: Workbook) -> Optional[Cell]:
@@ -193,6 +193,7 @@ class EurobondSeries:
     maturity_year: int
     yields: dict[date, Cell] = field(default_factory=dict)   # as fractions (0.07626)
     issue: Optional[dict[str, Cell]] = None                  # issue list row: issue_date, maturity, coupon, amount_before, amount_after
+    yield_at_issue: Optional[Any] = None                     # typed on the weekly form (%); the workbook's issue list has none
 
 
 def _date_column(sheet: Sheet, yield_col: int, sample_rows: range) -> int:
