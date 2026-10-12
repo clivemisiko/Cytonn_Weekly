@@ -375,22 +375,14 @@ export interface AnalystColumn {
 
 export type AnalystRow = Record<string, string>;
 
-/** A switch auction in CBK's results: its value date, the amount CBK printed (Kshs mn) and the result file. */
-export interface FoundSwitch {
-  date: string;
-  amount: string;
-  file: string;
-}
-
 /**
- * One table of the form: pasted lines (the fund table), a grid typed cell by cell (the Universe of Coverage), or the
- * switch auctions CBK lists, each with a "count this one" choice.
+ * One table of the form: pasted lines (the fund table) or a grid typed cell by cell (the Universe of Coverage).
  */
 export interface AnalystTable {
   type: "table";
   key: string;
   label: string;
-  mode: "paste" | "grid" | "switches";
+  mode: "paste" | "grid";
   source: string;
   help: string;
   example: string;
@@ -411,10 +403,6 @@ export interface AnalystTable {
   /** What a row gets without typing: this Friday's price from KCB IB, last Friday's from the stored week. */
   auto_rows: AnalystRow[] | null;
   auto_note: string;
-  /** The switch auctions found in CBK's results (the switches table only); null when the results were never read. */
-  found: FoundSwitch[] | null;
-  /** Where that list comes from and up to which day, in the API's words. */
-  found_note: string;
 }
 
 export type AnalystItem = AnalystField | AnalystTable;

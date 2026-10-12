@@ -188,14 +188,6 @@ export const suggestAnalystInput = (weekEnding: string, section: string, field: 
     UPLOAD_TIMEOUT_MS,
   );
 
-/** Read CBK's auction results for the fiscal year so far and list the switch auctions found. 502 if CBK does not answer. */
-export const findSwitchAuctions = (weekEnding: string, section: string) =>
-  request<AnalystForm>(
-    `${inputsPath(weekEnding)}/analyst/switches/find?section=${encodeURIComponent(section)}`,
-    { method: "POST" },
-    UPLOAD_TIMEOUT_MS,
-  );
-
 const exportPath = (period: string) => `/api/export/weekly${period ? `?period=${encodeURIComponent(period)}` : ""}`;
 
 /** Whether the week's report can be exported: every weekly section's state. */
