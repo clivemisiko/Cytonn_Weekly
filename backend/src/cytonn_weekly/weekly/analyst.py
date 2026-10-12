@@ -39,9 +39,10 @@ Rules:
   shown.  It is stored unconfirmed, like a carried weekly value.
 * **The net borrowing log is CBK's, not the analysts'** (fixed_income/net_borrowing.py).  The form
   holds only what CBK cannot say: the full-year target, the day the fiscal year starts (1 July
-  unless typed), and which switch auctions count, each optionally at the team's own amount.  A
-  typed auction log is still accepted, as an override of CBK's results or the fallback when CBK
-  cannot be reached.
+  unless typed) and, under "Other bond redemptions", a bond redemption CBK prints on no result
+  file (a bond maturing on a day with no bond auction).  Switch auctions are not on the form: by the investments team's rule they are not
+  new debt and never count.  A typed auction log is still accepted, as an override of CBK's
+  results or the fallback when CBK cannot be reached.
 * **The Universe of Coverage's Friday price is KCB IB's**, from its weekly report, when no price is
   typed; the previous Friday's is the price stored for the previous week.  Index levels are not on
   the form: the tool reads them from KCB IB and the NSE.
@@ -60,9 +61,8 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from cytonn_weekly.fixed_income import net_borrowing
 from cytonn_weekly.weekly import equities_workbook, fi_workbook
-from cytonn_weekly.weekly.inputs import InputError, WeeklyInputs, inputs_root, week_dir
+from cytonn_weekly.weekly.inputs import InputError, WeeklyInputs, week_dir
 from cytonn_weekly.weekly.week import Week, ordinal
 from cytonn_weekly.weekly.workbook import Cell, WorkbookError
 
@@ -72,8 +72,8 @@ FI = "fixed_income"
 EQ = "equities"
 WORKBOOKS = {FI: fi_workbook.SOURCE_NAME, EQ: equities_workbook.SOURCE_NAME}
 
-NUMBER, DATE, NAMES, TEXT, RANK, MONTH, CHECK = "number", "date", "names", "text", "rank", "month", "check"
-PASTE, GRID, SWITCHES = "paste", "grid", "switches"
+NUMBER, DATE, NAMES, TEXT, RANK, MONTH = "number", "date", "names", "text", "rank", "month"
+PASTE, GRID = "paste", "grid"
 
 MAX_PASTE = 40_000
 MAX_ROWS = 400
@@ -84,7 +84,7 @@ MIN_FUNDS = 5   # the Top 5 average needs five funds
 # they are; weekly-changing ones carry but must be confirmed before any builder reads them.
 SLOW_FIELDS = ("large_caps", "foreign_prior_year", "universe_month_end", "fiscal_year_start")
 WEEKLY_FIELDS = ("placements", "pe", "pe_average", "dividend_yield", "dividend_yield_average", "borrowing_target")
-SLOW_TABLES = ("eurobond_issues", "eurobond_yields", "remittances", "universe", "borrowing_switches")
+SLOW_TABLES = ("eurobond_issues", "eurobond_yields", "remittances", "universe", "borrowing_redemptions")
 WEEKLY_TABLES = ("mmf", "interbank", "borrowing_log", "foreign_history")
 # Of the Universe of Coverage's columns, the ones that carry: prices do not (this Friday's is KCB IB's, last
 # Friday's is the price stored for last week); the month-end price carries only while the month is the same.
@@ -232,14 +232,6 @@ TABLE_LIST = (
            Column("total", "Total remittances", unit="USD mn", lo=0.01, hi=5000)),
           "The latest 24 months, one a line: month, North America, total. North America is needed for the latest month only.",
           example="2026-08  225.1  447.3"),
-    Table("borrowing_switches", FI, "borrowing", "Switch auctions", "Central Bank of Kenya, switch auction results",
-          "Net domestic borrowing against the pro-rated target",
-          (Column("date", "Value date", DATE), Column("count", "Count this one", CHECK, required=False),
-           Column("amount", "Amount to use instead", unit="Kshs mn", lo=0.01, hi=2_000_000, required=False)),
-          "The switch auctions in CBK's results since the fiscal year began. None is counted in the net borrowing unless it is "
-          "ticked. A ticked one counts at CBK's accepted amount, with no redemptions. Type another amount only if the team "
-          "uses a different figure: it is then an analyst input, and the reviewer is shown both.",
-          mode=SWITCHES),
     Table("borrowing_log", FI, "borrowing", "Auction log for the fiscal year", "The fixed income team's borrowing log",
           "Net domestic borrowing against the pro-rated target",
           (Column("date", "Value date", DATE), Column("accepted", "Accepted", unit="Kshs mn", lo=0, hi=2_000_000),
@@ -248,6 +240,18 @@ TABLE_LIST = (
           "analyst input, and is the fallback when CBK cannot be reached. One auction a line since 1 July, up to this "
           "week's. Redemptions are negative, as in the team's log.",
           example="2026-10-05  41196.84  (30511.20)"),
+    # CBK prints a bond redemption only in the results of a bond auction settling that day, so a bond that matures on a
+    # day with no bond auction is on no result file (first case: IFB1/2014/12, 12 October 2026).  It is typed here.
+    Table("borrowing_redemptions", FI, "borrowing", "Other bond redemptions",
+          "The fixed income team (a bond redemption CBK prints on no auction result)",
+          "Net domestic borrowing against the pro-rated target",
+          (Column("date", "Value date", DATE), Column("bond", "Bond", TEXT),
+           Column("amount", "Amount redeemed", unit="Kshs mn", lo=0.01, hi=2_000_000)),
+          "A bond that matures on a day with no bond auction is on no CBK result file. One a line: value date, bond, the amount "
+          "redeemed in Kshs mn (what was outstanding, which may be less than the face value at issue). Each row is subtracted "
+          "on its value date in the log built from CBK's results, as analyst input, labelled \"typed, not on a release\". It "
+          "is not added to an auction log typed above: put the redemption in that log.",
+          example="2026-10-12  IFB1/2014/12  15420.55"),
     Table("foreign_history", EQ, "market", "Foreign net position, previous weeks", "The equities team's weekly sums",
           "Foreign investors (previous week and streak)",
           (Column("week_ending", "Week ending", DATE), Column("net", "Net position", unit="USD mn", lo=-2000, hi=2000)),
@@ -270,7 +274,7 @@ TABLES = {t.key: t for t in TABLE_LIST}
 _READING = {"placements": "placements", "cmmf_last_week": "cmmf_last_week", "mmf_published": "mmf", "mmf": "mmf",
             "interbank": "interbank", "eurobond_issues": "eurobonds", "eurobond_yields": "eurobonds",
             "remittances": "remittances", "borrowing_target": "borrowing", "borrowing_log": "borrowing",
-            "fiscal_year_start": "borrowing", "borrowing_switches": "borrowing",
+            "fiscal_year_start": "borrowing", "borrowing_redemptions": "borrowing",
             "large_caps": "large_caps", "turnover_ytd": "turnover", "foreign_ytd": "foreign", "foreign_prior_year": "foreign",
             "foreign_history": "foreign", "pe": "valuation", "pe_average": "valuation", "dividend_yield": "valuation",
             "dividend_yield_average": "valuation", "universe_month_end": "universe", "universe": "universe"}
@@ -467,12 +471,6 @@ def clean_cell(raw: Any, col: Column, where: str) -> str:
         return ""
     if col.kind == NUMBER:
         return clean_number(text, col, where)
-    if col.kind == CHECK:
-        if text.lower() in ("yes", "true", "1", "y", "x"):
-            return "yes"
-        if text.lower() in ("no", "false", "0", "n"):
-            return ""
-        raise InputError(f"{where}: {text!r} is not yes or no")
     if col.kind == RANK:
         digits = text.rstrip(".)")
         if not digits.isdigit() or int(digits) < 1:
@@ -551,29 +549,7 @@ def _clean_rows(table: Table, raw_rows: list[dict[str, Any]], errors: list[str])
     return out
 
 
-def results_dir(root: Optional[Path] = None) -> Path:
-    """Where CBK's result files and what was last read from them are kept (beside the weekly inputs)."""
-    return inputs_root(root).parent / "cbk_results"
-
-
-def found_switches(week: Week, root: Optional[Path] = None, start: Optional[date] = None) -> Optional[dict[str, Any]]:
-    """The switch auctions CBK's results list for this week's fiscal year, as last read: {switches, read_to, read_at}.
-
-    None when the results were never read on this machine.  ``switches`` is [{date, amount, file}],
-    amounts in KSh mn as CBK printed them, up to the day this week's auctions settle.
-    """
-    snapshot = net_borrowing.read_snapshot(results_dir(root))
-    if snapshot is None:
-        return None
-    first, last = (start or fiscal_year_start(week)).isoformat(), week.value_date_window[1].isoformat()
-    found = [{"date": r["value_date"], "amount": shown(r["accepted_kes_m"]) if r.get("accepted_kes_m") is not None else "",
-              "file": r.get("file") or ""}
-             for r in snapshot["releases"] if r.get("kind") == net_borrowing.SWITCH and first <= r["value_date"] <= last]
-    return {"switches": found, "read_to": snapshot.get("end"), "read_at": snapshot.get("fetched_at"),
-            "covers": bool(snapshot.get("start") and snapshot["start"] <= first and snapshot.get("end") and snapshot["end"] >= last)}
-
-
-def _check_table(table: Table, rows: list[dict[str, str]], week: Week, errors: list[str], root: Optional[Path] = None) -> None:
+def _check_table(table: Table, rows: list[dict[str, str]], week: Week, errors: list[str]) -> None:
     """What a table must satisfy as a whole (rank order, dates in the week, no month skipped)."""
     name = table.label
 
@@ -642,22 +618,17 @@ def _check_table(table: Table, rows: list[dict[str, str]], week: Week, errors: l
             if day > limit or day < fiscal_year_start(week):
                 errors.append(f"{name}: {r['date']} is not between the start of the fiscal year "
                               f"({fiscal_year_start(week).isoformat()}) and {limit.isoformat()}, when this week's auction settles")
-    elif table.key == "borrowing_switches":
-        unique("date", "switch auction")
-        limit = week.value_date_window[1]
-        known = found_switches(week, root)
-        listed = {s["date"] for s in known["switches"]} if known and known["covers"] else None
+    elif table.key == "borrowing_redemptions":
+        # Any day of the fiscal year: a redemption after this week's auctions settle is kept and counts from its own week.
+        start = fiscal_year_start(week)
+        end = start.replace(year=start.year + 1) - timedelta(days=1)
+        seen: set[tuple[str, str]] = set()
         for r in rows:
-            day = date.fromisoformat(r["date"])
-            if "count" not in r:
-                errors.append(f"{name}: an amount is typed for the switch auction of {r['date']} but it is not ticked; tick "
-                              "\"Count this one\" or clear the amount")
-            elif day > limit or day < fiscal_year_start(week) - timedelta(days=366):
-                errors.append(f"{name}: {r['date']} is not in the fiscal year up to {limit.isoformat()}, when this week's "
-                              "auction settles")
-            elif listed is not None and r["date"] not in listed:
-                errors.append(f"{name}: CBK's results list no switch auction with value date {r['date']}"
-                              f"{' (they list ' + ', '.join(sorted(listed)) + ')' if listed else ''}")
+            if not start <= date.fromisoformat(r["date"]) <= end:
+                errors.append(f"{name}: {r['date']} is not in the fiscal year ({start.isoformat()} to {end.isoformat()})")
+            if (r["date"], _key(r["bond"])) in seen:
+                errors.append(f"{name}: {r['bond']} on {r['date']} appears twice; each redemption is listed once")
+            seen.add((r["date"], _key(r["bond"])))
     elif table.key == "foreign_history":
         unique("week_ending", "week")
         for r in rows:
@@ -810,10 +781,8 @@ def save_form(week: Week, changes: dict[str, Any], root: Optional[Path] = None) 
             errors.append(f"{table.label}: {len(raw_rows)} rows; the limit is {MAX_ROWS}")
             continue
         rows = _clean_rows(table, raw_rows, errors)
-        if table.key == "borrowing_switches":   # a switch neither ticked nor given an amount is simply not chosen
-            rows = [r for r in rows if "count" in r or "amount" in r]
         if len(errors) == before and rows:
-            _check_table(table, rows, week, errors, root)
+            _check_table(table, rows, week, errors)
         if len(errors) == before:
             touched.add(key)
             if rows:
@@ -875,13 +844,11 @@ def carry_forward(week: Week, root: Optional[Path] = None) -> dict[str, Any]:
         if key == "universe":
             keep = UNIVERSE_CARRIED + (("month_end_price",) if same_month_end else ())
             rows = [{k: v for k, v in r.items() if k in keep} for r in rows]
-        elif key in ("eurobond_yields", "interbank", "borrowing_log", "foreign_history"):
+        elif key in ("eurobond_yields", "interbank", "borrowing_log", "foreign_history", "borrowing_redemptions"):
             rows = [r for r in rows if not _row_problems(table, r, week)]
-        elif key == "borrowing_switches":   # a new fiscal year starts with no switch chosen
-            rows = [r for r in rows if r["date"] >= fiscal_year_start(week).isoformat()]
         problems: list[str] = []
         if rows:
-            _check_table(table, rows, week, problems, root)
+            _check_table(table, rows, week, problems)
         if rows and not problems:
             take("tables", key, rows, key in WEEKLY_TABLES)
     if not carried:
@@ -1049,8 +1016,8 @@ class Analyst:
             limit = week.value_date_window[1]
             return None if data is None else [{"date": r["date"], "accepted": r["accepted"], "redemptions": r["redemptions"]}
                                               for r in data["log"] if r["date"] <= limit]
-        if key == "borrowing_switches":
-            return None   # the workbook's log does not say which of its rows are switches
+        if key == "borrowing_redemptions":
+            return None     # the workbook's log has no such rows: a redemption CBK prints nowhere is only ever typed
         if key == "foreign_history":
             series = self.wb_foreign()
             if series is None:
@@ -1238,11 +1205,12 @@ class Analyst:
         return self._once("remittances", load)
 
     def borrowing(self) -> dict[str, Any]:
-        """{target_bn, log, fy_start, fy_start_typed, typed_log, switches}.
+        """{target_bn, log, fy_start, fy_start_typed, typed_log, redemptions}.
 
         The target and the analysts' own log are None where they are in neither place.  The
-        fiscal year starts on the typed day, else the workbook's, else 1 July.  ``switches`` is the
-        analysts' choice per switch auction: {value date: {"count": True, "override": cell or None}}.
+        fiscal year starts on the typed day, else the workbook's, else 1 July.  ``redemptions``
+        is the typed "Other bond redemptions", oldest first: [{date, bond, amount}], the amount a
+        typed cell in Kshs mn.
         """
         def load() -> dict[str, Any]:
             table, rows, wb = TABLES["borrowing_log"], self.typed_rows("borrowing_log"), self.wb_borrowing()
@@ -1264,15 +1232,12 @@ class Analyst:
             typed_start = is_typed(start)
             if start is None or start.day is None:
                 start = Typed(fiscal_year_start(self.week), "start of the fiscal year", "1 July")
-            chosen = TABLES["borrowing_switches"]
-            switches: dict[str, dict[str, Any]] = {}
-            for r in self.typed_rows("borrowing_switches"):   # which switch auctions count: none, until the analysts choose
-                if r.get("count") == "yes":
-                    amount = Typed(float(Decimal(r["amount"])), f"switch auction of {r['date']}: amount to use instead of CBK's",
-                                   "the fixed income team's own figure") if r.get("amount") else None
-                    switches[r["date"]] = {"count": True, "override": amount, "label": chosen.label}
+            other, amount = TABLES["borrowing_redemptions"], TABLES["borrowing_redemptions"].columns[2]
+            redemptions = [{"date": date.fromisoformat(r["date"]), "bond": r["bond"],
+                            "amount": self._cell(other, amount, r, f"other bond redemptions, {r['bond']} on {r['date']}", None)}
+                           for r in sorted(self.typed_rows("borrowing_redemptions"), key=lambda r: r["date"])]
             return {"target_bn": self.field("borrowing_target"), "log": log, "fy_start": start, "fy_start_typed": typed_start,
-                    "typed_log": bool(rows), "switches": switches}
+                    "typed_log": bool(rows), "redemptions": redemptions}
 
         return self._once("borrowing", load)
 
@@ -1429,9 +1394,6 @@ def _table_warnings(table: Table, rows: list[dict[str, str]]) -> list[str]:
             if Decimal(b["rate"]) > Decimal(a["rate"]):
                 return [f"{b['fund']} (rank {b['rank']}) has a higher rate than {a['fund']} (rank {a['rank']}): check the ranks "
                         "and rates against the paper."]
-    if table.key == "borrowing_switches":
-        return [f"The switch auction of {r['date']} counts at the typed {r['amount']} instead of CBK's printed amount; the "
-                "reviewer is shown both." for r in rows if r.get("amount")]
     if table.key == "remittances" and 0 < len(rows) < 24:
         return [f"{len(rows)} month{'s' if len(rows) != 1 else ''} typed; the remittances sentence compares the latest twelve "
                 "months with the twelve before, so it needs 24."]
@@ -1503,17 +1465,6 @@ def status(week: Week, root: Optional[Path] = None, section: Optional[str] = Non
                          **({"last_price": shown(before.number)} if before else {})}
                 if len(found) > 1:
                     auto.append(found)
-        listed, listed_note = None, ""
-        if table.key == "borrowing_switches":
-            known = found_switches(week, root, analyst.borrowing()["fy_start"].day)
-            if known is None:
-                listed_note = ("CBK's auction results have not been read on this machine yet. They are read when the section is "
-                               "drafted, or now with the button below.")
-            else:
-                listed = known["switches"]
-                listed_note = (f"CBK's results as last read, up to {known['read_to']}"
-                               f"{'' if known['covers'] else ', which does not cover this week: read them again'}. "
-                               f"{len(listed)} switch auction{'' if len(listed) == 1 else 's'} since the fiscal year began.")
         return {"type": "table", "key": table.key, "label": table.label, "mode": table.mode, "source": table.source,
                 "help": table.help, "example": table.example, "used_in": table.used_in,
                 "columns": [{"key": c.key, "label": c.label, "kind": c.kind, "unit": c.unit, "min": c.lo, "max": c.hi,
@@ -1525,7 +1476,6 @@ def status(week: Week, root: Optional[Path] = None, section: Optional[str] = Non
                 "workbook_note": analyst.errors.get(_READING[table.key]),
                 "warnings": _table_warnings(table, rows or []), "differences": differences.get(table.key, []),
                 "carried": carried(table.key, rows), "needs_confirmation": table.key in form["unconfirmed"],
-                "found": listed, "found_note": listed_note,
                 "auto_rows": auto or None,
                 "auto_note": ("This Friday's price is read from KCB IB's weekly report and last Friday's from the price stored "
                               "for the previous week, where you type none.") if auto else ""}

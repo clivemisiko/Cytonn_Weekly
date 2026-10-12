@@ -956,8 +956,6 @@ def _carried(issue: Optional[previous_issue.Issue], block_id: str, title: str,
 # ---------------------------------------------------------------------------
 
 BORROWING_TITLE = "Net domestic borrowing against the pro-rated target"
-SWITCH_FLAG = ("none of these switch auctions is counted in the net borrowing. The team has not said which switches count; "
-               "one is counted only when it is ticked under \"Weekly analyst inputs\" (Switch auctions)")
 
 
 def _borrowing_sentence(figs: Figures, flows: dict[str, dict], net_expr: list, target_cell: Any, fy_start: date, as_at: date,
@@ -986,28 +984,32 @@ def _start_note(data: dict[str, Any]) -> str:
     return f" The fiscal year's start, {data['fy_start'].day.isoformat()}, is an {data['fy_start'].source}."
 
 
-def _cbk_borrowing(inputs: WeeklyInputs, data: dict[str, Any], log: net_borrowing.Log) -> list[dict[str, Any]]:
-    """The sentence from CBK's results, and the log it rests on (shown on the review screen, not exported)."""
+def _cbk_borrowing(inputs: WeeklyInputs, data: dict[str, Any], log: net_borrowing.Log,
+                   bulletin: Optional[cbk_bulletin.Bulletin] = None) -> list[dict[str, Any]]:
+    """The sentence from CBK's results, and the log it rests on (shown on the review screen, not exported).
+
+    With a bulletin, the advisory check of the log against CBK's outstanding bond stock follows it.
+    """
     figs = Figures()
     bills = sum(1 for r in log.rows if r["kind"] == net_borrowing.KINDS[net_borrowing.TBILL])
-    counted = net_borrowing.switches_listed(log.counted_switches)
     note = (f"{log.counted} CBK results from {log.fy_start.isoformat()} to {log.as_at.isoformat()} ({bills} Treasury bill "
-            f"auctions, {log.counted - bills - len(log.counted_switches)} Treasury bond auctions"
-            f"{f', and the switch of {counted} chosen by the analysts' if counted else ''}): accepted amounts less redemptions.")
+            f"auctions, {log.counted - bills} Treasury bond auctions): accepted amounts less redemptions. No switch auction "
+            "is counted.")
+    if log.typed:
+        note += (f" Less {log.typed} bond redemption{'' if log.typed == 1 else 's'} typed under \"{analyst.FORM}\" "
+                 f"({net_borrowing.TYPED_LABEL}).")
+    # A maturity nobody accounted for is its own flagged row in the log, and flags the figure it may overstate.
     text = _borrowing_sentence(figs, log.inputs, log.net_expr, data["target_bn"], log.fy_start, log.as_at,
-                               net_flag="; ".join(log.flags), net_note=note, start_note=_start_note(data))
-    if log.uncounted_switches:
-        found = {f"switch {s['value_date']}": published(s["accepted_kes_m"], net_borrowing.release_source(s))
-                 for s in log.uncounted_switches if s.get("accepted_kes_m") is not None}
-        if found:
-            figs.add("switches_not_counted", f"Switch auctions found, not counted: "
-                     f"{net_borrowing.switches_listed(log.uncounted_switches)}; in all, Kshs bn", PLAIN, 1, found,
-                     ["div", ["sum", *found], 1000], in_text=False, flag=SWITCH_FLAG)
+                               net_flag="; ".join(log.flags + log.unaccounted), net_note=note, start_note=_start_note(data))
     sources = [{"name": net_borrowing.SOURCE_NAME, "url": cbk_auctions.TBILL_LISTING}] + _typed_sources(inputs, data["target_bn"])
     notes = ["Net borrowing is worked out from CBK's Treasury bill and bond auction results: accepted amounts less "
-             "redemptions, release by release (the log below)."]
-    return [computed_block("borrowing", BORROWING_TITLE, text, figs.items, sources=sources, notes=notes),
-            net_borrowing.log_block(log)]
+             "redemptions, release by release (the log below). A switch auction is not new debt and is never counted."]
+    if log.switches:
+        notes.append(net_borrowing.switches_note(log.switches))
+    out = [computed_block("borrowing", BORROWING_TITLE, text, figs.items, sources=sources, notes=notes),
+           net_borrowing.log_block(log)]
+    stock = net_borrowing.stock_check_block(log, bulletin.bond_stock, bulletin.issue_date) if bulletin is not None else None
+    return out + ([stock] if stock is not None else [])
 
 
 def _typed_borrowing(inputs: WeeklyInputs, week: Week, data: dict[str, Any],
@@ -1043,13 +1045,18 @@ def _typed_borrowing(inputs: WeeklyInputs, week: Week, data: dict[str, Any],
 
 
 def borrowing_blocks(inputs: WeeklyInputs, week: Week, fetched: Optional[dict[str, Any]],
-                     warnings: list[str]) -> list[dict[str, Any]]:
+                     warnings: list[str], bulletin: Optional[cbk_bulletin.Bulletin] = None) -> list[dict[str, Any]]:
     """The net domestic borrowing sentence, and the log it is worked out from.
 
     The log is CBK's auction results (``fetched``, net_borrowing.fetch_releases).  A log the
     analysts typed on the form overrides it, as analyst input, with CBK's net as its second
     reading.  When CBK's results cannot be fetched or read, the typed log, else the uploaded
     workbook's, is the fallback.  The full-year target is always the analysts' figure.
+
+    A bond redemption CBK prints on no result file is typed on the form ("Other bond redemptions")
+    and subtracted on its value date in the log built from CBK's results.  A maturity in CBK's
+    "Issues of Treasury Bonds" table that neither a result nor a typed row accounts for is a
+    flagged row of the log.  Neither touches a log the analysts typed themselves.
     """
     title = BORROWING_TITLE
     form = inputs.analyst
@@ -1058,13 +1065,12 @@ def borrowing_blocks(inputs: WeeklyInputs, week: Week, fetched: Optional[dict[st
     log, cbk_problem = None, "CBK's auction results could not be fetched from centralbank.go.ke."
     if fetched is not None:
         wb = form.wb_borrowing()
-        log = net_borrowing.build_log(fetched["releases"], data["fy_start"].day, window[1], switches=data.get("switches"),
-                                      workbook_log=wb["log"] if wb else None, cell_source=lambda cell: typed_source(cell, WB))
+        other = [{"date": r["date"], "bond": r["bond"], "kes_m": r["amount"].number, "source": typed_source(r["amount"], WB)}
+                 for r in data["redemptions"]]
+        log = net_borrowing.build_log(fetched["releases"], data["fy_start"].day, window[1],
+                                      workbook_log=wb["log"] if wb else None, cell_source=lambda cell: typed_source(cell, WB),
+                                      typed_redemptions=other, maturities=fetched.get("maturities"))
         warnings.extend(fetched.get("warnings") or [])
-        listed = {r["value_date"] for r in fetched["releases"] if r.get("kind") == net_borrowing.SWITCH}
-        for day in sorted(set(data.get("switches") or {}) - listed):
-            warnings.append(f"Net domestic borrowing: the switch auction of {day} is ticked under \"{analyst.FORM}\", but CBK's "
-                            "results list no switch auction with that value date; nothing is counted for it.")
         if log.problems:
             cbk_problem = "; ".join(log.problems) + "."
         elif log.as_at is None or log.as_at < window[0]:
@@ -1083,11 +1089,20 @@ def borrowing_blocks(inputs: WeeklyInputs, week: Week, fetched: Optional[dict[st
     if data["typed_log"]:
         warnings.append(f"Net domestic borrowing: the auction log typed under \"{analyst.FORM}\" is used instead of CBK's "
                         "auction results. It is analyst input; clear it to have the log built from CBK's results.")
+        if data["redemptions"]:
+            warnings.append(f"Net domestic borrowing: the \"{analyst.TABLES['borrowing_redemptions'].label}\" typed on the form "
+                            "are not added to the typed auction log; a redemption belongs in that log as a row.")
         block = _typed_borrowing(inputs, week, data, log)
         return [block] + ([net_borrowing.log_block(log)] if usable and block["kind"] == "computed" else [])
     if usable:
         warnings.extend(log.warnings)
-        return _cbk_borrowing(inputs, data, log)
+        difference = log.workbook_difference()
+        if difference:
+            warnings.append(difference)
+        return _cbk_borrowing(inputs, data, log, bulletin)
+    if data["redemptions"]:
+        warnings.append(f"Net domestic borrowing: the \"{analyst.TABLES['borrowing_redemptions'].label}\" typed on the form "
+                        f"are not added to the {WB.lower()}'s own log.")
     warnings.append(f"Net domestic borrowing: {cbk_problem} The {WB.lower()}'s own log is used instead, as analyst input.")
     return [_typed_borrowing(inputs, week, data, None)]
 
@@ -1177,12 +1192,7 @@ def build_fixed_income_review(
     fy_start = inputs.analyst.borrowing()["fy_start"].day
     releases = try_fetch(on_event, net_borrowing.SOURCE_NAME, fetchers.releases, fy_start, week.value_date_window[1],
                          inputs.results_dir, problems=problems)
-    if releases is not None:
-        try:   # so the analyst inputs form can list the switch auctions found
-            net_borrowing.write_snapshot(inputs.results_dir, releases)
-        except OSError as exc:
-            warnings.append(f"CBK auction results: what was read could not be kept for the form ({type(exc).__name__}).")
-    blocks += borrowing_blocks(inputs, week, releases, warnings)
+    blocks += borrowing_blocks(inputs, week, releases, warnings, bulletin)
 
     content = {
         "section": SECTION, "title": TITLE, "week_ending": week.ending.isoformat(),

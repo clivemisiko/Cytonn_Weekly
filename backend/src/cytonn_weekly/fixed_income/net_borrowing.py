@@ -23,19 +23,29 @@ The rules:
 
 * **Net = accepted minus redemptions**, release by release, from the fiscal year's first day
   (1 July) to the latest release settling by the end of the week's value-date window.
-* **A switch is listed, never counted on the tool's own judgment.**  The team has not said which
-  switches count (its log holds the 26-08-2026 one, at 22,510.90 where CBK's results print
-  21,816.46, and not the others).  A switch counts only when the analyst has chosen it; it then
-  adds CBK's accepted amount and no redemptions, unless the analyst typed another amount, which
-  is an analyst input and is compared with CBK's.
+* **A switch auction never counts** (the investments team's rule, settled 2026-10-12): holders
+  exchange paper they already hold, so a switch is not new debt.  Every switch found is listed
+  for information, with CBK's amount, and adds nothing to the net.  When an uploaded workbook's
+  log counts one (it holds the 26-08-2026 switch at 22,510.90), that row is flagged "workbook log
+  counts a switch the rule excludes": the workbook against the rule, not an error of CBK's.
 * **Nothing is a tolerance.**  Each row is CBK's printed figures.  Second readings are the
   previous release's section C against a T-bill release's redemptions, and the uploaded
   workbook's log row by row; a difference is a "sources disagree" flag on that row.
 * **The files are kept and re-checked** (``ResultsCache``): each downloaded PDF is stored under
   the data folder with its sha256.  On every run a cached file is checked against that hash and
   against CBK's current size and modification time; a file CBK has replaced is downloaded again
-  and the change is reported, never silently used (CBK re-issued the 26-08-2026 switch results
-  as "... Final.pdf" three weeks after the auction).
+  and the change is reported, never silently used.  Revisions happen: CBK restated the 26-08-2026
+  switch results after release, as "... Final.pdf" (22,510.93 mn accepted in the original,
+  21,816.46 in the file it serves now).
+* **A bond redemption CBK prints on no result file is typed** (``typed_redemptions``).  CBK prints
+  a bond redemption only in the results of a bond auction settling that day, so a bond that
+  matures on a day with no bond auction is on no file (first case: IFB1/2014/12, 12-10-2026).
+  The analysts type it under "Other bond redemptions" on the weekly form; each row counts as a
+  redemption on its value date, is labelled "typed, not on a release" and is analyst input.
+* **A maturity nobody accounted for is asked about, never filled in** (``maturities``, from
+  fixed_income/bond_issues.py).  A maturity date inside the log's window with no redemption on
+  a bond result of that day and no typed row for that day gets a row of its own, flagged.  The
+  face value it names is a floor at issue, not the amount redeemed, and is never subtracted.
 """
 
 from __future__ import annotations
@@ -50,20 +60,29 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+from cytonn_weekly.checkers.digital_payments import MISSING
 from cytonn_weekly.common.computed import ANALYST, SOURCE, an_input
 from cytonn_weekly.common.formatting import NUMBER, TEXT
 from cytonn_weekly.common.http import http_get, http_head
 from cytonn_weekly.common.review import table_block
-from cytonn_weekly.fixed_income import cbk_auctions
+from cytonn_weekly.fixed_income import bond_issues, cbk_auctions
 
 SOURCE_NAME = "CBK Treasury bill and bond auction results"
 TBILL, PRIMARY, TAP, SWITCH = "tbill", "primary", "tap", "switch"
 KINDS = {TBILL: "T-bills", PRIMARY: "T-bonds", TAP: "T-bond tap sale", SWITCH: "T-bond switch"}
 ORDER = list(KINDS)
+TYPED, MATURITY = "typed_redemption", "maturity"      # rows of the log that are not a CBK release
+TYPED_LABEL = "typed, not on a release"
+TYPED_KIND = f"Bond redemption ({TYPED_LABEL})"
+MATURITY_KIND = "Bond maturity (no redemption found)"
 
 GET_DELAY = 1.0     # seconds between two downloads from centralbank.go.ke
 PROBE_DELAY = 0.5   # seconds between two size-and-date checks of files already held
 MAX_GAP_DAYS = 9    # T-bills settle weekly (a Monday, or the Tuesday after a holiday); more than this is a missing week
+# The advisory stock check (stock_check_block): a week's change in CBK's outstanding bond stock less the net of the bond
+# results settling in it.  From 1 July to 25 September 2026 that residual ran from 0.00 to +3.77 bn, so a fall of more
+# than 1.0 bn that no result explains is worth a look.  A threshold for a prompt, never a tolerance on a figure.
+STOCK_RESIDUAL_FLOOR_BN = Decimal("-1.0")
 
 Getter = Callable[[str], bytes]
 Probe = Callable[[str], dict[str, str]]
@@ -100,6 +119,7 @@ class ResultsCache:
         self.changes: list[str] = []
         self.unchecked: list[str] = []
         self.downloaded: list[str] = []
+        self.pages: dict[str, bytes] = {}     # the listing pages fetched this run, as served
         self.index: dict[str, dict[str, Any]] = {}
         path = self.folder / "index.json"
         if path.is_file():
@@ -139,7 +159,8 @@ class ResultsCache:
 
     def get(self, url: str) -> bytes:
         if not url.lower().split("?")[0].endswith(".pdf"):
-            return self._download(url)
+            self.pages[url] = self._download(url)
+            return self.pages[url]
         entry = self.index.get(url)
         path = self.folder / entry["file"] if entry else None
         if entry is None or path is None or not path.is_file():
@@ -224,11 +245,15 @@ def fetch_releases(start: date, end: date, cache_dir: Path, get: Getter = http_g
                    sleep: Callable[[float], None] = time.sleep) -> dict[str, Any]:
     """Every T-bill and T-bond result with a value date in ``start``..``end``, oldest first.
 
-    {"start", "end", "releases": [...], "warnings": [...]}: each release is its value date, kind
-    (tbill, primary, tap, switch), accepted amount and its parts, redemptions (None where the
-    results state none), the file's name and sha256, and an ``error`` if it could not be read.
-    The first run of a fiscal year downloads every file since 1 July; later runs download only
-    what is new (one T-bill file a week, and any bond result) and re-check the rest.
+    {"start", "end", "releases": [...], "maturities": [...], "warnings": [...]}: each release is
+    its value date, kind (tbill, primary, tap, switch), accepted amount and its parts, redemptions
+    (None where the results state none), the file's name and sha256, and an ``error`` if it could
+    not be read.  The first run of a fiscal year downloads every file since 1 July; later runs
+    download only what is new (one T-bill file a week, and any bond result) and re-check the rest.
+
+    ``maturities`` is the bond maturities of CBK's "Issues of Treasury Bonds" table
+    (bond_issues.read_maturities), or None if it could not be read.  The table is in the bond
+    listing page this fetch already downloads, so it costs no further request.
     """
     cache = ResultsCache(cache_dir, get, probe, sleep)
     bills = cbk_auctions.fetch_period_tbills(start, end, get=cache.get)
@@ -243,31 +268,11 @@ def fetch_releases(start: date, end: date, cache_dir: Path, get: Getter = http_g
         warnings.append(f"CBK auction results: {len(cache.unchecked)} kept file(s) could not be re-checked against "
                         f"centralbank.go.ke this run and are used as downloaded: {', '.join(cache.unchecked[:5])}"
                         f"{', ...' if len(cache.unchecked) > 5 else ''}.")
+    issues = bond_issues.read_maturities(cache.pages.get(cbk_auctions.TBOND_LISTING), cache.folder)
+    warnings += issues["warnings"]
     return {"start": start.isoformat(), "end": end.isoformat(), "releases": releases, "warnings": warnings,
+            "maturities": issues["maturities"], "issues_sha256": issues["sha256"],
             "downloaded": list(cache.downloaded), "listings": [cbk_auctions.TBILL_LISTING, cbk_auctions.TBOND_LISTING]}
-
-
-SNAPSHOT = "releases.json"
-
-
-def write_snapshot(cache_dir: Path, fetched: dict[str, Any]) -> None:
-    """Remember what was last read from CBK, so the analyst inputs form can list the switch auctions without a fetch."""
-    folder = Path(cache_dir)
-    folder.mkdir(parents=True, exist_ok=True)
-    kept = {"start": fetched.get("start"), "end": fetched.get("end"), "releases": fetched.get("releases") or [],
-            "fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
-    (folder / SNAPSHOT).write_text(json.dumps(kept, indent=1), encoding="utf-8")
-
-
-def read_snapshot(cache_dir: Path) -> Optional[dict[str, Any]]:
-    path = Path(cache_dir) / SNAPSHOT
-    if not path.is_file():
-        return None
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except ValueError:
-        return None
-    return data if isinstance(data, dict) and isinstance(data.get("releases"), list) else None
 
 
 # ---------------------------------------------------------------------------
@@ -287,7 +292,16 @@ def _day(iso: str) -> str:
 
 
 def row_key(release: dict[str, Any]) -> str:
+    if release["kind"] == TYPED:
+        return f"{release['value_date']} {release['bond']} redemption ({TYPED_LABEL})"
+    if release["kind"] == MATURITY:
+        return f"{release['value_date']} {release['bond']} maturity"
     return f"{release['value_date']} {KINDS.get(release['kind'], release['kind'])}"
+
+
+def maturity_message(day: str, bond: str, face_kes_m: Any) -> str:
+    return (f"bond maturity on {_day(day)} ({bond}, up to {_mn(face_kes_m)} mn at face, outstanding may be lower): "
+            "no redemption on any release and none typed")
 
 
 def release_source(release: dict[str, Any]) -> str:
@@ -309,8 +323,11 @@ class Log:
     net_kes_m: Decimal = Decimal(0)
     as_at: Optional[date] = None                                          # the latest counted release's value date
     counted: int = 0
-    uncounted_switches: list[dict[str, Any]] = field(default_factory=list)
-    counted_switches: list[dict[str, Any]] = field(default_factory=list)
+    switches: list[dict[str, Any]] = field(default_factory=list)         # found, and excluded by rule
+    typed: int = 0                                                        # typed bond redemptions counted
+    unaccounted: list[str] = field(default_factory=list)                 # maturities nobody accounted for (the messages)
+    workbook_net_kes_m: Optional[Decimal] = None                          # the uploaded workbook's own log, same window
+    workbook_as_at: Optional[date] = None
     second_sources: list[dict[str, Any]] = field(default_factory=list)
     problems: list[str] = field(default_factory=list)   # the log cannot be used: a release that could not be read
     flags: list[str] = field(default_factory=list)      # the net needs a human call (a missing week, unstated redemptions)
@@ -341,6 +358,22 @@ class Log:
         """Net borrowing as a percentage OF the pro-rated target (never "ahead of" it)."""
         return self.net_bn / self.prorated_bn(target_bn) * 100
 
+    def workbook_difference(self) -> Optional[str]:
+        """The workbook's own log beside the rule's net, when the two differ: old against new, for the warnings."""
+        if self.workbook_net_kes_m is None or not self.usable or self.workbook_as_at != self.as_at:
+            return None
+        gap = self.workbook_net_kes_m - self.net_kes_m
+        if gap == 0:
+            return None
+        theirs = [_d(s["workbook_kes_m"]) for s in self.switches if s.get("workbook_kes_m") is not None]
+        rest = gap - sum(theirs, Decimal(0))
+        why = [f"the switch auction{'' if len(theirs) == 1 else 's'} it counts ({_mn(sum(theirs, Decimal(0)))} mn)"] if theirs else []
+        if rest:
+            why.append(f"{_mn(rest)} mn in other rows (each is flagged in the log)")
+        return (f"Net domestic borrowing: the uploaded workbook's own log adds to Kshs {self.workbook_net_kes_m / 1000:,.3f} bn "
+                f"to {self.as_at.isoformat()}, against Kshs {self.net_bn:,.3f} bn from CBK's results with no switch counted. "
+                f"The difference of {_mn(gap)} mn is {' and '.join(why)}. The figure from CBK's results is used.")
+
 
 def _match_workbook(releases: list[dict[str, Any]], workbook_log: list[dict[str, Any]]) -> tuple[dict[int, dict], list[dict]]:
     """Pair each release with the workbook's row for it: same value date, the same accepted amount first, then in order.
@@ -353,7 +386,7 @@ def _match_workbook(releases: list[dict[str, Any]], workbook_log: list[dict[str,
     for row in workbook_log:
         by_day.setdefault(row["date"].isoformat(), []).append(row)
     for day, theirs in by_day.items():
-        ours = [n for n, r in enumerate(releases) if r["value_date"] == day]
+        ours = [n for n, r in enumerate(releases) if r["value_date"] == day and r["kind"] in KINDS]
         for n in list(ours):
             got = releases[n].get("accepted_kes_m")
             same = next((t for t in theirs if got is not None and t["accepted"].number is not None
@@ -369,18 +402,24 @@ def _match_workbook(releases: list[dict[str, Any]], workbook_log: list[dict[str,
 
 
 def build_log(releases: list[dict[str, Any]], fy_start: date, limit: date,
-              switches: Optional[dict[str, dict[str, Any]]] = None,
               workbook_log: Optional[list[dict[str, Any]]] = None,
-              cell_source: Callable[[Any], str] = lambda cell: getattr(cell, "source", None) or str(cell.ref)) -> Log:
+              cell_source: Callable[[Any], str] = lambda cell: getattr(cell, "source", None) or str(cell.ref),
+              typed_redemptions: Optional[list[dict[str, Any]]] = None,
+              maturities: Optional[list[dict[str, Any]]] = None) -> Log:
     """The log from ``fy_start`` to ``limit``: one row per release, the running net, and the net figure's inputs.
 
-    ``switches`` is the analyst's choice per switch, by value date: {"2026-08-26": {"count": True,
-    "override": cell or None}}.  No entry, or ``count`` false, and the switch is listed but not
-    counted.  ``workbook_log`` is the uploaded workbook's log ([{date, accepted, redemptions}],
-    cells, redemptions negative), used only as each row's second reading.
+    A switch auction is listed and never counted.  ``workbook_log`` is the uploaded workbook's log
+    ([{date, accepted, redemptions}], cells, redemptions negative), used only as each row's second
+    reading; a row of it that counts a switch is flagged on that switch's row.
+
+    ``typed_redemptions`` ([{date, bond, kes_m, source}], the form's "Other bond redemptions") are
+    bond redemptions CBK prints on no result file: each in the window is a row of its own that
+    subtracts its amount on its value date, as analyst input.  ``maturities`` ([{date, bond,
+    face_kes_m}], bond_issues.maturities) are only a question: one in the window with no
+    redemption on a bond result of that day and no typed row for that day is a flagged row that
+    adds nothing to the net.
     """
     log = Log(fy_start, limit)
-    switches = switches or {}
     seen_bills: set[str] = set()
     kept: list[dict[str, Any]] = []
     for r in sorted(releases, key=release_key):
@@ -393,18 +432,59 @@ def build_log(releases: list[dict[str, Any]], fy_start: date, limit: date,
                 continue
             seen_bills.add(r["value_date"])
         kept.append(r)
+    extra: list[dict[str, Any]] = []      # rows that are not a CBK release; they never pair with the workbook's log
+    days_typed: set[str] = set()
+    for t in typed_redemptions or []:
+        day = t["date"].isoformat() if isinstance(t["date"], date) else str(t["date"])
+        if fy_start.isoformat() <= day <= limit.isoformat():
+            days_typed.add(day)
+            extra.append({"value_date": day, "kind": TYPED, "bond": t["bond"], "kes_m": t["kes_m"], "source": t["source"]})
+    # A bond result prints its day's redemptions in one total, so a maturity is carried by any bond result of the
+    # day that states redemptions; a Treasury bill result's redemptions are bills and never carry a bond.
+    days_redeemed = {r["value_date"] for r in kept if r["kind"] in (PRIMARY, TAP) and (r.get("redemptions_kes_m") or 0) > 0}
+    for m in maturities or []:
+        if fy_start.isoformat() <= m["date"] <= limit.isoformat() and m["date"] not in days_redeemed | days_typed:
+            extra.append({"value_date": m["date"], "kind": MATURITY, "bond": m["bond"], "face_kes_m": m["face_kes_m"]})
+    kept = sorted(kept + extra, key=release_key)
 
-    pairs, left = _match_workbook(kept, [w for w in (workbook_log or []) if fy_start <= w["date"] <= limit])
+    in_window = [w for w in (workbook_log or []) if fy_start <= w["date"] <= limit]
+    pairs, left = _match_workbook(kept, in_window)
+    if in_window:
+        log.workbook_net_kes_m = sum((_d(w["accepted"].number or 0) - abs(_d(w["redemptions"].number or 0))
+                                      for w in in_window), Decimal(0))
+        log.workbook_as_at = max(w["date"] for w in in_window)
     running = Decimal(0)
     previous_bill: Optional[dict[str, Any]] = None
     bill_days: list[date] = []
     rounded: list[str] = []
     for n, r in enumerate(kept):
+        if r["kind"] == MATURITY:
+            message = maturity_message(r["value_date"], r["bond"], r["face_kes_m"])
+            log.rows.append({"key": row_key(r), "value_date": r["value_date"], "kind": MATURITY_KIND, "accepted_kes_m": None,
+                             "redemptions_kes_m": None, "net_kes_m": None, "counted": "No", "running_bn": float(running / 1000),
+                             "file": None, "sha256": None, "error": None, "_derived": {},
+                             "_flags": [{"kind": MISSING, "field": "redemptions_kes_m", "message": message,
+                                         "sources": [{"source": f"{bond_issues.SOURCE_NAME}, face value at issue (a floor: the "
+                                                                "table lacks rows)",
+                                                      "value": r["face_kes_m"], "normalized": _mn(r["face_kes_m"])}]}]})
+            log.unaccounted.append(message)
+            continue
+        if r["kind"] == TYPED:
+            name, amount = f"redemptions {r['value_date']} {r['bond']} ({TYPED_LABEL})", _d(r["kes_m"])
+            log.inputs[name] = an_input(r["kes_m"], ANALYST, r["source"])
+            log.redeemed.append(name)
+            before, running = running, running - amount
+            log.rows.append({"key": row_key(r), "value_date": r["value_date"], "kind": TYPED_KIND, "accepted_kes_m": None,
+                             "redemptions_kes_m": r["kes_m"], "net_kes_m": float(-amount), "counted": "Yes",
+                             "running_bn": float(running / 1000), "file": None, "sha256": None, "error": None,
+                             "_origin": ANALYST, "_note": f"{TYPED_LABEL}: {r['source']}",
+                             "_derived": {"net_kes_m": {"expr": ["neg", "redemptions"], "inputs": {"redemptions": r["kes_m"]}},
+                                          "running_bn": {"expr": ["add", "before", ["div", "net", 1000]],
+                                                         "inputs": {"before": float(before / 1000), "net": float(-amount)}}}})
+            log.typed += 1
+            continue
         key, src, when = row_key(r), release_source(r), date.fromisoformat(r["value_date"])
-        choice = switches.get(r["value_date"]) or {}
-        is_switch = r["kind"] == SWITCH
-        counts = bool(choice.get("count")) if is_switch else True
-        override = choice.get("override") if is_switch and counts else None
+        counts = r["kind"] != SWITCH          # a switch is not new debt: listed, never counted
         row: dict[str, Any] = {"key": key, "value_date": r["value_date"], "kind": KINDS.get(r["kind"], r["kind"]),
                                "accepted_kes_m": r.get("accepted_kes_m"), "redemptions_kes_m": r.get("redemptions_kes_m"),
                                "net_kes_m": None, "counted": "Yes" if counts else "No", "running_bn": float(running / 1000),
@@ -434,6 +514,20 @@ def build_log(releases: list[dict[str, Any]], fy_start: date, limit: date,
                                            "value": previous_bill["next_week_redemptions_kes_m"]})
             previous_bill = r
         theirs = pairs.get(n)
+        if not counts:
+            found = dict(r)
+            if theirs is not None and theirs["accepted"].number:
+                # The workbook against the rule, not against CBK: whatever amount it holds, the row should not be there.
+                amount = theirs["accepted"].number
+                found["workbook_kes_m"] = amount
+                row["_flags"] = [{"field": "accepted_kes_m",
+                                  "message": (f"workbook log counts a switch the rule excludes ({_day(r['value_date'])}, "
+                                              f"{_mn(amount)} mn)"),
+                                  "sources": [{"source": src, "value": r["accepted_kes_m"], "normalized": _mn(r["accepted_kes_m"])},
+                                              {"source": cell_source(theirs["accepted"]), "value": amount,
+                                               "normalized": _mn(amount)}]}]
+            log.switches.append(found)
+            continue
         if theirs is not None:
             log.second_sources.append({"row": key, "column": "accepted_kes_m", "source": cell_source(theirs["accepted"]),
                                        "value": theirs["accepted"].number})
@@ -441,37 +535,16 @@ def build_log(releases: list[dict[str, Any]], fy_start: date, limit: date,
             if red is not None and not (r.get("redemptions_kes_m") is None and red == 0):
                 log.second_sources.append({"row": key, "column": "redemptions_kes_m", "source": cell_source(theirs["redemptions"]),
                                            "value": abs(red)})
-        if not counts:
-            log.uncounted_switches.append(r)
-            continue
 
         accepted = _d(r["accepted_kes_m"])
-        if override is not None and override.number is not None:
-            # The analyst's own amount for a switch: an analyst input, with CBK's printed amount as its second reading.
-            name = f"accepted {r['value_date']} switch (typed)"
-            log.inputs[name] = an_input(override.number, ANALYST, cell_source(override), decimals=2,
-                                        second={"value": r["accepted_kes_m"], "source": src, "origin": SOURCE})
+        for p in r["accepted_parts"]:
+            name = f"accepted {r['value_date']} {p['label']}"
+            log.inputs[name] = an_input(p["kes_m"], SOURCE, f"{src}, {p['label']}")
             log.accepted.append(name)
-            accepted = _d(override.number)
-            row.update(accepted_kes_m=override.number, _origin=ANALYST,
-                       _note=(f"Not auto-verified: the amount is an {cell_source(override)}, typed over CBK's printed "
-                              f"{_mn(r['accepted_kes_m'])}."))
-            row["_derived"].pop("accepted_kes_m")
-            log.second_sources = [s for s in log.second_sources if not (s["row"] == key and s["column"] == "accepted_kes_m")]
-            log.second_sources.append({"row": key, "column": "accepted_kes_m", "source": src, "value": r["accepted_kes_m"]})
-            if theirs is not None:
-                log.second_sources.append({"row": key, "column": "accepted_kes_m", "source": cell_source(theirs["accepted"]),
-                                           "value": theirs["accepted"].number})
-        else:
-            for p in r["accepted_parts"]:
-                name = f"accepted {r['value_date']} {p['label']}"
-                log.inputs[name] = an_input(p["kes_m"], SOURCE, f"{src}, {p['label']}")
-                log.accepted.append(name)
         redeemed = r.get("redemptions_kes_m")
         if redeemed is None:
-            if not is_switch:
-                log.flags.append(f"CBK's {KINDS[r['kind']].lower()} results of {_day(r['value_date'])} state no redemptions; "
-                                 "none is subtracted for it")
+            log.flags.append(f"CBK's {KINDS[r['kind']].lower()} results of {_day(r['value_date'])} state no redemptions; "
+                             "none is subtracted for it")
             net = accepted
             row["_derived"]["net_kes_m"] = {"expr": "accepted", "inputs": {"accepted": float(accepted)}}
         else:
@@ -487,8 +560,6 @@ def build_log(releases: list[dict[str, Any]], fy_start: date, limit: date,
         row.update(net_kes_m=float(net), running_bn=float(running / 1000))
         log.counted += 1
         log.as_at = when if log.as_at is None else max(log.as_at, when)
-        if is_switch:
-            log.counted_switches.append(r)
     log.net_kes_m = running
     if rounded:
         log.warnings.append("Net domestic borrowing: a Treasury bill auction's accepted amount is the sum of its three tenors, "
@@ -505,7 +576,7 @@ def build_log(releases: list[dict[str, Any]], fy_start: date, limit: date,
                             "CBK result matches; it is not in the net borrowing.")
     if workbook_log:
         latest = max(w["date"] for w in workbook_log)
-        missing = [row_key(r) for n, r in enumerate(kept) if n not in pairs and r["kind"] != SWITCH
+        missing = [row_key(r) for n, r in enumerate(kept) if n not in pairs and r["kind"] in (TBILL, PRIMARY, TAP)
                    and date.fromisoformat(r["value_date"]) <= latest]
         if missing:
             log.warnings.append(f"The uploaded workbook's log has no row for {', '.join(missing)}, which CBK's results list.")
@@ -541,9 +612,98 @@ def log_block(log: Log) -> dict[str, Any]:
         f"One row per CBK result with a value date from {log.fy_start.isoformat()} to {log.limit.isoformat()}. Net is accepted "
         "minus redemptions; CBK's \"New Borrowing/Net Repayment\" is printed unsigned and is not used. A T-bond's accepted "
         "amount is the sum of its issues' accepted amounts. A switch auction's results state no redemptions.",
-        "A switch auction is counted only when it is ticked under \"Weekly analyst inputs\" (Switch auctions).",
+        "A switch auction is not new debt and is never counted (the investments team's rule).",
+        "CBK prints a bond redemption only in the results of a bond auction settling that day. A bond that matures on a day "
+        f"with no bond auction is typed under \"Other bond redemptions\" on the weekly form and shown here as \"{TYPED_LABEL}\". "
+        f"A maturity listed in {bond_issues.SOURCE_NAME} with neither is a flagged row that adds nothing to the net; the face "
+        "value it names is a floor at issue (the table lacks rows), not the amount redeemed.",
     ]
+    if log.switches:
+        block["notes"].append(switches_note(log.switches))
     return block
+
+
+# ---------------------------------------------------------------------------
+# Advisory: the bond stock against the log
+# ---------------------------------------------------------------------------
+
+STOCK_TITLE = "Treasury bond stock against the log (advisory)"
+STOCK_SOURCE = "CBK Weekly Bulletin, Government Domestic Debt"
+STOCK_COLUMNS = [
+    {"key": "from", "label": "From", "fmt": TEXT},
+    {"key": "to", "label": "To", "fmt": TEXT},
+    {"key": "stock_from_bn", "label": "Bond stock, from (Kshs bn)", "fmt": NUMBER, "decimals": 2},
+    {"key": "stock_to_bn", "label": "Bond stock, to (Kshs bn)", "fmt": NUMBER, "decimals": 2},
+    {"key": "change_bn", "label": "Change (Kshs bn)", "fmt": NUMBER, "decimals": 2},
+    {"key": "net_bonds_bn", "label": "Net of bond rows in the log (Kshs bn)", "fmt": NUMBER, "decimals": 2},
+    {"key": "residual_bn", "label": "Residual (Kshs bn)", "fmt": NUMBER, "decimals": 2},
+]
+_BOND_ROWS = (KINDS[PRIMARY], KINDS[TAP], TYPED_KIND)
+
+
+def stock_check_block(log: Log, bond_stock: dict[date, float], as_of: Optional[date] = None) -> Optional[dict[str, Any]]:
+    """An advisory table: for each pair of consecutive Fridays the bulletin prints, the change in the outstanding
+    Treasury bond stock less the net of the log's bond rows settling after the first Friday and by the second.
+
+    It is a prompt to look, not an exact match: the stock is CBK's own count and moves for reasons
+    no auction result prints.  A residual below ``STOCK_RESIDUAL_FLOOR_BN`` is flagged "possible
+    unprinted bond redemption".  A week with a switch auction is left out (the results do not
+    print how the exchanged paper splits, so the week's change cannot be set against them), and
+    so is a week holding a result that could not be read.  None when the bulletin gives no such
+    pair inside the log's window.
+    """
+    days = sorted(bond_stock)
+    rows: list[dict[str, Any]] = []
+    skipped: list[str] = []
+    for a, b in zip(days, days[1:]):
+        if (b - a).days != 7 or a.weekday() != 4 or a < log.fy_start or b > log.limit:
+            continue
+        inside = [r for r in log.rows if a.isoformat() < r["value_date"] <= b.isoformat()]
+        if any(r["kind"] == KINDS[SWITCH] or r.get("error") for r in inside):
+            skipped.append(f"{a.isoformat()} to {b.isoformat()}")
+            continue
+        bonds = {r["key"]: r["net_kes_m"] for r in inside if r["kind"] in _BOND_ROWS and r["net_kes_m"] is not None}
+        change = _d(bond_stock[b]) - _d(bond_stock[a])
+        net = sum((_d(v) for v in bonds.values()), Decimal(0)) / 1000
+        residual = change - net
+        row: dict[str, Any] = {
+            "key": f"{a.isoformat()} to {b.isoformat()}", "from": a.isoformat(), "to": b.isoformat(),
+            "stock_from_bn": bond_stock[a], "stock_to_bn": bond_stock[b], "change_bn": float(change),
+            "net_bonds_bn": float(net), "residual_bn": float(residual),
+            "_derived": {"change_bn": {"expr": ["sub", "to", "from"], "inputs": {"to": bond_stock[b], "from": bond_stock[a]}},
+                         "residual_bn": {"expr": ["sub", "change", "net"], "inputs": {"change": float(change), "net": float(net)}}}}
+        if bonds:
+            row["_derived"]["net_bonds_bn"] = {"expr": ["div", ["sum", *bonds], 1000], "inputs": bonds}
+        if residual < STOCK_RESIDUAL_FLOOR_BN:
+            row["_flags"] = [{"field": "residual_bn", "message": (
+                f"possible unprinted bond redemption: the Treasury bond stock changed by {change:,.2f} bn from "
+                f"{_day(a.isoformat())} to {_day(b.isoformat())}, {-residual:,.2f} bn less than the net of the bond results "
+                "settling between them (advisory, not an exact match)"),
+                "sources": [{"source": STOCK_SOURCE, "value": float(change), "normalized": f"{change:,.2f}"},
+                            {"source": SOURCE_NAME, "value": float(net), "normalized": f"{net:,.2f}"}]}]
+        rows.append(row)
+    if not rows:
+        return None
+    block = table_block("bond_stock_check", STOCK_TITLE, STOCK_COLUMNS, rows, "key", "key",
+                        {"name": f"{STOCK_SOURCE}; {SOURCE_NAME}", "url": cbk_auctions.TBOND_LISTING,
+                         "as_of": as_of.isoformat() if as_of else None})
+    block["export"] = False
+    block["notes"] = [
+        "Advisory, not an exact match. For each pair of consecutive Fridays the bulletin prints: the change in the outstanding "
+        "Treasury bond stock, less the net (accepted less redemptions, typed redemptions included) of the log's bond rows "
+        "settling after the first Friday and by the second. A residual below "
+        f"{STOCK_RESIDUAL_FLOOR_BN} bn is flagged as a possible bond redemption that no result prints; from 1 July to "
+        "25 September 2026 the residual ran from 0.00 to +3.77 bn. The bulletin prints the stock a week behind, so this "
+        "looks at the weeks before this one."]
+    if skipped:
+        block["notes"].append(f"Left out, because a switch auction settled in the week or a result could not be read: "
+                              f"{', '.join(skipped)}.")
+    return block
+
+
+def switches_note(switches: list[dict[str, Any]]) -> str:
+    """For information only: what was found and left out.  A note, never a review flag."""
+    return f"Switch auctions found, excluded by rule: {switches_listed(switches)}."
 
 
 def switches_listed(switches: list[dict[str, Any]]) -> str:

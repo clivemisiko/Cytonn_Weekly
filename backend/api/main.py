@@ -87,7 +87,6 @@ from cytonn_weekly.report_types import (
     suggested_period,
     week_ending_of,
 )
-from cytonn_weekly.fixed_income import net_borrowing
 from cytonn_weekly.weekly import cbk_bulletin, cbk_rates
 from cytonn_weekly.weekly import export as weekly_export
 from cytonn_weekly.weekly import analyst as weekly_analyst
@@ -234,7 +233,6 @@ def create_app(
     fetch_bulletin: Callable[[date], tuple[bytes, str]] = cbk_bulletin.fetch_bulletin,
     export_root: Optional[Union[Path, str]] = None,
     fetch_usd_rates: Callable[[], dict] = cbk_rates.fetch_usd_rates,
-    fetch_releases: Callable[[date, date, Path], dict] = net_borrowing.fetch_releases,
 ) -> FastAPI:
     """Build the app.  ``db_path`` defaults to data/app.db; tests pass a temp file.
 
@@ -245,8 +243,7 @@ def create_app(
     ``inputs_root`` is where the weekly inputs are kept (default: under the data directory;
     tests pass a temp folder) and ``fetch_bulletin`` how the CBK Weekly Bulletin is fetched
     (tests pass a fake, so none reaches CBK).  ``export_root`` is where exported weekly reports
-    are written (default: under the data directory).  ``fetch_releases`` is how CBK's auction
-    results are read for the form's list of switch auctions (tests pass a fake).
+    are written (default: under the data directory).
 
     ``load_dotenv`` loads the repo-root .env first, before anything here reads os.environ,
     as every entrypoint does: CYTONN_WEB_ORIGINS is read right below, and the pipeline
@@ -607,23 +604,6 @@ def create_app(
             weekly_analyst.suggest(week, field, found["value"], found["note"], root)
         except weekly_inputs.InputError as exc:
             raise HTTPException(409, str(exc))
-        return weekly_analyst.status(week, root, section)
-
-    @app.post("/api/inputs/weekly/{week_ending}/analyst/switches/find")
-    def find_switch_auctions(week_ending: str, section: Optional[str] = Query(default=None, max_length=40)) -> dict:
-        """Read CBK's auction results for the fiscal year so far, so the form lists the switch auctions found.
-
-        The same fetch a Fixed Income draft makes (the result files are kept and re-checked, only
-        new ones are downloaded).  502, with the reason, if CBK does not answer.  It changes
-        nothing typed on the form: a switch counts only when it is ticked and saved.
-        """
-        week, section = week_of(week_ending), form_section(section)
-        held = weekly_inputs.WeeklyInputs(week, root)
-        try:
-            fetched = fetch_releases(held.analyst.borrowing()["fy_start"].day, week.value_date_window[1], held.results_dir)
-            net_borrowing.write_snapshot(held.results_dir, fetched)
-        except Exception as exc:  # noqa: BLE001 - whatever stopped the fetch is the coordinator's answer
-            raise HTTPException(502, f"CBK's auction results could not be read: {failure_message(exc)}")
         return weekly_analyst.status(week, root, section)
 
     @app.put("/api/inputs/weekly/{week_ending}/{slot}")

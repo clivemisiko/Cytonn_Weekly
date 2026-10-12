@@ -32,6 +32,7 @@ from typing import Any, Optional
 from cytonn_weekly.checkers.digital_payments import (
     MISMATCH,
     MISSING,
+    SOURCES_DISAGREE,
     UNSOURCED,
     CheckReport,
     Flag,
@@ -134,6 +135,13 @@ def check_table_block(
         for fld, reason in (src.get("incomplete") or {}).items():
             report.flags.append(Flag(kind=MISSING, scope=TABLE_SCOPE, subject=subject, field=fld, drafted=drow.get(fld),
                                      source_value=src.get(fld), message=f"incomplete: {reason}"))
+        # A row can carry a finding no figure comparison makes (``_flags``: [{field, message, sources, kind}]):
+        # two readings that differ for a stated reason ("sources disagree", the default kind), or something a
+        # source says should be there and is not (``kind: MISSING``).  It is a human call, never a draft error.
+        for own in src.get("_flags") or []:
+            report.flags.append(Flag(kind=own.get("kind") or SOURCES_DISAGREE, scope=TABLE_SCOPE, subject=subject, field=own.get("field"),
+                                     drafted=drow.get(own.get("field")), source_value=src.get(own.get("field")),
+                                     message=own["message"], sources=list(own.get("sources") or [])))
     for k in drafted.keys() - source_keys:
         report.flags.append(Flag(kind=UNSOURCED, scope=TABLE_SCOPE, subject=row_subject(block["id"], k), field=None,
                                  message="drafted row has no source row"))

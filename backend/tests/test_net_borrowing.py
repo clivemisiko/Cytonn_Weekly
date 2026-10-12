@@ -5,10 +5,20 @@ arithmetic is tested on a captured value file (every release from 1 July to 9 Oc
 the parsers read it); the whole set of result PDFs is read again only when it is present
 under the sample folder (``cbk_results/``), and that test is skipped otherwise.
 
-Golden figures, worked out from CBK's files on 2026-10-12: net borrowing of Kshs 507.484 bn
-at the 28 September value date and 572.296 bn at 5 October with no switch counted; 594.112 bn
-with the 26 August switch at CBK's printed 21,816.46 mn; 594.807 bn with the 22,510.90 mn the
-fixed income team's log holds for it, which is the 594.8 the Q3'2026 review printed.
+The rule (the investments team, settled 2026-10-12): a switch auction is not new debt and never
+counts towards net domestic borrowing.
+
+Golden figures, worked out from CBK's files on 2026-10-12, no switch counted: net borrowing of
+Kshs 507.484 bn (225.8% of the pro-rated target) at the 28 September value date and 572.296 bn
+(236.0%) at 5 October.  The fixed income team's log, which counts the 26 August switch at
+22,510.90 mn, gives 529.995 bn (235.8%, as #38.2026 printed) and 594.807 bn (245.3%, as the
+Q3'2026 review printed).  The two are shown side by side and never forced to match.
+
+CBK revises its files.  It restated the 26 August 2026 switch results after release: the
+original printed 22,510.93 mn accepted, and the file it serves now ("... Final.pdf", the
+fixture here) prints 21,816.46 mn.  That is why every kept file has a sha256 and a changed
+file is reported on each run (section 2), and why the workbook's 22,510.90 is close to a
+figure CBK no longer prints.
 """
 
 import json
@@ -23,6 +33,7 @@ import pytest
 from cytonn_weekly import paths
 from cytonn_weekly.checkers.digital_payments import MISSING, SOURCES_DISAGREE
 from cytonn_weekly.common.checks import check_table_block
+from cytonn_weekly.common.formatting import round_half_up
 from cytonn_weekly.common.review import build_review, check_section, numbered, second_sources
 from cytonn_weekly.fixed_income import cbk_auctions as cbk
 from cytonn_weekly.fixed_income import net_borrowing as nb
@@ -41,6 +52,7 @@ EARLIER = Week(date(2026, 9, 25))   # its auctions settle 26 September to 2 Octo
 TARGET = 919.36
 TBILL_LISTING = FX / "cbk_tbill_listing_2026-10-12_excerpt.html"
 TBOND_LISTING = FX / "cbk_tbond_listing_2026-10-05_excerpt.html"
+ISSUES = FX / "cbk_tbond_issues_2026-10-12_excerpt.html"   # the same page's "Issues of Treasury Bonds" tab
 TBILLS = {"2026-09-28": "cbk_tbill_2026-09-28.pdf", "2026-10-05": "cbk_tbill_2026-10-05.pdf"}
 TBONDS = {"2026-07-13": "cbk_tbond_2026-07-13.pdf", "2026-07-15": "cbk_tbond_2026-07-15_switch.pdf",
           "2026-07-27": "cbk_tbond_2026-07-27.pdf", "2026-08-17": "cbk_tbond_2026-08-17.pdf",
@@ -57,7 +69,7 @@ def cbk_get(url: str) -> bytes:
     if url == cbk.TBILL_LISTING:
         return TBILL_LISTING.read_bytes()
     if url == cbk.TBOND_LISTING:
-        return TBOND_LISTING.read_bytes()
+        return TBOND_LISTING.read_bytes() + ISSUES.read_bytes()      # one page at CBK: the results tab and the issues tab
     when = cbk.link_value_date(url).isoformat()
     name = (TBILLS if "treasury_bill" in url else TBONDS).get(when)
     if name is None:
@@ -74,11 +86,25 @@ def log_at(week=WEEK, **kwargs):
     return nb.build_log(RELEASES, FY, week.value_date_window[1], **kwargs)
 
 
-class Typed:
-    """A typed amount, as weekly/analyst.py hands one to a builder."""
+class Cell:
+    """One cell of a workbook's log, as weekly/fi_workbook.py hands one to a builder."""
 
-    def __init__(self, number):
-        self.number, self.source, self.ref = number, "analyst input typed on the weekly form (switch of 2026-08-26)", "the form"
+    def __init__(self, number, ref):
+        self.number, self.source, self.ref = number, f"analyst input from the workbook's log, {ref}", ref
+
+
+def team_log(switch_kes_m=22510.90):
+    """A log as the fixed income team keeps it: CBK's own figures row by row, and the 26 August switch counted.
+
+    Synthetic, from public figures: every counted release as CBK printed it, redemptions negative,
+    plus one row for the switch at the amount the team's log holds for it.
+    """
+    rows = [{"date": date.fromisoformat(r["value_date"]), "accepted": Cell(r["accepted_kes_m"], f"accepted {r['value_date']}"),
+             "redemptions": Cell(-(r["redemptions_kes_m"] or 0.0), f"redemptions {r['value_date']}")}
+            for r in RELEASES if r["kind"] != "switch"]
+    rows.append({"date": date(2026, 8, 26), "accepted": Cell(switch_kes_m, "accepted 2026-08-26"),
+                 "redemptions": Cell(0.0, "redemptions 2026-08-26")})
+    return sorted(rows, key=lambda r: r["date"])
 
 
 # ---------------------------------------------------------------------------
@@ -238,6 +264,8 @@ def test_releases_are_fetched_kept_and_carry_their_hash(tmp_path):
 
 
 def test_a_changed_file_reaches_the_warnings(tmp_path):
+    # This is not hypothetical: CBK restated the 26-08-2026 switch results after release (22,510.93 mn accepted in the
+    # original, 21,816.46 mn in the "... Final.pdf" it serves now), so a kept copy can stop being what CBK publishes.
     nb.fetch_releases(date(2026, 8, 20), date(2026, 8, 31), tmp_path, get=cbk_get, probe=None, sleep=lambda s: None)
     index = json.loads((tmp_path / "index.json").read_text())
     (url, entry), = index.items()
@@ -282,32 +310,67 @@ def test_net_borrowing_with_no_switch_counted():
     assert (round(earlier.share_pct(TARGET), 1), round(later.share_pct(TARGET), 1)) == (Decimal("225.8"), Decimal("236.0"))
     assert earlier.usable and later.usable and earlier.flags == later.flags == []
     assert (earlier.counted, later.counted) == (18, 20) and len(later.rows) == 24
-    assert [s["value_date"] for s in later.uncounted_switches] == ["2026-07-15", "2026-08-26", "2026-09-09", "2026-10-07"]
-    assert [s["value_date"] for s in earlier.uncounted_switches] == ["2026-07-15", "2026-08-26", "2026-09-09"]
-    assert nb.switches_listed(earlier.uncounted_switches) == ("15-07-2026 (Kshs 7,954.71 mn), 26-08-2026 (Kshs 21,816.46 mn), "
-                                                              "09-09-2026 (Kshs 11,020.44 mn)")
+    assert [s["value_date"] for s in later.switches] == ["2026-07-15", "2026-08-26", "2026-09-09", "2026-10-07"]
+    assert [s["value_date"] for s in earlier.switches] == ["2026-07-15", "2026-08-26", "2026-09-09"]
+    assert nb.switches_note(earlier.switches) == ("Switch auctions found, excluded by rule: 15-07-2026 (Kshs 7,954.71 mn), "
+                                                  "26-08-2026 (Kshs 21,816.46 mn), 09-09-2026 (Kshs 11,020.44 mn).")
 
 
-def test_a_switch_counts_only_when_chosen_at_cbks_amount_or_the_analysts():
-    chosen = log_at(switches={"2026-08-26": {"count": True}})
-    assert round(chosen.net_bn, 3) == Decimal("594.112") and [s["value_date"] for s in chosen.counted_switches] == ["2026-08-26"]
-    assert round(log_at(EARLIER, switches={"2026-08-26": {"count": True}}).net_bn, 3) == Decimal("529.301")
-    assert round(log_at(switches={"2026-08-26": {"count": False, "override": Typed(22510.90)}}).net_bn, 3) == Decimal("572.296")
-    typed = log_at(switches={"2026-08-26": {"count": True, "override": Typed(22510.90)}})
-    earlier = log_at(EARLIER, switches={"2026-08-26": {"count": True, "override": Typed(22510.90)}})
-    assert round(typed.net_bn, 3) == Decimal("594.807") and round(earlier.net_bn, 3) == Decimal("529.995")
-    assert (round(earlier.share_pct(TARGET), 1), round(typed.share_pct(TARGET), 1)) == (Decimal("235.8"), Decimal("245.3"))
-    # the typed amount is an analyst input with CBK's printed amount as its second reading; no redemptions are subtracted
-    amount = typed.inputs["accepted 2026-08-26 switch (typed)"]
-    assert (amount["value"], amount["origin"], amount["second"]["value"]) == (22510.90, "analyst_input", 21816.46)
-    assert "redemptions 2026-08-26 T-bond switch" not in typed.inputs
-    row = next(r for r in typed.rows if r["key"] == "2026-08-26 T-bond switch")
-    assert (row["accepted_kes_m"], row["redemptions_kes_m"], row["net_kes_m"], row["counted"], row["_origin"]) == (
-        22510.90, None, 22510.90, "Yes", "analyst_input")
-    assert {"row": row["key"], "column": "accepted_kes_m", "value": 21816.46,
-            "source": "CBK Treasury bond switch auction results, value date 2026-08-26"} in typed.second_sources
-    not_counted = next(r for r in log_at().rows if r["key"] == "2026-08-26 T-bond switch")
-    assert (not_counted["accepted_kes_m"], not_counted["net_kes_m"], not_counted["counted"]) == (21816.46, None, "No")
+def test_a_switch_never_counts_and_nothing_can_make_it():
+    log = log_at()
+    for row in (r for r in log.rows if r["kind"] == "T-bond switch"):
+        assert (row["net_kes_m"], row["counted"]) == (None, "No") and "_flags" not in row and "_origin" not in row
+    assert [r["accepted_kes_m"] for r in log.rows if r["kind"] == "T-bond switch"] == [7954.71, 21816.46, 11020.44, 8963.83]
+    assert not any("switch" in name for name in log.inputs) and not any("2026-08-26" in name for name in log.inputs)
+    assert log.workbook_net_kes_m is None and log.workbook_difference() is None      # no workbook: nothing to set beside it
+    with pytest.raises(TypeError):                                                 # the old choice per switch is gone
+        nb.build_log(RELEASES, FY, WEEK.value_date_window[1], switches={"2026-08-26": {"count": True}})
+
+
+def test_a_workbook_log_that_counts_a_switch_is_flagged_on_that_row_not_as_a_cbk_error():
+    log = log_at(workbook_log=team_log())
+    assert round(log.net_bn, 3) == Decimal("572.296")                                # the workbook changes nothing counted
+    row = next(r for r in log.rows if r["key"] == "2026-08-26 T-bond switch")
+    assert (row["accepted_kes_m"], row["net_kes_m"], row["counted"]) == (21816.46, None, "No")   # CBK's figure stays as printed
+    assert [f["message"] for f in row["_flags"]] == ["workbook log counts a switch the rule excludes (26-08-2026, 22,510.90 mn)"]
+    assert [s["value"] for s in row["_flags"][0]["sources"]] == [21816.46, 22510.9]
+    assert not any(s["row"] == row["key"] for s in log.second_sources)                # not a second reading of CBK's amount
+    assert [s.get("workbook_kes_m") for s in log.switches] == [None, 22510.9, None, None]
+    flags = check_table_block(nb.log_block(log), second_sources(nb.log_block(log))).flags
+    mine = [f for f in flags if f.subject == "borrowing_log/2026-08-26 T-bond switch"]
+    assert [(f.kind, f.field, f.message) for f in mine] == [
+        (SOURCES_DISAGREE, "accepted_kes_m", "workbook log counts a switch the rule excludes (26-08-2026, 22,510.90 mn)")]
+    # a workbook that agrees with CBK's own amount for the switch is flagged all the same: it is the row, not the amount
+    same = next(r for r in log_at(workbook_log=team_log(21816.46)).rows if r["key"] == "2026-08-26 T-bond switch")
+    assert same["_flags"][0]["message"] == "workbook log counts a switch the rule excludes (26-08-2026, 21,816.46 mn)"
+    # and no other switch is said to be missing from the workbook
+    assert not any("has no row for" in w for w in log.warnings)
+
+
+def test_old_against_new_the_whole_difference_is_the_switch_the_workbook_counts():
+    """Old (the team's log, the 26 August switch counted) beside new (the rule applied).  Not forced to match."""
+    side_by_side = {}
+    for week in (EARLIER, WEEK):
+        log = log_at(week, workbook_log=team_log())
+        old_bn = log.workbook_net_kes_m / 1000
+        side_by_side[week.ending.isoformat()] = (
+            round(old_bn, 3), round_half_up(old_bn / log.prorated_bn(TARGET) * 100, 1),
+            round(log.net_bn, 3), round_half_up(log.share_pct(TARGET), 1), log.workbook_net_kes_m - log.net_kes_m)
+        assert log.workbook_as_at == log.as_at
+    #                              old bn              old %             new bn              new %             difference, mn
+    assert side_by_side == {
+        "2026-09-25": (Decimal("529.995"), Decimal("235.8"), Decimal("507.484"), Decimal("225.8"), Decimal("22510.90")),   # #38.2026
+        "2026-10-02": (Decimal("594.807"), Decimal("245.3"), Decimal("572.296"), Decimal("236.0"), Decimal("22510.90")),   # Q3'2026
+    }
+    assert log.workbook_difference() == (
+        "Net domestic borrowing: the uploaded workbook's own log adds to Kshs 594.807 bn to 2026-10-05, against Kshs 572.296 bn "
+        "from CBK's results with no switch counted. The difference of 22,510.90 mn is the switch auction it counts "
+        "(22,510.90 mn). The figure from CBK's results is used.")
+    # a workbook that stops a week short is not set beside a later net
+    short = [r for r in team_log() if r["date"] <= date(2026, 9, 28)]
+    assert log_at(workbook_log=short).workbook_difference() is None
+    agreeing = [r for r in team_log() if r["date"] != date(2026, 8, 26)]
+    assert log_at(workbook_log=agreeing).workbook_difference() is None             # the same net: nothing to say
 
 
 def test_the_net_is_accepted_less_redemptions_release_by_release():
@@ -394,15 +457,17 @@ def test_without_a_workbook_or_a_typed_log_the_sentence_is_worked_out_from_cbk(t
     net = by_ref["Net domestic borrowing against the pro-rated target: Net domestic borrowing (Kshs bn) (572.3)"]
     assert net.status == "clean"                       # every input is a figure CBK printed, worked out again by the checker
     assert net.context["note"] == ("20 CBK results from 2026-07-01 to 2026-10-05 (14 Treasury bill auctions, 6 Treasury bond "
-                                   "auctions): accepted amounts less redemptions.")
+                                   "auctions): accepted amounts less redemptions. No switch auction is counted.")
     target = by_ref["Net domestic borrowing against the pro-rated target: Pro-rated net domestic borrowing target (Kshs bn) (242.5)"]
     assert target.status == "flagged" and target.context["note"] == (
         "96 days from 2026-07-01 to the latest auction's value date, 2026-10-05, over a 364-day year.")
-    switches = next(i for ref, i in by_ref.items() if "Switch auctions found, not counted" in ref)
-    assert switches.ref == ("Net domestic borrowing against the pro-rated target: Switch auctions found, not counted: "
-                            "15-07-2026 (Kshs 7,954.71 mn), 26-08-2026 (Kshs 21,816.46 mn), 09-09-2026 (Kshs 11,020.44 mn), "
-                            "07-10-2026 (Kshs 8,963.83 mn); in all, Kshs bn (49.8)")
-    assert switches.status == "flagged" and "none of these switch auctions is counted" in switches.detail[0].message
+    # the switches found are a note on the part and on the log, for information: never a review item, never a flag
+    listed = ("Switch auctions found, excluded by rule: 15-07-2026 (Kshs 7,954.71 mn), 26-08-2026 (Kshs 21,816.46 mn), "
+              "09-09-2026 (Kshs 11,020.44 mn), 07-10-2026 (Kshs 8,963.83 mn).")
+    assert listed in b["notes"] and listed in by["borrowing_log"]["notes"]
+    assert not any("witch auctions found" in ref for ref in by_ref) and [f["key"] for f in b["figures"]] == [
+        "net_borrowing", "prorated_target", "ratio"]
+    assert not any("switch" in str(i.detail).lower() for i in review.review_items if i.status == "flagged")
     rows = items(review, "Net domestic borrowing log:")
     assert len(rows) == 24 and [i.ref for i in rows if i.status == "flagged"] == ["Net domestic borrowing log: 2026-08-24 T-bills"]
     assert {i.status for i in rows} == {"clean", "flagged"}
@@ -429,6 +494,8 @@ def test_an_uploaded_workbooks_log_is_the_second_reading_row_by_row(tmp_path):
     assert 30000.0 in sources.values() and any(k.startswith("analyst input from Fixed income workbook 'Government Borrowing'!")
                                                for k in sources)
     assert any("has no row for 2026-07-13 T-bonds" in w for w in review.section["warnings"])
+    assert any(w.startswith("Net domestic borrowing: the uploaded workbook's own log adds to Kshs ") and "in other rows" in w
+               for w in review.section["warnings"])
 
 
 def test_the_real_workbooks_log_differs_from_cbk_only_on_the_switch(tmp_path):
@@ -439,7 +506,19 @@ def test_the_real_workbooks_log_differs_from_cbk_only_on_the_switch(tmp_path):
     flagged = {i.ref.split(": ", 1)[1]: i for i in items(review, "Net domestic borrowing log:") if i.status == "flagged"}
     assert sorted(flagged) == ["2026-07-06 T-bills", "2026-08-24 T-bills", "2026-08-26 T-bond switch"]
     switch = flagged["2026-08-26 T-bond switch"].detail[0]
+    assert switch.message == "workbook log counts a switch the rule excludes (26-08-2026, 22,510.90 mn)"
     assert switch.kind == SOURCES_DISAGREE and [s["value"] for s in switch.sources] == [21816.46, 22510.9]
+    # old against new, side by side and not forced to match: the workbook's 594.807 bn (245.3%, the Q3'2026 review) against
+    # 572.296 bn (236.0%).  The difference is the switch, plus the 0.01 mn of the 6 July row flagged above.
+    assert ("Net domestic borrowing: the uploaded workbook's own log adds to Kshs 594.807 bn to 2026-10-05, against Kshs "
+            "572.296 bn from CBK's results with no switch counted. The difference of 22,510.91 mn is the switch auction it "
+            "counts (22,510.90 mn) and 0.01 mn in other rows (each is flagged in the log). The figure from CBK's results is "
+            "used.") in review.section["warnings"]
+    theirs = inputs.WeeklyInputs(WEEK, tmp_path).analyst.wb_borrowing()["log"]
+    earlier = nb.build_log(RELEASES, FY, EARLIER.value_date_window[1], workbook_log=theirs)     # the week #38.2026 reported
+    old_bn = earlier.workbook_net_kes_m / 1000
+    assert (round(old_bn, 3), round_half_up(old_bn / earlier.prorated_bn(TARGET) * 100, 1)) == (Decimal("529.995"), Decimal("235.8"))
+    assert (round(earlier.net_bn, 3), round_half_up(earlier.share_pct(TARGET), 1)) == (Decimal("507.484"), Decimal("225.8"))
 
 
 def test_a_typed_log_overrides_cbk_as_analyst_input_with_cbks_net_as_its_second_reading(tmp_path):
