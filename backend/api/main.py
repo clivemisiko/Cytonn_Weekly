@@ -87,7 +87,7 @@ from cytonn_weekly.report_types import (
     suggested_period,
     week_ending_of,
 )
-from cytonn_weekly.weekly import cbk_bulletin
+from cytonn_weekly.weekly import cbk_bulletin, cbk_rates
 from cytonn_weekly.weekly import export as weekly_export
 from cytonn_weekly.weekly import analyst as weekly_analyst
 from cytonn_weekly.weekly import inputs as weekly_inputs
@@ -196,6 +196,7 @@ class AnalystInputs(BaseModel):
 
     fields: dict[str, Any] = Field(default_factory=dict)
     tables: dict[str, Any] = Field(default_factory=dict)
+    confirm: list[str] = Field(default_factory=list, max_length=60)
 
 
 class RunRequest(DraftRequest):
@@ -231,6 +232,7 @@ def create_app(
     inputs_root: Optional[Union[Path, str]] = None,
     fetch_bulletin: Callable[[date], tuple[bytes, str]] = cbk_bulletin.fetch_bulletin,
     export_root: Optional[Union[Path, str]] = None,
+    fetch_usd_rates: Callable[[], dict] = cbk_rates.fetch_usd_rates,
 ) -> FastAPI:
     """Build the app.  ``db_path`` defaults to data/app.db; tests pass a temp file.
 
@@ -568,9 +570,40 @@ def create_app(
         """Keep what was typed.  422, with every reason (one a line), if any value is refused; nothing is stored then."""
         week, section = week_of(week_ending), form_section(section)
         try:
-            weekly_analyst.save_form(week, {"fields": body.fields, "tables": body.tables}, root)
+            weekly_analyst.save_form(week, {"fields": body.fields, "tables": body.tables, "confirm": body.confirm}, root)
         except weekly_inputs.InputError as exc:
             raise HTTPException(422, str(exc))
+        return weekly_analyst.status(week, root, section)
+
+    @app.post("/api/inputs/weekly/{week_ending}/analyst/carry")
+    def carry_analyst_inputs(week_ending: str, section: Optional[str] = Query(default=None, max_length=40)) -> dict:
+        """Start this week's form from last week's.  409, with the reason, if there is nothing to carry.
+
+        Every carried value is marked with the week it came from; a weekly-changing one is read by
+        no draft until it is confirmed (PUT .../analyst with ``confirm``).
+        """
+        week, section = week_of(week_ending), form_section(section)
+        try:
+            weekly_analyst.carry_forward(week, root)
+        except weekly_inputs.InputError as exc:
+            raise HTTPException(409, str(exc))
+        return weekly_analyst.status(week, root, section)
+
+    @app.post("/api/inputs/weekly/{week_ending}/analyst/suggest/{field}")
+    def suggest_analyst_input(week_ending: str, field: str, section: Optional[str] = Query(default=None, max_length=40)) -> dict:
+        """Work out a suggestion for a running total and keep it, unconfirmed, with its working.  409 if none can be."""
+        week, section = week_of(week_ending), form_section(section)
+        if field not in weekly_analyst.SUGGESTED_FIELDS:
+            raise HTTPException(404, f"no suggestion is worked out for {field!r}")
+        from cytonn_weekly.equities.weekly import running_total_suggestions   # imported here: it pulls in the OCR reader
+
+        found = running_total_suggestions(weekly_inputs.WeeklyInputs(week, root), fetch_usd_rates)[field]
+        if "reason" in found:
+            raise HTTPException(409, found["reason"])
+        try:
+            weekly_analyst.suggest(week, field, found["value"], found["note"], root)
+        except weekly_inputs.InputError as exc:
+            raise HTTPException(409, str(exc))
         return weekly_analyst.status(week, root, section)
 
     @app.put("/api/inputs/weekly/{week_ending}/{slot}")

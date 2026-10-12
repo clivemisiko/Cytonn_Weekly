@@ -64,9 +64,15 @@ def typed(cell: Any, workbook: str, *, scale: float = 1.0, second: Optional[dict
 
 
 def scanned(value: Any, source: str, *, second: Optional[dict[str, Any]] = None,
-            decimals: Optional[int] = None) -> dict[str, Any]:
-    """An input read by OCR; it needs ``second`` to be anything but flagged."""
-    return an_input(value, OCR, source, second=second, decimals=decimals)
+            decimals: Optional[int] = None, check: str = "") -> dict[str, Any]:
+    """An input read by OCR; it needs ``second`` to be anything but flagged.
+
+    ``check`` says what a reviewer should compare it with when it is the only reading; the flag quotes it.
+    """
+    out = an_input(value, OCR, source, second=second, decimals=decimals)
+    if check:
+        out["check"] = check
+    return out
 
 
 def second_reading(value: Any, source: str, origin: str = SOURCE) -> dict[str, Any]:
