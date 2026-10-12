@@ -1,4 +1,16 @@
-import type { AppConfig, Decision, ExportStatus, Overview, ReportChoice, Resolution, Review, Run, WeeklyInputs } from "./types";
+import type {
+  AnalystForm,
+  AnalystRow,
+  AppConfig,
+  Decision,
+  ExportStatus,
+  Overview,
+  ReportChoice,
+  Resolution,
+  Review,
+  Run,
+  WeeklyInputs,
+} from "./types";
 
 export const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000").replace(/\/$/, "");
 
@@ -144,6 +156,23 @@ export const fetchBulletin = (weekEnding: string) =>
 
 export const saveInputNotes = (weekEnding: string, notes: { bidding_range?: string; previous_issue?: string }) =>
   request<WeeklyInputs>(`${inputsPath(weekEnding)}/notes`, { method: "PUT", body: JSON.stringify(notes) });
+
+const analystPath = (weekEnding: string, section: string) =>
+  `${inputsPath(weekEnding)}/analyst?section=${encodeURIComponent(section)}`;
+
+/** The "Weekly analyst inputs" form for one section of one report week. */
+export const getAnalystInputs = (weekEnding: string, section: string) => request<AnalystForm>(analystPath(weekEnding, section));
+
+export interface AnalystChanges {
+  /** A field left out is kept; null clears it. */
+  fields?: Record<string, string | null>;
+  /** Pasted lines, or a grid's rows; null clears the table. */
+  tables?: Record<string, { text: string } | { rows: AnalystRow[] } | null>;
+}
+
+/** Save what was typed. The API checks every value; a refusal lists each reason on its own line and stores nothing. */
+export const saveAnalystInputs = (weekEnding: string, section: string, changes: AnalystChanges) =>
+  request<AnalystForm>(analystPath(weekEnding, section), { method: "PUT", body: JSON.stringify(changes) }, UPLOAD_TIMEOUT_MS);
 
 const exportPath = (period: string) => `/api/export/weekly${period ? `?period=${encodeURIComponent(period)}` : ""}`;
 

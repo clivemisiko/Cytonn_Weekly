@@ -11,6 +11,7 @@ import { elapsed, friendlyTime, weekRange } from "@/lib/format";
 import { MAX_TOPIC, topicLength } from "@/lib/topic";
 import type { AppConfig, Drafting, Overview, ReportChoice, Review, SectionSummary } from "@/lib/types";
 import { DevRibbon, Notice } from "./banners";
+import { AnalystPanel } from "./analyst-panel";
 import { isDraftingThis, useDraftingPoll, useLiveElapsed } from "./drafting";
 import { InputsPanel } from "./inputs-panel";
 import { Masthead } from "./masthead";
@@ -112,6 +113,11 @@ export function StartScreen({
   // True from the click until the run view takes over (the start call answers at once).
   const [drafting, setDrafting] = useState(false);
   const [error, setError] = useState<{ message: string; lostConnection: boolean } | null>(null);
+  // The week's uploads changed (the analyst inputs form re-reads the workbook's values), and whether something typed on
+  // that form is not saved yet: a draft started then would not see it, so the draft button waits.
+  const [uploads, setUploads] = useState(0);
+  const [typedPending, setTypedPending] = useState(false);
+  const usesInputs = report.type === "weekly" && !!week && USES_INPUTS.includes(section.slug);
   // Company Updates and the Executive Summary call no LLM: no API budget, no key needed, no draft slot.
   const llm = section.uses_provider;
   const providerBlocked = llm && !!config.provider_problem;
@@ -188,8 +194,18 @@ export function StartScreen({
         </Masthead>
 
         <div className="mx-auto w-full max-w-275 space-y-8 px-4 pt-8 pb-16 sm:px-6">
-          {report.type === "weekly" && week && USES_INPUTS.includes(section.slug) && (
-            <InputsPanel key={week} week={week} onWeek={onWeek} disabled={drafting} />
+          {usesInputs && week && (
+            <>
+              <InputsPanel key={week} week={week} onWeek={onWeek} disabled={drafting} onChange={() => setUploads((n) => n + 1)} />
+              <AnalystPanel
+                key={`analyst-${week}`}
+                week={week}
+                section={section.slug}
+                disabled={drafting}
+                refresh={uploads}
+                onPending={setTypedPending}
+              />
+            </>
           )}
           <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-12">
             <div className="space-y-6">
@@ -386,11 +402,17 @@ export function StartScreen({
                 <Button
                   size="lg"
                   variant={saved ? "outline" : "default"}
-                  disabled={drafting || blocked || providerBlocked || inputMissing || topicOver}
+                  disabled={drafting || blocked || providerBlocked || inputMissing || topicOver || (usesInputs && typedPending)}
+                  aria-describedby={usesInputs && typedPending ? "typed-pending" : undefined}
                   onClick={() => void draft()}
                 >
                   {draftLabel}
                 </Button>
+                {usesInputs && typedPending && (
+                  <p id="typed-pending" role="status" className="text-xs font-medium text-warn-fg">
+                    Something typed under “Weekly analyst inputs” is not saved yet. Save or discard it before drafting.
+                  </p>
+                )}
 
                 <AnimatePresence initial={false}>
                   {error && (

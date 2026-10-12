@@ -10,7 +10,7 @@ import { friendlyDate } from "@/lib/format";
 import type { InputFile, InputSlot, WeeklyInputs } from "@/lib/types";
 import { Notice } from "./banners";
 
-const FIELD =
+export const FIELD =
   "flex h-10 rounded-md border border-input bg-card px-3 text-base transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-60 aria-invalid:border-flag md:text-sm";
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -23,7 +23,7 @@ const megabytes = (bytes: number) => `${(bytes / 1_048_576).toFixed(1)} MB`;
 type Tone = "ok" | "warn" | "none";
 
 /** Received and this week's, received but dated another week, or not received: by shape as well as colour. */
-function StateChip({ tone, children }: { tone: Tone; children: React.ReactNode }) {
+export function StateChip({ tone, children }: { tone: Tone; children: React.ReactNode }) {
   const Icon = tone === "ok" ? CheckIcon : tone === "warn" ? WarningIcon : QuestionIcon;
   return (
     <span
@@ -209,12 +209,15 @@ export function InputsPanel({
   week,
   onWeek,
   disabled,
+  onChange,
 }: {
   /** The Friday the report week ends on (ISO date). */
   week: string;
   /** Choose another week: the report on screen changes with it. */
   onWeek: (weekEnding: string) => void;
   disabled?: boolean;
+  /** Called after an upload, a removal or a fetch changed what is stored (the analyst inputs form re-reads its prefill). */
+  onChange?: () => void;
 }) {
   const [status, setStatus] = useState<WeeklyInputs | null>(null);
   const [busy, setBusy] = useState(false);
@@ -248,6 +251,7 @@ export function InputsPanel({
     setError(null);
     try {
       show(await work());
+      onChange?.();
     } catch (err) {
       setError((err as Error).message);
     } finally {
