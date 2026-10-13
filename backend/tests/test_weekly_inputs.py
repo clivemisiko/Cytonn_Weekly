@@ -6,6 +6,7 @@ read from tests/fixtures/sources/.  A few tests read the real, confidential samp
 skip when those are absent.
 """
 
+import hashlib
 import json
 from datetime import date
 
@@ -208,9 +209,57 @@ def test_a_dated_line_outside_a_table_is_never_one_of_its_rows():
         cbk_bulletin._table_1(table[:2] + [legend] + table[2:], cbk_bulletin.Bulletin(issue_date=None))
 
 
+SHA_9_OCT = "c476c72fe5f5aa6a59547f238938cb1d634baad093fe4ff32af8d5d36b9b0006"
+TABLE_6_LEFT_OUT = (f"CBK Weekly Bulletin of 2026-10-09 (sha256 {SHA_9_OCT}): Table 6 could not be read and is left out: "
+                    "Table 6 row for 2026-10-08 has 15 figures, expected 16")
+
+
+def test_a_table_that_fails_its_checks_is_left_out_whole_and_the_others_still_load(monkeypatch):
+    whole = cbk_bulletin.parse_bulletin(BULLETIN_9_OCT)
+    assert whole.sha256 == SHA_9_OCT and "Table 6" not in whole.unavailable and len(whole.market) == 10
+    wh.break_table_6(monkeypatch, "12622.85")   # the 8 October row, the last of the ten, is one figure short
+    b = cbk_bulletin.parse_bulletin(BULLETIN_9_OCT)
+    # the refusal names the table, the issue and the file, so the file can be inspected later
+    assert b.unavailable["Table 6"] == TABLE_6_LEFT_OUT and TABLE_6_LEFT_OUT in b.problems
+    # nothing of the failed table is kept: the nine rows read before the short one are not used
+    assert b.market == [] and b.last_day == date(2026, 10, 8)   # the last day is then Table 1's
+    # every other table is exactly what it is in the unbroken file
+    for table in ("exchange_rates", "reserves", "interbank", "interbank_weeks", "tbills", "tbonds", "bond_stock"):
+        assert getattr(b, table) == getattr(whole, table), table
+    assert len(b.exchange_rates) == 10 and len(b.tbills["91-day"]) == 8 and len(b.bond_stock) == 8
+    assert {k: v for k, v in b.unavailable.items() if k != "Table 6"} == whole.unavailable
+    assert b.to_dict()["unavailable"]["Table 6"] == TABLE_6_LEFT_OUT and b.to_dict()["sha256"] == SHA_9_OCT
+
+
+def test_an_error_no_reader_expected_also_stops_only_its_own_table(monkeypatch):
+    def boom(lines, out):
+        out.reserves.append({"half": "read"})
+        raise KeyError("usd")
+
+    monkeypatch.setattr(cbk_bulletin, "_table_2", boom)
+    b = cbk_bulletin.parse_bulletin(BULLETIN)
+    sha = "878b70c2cf23602d"
+    assert b.reserves == [] and list(b.unavailable) == ["Table 2"]
+    assert b.unavailable["Table 2"].startswith(f"CBK Weekly Bulletin of 2026-10-02 (sha256 {sha}")
+    assert b.unavailable["Table 2"].endswith("Table 2 could not be read and is left out: KeyError: 'usd'")
+    assert len(b.market) == 10 and b.exchange_rates[date(2026, 10, 1)] == 129.71
+
+
+def test_a_bulletin_with_a_table_left_out_is_still_kept_and_the_panel_says_which_table(tmp_path, monkeypatch):
+    wh.break_table_6(monkeypatch, "12622.85")
+    week = Week(date(2026, 10, 9))
+    entry = inputs.store(week, "cbk_bulletin", BULLETIN_9_OCT, "bulletin.pdf", tmp_path)
+    assert (entry["read_date"], entry["matches"]) == ("2026-10-09", True) and TABLE_6_LEFT_OUT in entry["note"].split("; ")
+    kept = inputs.WeeklyInputs(week, tmp_path).bulletin
+    assert kept.market == [] and len(kept.exchange_rates) == 10 and kept.unavailable["Table 6"] == TABLE_6_LEFT_OUT
+
+
 def test_a_pdf_that_is_not_the_bulletin_is_refused():
-    with pytest.raises(cbk_bulletin.BulletinParseError, match="not a CBK Weekly Bulletin"):
-        cbk_bulletin.parse_bulletin((wh.FIXTURES / "nse_yield_curve_07-10-2026.pdf").read_bytes())
+    pdf = (wh.FIXTURES / "nse_yield_curve_07-10-2026.pdf").read_bytes()
+    with pytest.raises(cbk_bulletin.BulletinParseError, match="not a CBK Weekly Bulletin") as refused:
+        cbk_bulletin.parse_bulletin(pdf)
+    # the refusal says which file it was
+    assert f"sha256 {hashlib.sha256(pdf).hexdigest()})" in str(refused.value) and "issue date read from the file: none" in str(refused.value)
 
 
 LISTING = """

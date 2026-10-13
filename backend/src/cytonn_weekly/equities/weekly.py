@@ -840,7 +840,9 @@ def build_equities_weekly_review(
             try:
                 bulletin = cbk_bulletin.parse_bulletin(fetched[0])
             except Exception as exc:  # noqa: BLE001
-                problems.append(f"CBK Weekly Bulletin: {exc}")
+                problems.append(f"CBK Weekly Bulletin: {cbk_bulletin.refused(exc, fetched[0], week.ending)}")
+    if bulletin is not None:   # the two tables this section reads: one left out is said here, never passed over
+        warnings += [why for table, why in bulletin.unavailable.items() if table in ("Table 1", "Table 6")]
     typed_indices = None
     if inputs.equities_book is not None:
         try:

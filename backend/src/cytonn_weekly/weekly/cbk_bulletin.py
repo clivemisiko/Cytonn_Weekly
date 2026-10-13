@@ -20,12 +20,20 @@ whole page.  CBK moves charts between pages from issue to issue (in the 9 Octobe
 the yield curve chart sits above Table 6, and its legend "28-Jun-24 30-Jun-25 2-Oct-26" starts
 with a date like a row does).  Table 6's Eurobond columns are matched
 to their maturity years by where the year is printed above the column (word positions),
-never by an assumed order.  It can be fetched by date: the listing page links every issue
+never by an assumed order.
+
+Each table is read on its own.  One that cannot be read, or that fails its checks, is left
+out whole (nothing of it is kept, so no figure is partly read) and named in
+``Bulletin.unavailable`` with the reason, the issue date and the file's sha256; the other
+tables still load.  Only a PDF that is not the bulletin at all is refused.
+
+It can be fetched by date: the listing page links every issue
 under ``/uploads/weekly_bulletin/`` with the issue date in the file name.
 """
 
 from __future__ import annotations
 
+import hashlib
 import io
 import re
 from dataclasses import dataclass, field
@@ -46,6 +54,10 @@ TENORS = ("91-day", "182-day", "364-day")
 # Table 6's Eurobond columns, by maturity year, as the report names the issues.
 EUROBOND_ISSUES = {2028: "2018 10-year", 2031: "2024 7-year", 2032: "2019 12-year", 2034: "2021 13-year",
                    2036: "2025 11-year", 2048: "2018 30-year"}
+
+
+DEBT = "Government Domestic Debt"
+TABLES = ("Table 1", "Table 2", "Table 3", "Table 4", "Table 5", "Table 6", DEBT)
 
 
 class BulletinParseError(ValueError):
@@ -93,6 +105,8 @@ class Bulletin:
     market: list[dict[str, Any]] = field(default_factory=list)             # Table 6 daily: indices, turnover, eurobond yields
     bond_stock: dict[date, float] = field(default_factory=dict)            # "Government Domestic Debt": Treasury bonds, KSh bn
     problems: list[str] = field(default_factory=list)
+    sha256: str = ""                                                       # of the PDF, so a refused table can be inspected later
+    unavailable: dict[str, str] = field(default_factory=dict)              # a name in TABLES -> why it was left out, whole
 
     @property
     def last_day(self) -> Optional[date]:
@@ -112,7 +126,7 @@ class Bulletin:
         return iso({"issue_date": self.issue_date, "exchange_rates": self.exchange_rates, "reserves": self.reserves,
                     "interbank": self.interbank, "interbank_weeks": self.interbank_weeks, "tbills": self.tbills,
                     "tbonds": self.tbonds, "market": self.market, "bond_stock": self.bond_stock,
-                    "problems": self.problems})
+                    "problems": self.problems, "sha256": self.sha256, "unavailable": self.unavailable})
 
 
 def _table_1(lines: list[str], out: Bulletin) -> None:
@@ -195,11 +209,7 @@ def _table_5(lines: list[str], out: Bulletin) -> None:
     """Table 5 as printed.  Which bonds belong to which auction is not stated in the text layer
     (one offer covers one or two bonds), so the per-bond figures are kept in print order and
     the per-auction offers beside them; nothing is paired by guesswork."""
-    try:
-        block = _block(lines, "Table 5:")
-    except BulletinParseError as exc:
-        out.problems.append(f"Table 5: {exc}")
-        return
+    block = _block(lines, "Table 5:")
     text = "\n".join(block)
     dates = next(([_day(d) for d in re.findall(_DAY, line)] for line in block if line.startswith("Date of Auction")), [])
     prefixes = next((line.split() for line in block if re.match(r"^[A-Z]{2,4}\d?/(\s|$)", line)), [])
@@ -214,14 +224,17 @@ def _table_5(lines: list[str], out: Bulletin) -> None:
         same_line = _numbers(text[m.start():].split("\n", 1)[0].split(")", 1)[-1]) if ")" in text[m.start():].split("\n", 1)[0] else []
         return same_line or _numbers(m.group(1))
 
-    out.tbonds = {
+    tbonds = {
         "auction_dates": dates, "codes": codes,
         "offered": row(r"Amount offered \(KSh M\)"), "bids": row(r"Bids received \(KSh M\)"),
         "accepted": row(r"Amount Accepted \(KSh"), "rates": row(r"Average interest Rate"),
     }
+    if not dates or not codes:
+        raise BulletinParseError("Table 5 does not print its auction dates and one code per bond")
     for key in ("bids", "accepted", "rates"):
-        if codes and len(out.tbonds[key]) != len(codes):
-            out.problems.append(f"Table 5: {len(out.tbonds[key])} '{key}' figures for {len(codes)} bonds")
+        if len(tbonds[key]) != len(codes):
+            raise BulletinParseError(f"Table 5: {len(tbonds[key])} '{key}' figures for {len(codes)} bonds")
+    out.tbonds = tbonds
 
 
 _MARKET_KEYS = ("nasi", "nse_25", "nse_20", "deals", "shares_mn", "equity_turnover_mn", "market_cap_bn", "bond_turnover_mn")
@@ -281,53 +294,87 @@ _BONDS_ROW = re.compile(r"^(?:\d+\.\s*)?Treasury Bonds\b(.*)$", re.I)
 def _domestic_debt(lines: list[str], out: Bulletin) -> None:
     """The Treasury bond stock by date, found by the table's title (its number is not the same in every issue).
 
-    Used only for an advisory check, so a bulletin without it, or one that prints it another
-    way, is not an error: ``problems`` says what was not read.
+    Used only for an advisory check.  A bulletin without it, or one that prints it another way,
+    raises like any other table, and like any other table it is then left out on its own.
     """
     start = next((n for n, line in enumerate(lines) if _DEBT_TITLE.match(line)), None)
     if start is None:
-        out.problems.append("'Government Domestic Debt' table not found")
-        return
+        raise BulletinParseError("'Government Domestic Debt' table not found")
     stop = next((n for n in range(start + 1, len(lines)) if _END.match(lines[n])), len(lines))
     body = lines[start + 1:stop]
     days = next((found for found in (re.findall(_DAY, line) for line in body) if len(found) >= 2), None)
     row = next((m.group(1) for m in (_BONDS_ROW.match(line) for line in body) if m), None)
     figures = _numbers(row) if row is not None else []
     if days is None or len(figures) != len(days):
-        out.problems.append("'Government Domestic Debt': the Treasury Bonds row does not have one figure per date")
-        return
+        raise BulletinParseError("'Government Domestic Debt': the Treasury Bonds row does not have one figure per date")
     try:
         out.bond_stock = {_day(d): v for d, v in zip(days, figures)}
     except ValueError:
-        out.problems.append("'Government Domestic Debt': a column's date could not be read")
+        raise BulletinParseError("'Government Domestic Debt': a column's date could not be read")
 
 
 def parse_bulletin(pdf_bytes: bytes) -> Bulletin:
-    """The bulletin PDF -> Tables 1 to 6.  A table that cannot be read raises, naming the table."""
+    """The bulletin PDF -> Tables 1 to 6 and the domestic debt table, each read on its own.
+
+    A table that cannot be read, or fails its checks, is left out whole and named in
+    ``unavailable`` (and in ``problems``) with the reason, the issue date and the file's sha256;
+    the other tables still load.  BulletinParseError only for a PDF that is not the bulletin.
+    """
+    sha = hashlib.sha256(pdf_bytes).hexdigest()
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
         pages = list(pdf.pages)
         texts = [p.extract_text() or "" for p in pages]
         lines = [line.strip() for t in texts for line in t.splitlines() if line.strip()]
-        if not any(line.startswith("Table 1:") for line in lines):
-            raise BulletinParseError("not a CBK Weekly Bulletin: no 'Table 1:' heading in its text")
         issue = None
         for line in lines[:4]:
             m = _ISSUE_DATE.match(line)
             if m:
                 issue = datetime.strptime(f"{m.group(2)} {m.group(1)} {m.group(3)}", "%d %B %Y").date()
                 break
-        out = Bulletin(issue_date=issue)
-        _table_1(lines, out)
-        _table_2(lines, out)
-        _table_3(lines, out)
-        _table_4(lines, out)
-        _table_5(lines, out)
-        page6 = next((p for p, t in zip(pages, texts) if "Table 6:" in t), None)
-        if page6 is None:
-            raise BulletinParseError("'Table 6:' not found")
-        _table_6(page6, out)
-        _domestic_debt(lines, out)
+        if not any(line.startswith("Table 1:") for line in lines):
+            raise BulletinParseError("not a CBK Weekly Bulletin: no 'Table 1:' heading in its text (issue date read from "
+                                     f"the file: {issue.isoformat() if issue else 'none'}; sha256 {sha})")
+        dated = f"of {issue.isoformat()}" if issue else "with no issue date read"
+        out = Bulletin(issue_date=issue, sha256=sha)
+
+        def table_6() -> None:
+            page = next((p for p, t in zip(pages, texts) if "Table 6:" in t), None)
+            if page is None:
+                raise BulletinParseError("'Table 6:' not found")
+            _table_6(page, out)
+
+        readers: tuple[tuple[str, tuple[str, ...], Callable[[], None]], ...] = (
+            ("Table 1", ("exchange_rates",), lambda: _table_1(lines, out)),
+            ("Table 2", ("reserves",), lambda: _table_2(lines, out)),
+            ("Table 3", ("interbank", "interbank_weeks"), lambda: _table_3(lines, out)),
+            ("Table 4", ("tbills",), lambda: _table_4(lines, out)),
+            ("Table 5", ("tbonds",), lambda: _table_5(lines, out)),
+            ("Table 6", ("market",), table_6),
+            (DEBT, ("bond_stock",), lambda: _domestic_debt(lines, out)),
+        )
+        for name, fields, read in readers:
+            try:
+                read()
+            except Exception as exc:  # noqa: BLE001 - whatever stops one table stops that table only
+                for attr in fields:   # nothing a failed table gave is kept, so no figure is partly read
+                    setattr(out, attr, type(getattr(out, attr))())
+                reason = str(exc) if isinstance(exc, BulletinParseError) else f"{type(exc).__name__}: {exc}"
+                out.unavailable[name] = (f"{SOURCE_NAME} {dated} (sha256 {sha}): {name} could not be read and is left "
+                                         f"out: {reason}")
+                out.problems.append(out.unavailable[name])
     return out
+
+
+def refused(exc: Exception, pdf_bytes: bytes, issue_date: date) -> str:
+    """Why a fetched file was refused as the bulletin, in one line that says which file it was.
+
+    A refused file is not kept, so the issue asked for and the file's sha256 are what is left
+    to find it again by.  A message that already carries the sha256 is returned as it is.
+    """
+    text = str(exc)
+    if "sha256" in text:
+        return text
+    return f"{text} (the issue asked for: {issue_date.isoformat()}; sha256 {hashlib.sha256(pdf_bytes).hexdigest()})"
 
 
 # ---------------------------------------------------------------------------

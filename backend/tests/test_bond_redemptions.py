@@ -376,8 +376,10 @@ def test_the_bond_stock_is_read_from_the_table_found_by_its_title():
              "2. Treasury Bonds 6,414.66 6,468.61"]
     cbk_bulletin._domestic_debt(lines, out)                                     # the number shifts by one in some issues
     assert out.bond_stock == {date(2026, 9, 18): 6414.66, date(2026, 9, 25): 6468.61} and out.problems == []
-    cbk_bulletin._domestic_debt(["Table 7: Composition of Government Domestic Debt by Instrument (Percent)"], out2 := cbk_bulletin.Bulletin(None))
-    assert out2.bond_stock == {} and out2.problems == ["'Government Domestic Debt' table not found"]
+    # a bulletin without the table: the table is refused by name, like any other, and gives no stock
+    with pytest.raises(cbk_bulletin.BulletinParseError, match="'Government Domestic Debt' table not found"):
+        cbk_bulletin._domestic_debt(["Table 7: Composition of Government Domestic Debt by Instrument (Percent)"], out2 := cbk_bulletin.Bulletin(None))
+    assert out2.bond_stock == {}
 
 
 def test_the_one_week_the_saved_bulletin_gives_has_the_residual_seen():

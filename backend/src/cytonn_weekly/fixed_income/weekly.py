@@ -164,6 +164,11 @@ def _bulletin_src(table: int) -> str:
     return f"{cbk_bulletin.SOURCE_NAME}, Table {table}"
 
 
+def _table_reason(bulletin: Optional[cbk_bulletin.Bulletin], table: str, otherwise: str) -> str:
+    """Why a part that needs one bulletin table is unavailable: the table's own refusal when it was left out."""
+    return (bulletin.unavailable.get(table) if bulletin is not None else None) or otherwise
+
+
 def _typed_sources(inputs: WeeklyInputs, *cells: Any) -> list[dict[str, Any]]:
     """The analysts' sources a part rests on: the workbook when one is uploaded, the form when a value was typed."""
     names = [WB] if inputs.fi_book is not None else []
@@ -237,8 +242,9 @@ def tbills_block(inputs: Optional[dict[str, dict]], bulletin: Optional[cbk_bulle
     if bulletin is None:
         return _missing("tbills", title, NEED_BULLETIN)
     if inputs is None:
-        return unavailable_block("tbills", title, "The bulletin's Table 4 does not print both this week's and the previous "
-                                 "week's Treasury bill auctions.", "The bulletin issued on this week's Friday.")
+        return unavailable_block("tbills", title, _table_reason(
+            bulletin, "Table 4", "The bulletin's Table 4 does not print both this week's and the previous week's Treasury "
+            "bill auctions."), "The bulletin issued on this week's Friday.")
     figs = Figures()
     ns = [t.split("-")[0] for t in TENORS]
     bids, offered = [f"bids_{n}" for n in ns], [f"offered_{n}" for n in ns]
@@ -503,9 +509,10 @@ def liquidity_block(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bullet
     this_week = next((w for w in bulletin.interbank_weeks if w["last_day"] == week.thursday), None)
     prev_week = next((w for w in bulletin.interbank_weeks if w["last_day"] == week.previous.thursday), None)
     if this_week is None or prev_week is None:
-        return unavailable_block("liquidity", title, "The bulletin's Table 3 does not print the weekly averages to "
-                                 f"{week.thursday.isoformat()} and {week.previous.thursday.isoformat()}.",
-                                 "The bulletin issued on this week's Friday.")
+        return unavailable_block("liquidity", title, _table_reason(
+            bulletin, "Table 3", "The bulletin's Table 3 does not print the weekly averages to "
+            f"{week.thursday.isoformat()} and {week.previous.thursday.isoformat()}."),
+            "The bulletin issued on this week's Friday.")
     src = _bulletin_src(3)
     figs = Figures()
     form = inputs.analyst
@@ -601,8 +608,9 @@ def eurobond_blocks(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bullet
             known |= {d for d in it["series"].yields if week.previous.monday <= d <= week.thursday}
     days = sorted(d for d in known if d <= week.thursday)[-6:]
     if len(days) < 2:
-        return [unavailable_block("eurobonds", title, f"No Eurobond yields up to {week.thursday.isoformat()} were found in this "
-                                  "week's inputs.", f"The bulletin issued on this week's Friday. {UPLOAD}")]
+        return [unavailable_block("eurobonds", title, _table_reason(
+            bulletin, "Table 6", f"No Eurobond yields up to {week.thursday.isoformat()} were found in this week's inputs."),
+            f"The bulletin issued on this week's Friday. {UPLOAD}")]
     last, first = days[-1], days[0]
     # The year's and the month's first trading day, as the analysts' series has them.  A series that starts later
     # (typed for a few days only) has neither, and that change row is left out rather than worked out from a later day.
@@ -901,9 +909,11 @@ def shilling_blocks(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bullet
                                      sources=_typed_sources(inputs, *(m["total"] for m in months[:1]))
                                      + [{"name": _bulletin_src(2), "url": cbk_bulletin.LISTING}]))
     else:
+        left_out = _table_reason(bulletin, "Table 2", "")
         blocks.append(unavailable_block("shilling_support", "Kenya Shilling: support, and the week's reserves",
                                         "Neither the bulletin's reserves (Table 2) nor the remittances (typed, or in the "
-                                        "workbook) are among this week's inputs.", f"The bulletin or the {WB.lower()}. {UPLOAD}"))
+                                        "workbook) are among this week's inputs." + (f" {left_out}" if left_out else ""),
+                                        f"The bulletin or the {WB.lower()}. {UPLOAD}"))
     blocks.append(_carried(issue, "shilling_pressure", "Kenya Shilling: what pressures the shilling", shilling_pressure_text))
     return blocks
 
@@ -1155,10 +1165,12 @@ def build_fixed_income_review(
                 store(week, CBK_BULLETIN, fetched[0], fetched[1].rsplit("/", 1)[-1], inputs.root, fetched_from=fetched[1])
                 bulletin = cbk_bulletin.parse_bulletin(fetched[0])
             except Exception as exc:  # noqa: BLE001 - an unreadable bulletin is a missing input, not a failed draft
-                problems.append(f"CBK Weekly Bulletin: {exc}")
+                problems.append(f"CBK Weekly Bulletin: {cbk_bulletin.refused(exc, fetched[0], week.ending)}")
     elif inputs.matches("cbk_bulletin.pdf") is False:
         warnings.append(f"The CBK Weekly Bulletin among this week's inputs is dated {bulletin.issue_date}, not "
                         f"{week.ending.isoformat()}; figures it does not print for this week are left out.")
+    if bulletin is not None:   # a table left out is said once here, whatever each part that needed it goes on to say
+        warnings.extend(bulletin.unavailable.values())
     rates = try_fetch(on_event, cbk_rates.SOURCE_NAME, fetchers.usd_rates, problems=problems)
     results = try_fetch(on_event, "CBK T-bond results", fetchers.tbonds, *week.value_date_window, problems=problems)
     issue = try_fetch(on_event, "Previous issue on cytonnreport.com", fetchers.previous_issue, week.ending,

@@ -206,6 +206,17 @@ def test_a_day_with_no_turnover_source_makes_the_paragraph_unavailable_naming_th
     assert item.status == "flagged" and "read by OCR" in item.detail[0].message
 
 
+def test_a_bulletin_whose_table_6_is_left_out_gives_no_turnover_and_the_section_says_why(root, monkeypatch):
+    wh.break_table_6(monkeypatch, "10336.9")   # Table 6's 1 October row is one figure short
+    review = build(root, boxes={})
+    b = blocks(review)["turnover"]
+    # Monday to Thursday came only from Table 6: none of its days is used, not even the rows above the short one
+    assert b["kind"] == "unavailable" and b["reason"].startswith("No equities turnover was found for Monday 28 September")
+    left_out = [w for w in review.section["warnings"] if "Table 6 could not be read and is left out" in w]
+    assert len(left_out) == 1 and left_out[0].startswith("CBK Weekly Bulletin of 2026-10-02 (sha256 878b70c2cf23602d")
+    assert left_out[0].endswith("Table 6 row for 2026-10-01 has 15 figures, expected 16")
+
+
 def test_foreign_flows_come_from_kcbs_weekdays_and_the_streak_from_the_workbook(root):
     review = build(root)
     b = blocks(review)["foreign"]
