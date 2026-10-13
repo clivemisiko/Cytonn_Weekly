@@ -137,7 +137,7 @@ function SectionRow({
           <StateChip state={state} period={period} />
           {drafting && <DraftingChip drafting={drafting} />}
           {current && run?.is_dev_draft && (
-            <span className="hatch-dev rounded-sm px-1.5 py-0.5 font-mono text-xs font-semibold text-[#2a0a07]">DEV DRAFT</span>
+            <span className="hatch-dev rounded-sm px-1.5 py-0.5 font-mono text-xs font-semibold text-dev-ink">DEV DRAFT</span>
           )}
         </div>
       </div>
