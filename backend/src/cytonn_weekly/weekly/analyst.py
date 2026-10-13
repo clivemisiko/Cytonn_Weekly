@@ -248,7 +248,8 @@ TABLE_LIST = (
           (Column("date", "Value date", DATE), Column("bond", "Bond", TEXT),
            Column("amount", "Amount redeemed", unit="Kshs mn", lo=0.01, hi=2_000_000)),
           "A bond that matures on a day with no bond auction is on no CBK result file. One a line: value date, bond, the amount "
-          "redeemed in Kshs mn (what was outstanding, which may be less than the face value at issue). Each row is subtracted "
+          "redeemed in Kshs mn (the amount outstanding at maturity, as shown on the NSE Implied Yields sheet, which may "
+          "differ from the face value at issue). Each row is subtracted "
           "on its value date in the log built from CBK's results, as analyst input, labelled \"typed, not on a release\". It "
           "is not added to an auction log typed above: put the redemption in that log.",
           example="2026-10-12  IFB1/2014/12  15420.55"),

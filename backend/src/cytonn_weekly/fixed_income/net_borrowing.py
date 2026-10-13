@@ -301,7 +301,8 @@ def row_key(release: dict[str, Any]) -> str:
 
 def maturity_message(day: str, bond: str, face_kes_m: Any) -> str:
     return (f"bond maturity on {_day(day)} ({bond}, up to {_mn(face_kes_m)} mn at face, outstanding may be lower): "
-            "no redemption on any release and none typed")
+            "no redemption on any release and none typed; type the amount outstanding at maturity, as shown on the NSE "
+            "Implied Yields sheet, under \"Other bond redemptions\"")
 
 
 def release_source(release: dict[str, Any]) -> str:

@@ -39,7 +39,8 @@ PAGE = (wh.FIXTURES / "cbk_tbond_issues_2026-10-12_excerpt.html").read_text(enco
 MATURITIES = bi.maturities(bi.parse_issues(PAGE))
 TABLE = "borrowing_redemptions"
 WARNING = ("bond maturity on 12-10-2026 (IFB1/2014/12, up to 15,420.55 mn at face, outstanding may be lower): "
-           "no redemption on any release and none typed")
+           "no redemption on any release and none typed; type the amount outstanding at maturity, as shown on the NSE "
+           "Implied Yields sheet, under \"Other bond redemptions\"")
 MATURITY_ROW = "2026-10-12 IFB1/2014/12 maturity"
 TYPED_ROW = "2026-10-12 IFB1/2014/12 redemption (typed, not on a release)"
 
@@ -106,7 +107,8 @@ def test_the_known_wrong_ifb1_2023_007_row_is_left_out_by_a_documented_list_and_
     monkeypatch.setattr(bi, "KNOWN_WRONG_ROWS", {})
     asked = nb.build_log(RELEASES, FY, WEEK.value_date_window[1], maturities=bi.maturities(rows))
     assert asked.unaccounted == ["bond maturity on 15-07-2026 (IFB1/2023/007, up to 42,650.32 mn at face, outstanding may be "
-                                 "lower): no redemption on any release and none typed"]
+                                 "lower): no redemption on any release and none typed; type the amount outstanding at "
+                                 "maturity, as shown on the NSE Implied Yields sheet, under \"Other bond redemptions\""]
 
 
 def test_a_page_without_the_table_says_so():
