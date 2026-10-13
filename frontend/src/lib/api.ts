@@ -168,11 +168,25 @@ export interface AnalystChanges {
   fields?: Record<string, string | null>;
   /** Pasted lines, or a grid's rows; null clears the table. */
   tables?: Record<string, { text: string } | { rows: AnalystRow[] } | null>;
+  /** Carried or suggested values to accept as they stand. */
+  confirm?: string[];
 }
 
 /** Save what was typed. The API checks every value; a refusal lists each reason on its own line and stores nothing. */
 export const saveAnalystInputs = (weekEnding: string, section: string, changes: AnalystChanges) =>
   request<AnalystForm>(analystPath(weekEnding, section), { method: "PUT", body: JSON.stringify(changes) }, UPLOAD_TIMEOUT_MS);
+
+/** Start this week's form from last week's. A weekly-changing value is carried unconfirmed. 409 if there is nothing to carry. */
+export const carryAnalystInputs = (weekEnding: string, section: string) =>
+  request<AnalystForm>(`${inputsPath(weekEnding)}/analyst/carry?section=${encodeURIComponent(section)}`, { method: "POST" }, UPLOAD_TIMEOUT_MS);
+
+/** Have the API work out a running total (last week's saved total plus this week's figure) and keep it, unconfirmed. */
+export const suggestAnalystInput = (weekEnding: string, section: string, field: string) =>
+  request<AnalystForm>(
+    `${inputsPath(weekEnding)}/analyst/suggest/${encodeURIComponent(field)}?section=${encodeURIComponent(section)}`,
+    { method: "POST" },
+    UPLOAD_TIMEOUT_MS,
+  );
 
 const exportPath = (period: string) => `/api/export/weekly${period ? `?period=${encodeURIComponent(period)}` : ""}`;
 

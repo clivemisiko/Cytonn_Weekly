@@ -40,7 +40,7 @@ from datetime import date, timedelta
 from typing import Any, Callable, Optional
 
 from cytonn_weekly.common.computed import ANALYST, PLAIN, PLAIN_PCT, POINTS, computed_block, evaluate, pct_change
-from cytonn_weekly.common.formatting import MULTIPLE, PCT, PRICE, TEXT
+from cytonn_weekly.common.formatting import MULTIPLE, PCT, PRICE, TEXT, round_half_up
 from cytonn_weekly.common.http import http_get
 from cytonn_weekly.common.review import (
     build_review,
@@ -117,6 +117,16 @@ class Fetchers:
     bulletin: Callable[[date], tuple[bytes, str]] = cbk_bulletin.fetch_bulletin
     previous_issue: Callable[[date, Optional[str]], previous_issue.Issue] = (
         lambda day, ref: previous_issue.find_previous_issue(day, reference=ref))
+
+
+OCR_NAMES = {"nse_10": "NSE 10 Share Index", "nse_20": "NSE 20 Share Index", "nse_25": "NSE 25 Share Index",
+             "nasi": "NSE All Share Index", "banking": "Banking Sector Share Index"}
+
+
+def _ocr_check(day: date, what: str) -> str:
+    """What to compare a single OCR reading with: the price list itself, by its address, or the equities team's figure."""
+    return (f"Open the NSE daily price list of {day.isoformat()} ({nse_price_list.BASE}/{day.strftime('%d-%b-%y').upper()}.pdf) and "
+            f"read {what}, or check it against the equities team's own figure for that day, before accepting")
 
 
 def _typed_sources(inputs: WeeklyInputs, *cells: Any) -> list[dict[str, Any]]:
@@ -238,7 +248,8 @@ def _level(m: Market, key: str, when: str) -> Optional[dict[str, Any]]:
         return published(row[key], f"{cbk_bulletin.SOURCE_NAME}, Table 6", second=typed_reading, decimals=2)
     box = m.boxes.get(day) if day else None
     if box is not None and key in box.values:
-        return scanned(box.values[key], f"NSE daily price list of {day.isoformat()}", second=typed_reading, decimals=2)
+        return scanned(box.values[key], f"NSE daily price list of {day.isoformat()}", second=typed_reading, decimals=2,
+                       check=_ocr_check(day, f"the {OCR_NAMES.get(key, key)} in its index box"))
     if cell is not None and cell.number is not None:
         return typed(cell, WB)
     return None
@@ -400,7 +411,8 @@ def _day_turnover(m: Market, day: date) -> Optional[dict[str, Any]]:
         return published(bulletin_kes, f"{cbk_bulletin.SOURCE_NAME}, Table 6",
                          second=second_reading(ocr_kes, nse_price_list.SOURCE_NAME) if ocr_kes is not None else None, decimals=-4)
     if ocr_kes is not None:
-        return scanned(ocr_kes, f"NSE daily price list of {day.isoformat()}")
+        return scanned(ocr_kes, f"NSE daily price list of {day.isoformat()}",
+                       check=_ocr_check(day, "the equity turnover in its market summary"))
     return None
 
 
@@ -689,17 +701,25 @@ def universe_block(m: Market, warnings: list[str]) -> dict[str, Any]:
             row["incomplete"] = {"recommendation": "the workbook's rule gives no recommendation for an upside between 0% and 0.1%; "
                                                    "the analysts must give one"}
         if on_form:
-            # A typed row: the cells left empty on the form are the uploaded workbook's, and say so.
-            theirs = [k for k in raw if not analyst.is_typed(c[k])]
+            # A typed row: a cell left empty on the form is KCB IB's price, a stored week's, or the uploaded
+            # workbook's, and the note says which.
+            others: dict[str, list[str]] = {}
+            for k in raw:
+                if not analyst.is_typed(c[k]):
+                    where = (c[k].source if isinstance(c[k], analyst.Reading) else
+                             f"{WB} '{equities_workbook.UNIVERSE_SHEET}' row {c[k].row}")
+                    others.setdefault(where, []).append(labels[k])
             row["_note"] = (f"Not auto-verified: {c['company'].source}"
-                            + (f"; {', '.join(labels[k] for k in theirs)} from {WB} '{equities_workbook.UNIVERSE_SHEET}' row "
-                               f"{c[theirs[0]].row}" if theirs else "")
+                            + "".join(f"; {', '.join(keys)} from {where}" for where, keys in others.items())
                             + ". The changes, yield, upside and multiple are worked out again from them; the typed values are "
                               "not checked.")
             seconds += [{"row": name, "column": k, "source": typed_source(c[k].other, WB), "value": c[k].other.number}
                         for k in ("last_price", "price", "year_open", "target") if getattr(c[k], "other", None) is not None]
             rows.append(row)
             continue
+        friday = form.kcb_price(name)
+        if friday is not None:   # KCB IB's published price for the Friday, beside the workbook's typed one
+            seconds.append({"row": name, "column": "price", "source": friday.source, "value": friday.number})
         row["_note"] = (f"Not auto-verified: analyst input from {WB} '{equities_workbook.UNIVERSE_SHEET}' row {c['price'].row} "
                         f"(prices {c['last_price'].a1} and {c['price'].a1}, month-end {c['month_end_price'].a1}, Year Open "
                         f"{c['year_open'].a1}, target {c['target'].a1}, DPS {c['dps'].a1}, tangible book {c['tbv_bn'].a1}, shares "
@@ -726,6 +746,50 @@ def universe_block(m: Market, warnings: list[str]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # The section
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Suggested running totals (a prefill for the weekly analyst inputs form; never used unconfirmed)
+# ---------------------------------------------------------------------------
+
+def running_total_suggestions(inputs: WeeklyInputs, usd_rates: Callable[[], dict[date, float]]) -> dict[str, dict[str, str]]:
+    """For the year-to-date turnover and foreign net position: last week's saved total plus this week's figure.
+
+    This week's figure is the one the section itself works out (each day's KES figure from KCB
+    IB or the CBK bulletin over that day's CBK rate, Monday to Friday; no OCR reading is used).
+    Returns, per form field, {"value", "note"} with the working, or {"reason"} saying why none
+    can be worked out.  Nothing is stored here, and a suggestion is only ever a prefill.
+    """
+    week = inputs.week
+    last_week = WeeklyInputs(week.previous, inputs.root)
+    stamp = week.previous_friday.isoformat()
+    problems: list[str] = []
+    bulletin = inputs.bulletin
+    market = Market(week=week, inputs=inputs, bulletin=bulletin, boxes={}, year_open_day=None, afx=None, typed_indices=None,
+                    rates=_rates(Fetchers(usd_rates=usd_rates), inputs, bulletin, None, problems))
+    out: dict[str, dict[str, str]] = {}
+    for key, day_figure, what in (
+            ("turnover_ytd", _day_turnover, "equities turnover (KCB IB's daily reports and the CBK bulletin's Table 6)"),
+            ("foreign_ytd", _day_flow, "net foreign flows (KCB IB's weekly report)")):
+        label = analyst.FIELDS[key].label
+        if week.previous_friday.year != week.ending.year:
+            out[key] = {"reason": f"{label}: the running total restarts with the year, so last week's is not carried into it."}
+            continue
+        before = last_week.analyst.field(key)
+        if before is None or before.number is None:
+            out[key] = {"reason": f"{label}: no total is saved for the week ending {stamp} to add this week's figure to."}
+            continue
+        figures, expr, missing = _usd_week(market, week, lambda d, f=day_figure: f(market, d), "")
+        if figures is None:
+            out[key] = {"reason": f"{label}: this week's figure cannot be worked out: no {what.split(' (')[0]} or CBK rate for "
+                                  f"{_days(missing)}."}
+            continue
+        this_week = evaluate(expr, figures)
+        total = round_half_up(evaluate(["add", "before", "week"], {"before": before.number, "week": float(this_week)}), 4)
+        out[key] = {"value": f"{total:f}", "note": (
+            f"Suggested: {before.number:,.4f} saved for the week ending {stamp} + {this_week:,.4f} worked out for this week "
+            f"from {what}, each day over that day's CBK rate = {total:,.4f} USD mn. Check it and confirm.")}
+    return out
+
 
 def equities_outlook_text(paragraphs: list[str]) -> Optional[str]:
     """The previous issue's closing outlook: its last paragraph, when it opens "We maintain" or "We are"."""

@@ -10,6 +10,9 @@ of 2 October 2026 covers 25 September to 1 October).  Read from that issue, 2026
 * Table 5: Treasury bond auctions.
 * Table 6: daily NASI, NSE 25, NSE 20, deals, shares, equity turnover (KSh million), market
   capitalisation, bond turnover, and Eurobond yields by maturity year.
+* "Government Domestic Debt (KSh Billion)": the outstanding Treasury bond stock at eight dates,
+  the last two of them consecutive Fridays.  It is Table 7 in this issue and its number shifts
+  by one in some issues, so it is found by its title.  Optional: an issue without it still reads.
 
 Rows are found by their printed labels and dates.  Table 6's Eurobond columns are matched
 to their maturity years by where the year is printed above the column (word positions),
@@ -80,6 +83,7 @@ class Bulletin:
     tbills: dict[str, list[dict[str, Any]]] = field(default_factory=dict)  # Table 4: tenor -> [{date, offered, bids, accepted, rate}]
     tbonds: dict[str, Any] = field(default_factory=dict)                   # Table 5, as printed
     market: list[dict[str, Any]] = field(default_factory=list)             # Table 6 daily: indices, turnover, eurobond yields
+    bond_stock: dict[date, float] = field(default_factory=dict)            # "Government Domestic Debt": Treasury bonds, KSh bn
     problems: list[str] = field(default_factory=list)
 
     @property
@@ -99,7 +103,8 @@ class Bulletin:
 
         return iso({"issue_date": self.issue_date, "exchange_rates": self.exchange_rates, "reserves": self.reserves,
                     "interbank": self.interbank, "interbank_weeks": self.interbank_weeks, "tbills": self.tbills,
-                    "tbonds": self.tbonds, "market": self.market, "problems": self.problems})
+                    "tbonds": self.tbonds, "market": self.market, "bond_stock": self.bond_stock,
+                    "problems": self.problems})
 
 
 def _table_1(lines: list[str], out: Bulletin) -> None:
@@ -254,6 +259,33 @@ def _table_6(page, out: Bulletin) -> None:
         out.market.append(row)
 
 
+_DEBT_TITLE = re.compile(r"^Table \d+:\s*Government Domestic Debt\b", re.I)
+_BONDS_ROW = re.compile(r"^(?:\d+\.\s*)?Treasury Bonds\b(.*)$", re.I)
+
+
+def _domestic_debt(lines: list[str], out: Bulletin) -> None:
+    """The Treasury bond stock by date, found by the table's title (its number is not the same in every issue).
+
+    Used only for an advisory check, so a bulletin without it, or one that prints it another
+    way, is not an error: ``problems`` says what was not read.
+    """
+    start = next((n for n, line in enumerate(lines) if _DEBT_TITLE.match(line)), None)
+    if start is None:
+        out.problems.append("'Government Domestic Debt' table not found")
+        return
+    body = lines[start + 1:start + 12]
+    days = next((found for found in (re.findall(_DAY, line) for line in body) if len(found) >= 2), None)
+    row = next((m.group(1) for m in (_BONDS_ROW.match(line) for line in body) if m), None)
+    figures = _numbers(row) if row is not None else []
+    if days is None or len(figures) != len(days):
+        out.problems.append("'Government Domestic Debt': the Treasury Bonds row does not have one figure per date")
+        return
+    try:
+        out.bond_stock = {_day(d): v for d, v in zip(days, figures)}
+    except ValueError:
+        out.problems.append("'Government Domestic Debt': a column's date could not be read")
+
+
 def parse_bulletin(pdf_bytes: bytes) -> Bulletin:
     """The bulletin PDF -> Tables 1 to 6.  A table that cannot be read raises, naming the table."""
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
@@ -278,6 +310,7 @@ def parse_bulletin(pdf_bytes: bytes) -> Bulletin:
         if page6 is None:
             raise BulletinParseError("'Table 6:' not found")
         _table_6(page6, out)
+        _domestic_debt(lines, out)
     return out
 
 

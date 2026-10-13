@@ -453,9 +453,11 @@ def test_a_pasted_table_replaces_the_workbooks_and_says_which_rows_differ(with_b
     differences = item("mmf", with_books)["differences"]
     assert differences[0].startswith("money market fund table, Alpha Money Market Fund: effective annual rate: typed as 10.85%, "
                                      "but the uploaded fixed income workbook has 10.8%")
-    # the paper's "Cytonn Money Market Fund" is not the workbook's longer name for it: said, never guessed to be the same fund
-    assert "2 in the workbook only (Cytonn Money Market Fund ( Dial *809# or download Cytonn App), Zeta Money Market Fund)" in differences[-1]
-    assert "1 typed only" in differences[-1]
+    # the paper's "Cytonn Money Market Fund" is the workbook's "Cytonn Money Market Fund ( Dial *809# ...)": one fund
+    assert differences[-1] == ("Money market fund table: the typed rows are not the uploaded fixed income workbook's rows: 1 in "
+                               "the workbook only (Zeta Money Market Fund). The typed table is used.")
+    assert analyst.fund_key("Cytonn Money Market Fund ( Dial *809# or download Cytonn App)") == analyst.fund_key("cytonn  money market fund")
+    assert analyst.fund_key("Alpha Money Market Fund") != analyst.fund_key("Alpha Money Market Fund (USD)")   # only Cytonn's is aliased
     review = fi.build(with_books)
     assert len(blocks(review)["mmf_table"]["rows"]) == 6
     top5 = items(review, "Money Market Performance: Average yield of the Top 5")[0]
@@ -489,3 +491,255 @@ def test_the_form_is_read_and_saved_through_the_api(client, tmp_path):
     assert client.get("/api/inputs/weekly/2026-10-02/analyst?section=focus").status_code == 422
     # the form is not one of the upload slots, and saving it leaves the files' status alone
     assert [s["slug"] for s in client.get("/api/inputs/weekly/2026-10-02").json()["slots"]] == [s.slug for s in inputs.SLOTS]
+
+
+# ---------------------------------------------------------------------------
+# Starting from last week's form
+# ---------------------------------------------------------------------------
+
+NEXT = Week(date(2026, 10, 9))
+SLOW = {"large_caps", "foreign_prior_year", "universe_month_end", "fiscal_year_start", "eurobond_issues", "eurobond_yields", "remittances", "universe", "cmmf_last_week"}
+WEEKLY = {"placements", "pe", "pe_average", "dividend_yield", "dividend_yield_average", "borrowing_target", "mmf", "interbank",
+          "borrowing_log", "foreign_history"}
+
+
+def save_week(root, week, fields=None, tables=None, confirm=None):
+    return analyst.save_form(week, {"fields": fields or {}, "tables": tables or {}, "confirm": confirm or []}, root)
+
+
+def refused_carry(week, root) -> str:
+    with pytest.raises(InputError) as caught:
+        analyst.carry_forward(week, root)
+    return str(caught.value)
+
+
+@pytest.fixture
+def last_week(tmp_path, text_pdfs):
+    """The week ending 2 October fully typed (from the synthetic workbooks' figures), and nothing yet for 9 October."""
+    books = tmp_path / "books"
+    books.mkdir()
+    inputs.store(WEEK, "fi_workbook", wh.fi_workbook_bytes(), "FI.xlsx", books)
+    inputs.store(WEEK, "equities_workbook", wh.equities_workbook_bytes(), "Equities.xlsx", books)
+    root = tmp_path / "typed"
+    stores(root, typed_from=books)
+    return root
+
+
+def test_last_weeks_form_starts_this_weeks_and_every_carried_value_says_where_it_came_from(last_week):
+    done = analyst.carry_forward(NEXT, last_week)
+    assert set(done["carried"]) == SLOW | WEEKLY and set(done["unconfirmed"]) == WEEKLY
+    form = analyst.read_form(NEXT, last_week)
+    # never carried: the paper's date, the running totals, and the prices (KCB IB's and the stored week's)
+    assert not {"mmf_published", "turnover_ytd", "foreign_ytd"} & set(form["fields"])
+    assert all(not {"price", "last_price"} & set(r) for r in form["tables"]["universe"])
+    assert form["tables"]["universe"][0] == {"company": "Alpha Bank", "month_end_price": "39", "year_open": "30", "target": "55",
+                                             "dps": "3", "shares_bn": "2", "tbv_bn": "60"}
+    assert form["fields"]["cmmf_last_week"] == "11"       # last week's fund table is "the previous week" now
+    # only the interbank days still inside the two weeks compared; 1 October is still this month's first trading day
+    assert [r["date"] for r in form["tables"]["interbank"]] == ["2026-09-25", "2026-09-28", "2026-09-29", "2026-09-30", "2026-10-01"]
+    assert [r["row"] for r in form["tables"]["eurobond_yields"]] == ["year_open", "month_open"]
+    placements = item("placements", last_week, NEXT)
+    assert placements["value"] == "9.5" and placements["needs_confirmation"] is True
+    assert placements["carried"] == {"from": "2026-10-02", "note": "", "whole": True, "cells": {}}
+    issues = item("eurobond_issues", last_week, NEXT)
+    assert issues["carried"]["from"] == "2026-10-02" and issues["needs_confirmation"] is False
+    status = analyst.status(NEXT, last_week)
+    assert status["previous_week"] == "2026-10-02" and status["can_carry"] is True
+    assert {u["key"] for u in status["unconfirmed"]} == WEEKLY
+    assert {u["label"] for u in analyst.status(NEXT, last_week, "equities")["unconfirmed"]} == {
+        "Market P/E", "Historical average P/E", "Market dividend yield", "Historical average dividend yield",
+        "Foreign net position, previous weeks"}
+    assert "Nothing to carry from the week ending 2026-10-02" in refused_carry(NEXT, last_week)   # a second time: all is held
+    assert "No analyst inputs are saved for the week ending 2026-10-09" in refused_carry(Week(date(2026, 10, 16)), tmp_root(last_week))
+
+
+def tmp_root(root):
+    """A root where the week ending 9 October has no form (the fixture's root, before anything is carried into it)."""
+    empty = root.parent / "elsewhere"
+    empty.mkdir(exist_ok=True)
+    return empty
+
+
+def test_a_carried_weekly_value_is_read_by_no_builder_until_it_is_confirmed(last_week):
+    analyst.carry_forward(NEXT, last_week)
+    waiting = inputs.WeeklyInputs(NEXT, last_week)
+    form = waiting.analyst
+    assert form.field("placements") is None and form.field("pe") is None and form.mmf() is None and form.interbank() == []
+    assert form.borrowing()["target_bn"] is None and form.foreign_history() == []
+    assert form.field("large_caps") and form.universe() is not None and any(form.eurobonds())      # slow ones are used at once
+    borrowing = fi.fiw.borrowing_blocks(waiting, NEXT, None, [])[0]
+    assert borrowing["kind"] == "unavailable" and borrowing["reason"] == (
+        "Net domestic borrowing target for the fiscal year is carried from the week ending 2026-10-02 and has not been "
+        "confirmed for this week. Auction log for the fiscal year is carried from the week ending 2026-10-02 and has not been "
+        "confirmed for this week. CBK's auction results could not be fetched from centralbank.go.ke.")
+    assert borrowing["unblock"] == "Complete or confirm it under \"Weekly analyst inputs\" on the start screen and draft again."
+    # with CBK's results the log is not needed: only the target still waits
+    from tests.test_net_borrowing import RELEASES
+    settled = RELEASES + [dict(r, value_date="2026-10-12") for r in RELEASES if (r["value_date"], r["kind"]) == ("2026-10-05", "tbill")]
+    with_cbk = fi.fiw.borrowing_blocks(inputs.WeeklyInputs(NEXT, last_week), NEXT, {"releases": settled, "warnings": []}, [])
+    assert [b["kind"] for b in with_cbk] == ["unavailable"] and with_cbk[0]["reason"] == (
+        "Net domestic borrowing target for the fiscal year is carried from the week ending 2026-10-02 and has not been "
+        "confirmed for this week.")
+    # confirming a value as it stands, or typing over it, makes it this week's
+    save_week(last_week, NEXT, confirm=["borrowing_target", "pe"], fields={"placements": "9.25"})
+    form = inputs.WeeklyInputs(NEXT, last_week).analyst
+    assert form.field("borrowing_target").number == 910.0 and form.field("pe").number == 8.0 and form.field("placements").number == 0.0925
+    assert item("pe", last_week, NEXT)["needs_confirmation"] is False and item("pe", last_week, NEXT)["carried"]["from"] == "2026-10-02"
+    assert item("placements", last_week, NEXT)["carried"] is None            # typed over: no longer a carried value
+    assert {u["key"] for u in analyst.status(NEXT, last_week)["unconfirmed"]} == WEEKLY - {"borrowing_target", "pe", "placements"}
+    with pytest.raises(InputError, match="nothing waits to be confirmed for 'pe'"):
+        save_week(last_week, NEXT, confirm=["pe"])
+
+
+def test_carrying_never_replaces_what_is_typed_and_an_edited_grid_says_which_cells_are_still_carried(last_week):
+    save_week(last_week, NEXT, fields={"placements": "9.9", "universe_month_end": "2026-09-30"})
+    done = analyst.carry_forward(NEXT, last_week)
+    assert "placements" not in done["carried"] and analyst.read_form(NEXT, last_week)["fields"]["placements"] == "9.9"
+    rows = analyst.read_form(NEXT, last_week)["tables"]["universe"]
+    assert "month_end_price" not in rows[0]      # the month-end date was typed here, not carried: its prices are not assumed
+    rows[0] = {**rows[0], "target": "60"}
+    save_week(last_week, NEXT, tables={"universe": {"rows": rows}})
+    carried = item("universe", last_week, NEXT)["carried"]
+    assert carried["whole"] is False and carried["cells"]["Alpha Bank"] == ["year_open", "dps", "shares_bn", "tbv_bn"]
+    assert carried["cells"]["Beta Bank"] == ["year_open", "target", "dps", "shares_bn", "tbv_bn"]
+
+
+def test_what_is_no_longer_valid_for_the_week_is_not_carried(tmp_path):
+    november = Week(date(2026, 11, 6))
+    save_week(tmp_path, Week(date(2026, 10, 30)), fields={"universe_month_end": "2026-09-30", "foreign_prior_year": "-6"},
+              tables={"universe": {"rows": [{"company": "Alpha Bank", "target": "55", "month_end_price": "39"}]},
+                      "interbank": {"text": "2026-10-16 8.80"},
+                      "eurobond_yields": {"rows": [{"row": "month_open", "date": "2026-10-01", "2018_10y": "7.6"}]}})
+    done = analyst.carry_forward(november, tmp_path)
+    assert set(done["carried"]) == {"foreign_prior_year", "universe"}       # the month turned: last month's open, month end, days
+    assert analyst.read_form(november, tmp_path)["tables"]["universe"] == [{"company": "Alpha Bank", "target": "55"}]
+    january = Week(date(2027, 1, 1))
+    save_week(tmp_path, Week(date(2026, 12, 25)), fields={"foreign_prior_year": "-6", "large_caps": "Safaricom"})
+    assert analyst.carry_forward(january, tmp_path)["carried"] == ["large_caps"]   # "the previous year" is another year now
+
+
+# ---------------------------------------------------------------------------
+# Suggested running totals
+# ---------------------------------------------------------------------------
+
+def test_a_running_total_is_suggested_as_last_weeks_plus_this_weeks_worked_out_figure(tmp_path, text_pdfs):
+    stores(tmp_path)
+    nothing = eq.eqw.running_total_suggestions(inputs.WeeklyInputs(WEEK, tmp_path), lambda: eq.RATES)
+    assert nothing["turnover_ytd"] == {"reason": "Year-to-date equities turnover: no total is saved for the week ending "
+                                                 "2026-09-25 to add this week's figure to."}
+    save_week(tmp_path, Week(date(2026, 9, 25)), fields={"turnover_ytd": "3035.6", "foreign_ytd": "-167.2"})
+    found = eq.eqw.running_total_suggestions(inputs.WeeklyInputs(WEEK, tmp_path), lambda: eq.RATES)
+    by = blocks(eq.build(tmp_path))
+    turnover, net = figures(by["turnover"])["turnover"]["value"], figures(by["foreign"])["net_flow"]["value"]
+    assert found["turnover_ytd"]["value"] == f"{3035.6 + turnover:.4f}" and found["foreign_ytd"]["value"] == f"{-167.2 + net:.4f}"
+    assert found["turnover_ytd"]["note"] == (
+        f"Suggested: 3,035.6000 saved for the week ending 2026-09-25 + {turnover:,.4f} worked out for this week from equities "
+        "turnover (KCB IB's daily reports and the CBK bulletin's Table 6), each day over that day's CBK rate = "
+        f"{3035.6 + turnover:,.4f} USD mn. Check it and confirm.")
+    assert analyst.read_form(WEEK, tmp_path)["fields"] == {}             # working it out stores nothing
+    # a day with no source: no figure for the week, so no suggestion (and none from an OCR reading)
+    inputs.remove(WEEK, "kcb_daily_2026-10-02.pdf", tmp_path)
+    missing = eq.eqw.running_total_suggestions(inputs.WeeklyInputs(WEEK, tmp_path), lambda: eq.RATES)
+    assert missing["turnover_ytd"]["reason"].startswith("Year-to-date equities turnover: this week's figure cannot be worked out: "
+                                                        "no equities turnover or CBK rate for Friday 02 October")
+    assert "value" in missing["foreign_ytd"]                             # KCB's weekly report still lists each weekday's flows
+    first = Week(date(2027, 1, 1))
+    assert "restarts with the year" in eq.eqw.running_total_suggestions(inputs.WeeklyInputs(first, tmp_path), lambda: eq.RATES)["turnover_ytd"]["reason"]
+
+
+def test_a_suggestion_is_only_a_prefill_through_the_api_until_it_is_confirmed(tmp_path, text_pdfs):
+    root = tmp_path / "weekly"
+    stores(root)
+    save_week(root, Week(date(2026, 9, 25)), fields={"turnover_ytd": "3035.6"})
+    client = TestClient(create_app(db_path=tmp_path / "app.db", load_dotenv=False, inputs_root=root, fetch_usd_rates=lambda: eq.RATES))
+    r = client.post("/api/inputs/weekly/2026-10-02/analyst/suggest/turnover_ytd?section=equities")
+    assert r.status_code == 200
+    field = next(i for g in r.json()["groups"] for i in g["items"] if i["key"] == "turnover_ytd")
+    assert field["suggestable"] and field["needs_confirmation"] and field["carried"]["from"] == "suggested"
+    assert field["carried"]["note"].startswith("Suggested: 3,035.6000 saved for the week ending 2026-09-25 + ")
+    assert r.json()["unconfirmed"] == [{"key": "turnover_ytd", "label": "Year-to-date equities turnover"}]
+    assert inputs.WeeklyInputs(WEEK, root).analyst.field("turnover_ytd") is None           # not read by a draft yet
+    assert "taking the YTD" not in blocks(eq.build(root))["turnover"]["body_md"]
+    r = client.put("/api/inputs/weekly/2026-10-02/analyst?section=equities", json={"confirm": ["turnover_ytd"]})
+    assert r.status_code == 200 and r.json()["unconfirmed"] == []
+    review = eq.build(root)
+    assert "taking the YTD total turnover to USD 3,052.2 mn" in blocks(review)["turnover"]["body_md"]
+    ytd = items(review, "Market Performance: equities turnover: Year-to-date equities turnover")[0]
+    assert ytd.status == "not_auto_verified" and "analyst input typed on the weekly form" in ytd.detail   # confirmed, still an analyst input
+    # a confirmed value is never replaced by a new suggestion; a field with no saved base, or not a running total, refuses
+    assert client.post("/api/inputs/weekly/2026-10-02/analyst/suggest/turnover_ytd").status_code == 409
+    r = client.post("/api/inputs/weekly/2026-10-02/analyst/suggest/foreign_ytd")
+    assert r.status_code == 409 and "no total is saved for the week ending 2026-09-25" in r.json()["detail"]
+    assert client.post("/api/inputs/weekly/2026-10-02/analyst/suggest/pe").status_code == 404
+    # the carry route: nothing saved for the week before 25 September
+    r = client.post("/api/inputs/weekly/2026-09-25/analyst/carry")
+    assert r.status_code == 409 and "No analyst inputs are saved for the week ending 2026-09-18" in r.json()["detail"]
+    r = client.post("/api/inputs/weekly/2026-10-09/analyst/carry?section=equities")
+    assert r.status_code == 409 and "Nothing to carry" in r.json()["detail"]      # a running total is never carried
+    assert client.put("/api/inputs/weekly/2026-10-02/analyst", json={"confirm": ["pe"]}).status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Universe of Coverage prices: KCB IB's for this Friday, the stored week's for last Friday
+# ---------------------------------------------------------------------------
+
+NCBA = {"company": "NCBA", "month_end_price": "97", "year_open": "85", "target": "120", "dps": "5", "shares_bn": "1.6", "tbv_bn": "110"}
+
+
+def test_the_friday_price_is_kcbs_and_last_fridays_is_the_price_stored_for_last_week(tmp_path, text_pdfs):
+    stores(tmp_path)
+    save_week(tmp_path, WEEK.previous, tables={"universe": {"rows": [{"company": "NCBA", "price": "98"}]}})
+    save_week(tmp_path, WEEK, fields={"universe_month_end": "2026-09-30"}, tables={"universe": {"rows": [NCBA]}})
+    auto = item("universe", tmp_path)
+    assert auto["auto_rows"] == [{"company": "NCBA", "price": "100", "last_price": "98"}] and "KCB IB's weekly report" in auto["auto_note"]
+    review = eq.build(tmp_path)
+    row = blocks(review)["universe_of_coverage"]["rows"][0]
+    assert (row["last_price"], row["price"], row["wow"], row["ytd"], row["upside"]) == ("98.0", "100.0", "2.0%", "17.6%", "25.0%")
+    note = items(review, "Cytonn Report: Equities Universe of Coverage: NCBA")[0]
+    assert note.status == "not_auto_verified"
+    assert "price, this friday from KCB IB weekly report of 2026-10-02, NCBA" in note.detail
+    assert "price, last friday from the price stored for the week ending 2026-09-25 (analyst input typed on the weekly form" in note.detail
+    # a typed Friday price is used, and KCB IB's differing price is shown beside it
+    save_week(tmp_path, WEEK, tables={"universe": {"rows": [{**NCBA, "price": "101.5"}]}})
+    review = eq.build(tmp_path)
+    assert blocks(review)["universe_of_coverage"]["rows"][0]["price"] == "101.5"
+    flagged = items(review, "Cytonn Report: Equities Universe of Coverage: NCBA")[0]
+    assert flagged.status == "flagged" and flagged.detail[0].kind == SOURCES_DISAGREE
+    assert any("NCBA: price: typed as 101.5, but the KCB IB weekly report of 2026-10-02, NCBA has 100" in w for w in review.section["warnings"])
+    # a company KCB's report is not matched to, with no typed price: the row says what is missing; nothing is filled in
+    save_week(tmp_path, WEEK, tables={"universe": {"rows": [{**NCBA, "company": "Unlisted Co"}]}})
+    missing = items(eq.build(tmp_path), "Cytonn Report: Equities Universe of Coverage: Unlisted Co")[0]
+    assert missing.status == "flagged" and "no usable price, this friday, price, last friday for Unlisted Co" in missing.detail[0].message
+
+
+def test_kcbs_friday_price_equals_the_workbooks_for_all_thirteen_companies(tmp_path):
+    inputs.store(WEEK, "equities_workbook", wh.sample("Equities Workbook 02.10.2026.v6 (1).xlsx"), "Equities.xlsx", tmp_path)
+    inputs.store(WEEK, "kcb_weekly", wh.sample("KCB IB Weekly Trading Market Report - Week 40 - 02Oct2026.pdf"), "w.pdf", tmp_path)
+    form = inputs.WeeklyInputs(WEEK, tmp_path).analyst
+    companies = form.wb_universe()["companies"]
+    assert len(companies) == 13
+    for c in companies:
+        kcb = form.kcb_price(c["company"].value)
+        assert kcb is not None and kcb.number == c["price"].number, c["company"].value
+    # so KCB's published price stands beside the workbook's typed one on every row, and agrees
+    table = eq.universe_block_for(WEEK, tmp_path)
+    assert len(table["second_sources"]) == 13
+    review = fi.build_review(*checked(table))
+    assert SOURCES_DISAGREE not in {f.kind for i in review.review_items if isinstance(i.detail, list) for f in i.detail}
+
+
+def checked(table):
+    from cytonn_weekly.common.review import check_section, numbered
+
+    content = {"section": "equities", "blocks": numbered([table])}
+    return content, check_section(content)
+
+
+def test_a_single_ocr_reading_says_what_to_check_it_against(tmp_path, text_pdfs):
+    inputs.store(WEEK, "kcb_weekly", wh.fake_pdf(wh.kcb_weekly_text()), "weekly.pdf", tmp_path)     # no workbook, no afx
+    nse10 = items(eq.build(tmp_path), "Market Performance: NSE 10 week-on-week change")[0]
+    assert nse10.status == "flagged" and nse10.detail[0].message.endswith(
+        "was read by OCR from NSE daily price list of 2026-10-02 and no second source confirms it. Open the NSE daily price list "
+        "of 2026-10-02 (https://www.nse.co.ke/wp-content/uploads/02-OCT-26.pdf) and read the NSE 10 Share Index in its index box, "
+        "or check it against the equities team's own figure for that day, before accepting.")
+    assert not {"nse_10", "banking", "indices"} & {i["key"] for g in analyst.status(WEEK, tmp_path)["groups"] for i in g["items"]}

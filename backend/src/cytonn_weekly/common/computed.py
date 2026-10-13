@@ -171,6 +171,11 @@ def an_input(value: Any, origin: str, source: str, *, second: Optional[dict[str,
     return out
 
 
+def check_hint(item: dict[str, Any]) -> str:
+    """What to check a single-reading OCR value against: the input's own hint, else the page it was read from."""
+    return item.get("check") or f"Check it against {item['source']} itself (the scanned page) before accepting"
+
+
 def a_figure(key: str, label: str, fmt: str, decimals: int, inputs: dict[str, dict[str, Any]],
              expr: Optional[Expr] = None, *, in_text: bool = True, note: str = "") -> dict[str, Any]:
     """A figure worked out from ``inputs`` by ``expr`` (default: the single input itself), with its display string."""
@@ -280,7 +285,7 @@ def check_figure_record(block: dict[str, Any], fig: dict[str, Any]) -> tuple[lis
         elif item["origin"] == OCR and agrees is None and not confirmed:
             flags.append(Flag(kind=UNSOURCED, source_value=item["value"],
                               message=(f"{fig['label']}: {name} ({item['value']}) was read by OCR from {item['source']} "
-                                       "and no second source confirms it"), **common))
+                                       f"and no second source confirms it. {check_hint(item)}."), **common))
         elif item["origin"] == ANALYST and not (agrees and second.get("origin") == SOURCE):
             analyst.append(f"{name} ({item['value']}) is an {item['source']}")
         elif item["origin"] == OCR and agrees and second.get("origin") == ANALYST and not confirmed:

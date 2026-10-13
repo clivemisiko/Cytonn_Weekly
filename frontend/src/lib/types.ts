@@ -321,6 +321,18 @@ export interface WeeklyInputs {
   max_bytes: number;
 }
 
+/** Where a value came from while it is still what was carried from last week's form, or what was suggested. */
+export interface AnalystCarried {
+  /** The week it was carried from (ISO date), or "suggested" for a worked-out running total. */
+  from: string;
+  /** A suggestion's working, in the API's words. */
+  note: string;
+  /** The whole item is as carried; false when a grid was edited and only `cells` still are. */
+  whole: boolean;
+  /** Per row name, the columns still holding the carried value. */
+  cells: Record<string, string[]>;
+}
+
 /** One typed field of the "Weekly analyst inputs" form, with what an uploaded workbook holds for it. */
 export interface AnalystField {
   type: "field";
@@ -342,12 +354,19 @@ export interface AnalystField {
   workbook_note: string | null;
   /** Typed values that differ from the uploaded workbook's, in the API's words. */
   differences: string[];
+  carried: AnalystCarried | null;
+  /** Carried or suggested and not confirmed yet: no draft reads it, and the draft button waits. */
+  needs_confirmation: boolean;
+  /** A running total the API can work a suggestion out for. */
+  suggestable: boolean;
+  /** What is used when nothing is typed and no workbook holds it (the fiscal year's start: 1 July). */
+  default: string | null;
 }
 
 export interface AnalystColumn {
   key: string;
   label: string;
-  kind: "text" | "number" | "date" | "month" | "rank";
+  kind: "text" | "number" | "date" | "month" | "rank" | "check";
   unit: string;
   min: number | null;
   max: number | null;
@@ -356,7 +375,9 @@ export interface AnalystColumn {
 
 export type AnalystRow = Record<string, string>;
 
-/** One table of the form: pasted lines (the fund table) or a grid typed cell by cell (the Universe of Coverage). */
+/**
+ * One table of the form: pasted lines (the fund table) or a grid typed cell by cell (the Universe of Coverage).
+ */
 export interface AnalystTable {
   type: "table";
   key: string;
@@ -377,6 +398,11 @@ export interface AnalystTable {
   workbook_note: string | null;
   warnings: string[];
   differences: string[];
+  carried: AnalystCarried | null;
+  needs_confirmation: boolean;
+  /** What a row gets without typing: this Friday's price from KCB IB, last Friday's from the stored week. */
+  auto_rows: AnalystRow[] | null;
+  auto_note: string;
 }
 
 export type AnalystItem = AnalystField | AnalystTable;
@@ -388,6 +414,11 @@ export interface AnalystForm {
   groups: { section: string; key: string; title: string; items: AnalystItem[] }[];
   /** Whether each section's workbook is among the week's uploads. */
   workbooks: Record<string, boolean>;
+  /** The Friday before this week's, and whether a form is saved for it to start from. */
+  previous_week: string;
+  can_carry: boolean;
+  /** Carried or suggested values still waiting to be confirmed, on this section's part of the form. */
+  unconfirmed: { key: string; label: string }[];
 }
 
 export interface StatusCounts {

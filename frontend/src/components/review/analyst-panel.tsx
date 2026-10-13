@@ -1,20 +1,30 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CheckIcon, FileIcon, PlusIcon, QuestionIcon, TrashIcon, WarningIcon } from "@phosphor-icons/react";
+import {
+  ArrowBendDownRightIcon,
+  CheckIcon,
+  FileIcon,
+  PlusIcon,
+  QuestionIcon,
+  TrashIcon,
+  WarningIcon,
+} from "@phosphor-icons/react";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import * as api from "@/lib/api";
 import { friendlyDate, friendlyTime } from "@/lib/format";
-import type { AnalystColumn, AnalystField, AnalystForm, AnalystRow, AnalystTable } from "@/lib/types";
+import type { AnalystCarried, AnalystColumn, AnalystField, AnalystForm, AnalystRow, AnalystTable } from "@/lib/types";
 import { Notice } from "./banners";
 import { FIELD } from "./inputs-panel";
 
-type Origin = "typed" | "differs" | "workbook" | "empty";
+type Origin = "typed" | "differs" | "workbook" | "empty" | "carried" | "unconfirmed";
 
 const ORIGIN = {
   typed: { Icon: CheckIcon, box: "border-ok/40 bg-ok/10 text-ok-fg" },
+  carried: { Icon: ArrowBendDownRightIcon, box: "border-input bg-muted text-foreground" },
+  unconfirmed: { Icon: WarningIcon, box: "border-warn/40 bg-warn/10 text-warn-fg" },
   differs: { Icon: WarningIcon, box: "border-warn/40 bg-warn/10 text-warn-fg" },
   workbook: { Icon: FileIcon, box: "border-input bg-muted text-foreground" },
   empty: { Icon: QuestionIcon, box: "border-dashed border-input text-muted-foreground" },
@@ -65,6 +75,41 @@ function Differences({ lines }: { lines: string[] }) {
   );
 }
 
+/** "carried from week ending 2 Oct 2026", or "suggested" for a worked-out running total. */
+const cameFrom = (carried: AnalystCarried) =>
+  carried.from === "suggested" ? "suggested" : `carried from week ending ${friendlyDate(carried.from)}`;
+
+const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
+/** A carried or suggested value that no draft reads until the coordinator accepts it for this week. */
+function Confirm({
+  carried,
+  label,
+  disabled,
+  onConfirm,
+}: {
+  carried: AnalystCarried | null;
+  label: string;
+  disabled: boolean;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="space-y-2 rounded-md border border-warn/40 bg-warn/10 px-3 py-2">
+      <p className="text-xs font-medium text-warn-fg">
+        {carried?.from === "suggested"
+          ? "A suggestion only. It is not used in a draft until you confirm it or type the figure yourself."
+          : "This changes every week. Last week’s value is not used in a draft until you confirm it for this week or type this week’s."}
+      </p>
+      {carried?.note && <p className="text-xs [overflow-wrap:anywhere]">{carried.note}</p>}
+      <Button size="sm" variant="outline" disabled={disabled} onClick={onConfirm}>
+        <CheckIcon weight="bold" data-icon="inline-start" aria-hidden />
+        Confirm for this week
+        <span className="sr-only">: {label}</span>
+      </Button>
+    </div>
+  );
+}
+
 const asText = (value: string | string[] | null | undefined) => (Array.isArray(value) ? value.join("\n") : (value ?? ""));
 
 /** One typed field. It is saved when the cursor leaves it; emptied, the workbook's value (if any) is used again. */
@@ -73,16 +118,30 @@ function FieldRow({
   disabled,
   onSave,
   onDirty,
+  onConfirm,
+  onSuggest,
 }: {
   item: AnalystField;
   disabled: boolean;
   onSave: (value: string) => void;
   onDirty: (dirty: boolean) => void;
+  onConfirm: () => void;
+  onSuggest: () => void;
 }) {
   const saved = asText(item.value);
   const [value, setValue] = useState(saved);
   const fromBook = asText(item.workbook?.value);
-  const origin: Origin = saved ? (item.differences.length ? "differs" : "typed") : fromBook ? "workbook" : "empty";
+  const origin: Origin = item.needs_confirmation
+    ? "unconfirmed"
+    : saved
+      ? item.differences.length
+        ? "differs"
+        : item.carried
+          ? "carried"
+          : "typed"
+      : fromBook
+        ? "workbook"
+        : "empty";
   const id = `analyst-${item.key}`;
   const change = (next: string) => {
     setValue(next);
@@ -105,7 +164,17 @@ function FieldRow({
           {item.label}
         </label>
         <OriginChip origin={origin}>
-          {origin === "typed" ? "Typed" : origin === "differs" ? "Typed, differs from the workbook" : origin === "workbook" ? "From the workbook" : "Empty"}
+          {origin === "unconfirmed" && item.carried
+            ? `${capital(cameFrom(item.carried))}, not confirmed`
+            : origin === "carried" && item.carried
+              ? capital(cameFrom(item.carried))
+              : origin === "typed"
+                ? "Typed"
+                : origin === "differs"
+                  ? "Typed, differs from the workbook"
+                  : origin === "workbook"
+                    ? "From the workbook"
+                    : "Empty"}
         </OriginChip>
       </div>
       {item.kind === "names" ? (
@@ -131,9 +200,20 @@ function FieldRow({
             className={cn(FIELD, "w-44 font-mono tabular-nums")}
           />
           {item.unit && <span className="text-sm text-muted-foreground">{item.unit}</span>}
+          {item.suggestable && (!saved || item.needs_confirmation) && (
+            <Button size="sm" variant="outline" disabled={disabled} onClick={onSuggest}>
+              Suggest from last week’s total
+              <span className="sr-only">: {item.label}</span>
+            </Button>
+          )}
           {item.kind === "date" && !value && fromBook && (
             <span className="text-xs text-muted-foreground">
               Workbook: <span className="font-mono">{friendlyDate(fromBook)}</span>
+            </span>
+          )}
+          {item.kind === "date" && !value && !fromBook && item.default && (
+            <span className="text-xs text-muted-foreground">
+              Used when empty: <span className="font-mono">{friendlyDate(item.default)}</span>
             </span>
           )}
         </div>
@@ -148,6 +228,7 @@ function FieldRow({
         )}
         {item.workbook_note && !saved && <p className="text-xs text-warn-fg">{item.workbook_note}</p>}
       </div>
+      {item.needs_confirmation && <Confirm carried={item.carried} label={item.label} disabled={disabled} onConfirm={onConfirm} />}
       <Differences lines={item.differences} />
     </div>
   );
@@ -192,7 +273,11 @@ function TableHead({ item, origin, count }: { item: AnalystTable; origin: Origin
       <div className="flex flex-wrap items-center gap-2">
         <h4 className="text-sm font-semibold">{item.label}</h4>
         <OriginChip origin={origin}>
-          {origin === "typed"
+          {origin === "unconfirmed" && item.carried
+            ? `${capital(cameFrom(item.carried))}, ${rows}, not confirmed`
+            : origin === "carried" && item.carried
+              ? `${capital(cameFrom(item.carried))}, ${rows}`
+              : origin === "typed"
             ? `Typed, ${rows}`
             : origin === "differs"
               ? `Typed, ${rows}, differs from the workbook`
@@ -227,7 +312,17 @@ function TableNotes({ item, typed }: { item: AnalystTable; typed: boolean }) {
 }
 
 const tableOrigin = (item: AnalystTable): Origin =>
-  item.rows?.length ? (item.differences.length ? "differs" : "typed") : item.workbook_rows?.length ? "workbook" : "empty";
+  item.needs_confirmation
+    ? "unconfirmed"
+    : item.rows?.length
+      ? item.differences.length
+        ? "differs"
+        : item.carried?.whole
+          ? "carried"
+          : "typed"
+      : item.workbook_rows?.length
+        ? "workbook"
+        : "empty";
 
 /** A table pasted as lines (rank, fund, rate). The API reads the lines; this shows the rows it kept. */
 function PasteTable({
@@ -235,11 +330,13 @@ function PasteTable({
   disabled,
   onSave,
   onDirty,
+  onConfirm,
 }: {
   item: AnalystTable;
   disabled: boolean;
   onSave: (text: string | null) => void;
   onDirty: (dirty: boolean) => void;
+  onConfirm: () => void;
 }) {
   const [text, setText] = useState(item.text);
   const dirty = text.trim() !== item.text.trim();
@@ -291,6 +388,9 @@ function PasteTable({
         {dirty && <span className="text-xs font-medium text-warn-fg">Not saved yet.</span>}
       </div>
       {rows.length > 0 && <RowsPreview item={item} rows={rows} />}
+      {item.needs_confirmation && !dirty && (
+        <Confirm carried={item.carried} label={item.label} disabled={disabled} onConfirm={onConfirm} />
+      )}
       <TableNotes item={item} typed={typed} />
     </div>
   );
@@ -301,7 +401,10 @@ interface Line {
   id: string;
   label: string;
   typed: AnalystRow;
+  /** What the row gets where nothing is typed: the uploaded workbook's value, else one the tool reads itself. */
   book: AnalystRow;
+  /** True when the uploaded workbook lists the row (its name is then fixed). */
+  listed: boolean;
 }
 
 const nameKey = (name: string) => name.trim().replace(/\s+/g, " ").toLowerCase();
@@ -316,18 +419,27 @@ function linesOf(item: AnalystTable): Line[] {
       label: r.label,
       typed: { ...(typed.find((t) => t.row === r.key) ?? {}) },
       book: book.find((b) => b.row === r.key) ?? {},
+      listed: true,
     }));
   }
   const name = item.columns[0].key;
+  const named = (rows: AnalystRow[], company: string) => rows.find((r) => nameKey(r[name] ?? "") === nameKey(company));
+  // KCB IB's price for the Friday comes before the workbook's, as in the draft; the stored week's price fills what is left.
+  const prefill = (company: string): AnalystRow => {
+    const auto = named(item.auto_rows ?? [], company) ?? {};
+    const fromBook = named(book, company) ?? {};
+    return { ...auto, ...fromBook, ...(auto.price ? { price: auto.price } : {}) };
+  };
   const lines: Line[] = typed.map((t, n) => ({
     id: `typed-${n}`,
     label: t[name] ?? "",
     typed: { ...t },
-    book: book.find((b) => nameKey(b[name] ?? "") === nameKey(t[name] ?? "")) ?? {},
+    book: prefill(t[name] ?? ""),
+    listed: !!named(book, t[name] ?? ""),
   }));
   const seen = new Set(typed.map((t) => nameKey(t[name] ?? "")));
   book.forEach((b, n) => {
-    if (!seen.has(nameKey(b[name] ?? ""))) lines.push({ id: `book-${n}`, label: b[name] ?? "", typed: {}, book: b });
+    if (!seen.has(nameKey(b[name] ?? ""))) lines.push({ id: `book-${n}`, label: b[name] ?? "", typed: {}, book: b, listed: true });
   });
   return lines;
 }
@@ -347,7 +459,7 @@ function rowsOf(item: AnalystTable, lines: Line[]): AnalystRow[] {
       if (Object.keys(row).length) out.push({ row: line.id, ...row });
       continue;
     }
-    const company = row[name] ?? (Object.keys(row).length ? (line.book[name] ?? "") : "");
+    const company = row[name] ?? (Object.keys(row).length ? line.label : "");
     if (company) out.push({ ...row, [name]: company });
   }
   return out;
@@ -362,13 +474,23 @@ function GridTable({
   disabled,
   onSave,
   onDirty,
+  onConfirm,
 }: {
   item: AnalystTable;
   disabled: boolean;
   onSave: (rows: AnalystRow[] | null) => void;
   onDirty: (dirty: boolean) => void;
+  onConfirm: () => void;
 }) {
   const [lines, setLines] = useState(() => linesOf(item));
+  /** Whether a cell still holds the value carried from last week's form (as saved; an edited cell no longer does). */
+  const isCarried = (line: Line, key: string) => {
+    const c = item.carried;
+    if (!c) return false;
+    const saved = (item.rows ?? []).find((r) => (item.fixed_rows.length ? r.row === line.id : nameKey(r[item.columns[0].key] ?? "") === nameKey(line.label)));
+    if (!saved || saved[key] === undefined || (line.typed[key] ?? "") !== saved[key]) return false;
+    return c.whole || (c.cells[item.fixed_rows.length ? line.id : line.label] ?? []).includes(key);
+  };
   const fixed = item.fixed_rows.length > 0;
   const name = item.columns[0];
   const columns = fixed ? item.columns : item.columns.slice(1);
@@ -404,8 +526,8 @@ function GridTable({
           </thead>
           <tbody>
             {lines.map((line) => {
-              const fromBook = !fixed && Object.keys(line.book).length > 0;
-              const rowName = fixed ? line.label : line.typed[name.key] || line.book[name.key] || "new company";
+              const fromBook = !fixed && line.listed;
+              const rowName = fixed ? line.label : line.typed[name.key] || line.label || "new company";
               return (
                 <tr key={line.id} className="border-t align-middle">
                   <th scope="row" className="px-2 py-1 text-left font-medium">
@@ -435,7 +557,13 @@ function GridTable({
                         disabled={disabled}
                         onChange={(e) => setCell(line.id, c.key, e.target.value)}
                         placeholder={line.book[c.key] ?? ""}
-                        className={cn(FIELD, "h-8 px-2 font-mono text-sm tabular-nums md:text-xs", c.kind === "date" ? "w-36" : "w-24")}
+                        title={isCarried(line, c.key) && item.carried ? capital(cameFrom(item.carried)) : undefined}
+                        className={cn(
+                          FIELD,
+                          "h-8 px-2 font-mono text-sm tabular-nums md:text-xs",
+                          c.kind === "date" ? "w-36" : "w-24",
+                          isCarried(line, c.key) && "border-dashed bg-muted",
+                        )}
                       />
                     </td>
                   ))}
@@ -473,7 +601,7 @@ function GridTable({
             size="sm"
             variant="outline"
             disabled={disabled}
-            onClick={() => update([...lines, { id: `new-${Date.now()}-${lines.length}`, label: "", typed: {}, book: {} }])}
+            onClick={() => update([...lines, { id: `new-${Date.now()}-${lines.length}`, label: "", typed: {}, book: {}, listed: false }])}
           >
             <PlusIcon weight="bold" data-icon="inline-start" aria-hidden />
             Add company
@@ -499,6 +627,15 @@ function GridTable({
         <p className="text-xs text-muted-foreground">
           Grey figures are the uploaded workbook’s. A cell you type overrides it; a cell you leave empty uses it.
         </p>
+      )}
+      {item.auto_note && <p className="text-xs text-muted-foreground">{item.auto_note} They show in grey.</p>}
+      {item.carried && !item.needs_confirmation && (
+        <p className="text-xs text-muted-foreground">
+          Shaded cells with a dashed edge are {cameFrom(item.carried)}. Type over any that changed.
+        </p>
+      )}
+      {item.needs_confirmation && !dirty && (
+        <Confirm carried={item.carried} label={item.label} disabled={disabled} onConfirm={onConfirm} />
       )}
       <TableNotes item={item} typed={typedCount > 0} />
     </div>
@@ -544,7 +681,8 @@ export function AnalystPanel({
     };
   }, [week, section, refresh]);
 
-  const pending = busy || Object.values(dirty).some(Boolean);
+  const waiting = form?.unconfirmed ?? [];
+  const pending = busy || Object.values(dirty).some(Boolean) || waiting.length > 0;
   useEffect(() => onPending(pending), [pending, onPending]);
   useEffect(() => () => onPending(false), [onPending]);
 
@@ -562,6 +700,20 @@ export function AnalystPanel({
       setBusy(false);
     }
   };
+
+  /** One change the API makes to the whole form (carry last week's, work out a suggestion, confirm a value). */
+  const act = async (work: () => Promise<AnalystForm>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      setForm(await work());
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const confirm = (key: string) => void act(() => api.saveAnalystInputs(week, section, { confirm: [key] }));
 
   const locked = busy || !!disabled;
   const hasBook = form?.workbooks[section] ?? false;
@@ -584,7 +736,29 @@ export function AnalystPanel({
             {form.saved_at ? ` Last saved ${friendlyTime(form.saved_at)}.` : ""}
           </p>
         )}
+        {form && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pt-2">
+            <Button variant="outline" size="sm" disabled={locked || !form.can_carry} onClick={() => void act(() => api.carryAnalystInputs(week, section))}>
+              <ArrowBendDownRightIcon weight="bold" data-icon="inline-start" aria-hidden />
+              Start from last week’s form
+            </Button>
+            <p className="max-w-[60ch] text-xs text-muted-foreground">
+              {form.can_carry
+                ? `Copies what was saved for the week ending ${friendlyDate(form.previous_week)} into every item still empty here, each marked as carried. Figures that change every week then wait for you to confirm them.`
+                : `Nothing is saved for the week ending ${friendlyDate(form.previous_week)} to start from.`}
+            </p>
+          </div>
+        )}
       </div>
+
+      {waiting.length > 0 && (
+        <Notice tone="warn" role="status">
+          <span className="font-semibold">
+            {waiting.length} {waiting.length === 1 ? "value needs" : "values need"} confirming before a draft:
+          </span>{" "}
+          {waiting.map((w) => w.label).join("; ")}.
+        </Notice>
+      )}
 
       {error && (
         <Notice role="alert" className="font-medium whitespace-pre-line">
@@ -610,6 +784,8 @@ export function AnalystPanel({
                   key={`${item.key}:${asText(item.value)}`}
                   item={item}
                   disabled={locked}
+                  onConfirm={() => confirm(item.key)}
+                  onSuggest={() => void act(() => api.suggestAnalystInput(week, section, item.key))}
                   onDirty={(d) => mark(item.key, d)}
                   onSave={(value) => void save(item.key, { fields: { [item.key]: value.trim() || null } })}
                 />
@@ -618,14 +794,16 @@ export function AnalystPanel({
                   key={`${item.key}:${item.text}`}
                   item={item}
                   disabled={locked}
+                  onConfirm={() => confirm(item.key)}
                   onDirty={(d) => mark(item.key, d)}
                   onSave={(text) => void save(item.key, { tables: { [item.key]: text === null ? null : { text } } })}
                 />
               ) : (
                 <GridTable
-                  key={`${item.key}:${JSON.stringify([item.rows, item.workbook_rows])}`}
+                  key={`${item.key}:${JSON.stringify([item.rows, item.workbook_rows, item.auto_rows])}`}
                   item={item}
                   disabled={locked}
+                  onConfirm={() => confirm(item.key)}
                   onDirty={(d) => mark(item.key, d)}
                   onSave={(rows) => void save(item.key, { tables: { [item.key]: rows === null ? null : { rows } } })}
                 />

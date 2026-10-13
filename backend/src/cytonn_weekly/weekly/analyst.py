@@ -3,7 +3,7 @@
 The weekly Fixed Income and Equities sections read some figures that exist nowhere but in the
 analysts' two workbooks (audited from the builders on 2026-10-12): the 3-month bank placements
 rate, the money market fund table, the daily interbank rates, the Eurobond issue list and the
-yields of days the CBK bulletin does not print, the remittances, the borrowing log and its
+yields of days the CBK bulletin does not print, the remittances, the net domestic borrowing
 target, the large-cap list, the running turnover and foreign-flow totals, the market P/E and
 dividend yield with their averages, and the Universe of Coverage inputs.  The team may not send
 the workbooks every week, so each of those can be typed here instead.  Nothing the tool reads
@@ -27,6 +27,25 @@ Rules:
 * **Derived figures are never typed.**  The Top 5 funds' average, the Universe of Coverage's
   changes, yield, upside, multiple and recommendation, the pro-rated borrowing target and every
   other worked-out figure still come from the builders' formulas and the exact-match checker.
+
+* **Last week's form can start this week's** (``carry_forward``).  Every carried value is marked
+  with the week it came from.  What changes slowly (the Eurobond issue list, year opens, targets,
+  DPS, shares, tangible book, remittances) is carried and used.  What changes every week (the
+  placements rate, the fund table, the P/E, the borrowing target and log, the interbank rates, the
+  foreign positions) is carried but **not used until it is confirmed**: an unconfirmed value is
+  read by no builder, so a draft can never rest on last week's figure by oversight.
+* **A running total can be suggested, never assumed** (equities/weekly.running_total_suggestions):
+  last week's saved total plus this week's figure worked out from KCB IB and CBK, with the working
+  shown.  It is stored unconfirmed, like a carried weekly value.
+* **The net borrowing log is CBK's, not the analysts'** (fixed_income/net_borrowing.py).  The form
+  holds only what CBK cannot say: the full-year target, the day the fiscal year starts (1 July
+  unless typed) and, under "Other bond redemptions", a bond redemption CBK prints on no result
+  file (a bond maturing on a day with no bond auction).  Switch auctions are not on the form: by the investments team's rule they are not
+  new debt and never count.  A typed auction log is still accepted, as an override of CBK's
+  results or the fallback when CBK cannot be reached.
+* **The Universe of Coverage's Friday price is KCB IB's**, from its weekly report, when no price is
+  typed; the previous Friday's is the price stored for the previous week.  Index levels are not on
+  the form: the tool reads them from KCB IB and the NSE.
 
 A value is stored as it was typed (a percentage as 9.0, not 0.09).  A builder gets it as a
 ``Typed`` cell in the workbook's own unit, so the arithmetic is the same whichever the source.
@@ -60,6 +79,26 @@ MAX_PASTE = 40_000
 MAX_ROWS = 400
 MAX_NAME = 120
 MIN_FUNDS = 5   # the Top 5 average needs five funds
+
+# Carry-forward (the team's rule, 2026-10-12).  Slow-changing items carry from last week's form and are used as
+# they are; weekly-changing ones carry but must be confirmed before any builder reads them.
+SLOW_FIELDS = ("large_caps", "foreign_prior_year", "universe_month_end", "fiscal_year_start")
+WEEKLY_FIELDS = ("placements", "pe", "pe_average", "dividend_yield", "dividend_yield_average", "borrowing_target")
+SLOW_TABLES = ("eurobond_issues", "eurobond_yields", "remittances", "universe", "borrowing_redemptions")
+WEEKLY_TABLES = ("mmf", "interbank", "borrowing_log", "foreign_history")
+# Of the Universe of Coverage's columns, the ones that carry: prices do not (this Friday's is KCB IB's, last
+# Friday's is the price stored for last week); the month-end price carries only while the month is the same.
+UNIVERSE_CARRIED = ("company", "year_open", "target", "dps", "shares_bn", "tbv_bn")
+# Running totals: never carried (last week's total is not this week's); a suggestion is worked out instead.
+SUGGESTED_FIELDS = ("turnover_ytd", "foreign_ytd")
+SUGGESTED = "suggested"
+
+# The names the Universe of Coverage uses and the tickers KCB IB's weekly report lists them under.  Checked against
+# the report and the workbook of 2 October 2026: the report's price equals the workbook's for all thirteen.
+COVERAGE_TICKERS = {"co-op bank": "COOP", "ncba": "NCBA", "kcb group": "KCB", "absa bank": "ABSA",
+                    "standard chartered bank": "SCBK", "stanbic holdings": "SBIC", "jubilee holdings": "JUB",
+                    "equity group": "EQTY", "diamond trust bank": "DTK", "cic group": "CIC", "i&m group": "IMH",
+                    "britam": "BRIT", "family bank": "FMLY"}
 
 
 # ---------------------------------------------------------------------------
@@ -134,6 +173,9 @@ FIELD_LIST = (
     Field("borrowing_target", FI, "borrowing", "Net domestic borrowing target for the fiscal year", "National Treasury budget",
           "Net domestic borrowing against the pro-rated target", "The full-year target. The pro-rated target is worked out.",
           unit="Kshs bn", lo=1, hi=5000),
+    Field("fiscal_year_start", FI, "borrowing", "Fiscal year starts on", "National Treasury (Kenya's fiscal year)",
+          "Net domestic borrowing against the pro-rated target", "Optional: 1 July is used when this is empty. The net borrowing "
+          "log starts on this day and the target is pro-rated from it. Typed once, it is carried forward.", kind=DATE),
     Field("large_caps", EQ, "market", "Large-cap list", "The equities team's large-cap list", "Large-cap movers",
           "One company a line, as the team names them. The movers are picked from this list by KCB IB's week-on-week changes.",
           kind=NAMES),
@@ -194,8 +236,23 @@ TABLE_LIST = (
           "Net domestic borrowing against the pro-rated target",
           (Column("date", "Value date", DATE), Column("accepted", "Accepted", unit="Kshs mn", lo=0, hi=2_000_000),
            Column("redemptions", "Redemptions", unit="Kshs mn", lo=-2_000_000, hi=0)),
-          "One auction a line since 1 July, up to this week's. Redemptions are negative, as in the team's log.",
+          "Optional. Leave this empty: the log is built from CBK's auction results. A log typed here is used instead of CBK's, as "
+          "analyst input, and is the fallback when CBK cannot be reached. One auction a line since 1 July, up to this "
+          "week's. Redemptions are negative, as in the team's log.",
           example="2026-10-05  41196.84  (30511.20)"),
+    # CBK prints a bond redemption only in the results of a bond auction settling that day, so a bond that matures on a
+    # day with no bond auction is on no result file (first case: IFB1/2014/12, 12 October 2026).  It is typed here.
+    Table("borrowing_redemptions", FI, "borrowing", "Other bond redemptions",
+          "The fixed income team (a bond redemption CBK prints on no auction result)",
+          "Net domestic borrowing against the pro-rated target",
+          (Column("date", "Value date", DATE), Column("bond", "Bond", TEXT),
+           Column("amount", "Amount redeemed", unit="Kshs mn", lo=0.01, hi=2_000_000)),
+          "A bond that matures on a day with no bond auction is on no CBK result file. One a line: value date, bond, the amount "
+          "redeemed in Kshs mn (the amount outstanding at maturity, as shown on the NSE Implied Yields sheet, which may "
+          "differ from the face value at issue). Each row is subtracted "
+          "on its value date in the log built from CBK's results, as analyst input, labelled \"typed, not on a release\". It "
+          "is not added to an auction log typed above: put the redemption in that log.",
+          example="2026-10-12  IFB1/2014/12  15420.55"),
     Table("foreign_history", EQ, "market", "Foreign net position, previous weeks", "The equities team's weekly sums",
           "Foreign investors (previous week and streak)",
           (Column("week_ending", "Week ending", DATE), Column("net", "Net position", unit="USD mn", lo=-2000, hi=2000)),
@@ -218,6 +275,7 @@ TABLES = {t.key: t for t in TABLE_LIST}
 _READING = {"placements": "placements", "cmmf_last_week": "cmmf_last_week", "mmf_published": "mmf", "mmf": "mmf",
             "interbank": "interbank", "eurobond_issues": "eurobonds", "eurobond_yields": "eurobonds",
             "remittances": "remittances", "borrowing_target": "borrowing", "borrowing_log": "borrowing",
+            "fiscal_year_start": "borrowing", "borrowing_redemptions": "borrowing",
             "large_caps": "large_caps", "turnover_ytd": "turnover", "foreign_ytd": "foreign", "foreign_prior_year": "foreign",
             "foreign_history": "foreign", "pe": "valuation", "pe_average": "valuation", "dividend_yield": "valuation",
             "dividend_yield_average": "valuation", "universe_month_end": "universe", "universe": "universe"}
@@ -269,6 +327,28 @@ class Typed:
 BLANK = Cell(None, FORM, 0, 0)   # a cell of a typed row that was left empty
 
 
+@dataclass(frozen=True)
+class Reading:
+    """A figure the tool read for a typed row from somewhere else: KCB IB's report, or a previous week's stored price."""
+
+    value: Any
+    source: str
+    row: Optional[int] = None
+
+    @property
+    def number(self) -> Optional[float]:
+        v = self.value
+        return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+    @property
+    def day(self) -> Optional[date]:
+        return None
+
+    @property
+    def ref(self) -> str:
+        return self.source
+
+
 def is_typed(cell: Any) -> bool:
     return isinstance(cell, Typed)
 
@@ -299,6 +379,20 @@ def shown(value: Any, scale: int = 1) -> str:
 def _key(name: Any) -> str:
     """A fund or company name as compared: lower case, single-spaced, no space inside brackets."""
     return " ".join(str(name).replace("( ", "(").replace(" )", ")").split()).lower()
+
+
+CYTONN_FUND = fi_workbook.CYTONN_FUND   # "cytonn money market fund"
+
+
+def fund_key(name: Any) -> str:
+    """A fund's name as matched between the paper and the workbook.
+
+    The workbook writes Cytonn's fund with its dial code ("Cytonn Money Market Fund ( Dial *809# or
+    download Cytonn App)"); the paper prints "Cytonn Money Market Fund".  They are the same fund,
+    as the fixed income builder already takes any name starting that way to be.
+    """
+    key = _key(name)
+    return CYTONN_FUND if key.startswith(CYTONN_FUND) else key
 
 
 # ---------------------------------------------------------------------------
@@ -525,6 +619,17 @@ def _check_table(table: Table, rows: list[dict[str, str]], week: Week, errors: l
             if day > limit or day < fiscal_year_start(week):
                 errors.append(f"{name}: {r['date']} is not between the start of the fiscal year "
                               f"({fiscal_year_start(week).isoformat()}) and {limit.isoformat()}, when this week's auction settles")
+    elif table.key == "borrowing_redemptions":
+        # Any day of the fiscal year: a redemption after this week's auctions settle is kept and counts from its own week.
+        start = fiscal_year_start(week)
+        end = start.replace(year=start.year + 1) - timedelta(days=1)
+        seen: set[tuple[str, str]] = set()
+        for r in rows:
+            if not start <= date.fromisoformat(r["date"]) <= end:
+                errors.append(f"{name}: {r['date']} is not in the fiscal year ({start.isoformat()} to {end.isoformat()})")
+            if (r["date"], _key(r["bond"])) in seen:
+                errors.append(f"{name}: {r['bond']} on {r['date']} appears twice; each redemption is listed once")
+            seen.add((r["date"], _key(r["bond"])))
     elif table.key == "foreign_history":
         unique("week_ending", "week")
         for r in rows:
@@ -539,6 +644,11 @@ def _check_table(table: Table, rows: list[dict[str, str]], week: Week, errors: l
 def _check_field(spec: Field, value: Any, week: Week) -> None:
     if spec.key == "mmf_published" and not week.monday <= date.fromisoformat(value) <= week.ending:
         raise InputError(f"{spec.label}: {value} is not in the week {week.monday.isoformat()} to {week.ending.isoformat()}")
+    if spec.key == "fiscal_year_start":
+        day, settles = date.fromisoformat(value), week.value_date_window[0]
+        if not settles - timedelta(days=366) < day <= settles:
+            raise InputError(f"{spec.label}: {value} is not within the year before {settles.isoformat()}, when this week's "
+                             "auction settles")
     if spec.key == "universe_month_end":
         day, month_start = date.fromisoformat(value), week.ending.replace(day=1)
         if not month_start - timedelta(days=31) <= day < month_start:
@@ -589,17 +699,46 @@ def read_form(week: Week, root: Optional[Path] = None) -> dict[str, Any]:
     data = data if isinstance(data, dict) else {}
     fields = {k: v for k, v in (data.get("fields") or {}).items() if k in FIELDS and v not in (None, "", [])}
     tables = {k: v for k, v in (data.get("tables") or {}).items() if k in TABLES and isinstance(v, list) and v}
-    return {"fields": fields, "tables": tables, "saved_at": data.get("saved_at")}
+    held = {**fields, **tables}
+    # carried: item -> {"from": the week it came from (or "suggested"), "value": what was carried, "note"?}
+    carried = {k: v for k, v in (data.get("carried") or {}).items() if k in held and isinstance(v, dict) and v.get("from")}
+    unconfirmed = sorted(k for k in (data.get("unconfirmed") or []) if k in held)
+    return {"fields": fields, "tables": tables, "saved_at": data.get("saved_at"), "carried": carried, "unconfirmed": unconfirmed}
+
+
+def _write(week: Week, root: Optional[Path], form: dict[str, Any]) -> dict[str, Any]:
+    held = {**form["fields"], **form["tables"]}
+    form["carried"] = {k: v for k, v in form.get("carried", {}).items() if k in held}
+    form["unconfirmed"] = sorted(k for k in form.get("unconfirmed", []) if k in held)
+    form["saved_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    path = _path(week, root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(form, indent=1, sort_keys=True), encoding="utf-8")
+    return form
+
+
+def usable_form(form: dict[str, Any]) -> dict[str, Any]:
+    """The form as a builder may read it: without what was carried or suggested and is not yet confirmed."""
+    waiting = set(form["unconfirmed"])
+    return {**form, "fields": {k: v for k, v in form["fields"].items() if k not in waiting},
+            "tables": {k: v for k, v in form["tables"].items() if k not in waiting}}
 
 
 def save_form(week: Week, changes: dict[str, Any], root: Optional[Path] = None) -> dict[str, Any]:
     """Check and keep what was typed; an item given as None (or empty) is cleared, one left out is kept.
 
-    ``changes`` is {"fields": {key: value}, "tables": {key: {"text": pasted} | {"rows": [...]} | None}}.
+    ``changes`` is {"fields": {key: value}, "tables": {key: {"text": pasted} | {"rows": [...]} | None},
+    "confirm": [keys]}.  Saving an item confirms it: a carried value someone has typed over, or
+    saved again, is theirs.  ``confirm`` accepts carried or suggested values as they stand.
     If anything is refused, nothing is stored and InputError lists every reason, one a line.
     """
     form = read_form(week, root)
     errors: list[str] = []
+    touched: set[str] = set()
+    for key in changes.get("confirm") or []:
+        if key not in form["unconfirmed"]:
+            errors.append(f"nothing waits to be confirmed for {key!r}")
+        touched.add(key)
     for key, raw in (changes.get("fields") or {}).items():
         spec = FIELDS.get(key)
         if spec is None:
@@ -610,6 +749,7 @@ def save_form(week: Week, changes: dict[str, Any], root: Optional[Path] = None) 
         except InputError as exc:
             errors.append(str(exc))
             continue
+        touched.add(key)
         if value is None:
             form["fields"].pop(key, None)
         else:
@@ -645,6 +785,7 @@ def save_form(week: Week, changes: dict[str, Any], root: Optional[Path] = None) 
         if len(errors) == before and rows:
             _check_table(table, rows, week, errors)
         if len(errors) == before:
+            touched.add(key)
             if rows:
                 form["tables"][key] = rows
             else:
@@ -652,11 +793,93 @@ def save_form(week: Week, changes: dict[str, Any], root: Optional[Path] = None) 
     if errors:
         more = f"\n...and {len(errors) - 12} more." if len(errors) > 12 else ""
         raise InputError("\n".join(errors[:12]) + more)
-    form["saved_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    path = _path(week, root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(form, indent=1, sort_keys=True), encoding="utf-8")
-    return form
+    form["unconfirmed"] = [k for k in form["unconfirmed"] if k not in touched]
+    return _write(week, root, form)
+
+
+def carry_forward(week: Week, root: Optional[Path] = None) -> dict[str, Any]:
+    """Start this week's form from last week's: copy what last week's holds into every item still empty here.
+
+    Only what was confirmed last week is copied, and only where it is still valid for this week
+    (a month-end date of the same month, interbank days still in the two weeks compared).  Each
+    copied item is marked with the week it came from.  Slow-changing items are then used as they
+    are; weekly-changing ones wait to be confirmed.  The fund table's date and the running totals
+    are never copied, and the Cytonn fund's yield "the previous week" is last week's table's.
+    Returns {"form", "carried": [keys], "unconfirmed": [keys]}; InputError if there is nothing to copy.
+    """
+    last_week = week.previous
+    stamp = last_week.ending.isoformat()
+    last = usable_form(read_form(last_week, root))
+    if not last["fields"] and not last["tables"]:
+        raise InputError(f"No analyst inputs are saved for the week ending {stamp}, so there is nothing to start from.")
+    form = read_form(week, root)
+    carried: list[str] = []
+
+    def take(kind: str, key: str, value: Any, weekly: bool) -> None:
+        form[kind][key] = value
+        form["carried"][key] = {"from": stamp, "value": value}
+        carried.append(key)
+        if weekly:
+            form["unconfirmed"] = sorted(set(form["unconfirmed"]) | {key})
+
+    for key in SLOW_FIELDS + WEEKLY_FIELDS:
+        raw = last["fields"].get(key)
+        if raw is None or key in form["fields"]:
+            continue
+        if key == "foreign_prior_year" and last_week.ending.year != week.ending.year:
+            continue
+        try:
+            take("fields", key, clean_field(FIELDS[key], raw, week), key in WEEKLY_FIELDS)
+        except InputError:
+            continue   # not valid for this week (last month's month-end date): left empty, to be typed
+    if "cmmf_last_week" not in form["fields"]:
+        cytonn = next((r for r in last["tables"].get("mmf", []) if fund_key(r["fund"]) == CYTONN_FUND), None)
+        if cytonn is not None:
+            take("fields", "cmmf_last_week", cytonn["rate"], False)   # last week's table is the previous week's yield
+    same_month_end = "universe_month_end" in carried
+    for key in SLOW_TABLES + WEEKLY_TABLES:
+        rows = last["tables"].get(key)
+        if not rows or key in form["tables"]:
+            continue
+        table = TABLES[key]
+        if key == "universe":
+            keep = UNIVERSE_CARRIED + (("month_end_price",) if same_month_end else ())
+            rows = [{k: v for k, v in r.items() if k in keep} for r in rows]
+        elif key in ("eurobond_yields", "interbank", "borrowing_log", "foreign_history", "borrowing_redemptions"):
+            rows = [r for r in rows if not _row_problems(table, r, week)]
+        problems: list[str] = []
+        if rows:
+            _check_table(table, rows, week, problems)
+        if rows and not problems:
+            take("tables", key, rows, key in WEEKLY_TABLES)
+    if not carried:
+        raise InputError(f"Nothing to carry from the week ending {stamp}: every item it holds is already typed for this week, "
+                         "or is no longer valid for it.")
+    _write(week, root, form)
+    return {"form": form, "carried": carried, "unconfirmed": [k for k in carried if k in form["unconfirmed"]]}
+
+
+def _row_problems(table: Table, row: dict[str, str], week: Week) -> list[str]:
+    problems: list[str] = []
+    _check_table(table, [row], week, problems)
+    return problems
+
+
+def suggest(week: Week, key: str, value: str, note: str, root: Optional[Path] = None) -> dict[str, Any]:
+    """Keep a worked-out suggestion for a running total as an unconfirmed value, with its working.
+
+    It never replaces a value someone typed or confirmed: that one must be cleared first.
+    """
+    if key not in SUGGESTED_FIELDS:
+        raise InputError(f"no suggestion is worked out for {key!r}")
+    form = read_form(week, root)
+    if key in form["fields"] and key not in form["unconfirmed"]:
+        raise InputError(f"{FIELDS[key].label} is already typed for this week; clear it to have a suggestion worked out.")
+    value = clean_field(FIELDS[key], value, week)
+    form["fields"][key] = value
+    form["carried"][key] = {"from": SUGGESTED, "value": value, "note": note}
+    form["unconfirmed"] = sorted(set(form["unconfirmed"]) | {key})
+    return _write(week, root, form)
 
 
 # ---------------------------------------------------------------------------
@@ -678,7 +901,8 @@ class Analyst:
     def __init__(self, inputs: WeeklyInputs):
         self.inputs = inputs
         self.week = inputs.week
-        self.form = read_form(inputs.week, inputs.root)
+        self.stored = read_form(inputs.week, inputs.root)
+        self.form = usable_form(self.stored)             # a carried or suggested value is read only once confirmed
         self.errors: dict[str, str] = {}             # workbook reading -> why it could not be read
         self.incomplete: dict[str, str] = {}         # item -> what is typed for it but cannot be used yet
         self.differences: list[dict[str, str]] = []  # {"item", "text"}
@@ -741,6 +965,8 @@ class Analyst:
                                                    table["title_cell"].col)
         if key == "borrowing_target":
             return (self.wb_borrowing() or {}).get("target_bn")
+        if key == "fiscal_year_start":
+            return (self.wb_borrowing() or {}).get("fy_start")
         if key == "large_caps":
             return self._read(EQ, key, equities_workbook.read_large_caps)
         if key == "turnover_ytd":
@@ -791,6 +1017,8 @@ class Analyst:
             limit = week.value_date_window[1]
             return None if data is None else [{"date": r["date"], "accepted": r["accepted"], "redemptions": r["redemptions"]}
                                               for r in data["log"] if r["date"] <= limit]
+        if key == "borrowing_redemptions":
+            return None     # the workbook's log has no such rows: a redemption CBK prints nowhere is only ever typed
         if key == "foreign_history":
             series = self.wb_foreign()
             if series is None:
@@ -887,16 +1115,16 @@ class Analyst:
                 self.incomplete["mmf"] = (f"The money market fund table is typed under \"{FORM}\", but the date it was "
                                           "published on is not.")
                 return None
-            theirs = {_key(f["fund"].value): f for f in wb["funds"]} if wb else {}
+            theirs = {fund_key(f["fund"].value): f for f in wb["funds"]} if wb else {}
             funds = []
             for r in rows:
-                base = theirs.get(_key(r["fund"]), {})
+                base = theirs.get(fund_key(r["fund"]), {})
                 what = f"money market fund table, {r['fund']}"
                 funds.append({"rank": Typed(int(r["rank"]), f"{what}: rank", table.source),
                               "fund": Typed(r["fund"], what, table.source),
                               "rate": self._cell(table, table.columns[2], r, what, base.get("rate"))})
             if wb:
-                self._only_in(table, {_key(r["fund"]) for r in rows}, {k: shown(f["fund"]) for k, f in theirs.items()})
+                self._only_in(table, {fund_key(r["fund"]) for r in rows}, {k: shown(f["fund"]) for k, f in theirs.items()})
             return {"published": published.day, "funds": funds,
                     "title": f"Money Market Fund Yield for Fund Managers as published on {ordinal(published.day)}",
                     "origin": f"analyst input typed on the weekly form (money market fund table; source: {table.source})"}
@@ -978,7 +1206,13 @@ class Analyst:
         return self._once("remittances", load)
 
     def borrowing(self) -> dict[str, Any]:
-        """{target_bn, log, fy_start, typed_log}: the target and the log are None where they are in neither place."""
+        """{target_bn, log, fy_start, fy_start_typed, typed_log, redemptions}.
+
+        The target and the analysts' own log are None where they are in neither place.  The
+        fiscal year starts on the typed day, else the workbook's, else 1 July.  ``redemptions``
+        is the typed "Other bond redemptions", oldest first: [{date, bond, amount}], the amount a
+        typed cell in Kshs mn.
+        """
         def load() -> dict[str, Any]:
             table, rows, wb = TABLES["borrowing_log"], self.typed_rows("borrowing_log"), self.wb_borrowing()
             log = wb["log"] if wb else None
@@ -995,8 +1229,16 @@ class Analyst:
                     base, what = theirs.get((day, turn[day]), {}), f"auction log, {r['date']}"
                     log.append({"date": day, "accepted": self._cell(table, cols["accepted"], r, what, base.get("accepted")),
                                 "redemptions": self._cell(table, cols["redemptions"], r, what, base.get("redemptions"))})
-            start = wb["fy_start"] if wb else Typed(fiscal_year_start(self.week), "start of the fiscal year", "1 July")
-            return {"target_bn": self.field("borrowing_target"), "log": log, "fy_start": start, "typed_log": bool(rows)}
+            start = self.field("fiscal_year_start")
+            typed_start = is_typed(start)
+            if start is None or start.day is None:
+                start = Typed(fiscal_year_start(self.week), "start of the fiscal year", "1 July")
+            other, amount = TABLES["borrowing_redemptions"], TABLES["borrowing_redemptions"].columns[2]
+            redemptions = [{"date": date.fromisoformat(r["date"]), "bond": r["bond"],
+                            "amount": self._cell(other, amount, r, f"other bond redemptions, {r['bond']} on {r['date']}", None)}
+                           for r in sorted(self.typed_rows("borrowing_redemptions"), key=lambda r: r["date"])]
+            return {"target_bn": self.field("borrowing_target"), "log": log, "fy_start": start, "fy_start_typed": typed_start,
+                    "typed_log": bool(rows), "redemptions": redemptions}
 
         return self._once("borrowing", load)
 
@@ -1018,8 +1260,43 @@ class Analyst:
 
         return self._once("foreign_history", load)
 
+    def kcb_price(self, company: Any) -> Optional[Reading]:
+        """The company's price in KCB IB's weekly report for this Friday, or None (no report, or a name with no ticker)."""
+        report = self.inputs.kcb_weekly
+        ticker = COVERAGE_TICKERS.get(_key(company))
+        if report is None or ticker is None or report.report_date != self.week.ending:
+            return None
+        price = (report.securities.get(ticker) or {}).get("price")
+        return None if price is None else Reading(price, f"KCB IB weekly report of {self.week.ending.isoformat()}, {ticker}")
+
+    def friday_price(self, company: Any) -> Any:
+        """This week's Friday price as stored: typed, else KCB IB's, else the uploaded workbook's.  None if in none."""
+        name = _key(company)
+        typed = next((r for r in self.typed_rows("universe") if _key(r["company"]) == name and r.get("price")), None)
+        if typed is not None:
+            return Typed(float(Decimal(typed["price"])), f"Universe of Coverage, {typed['company']}: price", TABLES["universe"].source)
+        kcb = self.kcb_price(company)
+        if kcb is not None:
+            return kcb
+        row = next((c for c in (self.wb_universe() or {}).get("companies", []) if _key(c["company"].value) == name), None)
+        return row["price"] if row is not None and row["price"].number is not None else None
+
+    def last_friday_price(self, company: Any) -> Optional[Reading]:
+        """The previous Friday's price: the Friday price stored for the previous week, named as such."""
+        previous = self._once("previous", lambda: WeeklyInputs(self.week.previous, self.inputs.root).analyst)
+        cell = previous.friday_price(company)
+        if cell is None or cell.number is None:
+            return None
+        where = cell.source if isinstance(cell, (Typed, Reading)) else f"{equities_workbook.SOURCE_NAME} {cell.ref}"
+        return Reading(cell.number, f"the price stored for the week ending {self.week.previous_friday.isoformat()} ({where})")
+
     def universe(self) -> Optional[dict[str, Any]]:
-        """{companies: [{company, price, ...}], month_end, typed}: typed rows first, then the workbook's other rows."""
+        """{companies: [{company, price, ...}], month_end, typed}: typed rows first, then the workbook's other rows.
+
+        In a typed row, a price left empty is KCB IB's for this Friday and the stored previous
+        week's for last Friday (else the uploaded workbook's); a typed price that differs from
+        KCB IB's is used, and the difference recorded.
+        """
         def load() -> Optional[dict[str, Any]]:
             table, rows, wb = TABLES["universe"], self.typed_rows("universe"), self.wb_universe()
             if not rows:
@@ -1031,9 +1308,21 @@ class Analyst:
                 base = theirs.get(_key(r["company"]))
                 what = f"Universe of Coverage, {r['company']}"
                 row: dict[str, Any] = {"company": Typed(r["company"], what, table.source)}
+                kcb = self.kcb_price(r["company"])
                 for col in table.columns[1:]:
                     cell = self._cell(table, col, r, what, base[col.key] if base else None)
-                    row[col.key] = base[col.key] if cell is BLANK and base else cell
+                    if cell is BLANK:
+                        found = kcb if col.key == "price" else None
+                        found = found or (base[col.key] if base else None)
+                        if found is None and col.key == "last_price":
+                            found = self.last_friday_price(r["company"])
+                        cell = found if found is not None else BLANK
+                    elif col.key == "price" and kcb is not None and cell.other is None and Decimal(repr(kcb.number)) != Decimal(r["price"]):
+                        cell = Typed(cell.value, cell.what, cell.label, kcb)
+                        self.differences.append({"item": table.key, "text": (
+                            f"{what}: price: typed as {r['price']}, but the {kcb.source} has {shown(kcb.number)}. "
+                            "The typed value is used.")})
+                    row[col.key] = cell
                 companies.append(row)
             typed_names = {_key(r["company"]) for r in rows}
             companies += [c for k, c in theirs.items() if k not in typed_names]
@@ -1048,8 +1337,14 @@ class Analyst:
         labels = [_NAMED.get(k) or "the " + (lambda t: t[0].lower() + t[1:])((FIELDS.get(k) or TABLES.get(k)).label) for k in items]
         workbook = WORKBOOKS[which].lower()
         half_typed = [self.incomplete[k] for k in items if k in self.incomplete]
+        for key in items:
+            if key in self.stored["unconfirmed"]:
+                came = self.stored["carried"].get(key, {}).get("from")
+                label = (FIELDS.get(key) or TABLES.get(key)).label
+                half_typed.append(f"{label} is {'a suggestion' if came == SUGGESTED else f'carried from the week ending {came}'} "
+                                  "and has not been confirmed for this week.")
         if half_typed:
-            return " ".join(half_typed), f"Complete it under \"{FORM}\" on the start screen and draft again."
+            return " ".join(half_typed), f"Complete or confirm it under \"{FORM}\" on the start screen and draft again."
         verb, them = ("has", "it") if len(labels) == 1 and not labels[0].endswith("s") else ("have", "them")
         said = []
         for key in items:
@@ -1109,7 +1404,27 @@ def _table_warnings(table: Table, rows: list[dict[str, str]]) -> list[str]:
 def status(week: Week, root: Optional[Path] = None, section: Optional[str] = None) -> dict[str, Any]:
     """The form for one week: every item with what was typed, what the uploaded workbook holds, and where they differ."""
     analyst = Analyst(WeeklyInputs(week, root))
-    form = analyst.form
+    form = analyst.stored          # what is held, confirmed or not; the readers below see only what is confirmed
+    last = read_form(week.previous, root)
+
+    def carried(key: str, value: Any) -> Optional[dict[str, Any]]:
+        """Where the item's value came from, while it is still what was carried or suggested."""
+        mark = form["carried"].get(key)
+        if mark is None or value is None:
+            return None
+        same = mark["value"] == value
+        cells = None
+        if not same and isinstance(value, list) and isinstance(mark["value"], list) and key in TABLES:
+            # a grid someone edited: say which cells are still the carried ones
+            name = "row" if TABLES[key].fixed_rows else TABLES[key].columns[0].key
+            before = {_key(r.get(name, "")): r for r in mark["value"] if isinstance(r, dict)}
+            cells = {r[name]: [c.key for c in TABLES[key].columns if c.key != name and c.key in r
+                               and before.get(_key(r[name]), {}).get(c.key) == r[c.key]]
+                     for r in value if isinstance(r, dict) and name in r}
+            cells = {k: v for k, v in cells.items() if v}
+        if not same and not cells:
+            return None
+        return {"from": mark["from"], "note": mark.get("note", ""), "whole": same, "cells": cells or {}}
     # Run every reader the builders use, so the differences shown here are the ones a draft will report.
     for key in FIELDS:
         analyst.field(key)
@@ -1130,12 +1445,27 @@ def status(week: Week, root: Optional[Path] = None, section: Optional[str] = Non
         return {"type": "field", "key": spec.key, "label": spec.label, "kind": spec.kind, "unit": spec.unit, "min": spec.lo,
                 "max": spec.hi, "source": spec.source, "help": spec.help, "used_in": spec.used_in,
                 "value": form["fields"].get(spec.key), "workbook": workbook,
-                "workbook_note": analyst.errors.get(_READING[spec.key]), "differences": differences.get(spec.key, [])}
+                "workbook_note": analyst.errors.get(_READING[spec.key]), "differences": differences.get(spec.key, []),
+                "carried": carried(spec.key, form["fields"].get(spec.key)),
+                "needs_confirmation": spec.key in form["unconfirmed"], "suggestable": spec.key in SUGGESTED_FIELDS,
+                "default": fiscal_year_start(week).isoformat() if spec.key == "fiscal_year_start" else None}
 
     def table_view(table: Table) -> dict[str, Any]:
         rows = form["tables"].get(table.key)
         wb = analyst.wb_rows(table.key)
         first = next((v for r in (wb or []) for v in r.values() if isinstance(v, Cell)), None)
+        auto = None
+        if table.key == "universe":
+            # What a row gets without typing: this Friday's price from KCB IB, last Friday's from the stored week.
+            name = table.columns[0].key
+            listed = [r[name] for r in rows or []] + [shown(r[name]) for r in wb or []]
+            auto = []
+            for company in dict.fromkeys(listed):
+                now, before = analyst.kcb_price(company), analyst.last_friday_price(company)
+                found = {name: company, **({"price": shown(now.number)} if now else {}),
+                         **({"last_price": shown(before.number)} if before else {})}
+                if len(found) > 1:
+                    auto.append(found)
         return {"type": "table", "key": table.key, "label": table.label, "mode": table.mode, "source": table.source,
                 "help": table.help, "example": table.example, "used_in": table.used_in,
                 "columns": [{"key": c.key, "label": c.label, "kind": c.kind, "unit": c.unit, "min": c.lo, "max": c.hi,
@@ -1145,7 +1475,11 @@ def status(week: Week, root: Optional[Path] = None, section: Optional[str] = Non
                 "workbook_rows": [_wb_row(table, r) for r in wb] if wb else None,
                 "workbook_ref": f"{WORKBOOKS[table.section]} '{first.sheet}'" if first is not None else None,
                 "workbook_note": analyst.errors.get(_READING[table.key]),
-                "warnings": _table_warnings(table, rows or []), "differences": differences.get(table.key, [])}
+                "warnings": _table_warnings(table, rows or []), "differences": differences.get(table.key, []),
+                "carried": carried(table.key, rows), "needs_confirmation": table.key in form["unconfirmed"],
+                "auto_rows": auto or None,
+                "auto_note": ("This Friday's price is read from KCB IB's weekly report and last Friday's from the price stored "
+                              "for the previous week, where you type none.") if auto else ""}
 
     groups = []
     for sec, key, title in GROUPS:
@@ -1154,5 +1488,11 @@ def status(week: Week, root: Optional[Path] = None, section: Optional[str] = Non
         items = [field_view(f) for f in FIELD_LIST if (f.section, f.group) == (sec, key)]
         items += [table_view(t) for t in TABLE_LIST if (t.section, t.group) == (sec, key)]
         groups.append({"section": sec, "key": key, "title": title, "items": items})
+    shown_keys = {i["key"] for g in groups for i in g["items"]}
     return {"form": FORM, "week_ending": week.ending.isoformat(), "saved_at": form.get("saved_at"), "groups": groups,
-            "workbooks": {FI: analyst.book(FI) is not None, EQ: analyst.book(EQ) is not None}}
+            "workbooks": {FI: analyst.book(FI) is not None, EQ: analyst.book(EQ) is not None},
+            "previous_week": week.previous_friday.isoformat(),
+            "can_carry": bool(last["fields"] or last["tables"]),
+            # what still waits to be confirmed, on this section's part of the form: the draft button waits for it
+            "unconfirmed": [{"key": k, "label": (FIELDS.get(k) or TABLES.get(k)).label}
+                            for k in form["unconfirmed"] if k in shown_keys]}

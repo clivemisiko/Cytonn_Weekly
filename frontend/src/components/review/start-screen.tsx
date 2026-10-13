@@ -410,7 +410,8 @@ export function StartScreen({
                 </Button>
                 {usesInputs && typedPending && (
                   <p id="typed-pending" role="status" className="text-xs font-medium text-warn-fg">
-                    Something typed under “Weekly analyst inputs” is not saved yet. Save or discard it before drafting.
+                    Something under “Weekly analyst inputs” is not saved yet, or was carried or suggested and still needs
+                    confirming. Finish it there before drafting.
                   </p>
                 )}
 

@@ -400,3 +400,10 @@ def test_the_universe_of_coverage_reproduces_issue_38(tmp_path):
     assert len(PRINTED_38) - len(TARGETS_REVISED_SINCE_38) == 9
     for company in TARGETS_REVISED_SINCE_38:
         assert rows[company]["target"] != dict(zip(COLUMNS, PRINTED_38[company]))["target"], company
+
+
+def universe_block_for(week, root):
+    """The Universe of Coverage table alone, from the inputs stored under ``root``."""
+    market = eqw.Market(week=week, inputs=inputs.WeeklyInputs(week, root), bulletin=None, rates={}, boxes={}, year_open_day=None,
+                        afx=None, typed_indices=None)
+    return eqw.universe_block(market, [])

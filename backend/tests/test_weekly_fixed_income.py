@@ -51,9 +51,15 @@ ISSUE = previous_issue.Issue(891, date(2026, 9, 27), {
 })
 
 
+def no_releases(start, end, folder):
+    """CBK's result files are not fetched: the borrowing log is then the typed one, else the workbook's (the fallback).
+    The log built from CBK's results is tested in test_net_borrowing.py."""
+    raise LookupError("CBK's results are not fetched in this test")
+
+
 def fetchers(**over):
     base = dict(usd_rates=lambda: RATES, bulletin=lambda day: (_ for _ in ()).throw(LookupError("no bulletin")),
-                tbonds=lambda start, end: TBONDS, previous_issue=lambda day, ref: ISSUE)
+                tbonds=lambda start, end: TBONDS, previous_issue=lambda day, ref: ISSUE, releases=no_releases)
     return fiw.Fetchers(**{**base, **over})
 
 
@@ -363,7 +369,9 @@ def test_run_events_report_each_fetch_and_part_and_add_up_to_the_review(root):
     kinds = Counter(e.kind for e in log.events)
     sources = [e.label for e in log.events if e.kind == "source_finished"]
     assert sources == ["Central Bank of Kenya, Daily KES Exchange Rates", "CBK T-bond results", "Previous issue on cytonnreport.com"]
-    assert kinds["source_failed"] == 0 and kinds["part_skipped"] == 1   # the bidding range
+    # CBK's result files are not fetched here (the workbook's log is the fallback); the bidding range is skipped
+    assert [e.label for e in log.events if e.kind == "source_failed"] == ["CBK Treasury bill and bond auction results"]
+    assert kinds["part_skipped"] == 1
     counted = Counter()
     for e in log.events:
         if e.kind == "check_finished":
@@ -382,7 +390,7 @@ def test_with_no_inputs_and_no_sources_every_part_is_a_named_unavailable_block(t
     def down(*args):
         raise ConnectionError("no route to host")
 
-    review = build(tmp_path, fetchers=fiw.Fetchers(usd_rates=down, bulletin=down, tbonds=down, previous_issue=down))
+    review = build(tmp_path, fetchers=fiw.Fetchers(usd_rates=down, bulletin=down, tbonds=down, previous_issue=down, releases=down))
     by = blocks(review)
     assert {b["kind"] for b in by.values()} == {"unavailable"}
     assert list(by) == ["tbills", "tbonds", "bidding_range", "money_market", "liquidity", "eurobonds", "shilling",
@@ -398,7 +406,7 @@ def test_with_no_inputs_and_no_sources_every_part_is_a_named_unavailable_block(t
     assert by["tbonds"]["reason"] == "CBK T-bond results: ConnectionError: no route to host"
     assert "there is no text to carry forward" in by["outlook"]["reason"]
     assert len(review.review_items) == len(by) and {i.status for i in review.review_items} == {"flagged"}
-    assert sum("ConnectionError" in w for w in review.section["warnings"]) == 4 and review.section["summary"] == ""
+    assert sum("ConnectionError" in w for w in review.section["warnings"]) == 5 and review.section["summary"] == ""
 
 
 def test_the_bulletin_is_fetched_and_kept_when_it_was_not_uploaded(tmp_path):
