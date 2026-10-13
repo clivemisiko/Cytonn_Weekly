@@ -14,7 +14,11 @@ of 2 October 2026 covers 25 September to 1 October).  Read from that issue, 2026
   the last two of them consecutive Fridays.  It is Table 7 in this issue and its number shifts
   by one in some issues, so it is found by its title.  Optional: an issue without it still reads.
 
-Rows are found by their printed labels and dates.  Table 6's Eurobond columns are matched
+Rows are found by their printed labels and dates, and only inside their own table: a table is
+read from its title down to the next "Source:", "Table N:" or "Chart N:" line, never from the
+whole page.  CBK moves charts between pages from issue to issue (in the 9 October 2026 issue
+the yield curve chart sits above Table 6, and its legend "28-Jun-24 30-Jun-25 2-Oct-26" starts
+with a date like a row does).  Table 6's Eurobond columns are matched
 to their maturity years by where the year is printed above the column (word positions),
 never by an assumed order.  It can be fetched by date: the listing page links every issue
 under ``/uploads/weekly_bulletin/`` with the issue date in the file name.
@@ -63,13 +67,17 @@ def _numbers(text: str) -> list[float]:
     return [float(n.replace(",", "")) for n in _NUM.findall(text)]
 
 
-def _between(lines: list[str], start: str, stop: str) -> list[str]:
-    """The lines from the one starting ``start`` up to (not including) the next starting ``stop``."""
+# Where a table ends: its own source line, or the next table's or chart's title.
+_END = re.compile(r"^(?:Source:|Table \d+:|Chart \d+:)")
+
+
+def _block(lines: list[str], start: str) -> list[str]:
+    """One table's lines: from its title (the line starting ``start``) up to, not including, where it ends."""
     try:
         a = next(n for n, line in enumerate(lines) if line.startswith(start))
     except StopIteration:
         raise BulletinParseError(f"'{start}' not found")
-    b = next((n for n in range(a + 1, len(lines)) if lines[n].startswith(stop)), len(lines))
+    b = next((n for n in range(a + 1, len(lines)) if _END.match(lines[n])), len(lines))
     return lines[a:b]
 
 
@@ -108,18 +116,19 @@ class Bulletin:
 
 
 def _table_1(lines: list[str], out: Bulletin) -> None:
-    for line in _between(lines, "Table 1:", "Table 2:"):
-        m = _DAY_ROW.match(line)
-        if m:
-            nums = _numbers(m.group(2))
-            if nums:
-                out.exchange_rates[_day(m.group(1))] = nums[0]
-    if not out.exchange_rates:
+    rows = [(m.group(1), m.group(2).split()) for m in map(_DAY_ROW.match, _block(lines, "Table 1:")) if m]
+    if not rows:
         raise BulletinParseError("Table 1 has no dated exchange-rate rows")
+    # every dated row is one rate per currency and nothing else, so a line that only starts with a date is not a row
+    width = len(rows[0][1])
+    for day, cells in rows:
+        if len(cells) != width or not all(_NUM.fullmatch(c) for c in cells):
+            raise BulletinParseError(f"Table 1 row for {day} does not hold {width} rates like the first row: {' '.join(cells)!r}")
+    out.exchange_rates = {_day(day): float(cells[0].replace(",", "")) for day, cells in rows}
 
 
 def _table_2(lines: list[str], out: Bulletin) -> None:
-    block = _between(lines, "Table 2:", "Table 3:")
+    block = _block(lines, "Table 2:")
     days = next(([_day(d) for d in re.findall(_DAY, line)] for line in block if re.match(rf"^{_DAY}\s", line)), None)
     usd = next((line for line in block if "Reserves (USD Million)" in line and line[:1].isdigit()), None)
     months = next((line for line in block if "Months of Import Cover" in line), None)
@@ -135,7 +144,7 @@ def _table_2(lines: list[str], out: Bulletin) -> None:
 
 def _table_3(lines: list[str], out: Bulletin) -> None:
     last: Optional[date] = None
-    for line in _between(lines, "Table 3:", "Table 4:"):
+    for line in _block(lines, "Table 3:"):
         m = _DAY_ROW.match(line)
         if m:
             nums = _numbers(m.group(2))
@@ -156,7 +165,7 @@ def _table_3(lines: list[str], out: Bulletin) -> None:
 
 
 def _table_4(lines: list[str], out: Bulletin) -> None:
-    block = _between(lines, "Table 4:", "Table 5:")
+    block = _block(lines, "Table 4:")
     labels = {"offered": "Amount Offered", "bids": "Bids Received", "accepted": "Amount Accepted",
               "rate": "Average Interest Rate"}
     for tenor in TENORS:
@@ -187,7 +196,7 @@ def _table_5(lines: list[str], out: Bulletin) -> None:
     (one offer covers one or two bonds), so the per-bond figures are kept in print order and
     the per-auction offers beside them; nothing is paired by guesswork."""
     try:
-        block = _between(lines, "Table 5:", "Source:")
+        block = _block(lines, "Table 5:")
     except BulletinParseError as exc:
         out.problems.append(f"Table 5: {exc}")
         return
@@ -219,22 +228,28 @@ _MARKET_KEYS = ("nasi", "nse_25", "nse_20", "deals", "shares_mn", "equity_turnov
 
 
 def _table_6(page, out: Bulletin) -> None:
-    """Daily rows of Table 6, with each Eurobond yield column matched to the year printed above it."""
-    words = page.extract_words(keep_blank_chars=False, use_text_flow=False)
+    """Daily rows of Table 6, with each Eurobond yield column matched to the year printed above it.
+
+    Only the part of the page from the "Table 6:" title down to where the table ends is read.
+    """
     rows: dict[float, list[dict[str, Any]]] = {}
-    for w in words:
+    for w in page.extract_words(keep_blank_chars=False, use_text_flow=False):
         rows.setdefault(round(w["top"]), []).append(w)
     lines = sorted(rows.items())
-    data: list[tuple[date, list[dict[str, Any]]]] = []
     for _, ws in lines:
         ws.sort(key=lambda w: w["x0"])
+    texts = [" ".join(w["text"] for w in ws) for _, ws in lines]
+    start = next((n for n, text in enumerate(texts) if text.startswith("Table 6:")), None)
+    if start is None:
+        raise BulletinParseError("'Table 6:' is not at the start of a line on its page")
+    stop = next((n for n in range(start + 1, len(texts)) if _END.match(texts[n])), len(texts))
+    lines = lines[start + 1:stop]
+    words = [w for _, ws in lines for w in ws]
+    data: list[tuple[date, list[dict[str, Any]]]] = []
+    for _, ws in lines:
         if not re.fullmatch(_DAY, ws[0]["text"]):
             continue
-        try:   # the page's chart prints its dates rotated ("52-tcO-03"), which are not rows
-            day = _day(ws[0]["text"])
-        except ValueError:
-            continue
-        data.append((day, ws[1:]))
+        data.append((_day(ws[0]["text"]), ws[1:]))
     if not data:
         raise BulletinParseError("Table 6 has no dated rows")
     first_top = min(ws[0]["top"] for _, ws in data)
@@ -273,7 +288,8 @@ def _domestic_debt(lines: list[str], out: Bulletin) -> None:
     if start is None:
         out.problems.append("'Government Domestic Debt' table not found")
         return
-    body = lines[start + 1:start + 12]
+    stop = next((n for n in range(start + 1, len(lines)) if _END.match(lines[n])), len(lines))
+    body = lines[start + 1:stop]
     days = next((found for found in (re.findall(_DAY, line) for line in body) if len(found) >= 2), None)
     row = next((m.group(1) for m in (_BONDS_ROW.match(line) for line in body) if m), None)
     figures = _numbers(row) if row is not None else []

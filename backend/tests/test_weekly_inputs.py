@@ -159,6 +159,55 @@ def test_the_bulletin_reads_tables_1_to_6():
     assert len(b.market) == 10 and b.market[0]["date"] == date(2026, 9, 18)
 
 
+# CBK's issue of 9 October 2026 (sha256 c476c72fe5f5aa6a...), whose page layout differs: the yield curve chart is
+# printed above Table 6 on the same page, and its legend "28-Jun-24 30-Jun-25 2-Oct-26" starts with a date.
+BULLETIN_9_OCT = (wh.FIXTURES / "cbk_weekly_bulletin_2026-10-09.pdf").read_bytes()
+EIGHT_YEARS = {2028, 2031, 2032, 2034, 2036, 2038, 2039, 2048}
+
+
+def test_the_9_october_layout_is_read_table_by_table_from_each_title_down():
+    b = cbk_bulletin.parse_bulletin(BULLETIN_9_OCT)
+    assert (b.issue_date, b.last_day) == (date(2026, 10, 9), date(2026, 10, 8))
+    # Table 6: the chart's legend above the title is not a row
+    assert [r["date"] for r in b.market] == [date(2026, 9, 25), date(2026, 9, 28), date(2026, 9, 29), date(2026, 9, 30),
+                                             date(2026, 10, 1), date(2026, 10, 2), date(2026, 10, 5), date(2026, 10, 6),
+                                             date(2026, 10, 7), date(2026, 10, 8)]
+    assert b.market[-1] == {"date": date(2026, 10, 8), "nasi": 245.34, "nse_25": 6967.38, "nse_20": 4323.26, "deals": 10567.0,
+                            "shares_mn": 11.86, "equity_turnover_mn": 429.51, "market_cap_bn": 4117.4,
+                            "bond_turnover_mn": 12622.85,
+                            "eurobond_yields": {2028: 7.3377, 2031: 8.0999, 2032: 8.7222, 2034: 9.3053, 2036: 9.6665,
+                                                2038: 10.0021, 2039: 10.0349, 2048: 9.8329}}
+    # Tables 1 to 4 and the debt table, as printed
+    assert len(b.exchange_rates) == 10 and b.exchange_rates[date(2026, 10, 8)] == 129.94
+    assert b.reserves[-1] == {"date": date(2026, 10, 8), "usd_mn": 14736.0, "months": 5.9}
+    assert [(w["last_day"], w["value_mn"], w["kesonia"]) for w in b.interbank_weeks] == [
+        (date(2026, 10, 1), 9500.0, 8.75), (date(2026, 10, 8), 5876.0, 8.75)]
+    assert b.tbills["91-day"][-1] == {"date": date(2026, 10, 8), "offered": 8000.0, "bids": 50204.94, "accepted": 20446.72,
+                                      "rate": 8.762}
+    assert (b.bond_stock[date(2026, 9, 25)], b.bond_stock[date(2026, 10, 2)]) == (6468.61, 6468.61)
+
+
+@pytest.mark.parametrize("pdf", [BULLETIN, BULLETIN_9_OCT], ids=["2 October layout", "9 October layout"])
+def test_both_layouts_give_ten_table_6_rows_with_all_eight_yields(pdf):
+    market = cbk_bulletin.parse_bulletin(pdf).market
+    assert len(market) == 10 and all(set(row["eurobond_yields"]) == EIGHT_YEARS for row in market)
+    assert all(len(row) == 10 for row in market)   # the date, eight market figures and the yields: nothing left out
+
+
+def test_a_dated_line_outside_a_table_is_never_one_of_its_rows():
+    legend = "28-Jun-24 30-Jun-25 2-Oct-26"
+    table = ["Table 1: Kenya Shilling Exchange Rates", "USD Euro", "07-Oct-26 129.89 172.28", "08-Oct-26 129.94 171.62",
+             "Source: Central Bank of Kenya"]
+    rates = {date(2026, 10, 7): 129.89, date(2026, 10, 8): 129.94}
+    for lines in ([legend] + table, table + [legend], table + ["Chart 1: Yield Curve", legend]):
+        out = cbk_bulletin.Bulletin(issue_date=None)
+        cbk_bulletin._table_1(lines, out)
+        assert out.exchange_rates == rates
+    # inside the table it is not a row of rates either: the table is refused, and no rate is taken from the line
+    with pytest.raises(cbk_bulletin.BulletinParseError, match="Table 1 row for 28-Jun-24 does not hold 2 rates"):
+        cbk_bulletin._table_1(table[:2] + [legend] + table[2:], cbk_bulletin.Bulletin(issue_date=None))
+
+
 def test_a_pdf_that_is_not_the_bulletin_is_refused():
     with pytest.raises(cbk_bulletin.BulletinParseError, match="not a CBK Weekly Bulletin"):
         cbk_bulletin.parse_bulletin((wh.FIXTURES / "nse_yield_curve_07-10-2026.pdf").read_bytes())
