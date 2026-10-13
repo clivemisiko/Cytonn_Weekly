@@ -73,6 +73,8 @@ KINDS = {TBILL: "T-bills", PRIMARY: "T-bonds", TAP: "T-bond tap sale", SWITCH: "
 ORDER = list(KINDS)
 TYPED, MATURITY = "typed_redemption", "maturity"      # rows of the log that are not a CBK release
 TYPED_LABEL = "typed, not on a release"
+# Where the team reads a bond's maturity date and the amount still outstanding (one page, an image: the tool cannot read it).
+NSE_SHEET = "the NSE Implied Yields sheet"
 TYPED_KIND = f"Bond redemption ({TYPED_LABEL})"
 MATURITY_KIND = "Bond maturity (no redemption found)"
 
@@ -300,9 +302,9 @@ def row_key(release: dict[str, Any]) -> str:
 
 
 def maturity_message(day: str, bond: str, face_kes_m: Any) -> str:
-    return (f"bond maturity on {_day(day)} ({bond}, up to {_mn(face_kes_m)} mn at face, outstanding may be lower): "
-            "no redemption on any release and none typed; type the amount outstanding at maturity, as shown on the NSE "
-            "Implied Yields sheet, under \"Other bond redemptions\"")
+    return (f"bond maturity on {_day(day)} ({bond}): no redemption on any release and none typed. "
+            f"CBK's table shows {_mn(face_kes_m)} mn, the face value at issue, which is only a floor; type the amount "
+            f"outstanding at maturity, as shown on {NSE_SHEET}, under \"Other bond redemptions\"")
 
 
 def release_source(release: dict[str, Any]) -> str:
@@ -472,7 +474,7 @@ def build_log(releases: list[dict[str, Any]], fy_start: date, limit: date,
             continue
         if r["kind"] == TYPED:
             name, amount = f"redemptions {r['value_date']} {r['bond']} ({TYPED_LABEL})", _d(r["kes_m"])
-            log.inputs[name] = an_input(r["kes_m"], ANALYST, r["source"])
+            log.inputs[name] = {**an_input(r["kes_m"], ANALYST, r["source"]), "check_against": NSE_SHEET}
             log.redeemed.append(name)
             before, running = running, running - amount
             log.rows.append({"key": row_key(r), "value_date": r["value_date"], "kind": TYPED_KIND, "accepted_kes_m": None,
