@@ -258,7 +258,7 @@ The identity is "a proof desk": warm paper ground, deep teal-black ink, hairline
 
 ## Publishing to GitHub
 
-The standing procedure for committing and pushing finished work. The **expected identity** is the single author name and email of the commits already on `origin` (Clive Misiko and his GitHub noreply address), which is also what `git config user.name` and `git config user.email` return. Two local hooks in `.git/hooks/` (not tracked, so a fresh clone does not have them) back the procedure: `commit-msg` refuses an empty message, an attribution trailer or a tool footer; `pre-push` refuses a push to main or master, a deletion, a push that is not a fast-forward, and any commit whose author, committer or message breaks the rules. The hooks are a backstop, not a replacement for the gates below.
+The standing procedure for committing and pushing finished work. The **expected identity** is the single author name and email of the commits already on `origin` (Clive Misiko and his GitHub noreply address), which is also what `git config user.name` and `git config user.email` return. The merge commits GitHub creates when a pull request is merged have the committer `GitHub <noreply@github.com>`; they are never pushed from here, so they are ignored when the committer is checked. Two local hooks in `.git/hooks/` (not tracked, so a fresh clone does not have them) back the procedure: `commit-msg` refuses an empty message, an attribution trailer or a tool footer; `pre-push` refuses a push to main or master, a deletion, a push that is not a fast-forward, and any commit whose author, committer or message breaks the rules. The hooks are a backstop, not a replacement for the gates below.
 
 ### B1. When to publish
 
@@ -284,7 +284,7 @@ Forbidden: `git add -A`, `git add .`, `git add -p` or any interactive form; `res
 
 ### B4. Branch
 
-Use the current branch if it is not main or master. If the current branch is main or master, create a new branch with `git switch -c` named `work/<short-topic>` (lowercase, hyphens), and push that. Never push main or master.
+Use the current branch only if it is not main or master and no pull request from it has been merged. Once a pull request from it has been merged, start a new dated branch for the next batch from the updated `origin/main` (`git fetch origin`, then `git switch -c <topic>-<YYYY-MM-DD> origin/main`), and push that: each batch gets its own branch and its own pull request. If the current branch is main or master, create a new branch with `git switch -c` named `work/<short-topic>` (lowercase, hyphens), and push that. Never push main or master.
 
 ### B5. Grouping and commits
 
