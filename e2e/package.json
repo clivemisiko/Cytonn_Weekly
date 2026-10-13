@@ -1,0 +1,15 @@
+{
+  "name": "cytonn-weekly-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:next": "cross-env E2E_TARGET=next playwright test",
+    "test:vue": "cross-env E2E_TARGET=vue playwright test",
+    "shots": "cross-env E2E_SHOTS=1 playwright test shots"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.0",
+    "@types/node": "26.6.5",
+    "cross-env": "10.1.0"
+  }
+}
