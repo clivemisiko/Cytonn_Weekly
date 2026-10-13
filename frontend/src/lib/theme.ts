@@ -2,7 +2,7 @@ import { THEME_KEY } from "./theme-script";
 
 /**
  * The colour theme: Light, Dark, or System (follow the device). The choice lives in one place, the `data-theme`
- * attribute on <html>: absent means System, and globals.css resolves every token from it. Browser storage only
+ * attribute on <html>: absent means System, and styles.css resolves every token from it. Browser storage only
  * remembers the choice across reloads, so if storage is empty, blocked or throws, the page still renders (as System)
  * and the toggle still works for the visit.
  */

@@ -1,11 +1,13 @@
-# Parity checklist: frontend/ (Next.js) to frontend-vue/ (Vue 3)
+# Parity checklist: the Next.js app to the Vue 3 app in frontend/
 
-The checklist for the Vue port. `frontend/` is the live frontend and is not changed by this work. One row per thing the
-Next app does. **Vue** is the state of the port: `todo`, `done` (ported, checked by hand or by typecheck only), or
+The checklist the Vue app was built against, kept as a record of 2026-10-13. **The Next.js reference was removed at
+the cut-over commit ("Remove the Next.js frontend"), when `frontend-vue/` was renamed to `frontend/`; it can be
+recovered from the local git tag `last-next-frontend`.** One row per thing the
+Next app did. **Vue** is the state of the port: `todo`, `done` (ported, checked by hand or by typecheck only), or
 `verified by Tn` (test `Tn` of `e2e/tests/app.spec.ts` passes against both apps). **Test** names the test that covers
 the behaviour on the Next app; `none` means no automated test, with the reason in the notes at the foot.
 
-Source paths are under `frontend/src/`; Vue paths under `frontend-vue/src/`.
+"Next source" paths are under `src/` of the Next app at that tag; Vue paths are under `frontend/src/`.
 
 ## 1. Routes and pages
 
@@ -149,13 +151,14 @@ Every string is ported verbatim from the Next component named in section 2 (curl
 included). The fixed wording that lives outside components: run step templates (`lib/run.ts`), status and kind labels
 (`lib/format.ts`), the API error fallbacks (`lib/api.ts`), the leave question (`analyst-panel.tsx`), the page title and
 description (`layout.tsx`). `lib/run.ts`, `lib/format.ts`, `lib/topic.ts`, `lib/types.ts` and `lib/sso.ts` are copied
-file for file. `scripts/check-copy.mjs` compares the text of the two source trees; see section 8 for its result.
+file for file. `scripts/check-copy.mjs` compared the text of the two source trees (removed at the cut-over, with the tree it read);
+see section 8 for its result.
 
 | # | Strings | Vue | Check |
 | --- | --- | --- | --- |
-| X1 | Component copy (sections 2's files) | done | `npm run check:copy` |
+| X1 | Component copy (sections 2's files) | done | the copy check (removed at the cut-over) |
 | X2 | `lib/` wording (run steps, labels, errors) | done | files copied; Vitest for `run.ts`, `format.ts`, `topic.ts` |
-| X3 | The one string that names the framework: the Unreachable screen's "To point this app at another address, set NEXT_PUBLIC_API_URL." | done | differs by design (N6) |
+| X3 | The one string that names the framework: the Unreachable screen's "To point this app at another address, set …", which named the Next app's own setting | done | differs by design (N6) |
 
 ## 7. Notes on what is not tested automatically
 
@@ -203,13 +206,13 @@ rows, which are covered through the behaviours they carry, and N4 to N6). Nothin
 | T27 | A stale draft: shown as stuck, the next draft takes the slot over and the stuck one's result is discarded (variant `stale`) | pass | pass |
 
 How each app was run: the Next app as a production build (`next build`, `next start`) of the committed `frontend/`,
-made in a copy outside the repository with `NEXT_PUBLIC_API_URL=http://127.0.0.1:8011`; the Vue app on Vite's dev
+made in a copy outside the repository with the API's address set to `http://127.0.0.1:8011` at build time; the Vue app on Vite's dev
 server with `/api` proxied to the same test API. No backend change was needed for either.
 
 **Other checks on the Vue app:** `npm run typecheck` clean; `npm run lint` clean; `npm test` 16 passed;
-`npm run check:copy` 149 phrases checked, 0 missing; `npm run build` succeeds.
+the copy check 149 phrases checked, 0 missing; `npm run build` succeeds.
 
-**Screenshots** (`npm run shots`, then `python e2e/compare_shots.py`): 20 pages and states of each app, each in light
+**Screenshots** (taken and compared by two scripts in `e2e/` that were removed at the cut-over): 20 pages and states of each app, each in light
 and dark at 1280 px and 390 px (80 images an app, in `screenshots/parity/next` and `/vue`, not committed). The
 script ranks the pairs by the share of pixels that differ; the most different were then looked at side by side.
 
@@ -230,7 +233,7 @@ script ranks the pairs by the share of pixels that differ; the most different we
   pair's contrast is the same. 29 text and edge pairs were computed per theme and all pass (text at least 4.5:1,
   control edges and focus rings at least 3:1; the lowest are the control edge on paper, 3.25 light, and on card,
   3.20 dark). The list of 29 pairs from the earlier theme work is not in the repository, so the 29 in
-  `e2e/compare_shots.py` were rebuilt from the tokens the app uses and may not be the identical list.
+  the comparison script were rebuilt from the tokens the app uses and may not be the identical list.
 
 **Differences between the two apps found by T17 to T27:** none in behaviour. One in markup only: the locked
 review's "Decision recorded on …" line has a leading space in the Vue app's text node, which does not show.
@@ -245,7 +248,7 @@ review's "Decision recorded on …" line has a leading space in the Vue app's te
 2. **Font loading.** The two faces come from `@fontsource-variable` packages; `next/font` also adjusts the fallback
    font's metrics to avoid a shift while the web font loads, which this does not. Text can shift slightly on a cold
    load.
-3. **The Unreachable screen names `VITE_API_TARGET`** where the Next app names `NEXT_PUBLIC_API_URL`, and the
+3. **The Unreachable screen names `VITE_API_TARGET`** where the Next app named its own build-time setting, and the
    "could not reach" message names the page's own origin (the proxy), not port 8000. By design (N6).
 4. **No page without scripts.** The Next app serves rendered HTML; this is a single-page app and shows nothing until
    its script runs. The landing page's no-script rule has no counterpart.
@@ -257,5 +260,6 @@ review's "Decision recorded on …" line has a leading space in the Vue app's te
    be approved on the test instance, because the weekly Real Estate draft is the one made to fail and the Focus piece
    was not drafted and approved there. A dev-mode Executive Summary (the red "Dev-mode draft" line in the panel) and
    a companion report are not exercised.
-7. **Not in Docker.** The compose files build and serve `frontend/` only.
+7. **Docker.** At the time of the comparison the Vue app was not in Docker. Since the cut-over the compose files
+   build and serve it (`Dockerfile`).
 8. **Only Chromium was used**, for the suite and the screenshots.

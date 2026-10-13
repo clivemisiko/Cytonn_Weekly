@@ -213,7 +213,7 @@ def test_cors_origins_set_only_in_dotenv_take_effect(db, env_file):
     c = TestClient(create_app(db_path=db))
     ok = c.options("/api/reviews/1/items/0", headers={"Origin": "http://review.example:4000", **CORS_ASK})
     assert ok.headers.get("access-control-allow-origin") == "http://review.example:4000"
-    default = c.options("/api/reviews/1/items/0", headers={"Origin": "http://localhost:3000", **CORS_ASK})
+    default = c.options("/api/reviews/1/items/0", headers={"Origin": "http://localhost:5173", **CORS_ASK})
     assert "access-control-allow-origin" not in default.headers  # .env replaced the defaults
 
 

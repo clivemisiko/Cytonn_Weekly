@@ -20,7 +20,8 @@ export default defineConfig({
   plugins: [vue(), tailwindcss(), themeBeforePaint],
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   // 127.0.0.1 only: the app has no sign-in, so it is never served to another machine.
-  server: { host: "127.0.0.1", port: 5173, proxy },
+  // VITE_USE_POLLING: file events do not cross the Windows mount into a container (docker-compose.dev.yml sets it).
+  server: { host: "127.0.0.1", port: 5173, proxy, watch: { usePolling: !!process.env.VITE_USE_POLLING } },
   preview: { host: "127.0.0.1", port: 4173, proxy },
   test: { include: ["src/**/*.test.ts"] },
 });

@@ -44,7 +44,7 @@ type Row = Record<string, unknown> & { flagged: boolean };
           { text: `Drafted by ${item.drafted_by}`, style: 'mono' },
         ]"
       />
-      <!-- Always there, as in frontend/: hidden when empty, it still keeps the line above from being the last child. -->
+      <!-- Always there: hidden when empty, it still keeps the line above from being the last child. -->
         <div class="md:pl-11 empty:hidden"><Warnings :items="item.warnings" /></div>
     </article>
 

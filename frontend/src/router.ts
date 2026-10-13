@@ -4,7 +4,7 @@ import { createRouter, createWebHistory } from "vue-router";
 // of a report, so it goes to the overview with its whole query string intact.
 const OVERVIEW_PARAMS = ["report", "period", "kind"];
 
-/** The same three addresses as frontend/: the landing page, the overview (whose screens are phases), one draft run. */
+/** The three addresses: the landing page, the overview (whose screens are phases), one draft run. */
 export const router = createRouter({
   history: createWebHistory(),
   routes: [

@@ -3,7 +3,7 @@ import MarkdownIt from "markdown-it";
 /**
  * The drafted text is markdown (bold headline, inline hyperlink citations, bold-italic outlook). It is rendered as
  * CommonMark with raw HTML off, so a tag in the text shows as text; a link is kept only if it is http(s), mailto or
- * relative; links open in a new tab. This is what react-markdown does in frontend/.
+ * relative; links open in a new tab.
  */
 const LINK_CLASS = "text-link underline decoration-link/40 underline-offset-2 transition-colors hover:decoration-link";
 

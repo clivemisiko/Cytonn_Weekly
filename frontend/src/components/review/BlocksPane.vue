@@ -122,7 +122,7 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
             { text: `Drafted by ${b.drafted_by}`, style: 'mono' },
           ]"
         />
-        <!-- Always there, as in frontend/: hidden when empty, it still keeps the line above from being the last child. -->
+        <!-- Always there: hidden when empty, it still keeps the line above from being the last child. -->
         <div class="md:pl-11 empty:hidden"><Warnings :items="b.warnings" /></div>
       </article>
 

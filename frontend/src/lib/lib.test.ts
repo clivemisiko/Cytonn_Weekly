@@ -66,7 +66,7 @@ describe("run steps", () => {
 });
 
 describe("format", () => {
-  it("formats dates, times, durations and Python values as the Next app does", () => {
+  it("formats dates, times, durations and Python values", () => {
     expect(friendlyDate("2026-10-02")).toBe("2 Oct 2026");
     expect(friendlyDate("not a date")).toBe("not a date");
     expect(friendlyTime("2026-10-01T13:24:13+00:00")).toBe("1 Oct 2026, 13:24 UTC");
@@ -200,7 +200,7 @@ describe("markdown, what must never render", () => {
     expect(html).not.toMatch(/<(img|a) [^>]*on[a-z]+=/i); // no tag carries an event handler
     expect(html).not.toContain("<a href=\"https://example.com\" onclick");
     expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
-    expect(html).not.toContain("<del>"); // CommonMark only, as react-markdown without remark-gfm
+    expect(html).not.toContain("<del>"); // CommonMark only: no GFM strikethrough
     expect(html).not.toContain('href="https://bare.example.com"');
     expect(html).toContain('<a href="/relative" target="_blank" rel="noopener noreferrer"');
     expect(html).toContain('<a href="mailto:a@example.com" target="_blank" rel="noopener noreferrer"');

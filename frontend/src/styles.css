@@ -1,10 +1,10 @@
-/* frontend/src/app/globals.css, copied. The only changes: the imports, the two font variables, and the last block. */
+/* The design tokens and base styles of the whole app (the "proof desk" identity). */
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "@fontsource-variable/plus-jakarta-sans";
 @import "@fontsource-variable/jetbrains-mono";
 
-/* The two state variants the dialog uses (shadcn/tailwind.css supplies them in frontend/). */
+/* The two state variants the dialog uses. */
 @custom-variant data-open (&:where([data-state="open"]));
 @custom-variant data-closed (&:where([data-state="closed"]));
 
@@ -106,7 +106,7 @@
 :root {
   color-scheme: light dark;
 
-  /* next/font sets these two in frontend/; here the same faces come from @fontsource. */
+  /* The two faces come from @fontsource (imported at the top). */
   --font-jakarta: "Plus Jakarta Sans Variable", ui-sans-serif, system-ui, sans-serif;
   --font-jetbrains: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
 
@@ -330,7 +330,7 @@
   .ready-dot::after { animation: none; opacity: 0; }
 }
 
-/* ---- Vue port only: what the `motion` library does in frontend/, as plain CSS -------------------------------- */
+/* ---- Motion, as plain CSS (no animation library) -------------------------------------------------------------- */
 /* A screen (phase) fades and rises into place; the old one fades out first. */
 .phase-enter-active { transition: opacity 0.18s var(--ease-out), transform 0.18s var(--ease-out); }
 .phase-leave-active { transition: opacity 0.1s linear; }

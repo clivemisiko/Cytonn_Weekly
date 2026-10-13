@@ -3,10 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test:next": "cross-env E2E_TARGET=next playwright test app && cross-env E2E_TARGET=next playwright test more",
-    "test:vue": "cross-env E2E_TARGET=vue playwright test app && cross-env E2E_TARGET=vue playwright test more",
-    "test:variants": "cross-env E2E_VARIANT=no-key playwright test variants && cross-env E2E_VARIANT=stale playwright test variants",
-    "shots": "cross-env E2E_SHOTS=1 playwright test shots"
+    "test": "playwright test app && playwright test more",
+    "test:variants": "cross-env E2E_VARIANT=no-key playwright test variants && cross-env E2E_VARIANT=stale playwright test variants"
   },
   "devDependencies": {
     "@playwright/test": "1.64.0",
