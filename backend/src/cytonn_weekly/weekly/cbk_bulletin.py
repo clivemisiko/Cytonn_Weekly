@@ -208,9 +208,14 @@ def _table_4(lines: list[str], out: Bulletin) -> None:
 def _table_5(lines: list[str], out: Bulletin) -> None:
     """Table 5 as printed.  Which bonds belong to which auction is not stated in the text layer
     (one offer covers one or two bonds), so the per-bond figures are kept in print order and
-    the per-auction offers beside them; nothing is paired by guesswork."""
+    the per-auction offers beside them; nothing is paired by guesswork.
+
+    A row's label wraps differently from issue to issue: "Amount Accepted (KSh" over "M)" on
+    2 October 2026, "Amount Accepted" over "(KSh M)" on 9 October, and "Amount offered (KSh M)"
+    on one line in the first and cut after "(KSh" in the second.  So a row is found by the
+    words of its label alone, and its figures are the ones after the label on that line or,
+    when the label stands alone, the line under it if that line is figures and nothing else."""
     block = _block(lines, "Table 5:")
-    text = "\n".join(block)
     dates = next(([_day(d) for d in re.findall(_DAY, line)] for line in block if line.startswith("Date of Auction")), [])
     prefixes = next((line.split() for line in block if re.match(r"^[A-Z]{2,4}\d?/(\s|$)", line)), [])
     suffix_line = next((line for line in block if re.match(r"^(Tenor\s+)?\d{4}/\d{2,3}", line)), "")
@@ -218,19 +223,24 @@ def _table_5(lines: list[str], out: Bulletin) -> None:
     codes = [p + s for p, s in zip(prefixes, suffixes)] if len(prefixes) == len(suffixes) else []
 
     def row(label: str) -> list[float]:
-        m = re.search(rf"{label}[^\n]*\n?([^\n]*)", text)
-        if not m:
+        at = next((n for n, line in enumerate(block) if line.lower().startswith(label.lower())), None)
+        if at is None:
             return []
-        same_line = _numbers(text[m.start():].split("\n", 1)[0].split(")", 1)[-1]) if ")" in text[m.start():].split("\n", 1)[0] else []
-        return same_line or _numbers(m.group(1))
+        # what follows the label, less its unit, which may be whole "(KSh M)", cut by the wrap "(KSh", or "(%)"
+        cells = re.sub(r"\(\s*(?:KSh(?:\s*M)?|%)\s*\)?", " ", block[at][len(label):]).split()
+        if not cells and at + 1 < len(block):
+            cells = block[at + 1].split()
+        return [float(c.replace(",", "")) for c in cells] if cells and all(_NUM.fullmatch(c) for c in cells) else []
 
     tbonds = {
         "auction_dates": dates, "codes": codes,
-        "offered": row(r"Amount offered \(KSh M\)"), "bids": row(r"Bids received \(KSh M\)"),
-        "accepted": row(r"Amount Accepted \(KSh"), "rates": row(r"Average interest Rate"),
+        "offered": row("Amount offered"), "bids": row("Bids received"),
+        "accepted": row("Amount Accepted"), "rates": row("Average interest Rate"),
     }
     if not dates or not codes:
         raise BulletinParseError("Table 5 does not print its auction dates and one code per bond")
+    if len(tbonds["offered"]) != len(dates):   # one amount on offer per auction, whether it sells one bond or two
+        raise BulletinParseError(f"Table 5: {len(tbonds['offered'])} 'offered' figures for {len(dates)} auctions")
     for key in ("bids", "accepted", "rates"):
         if len(tbonds[key]) != len(codes):
             raise BulletinParseError(f"Table 5: {len(tbonds[key])} '{key}' figures for {len(codes)} bonds")
