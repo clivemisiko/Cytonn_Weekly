@@ -21,7 +21,7 @@ const TOKENS = [
   "flag-fg", "flag-on", "warn", "warn-fg", "ok", "ok-fg", "ok-on", "dev-a", "dev-b", "dev-ink", "dev-rule",
 ];
 
-test.skip(!process.env.E2E_SHOTS, "screenshots are taken with `npm run shots`");
+test.skip(!process.env.E2E_SHOTS || !!process.env.E2E_VARIANT, "screenshots are taken with `npm run shots`");
 test.describe.configure({ mode: "serial" });
 
 /** The page as it is now, in both themes at both widths. The theme follows the (emulated) device: System. */

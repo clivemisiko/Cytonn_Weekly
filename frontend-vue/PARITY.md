@@ -69,13 +69,13 @@ origin and Vite proxies `/api` to the backend, so the "could not reach" message 
 | A9 | `POST /api/reviews/{id}/decide` | `{decision}` | confirm dialog | dialog button "Recording…", buttons disabled | Notice role=alert in the status bar; review re-read | verified by T09 | T09 |
 | A10 | `GET /api/inputs/weekly/{week}` | none | inputs panel | "Reading what has been received for the week ending …" (aria-busy) | Notice role=alert in the panel | verified by T07 | T07 |
 | A11 | `PUT /api/inputs/weekly/{week}/{slot}?filename=` | the file as the body, `application/octet-stream` | Upload, Replace, Upload reports (several files, one request each) | every control in the panel disabled | Notice role=alert: "<file name>: <the API's reason>", one per refused file, joined by a space | verified by T07 | T07 |
-| A12 | `DELETE /api/inputs/weekly/{week}/{stored_name}` | none | Remove | controls disabled | Notice role=alert | done | none (N1) |
-| A13 | `POST /api/inputs/weekly/{week}/cbk_bulletin/fetch` | none | "Fetch from CBK" (only while the slot is empty) | controls disabled | Notice role=alert | done | none (N1) |
-| A14 | `PUT /api/inputs/weekly/{week}/notes` | `{bidding_range}` or `{previous_issue}` | on blur, only when changed | controls disabled | Notice role=alert | done | none (N1) |
+| A12 | `DELETE /api/inputs/weekly/{week}/{stored_name}` | none | Remove | controls disabled | Notice role=alert | verified by T17 | T17 |
+| A13 | `POST /api/inputs/weekly/{week}/cbk_bulletin/fetch` | none | "Fetch from CBK" (only while the slot is empty) | controls disabled | Notice role=alert | verified by T17 | T17 |
+| A14 | `PUT /api/inputs/weekly/{week}/notes` | `{bidding_range}` or `{previous_issue}` | on blur, only when changed | controls disabled | Notice role=alert | verified by T17 | T17 |
 | A15 | `GET /api/inputs/weekly/{week}/analyst?section=` | none | analyst panel; re-read when uploads change | "Reading the form…" (aria-busy) | Notice role=alert (pre-line) | verified by T08 | T08 |
 | A16 | `PUT …/analyst?section=` | `{fields}`, `{tables: {key: {text} or {rows} or null}}`, or `{confirm: [key]}` | field on blur or Enter, table Save, Clear, Confirm | every control in the panel disabled | Notice role=alert, `white-space: pre-line`, every reason on its own line; nothing stored; what was typed stays in the field | verified by T08 | T08 |
-| A17 | `POST …/analyst/carry?section=` | none | "Start from last week's form" (disabled unless `can_carry`) | controls disabled | Notice role=alert | done | none (N2) |
-| A18 | `POST …/analyst/suggest/{field}?section=` | none | "Suggest from last week's total" | controls disabled | Notice role=alert | done | none (N2) |
+| A17 | `POST …/analyst/carry?section=` | none | "Start from last week's form" (disabled unless `can_carry`) | controls disabled | Notice role=alert | verified by T19 | T19 |
+| A18 | `POST …/analyst/suggest/{field}?section=` | none | "Suggest from last week's total" | controls disabled | Notice role=alert | verified by T20 | T20 |
 | A19 | `GET /api/export/weekly?period=` | none | export bar; re-read when any section's run or decision changes | bar hidden until it answers | Notice role=alert in the bar | verified by T03, T14 | T03, T14 |
 | A20 | `POST /api/export/weekly?period=` | none; answer is the .docx | "Export weekly report" | button "Preparing…" | Notice role=alert (409 names each section) | verified by T14 | T14 |
 
@@ -96,7 +96,7 @@ origin and Vite proxies `/api` to the backend, so the "could not reach" message 
 | S11 | Analyst panel: form, error, busy, dirty map per item; each item keyed on what the API holds, so a refused save keeps what was typed and a kept one re-reads it | `analyst-panel.tsx` | verified by T08 | T08 |
 | S12 | Run view: run, events merged by seq, missing, feed (connecting, stream, poll, lost), config, following-the-foot flag | `run-view.tsx` | verified by T12 | T12 |
 | S13 | Export bar: status, busy, error | `export-bar.tsx` | verified by T14 | T14 |
-| S14 | Drafting poll every 5 s while `drafting` is non-null; elapsed seconds counted on locally between polls | `drafting.tsx` | done | none (N3) |
+| S14 | Drafting poll every 5 s while `drafting` is non-null; elapsed seconds counted on locally between polls | `drafting.tsx` | verified by T24, T27 | T24, T27 |
 
 Pinia is not used: S3 and S4 are two small module-level stores, as in the Next app, and everything else is component state.
 
@@ -120,10 +120,10 @@ Pinia is not used: S3 and S4 are two small module-level stores, as in the Next a
 | B14 | Analyst form: a field saves when the cursor leaves it (Enter blurs); a table has its own Save, "Discard changes", "Clear typed table/values", "Not saved yet." | `analyst-panel.tsx` | verified by T08 | T08 |
 | B15 | Analyst form save is all or nothing; every refusal reason is listed, one a line; the typed value stays | `analyst-panel.tsx`, API | verified by T08 | T08 |
 | B16 | The draft button is disabled while anything on the analyst form is unsaved, being saved, refused, or waiting to be confirmed, with "Something under "Weekly analyst inputs" is not saved yet…" | `start-screen.tsx` | verified by T08 | T08 |
-| B17 | Analyst item chips: Typed / Typed, differs from the workbook / From the workbook / Empty / Carried from week ending … / … not confirmed; workbook value as placeholder; rows in use under a table; carried cells dashed and shaded | `analyst-panel.tsx` | verified by T08 | T08 (chips), none for carried (N2) |
+| B17 | Analyst item chips: Typed / Typed, differs from the workbook / From the workbook / Empty / Carried from week ending … / … not confirmed; workbook value as placeholder; rows in use under a table; carried cells dashed and shaded | `analyst-panel.tsx` | verified by T08, T18, T19, T20 | T08, T18, T19, T20 |
 | B18 | Upload: the hidden file input is reset so the same file can be chosen again after a refusal; a refused file shows "<name>: <reason>" | `inputs-panel.tsx` | verified by T07 | T07 |
 | B19 | Week picker: a date that is not a Friday shows "<date> is a <weekday>; a weekly report's week ends on a Friday." and disables "Show this week" | `inputs-panel.tsx` | verified by T07 | T07 |
-| B20 | Draft button also disabled while starting, while another draft holds the slot (unless stale), when the provider has a problem, when the topic or text is missing, when the topic is over 500 characters (counted as the API counts) | `start-screen.tsx`, `lib/topic.ts` | verified by T09 | T09 (text), none for the rest (N3) |
+| B20 | Draft button also disabled while starting, while another draft holds the slot (unless stale), when the provider has a problem, when the topic or text is missing, when the topic is over 500 characters (counted as the API counts) | `start-screen.tsx`, `lib/topic.ts` | verified by T09, T21, T24, T26 | T09, T21, T24, T26 |
 | B21 | Run view shows only real events: a "started" line is replaced in place by its closing event; the spinner is on the latest open step only; no timers | `lib/run.ts`, `run-view.tsx` | verified by T12 | T12 |
 | B22 | Run view never navigates by itself: a finished run shows the three counts and "Open review"; a failed one "The draft stopped. <error>" and "Back to overview"; an unknown run says so | `run-view.tsx` | verified by T09, T11, T15 | T09, T11, T15 |
 | B23 | DEV MODE ribbon (fixed under the top bar) on the overview, start screen, run view and a dev review; DEV MODE notices; DEV DRAFT chip on a section card | `banners.tsx` and callers | verified by T03, T12 | T03, T12 |
@@ -133,8 +133,15 @@ Pinia is not used: S3 and S4 are two small module-level stores, as in the Next a
 | B27 | Touch: pressable controls reach 44px on coarse pointers; press feedback scale(0.97) unless reduced motion | `globals.css` | done | none (CSS reused as is) |
 | B28 | Reduced motion: transitions and animations cut to nothing; spinners do not spin | `globals.css`, `run-view.tsx` | done | none (N4) |
 | B29 | Landing greeting appears only once the page is live in the browser; never a wrong one | `landing-page.tsx` | verified by T01 | T01 |
-| B30 | Links in drafted text and sources open in a new tab with `rel="noopener noreferrer"`; only http(s) source URLs are linked; raw HTML in markdown is not rendered | `markdown.tsx`, `blocks-pane.tsx`, `review-item-card.tsx` | done | none (N5) |
+| B30 | Links in drafted text and sources open in a new tab with `rel="noopener noreferrer"`; only http(s) source URLs are linked; raw HTML in markdown is not rendered | `markdown.tsx`, `blocks-pane.tsx`, `review-item-card.tsx` | verified by T22 | T22 |
 | B31 | Screen transitions: the phase fades and rises 6px (0.18 s); list items, notices and chips fade in; the resolution thumb slides; the progress bar eases | `motion` in many components | done | none (N4) |
+
+| B32 | Reject: allowed with nothing resolved; asks in a dialog ("Reject this section?"); afterwards "Rejected and locked", "Decision recorded: rejected.", every control locked; the overview card reads Rejected with "View review" and the export chip says so | `decision-controls.tsx`, `banners.tsx`, `overview-screen.tsx` | verified by T23 | T23 |
+| B33 | The weekly Digital Payments review shape: highlights under roman numerals with their provenance line, the stock table with its eight weekly columns, the outlook with its stats, and the item kinds Table row, Outlook stat, Highlight claim | `draft-pane.tsx` | verified by T22 | T22 |
+| B34 | A draft holding the one draft slot: banner and "Drafting now" chip on the overview; on another drafting section's start screen "<title> is drafting now (…)" and the draft button off; on its own section "This section is drafting now"; a section that calls no provider is not blocked; the waiting screen unlocks on its next poll | `drafting.tsx`, `start-screen.tsx`, `overview-screen.tsx` | verified by T24 | T24 |
+| B35 | A stale draft: "…has been drafting for …, longer than any healthy draft takes. It looks stuck", chip "Looks stuck", the draft button stays on, the next draft takes the slot over and the stuck run ends as stopped | `drafting.tsx`, `start-screen.tsx` | verified by T27 | T27 |
+| B36 | A provider problem: the API's own sentence and "Drafting is off until then." on the start screen of every drafting section, the draft button off, Enter in the topic box does nothing; no budget notice; a section that calls no provider still works. It never reaches the run view: no run starts (the API answers 409 in the same words) | `start-screen.tsx` | verified by T26 | T26 |
+| B37 | Executive Summary: composing before every section is approved stops the run with the API's list of sections still to approve; once all are approved the review shows the summary note and the "Not covered by this summary" panel (Tables, Parts not yet drafted, Further pieces, per section with its run) | `start-screen.tsx`, `blocks-pane.tsx` | verified by T25 | T25 |
 
 ## 6. User-visible strings
 
@@ -152,20 +159,18 @@ file for file. `scripts/check-copy.mjs` compares the text of the two source tree
 
 ## 7. Notes on what is not tested automatically
 
-- **N1** Remove, Fetch from CBK and the notes boxes change the stored week and (the fetch) reach centralbank.go.ke; the suite leaves them alone so a run stays repeatable offline of CBK's site. Ported and checked by hand.
-- **N2** Carry forward, suggestions and confirmation need a saved previous week; the demo data holds one week only. Ported from the source line by line; not exercised.
-- **N3** A second draft holding the slot, a stale draft, a provider problem and the Focus topic limit need server states the demo instance does not produce on demand. Ported; not exercised.
+- **N1 to N3** (inputs removal, Fetch from CBK, the notes boxes, carry forward, suggestions, a held or stale draft slot, a provider problem, the Focus topic limit) were not tested in the first pass. They are now: T17 to T27.
 - **N4** Scroll following, reduced motion and animation timing are not reliably testable end to end; compared by eye.
-- **N5** Markdown safety is covered by a Vitest unit test in the Vue app, not by the shared suite (the Next app has no unit tests).
+- **N5** Markdown safety is covered by Vitest unit tests in the Vue app (`src/lib/lib.test.ts`); T22 checks that a drafted link opens in a new tab with `rel="noopener noreferrer"` in both apps.
 - **N6** See section 8.
 
 ## 8. Results (2026-10-13)
 
-**Summary.** 99 rows: 60 verified by a named end-to-end test that passes against both apps, 39 done (ported and
-checked by typecheck, the copy check, unit tests or by eye, with no end-to-end test of their own; the reasons are
-N1 to N6). Nothing is left to do on the checklist; the known gaps are listed at the foot.
+**Summary.** 105 rows: 73 verified by a named end-to-end test that passes against both apps, 32 done (ported and
+checked by typecheck, the copy check, unit tests or by eye, with no end-to-end test of their own: the component
+rows, which are covered through the behaviours they carry, and N4 to N6). Nothing is left to do on the checklist; the known gaps are listed at the foot.
 
-**The shared suite, `e2e/tests/app.spec.ts`, final run against each app: 16 passed, 0 failed, 0 skipped.**
+**The shared suite (`e2e/tests/app.spec.ts`, `more.spec.ts`, `variants.spec.ts`), final run against each app: 27 passed, 0 failed.** T01 to T16 and T17 to T25 run on the default test backend, each file on freshly restored data (a section that has a review no longer offers its start screen); T26 and T27 each need the backend started in another state (`npm run test:variants`), so each is skipped in the runs that are not its own.
 
 | Test | What it covers | Next | Vue |
 | --- | --- | --- | --- |
@@ -185,12 +190,23 @@ N1 to N6). Nothing is left to do on the checklist; the known gaps are listed at 
 | T14 | Word export: off until every section is approved; when the API says ready, the file downloads under its name | pass | pass |
 | T15 | A run the API no longer has says so and links to the overview | pass | pass |
 | T16 | Keyboard: the skip link comes first, the theme group is one tab stop moved by arrow keys | pass | pass |
+| T17 | Inputs: remove a report and upload it again, Fetch from CBK (answered from a saved file), the two notes boxes | pass | pass |
+| T18 | Analyst inputs: a typed table is saved, shown as the rows in use, and cleared again | pass | pass |
+| T19 | Analyst inputs: start from last week's form; a weekly figure waits to be confirmed | pass | pass |
+| T20 | Analyst inputs: a running total is suggested from last week's, refused when there is none, and waits to be confirmed | pass | pass |
+| T21 | Focus of the Week: the topic is counted as the API counts it and blocks the draft over 500 characters | pass | pass |
+| T22 | Weekly Digital Payments: its own review shape (highlights, the stock table, the outlook) | pass | pass |
+| T23 | Rejecting a section is final: the dialog, the locked review, the overview afterwards | pass | pass |
+| T24 | A draft holding the one draft slot: the overview and the other sections say so, and unlock when it ends | pass | pass |
+| T25 | Executive Summary: refused until every section is approved, then composed, with what it leaves out | pass | pass |
+| T26 | A provider problem: said on the start screen, drafting is off, and the API refuses a run (variant `no-key`) | pass | pass |
+| T27 | A stale draft: shown as stuck, the next draft takes the slot over and the stuck one's result is discarded (variant `stale`) | pass | pass |
 
 How each app was run: the Next app as a production build (`next build`, `next start`) of the committed `frontend/`,
 made in a copy outside the repository with `NEXT_PUBLIC_API_URL=http://127.0.0.1:8011`; the Vue app on Vite's dev
 server with `/api` proxied to the same test API. No backend change was needed for either.
 
-**Other checks on the Vue app:** `npm run typecheck` clean; `npm run lint` clean; `npm test` 15 passed;
+**Other checks on the Vue app:** `npm run typecheck` clean; `npm run lint` clean; `npm test` 16 passed;
 `npm run check:copy` 149 phrases checked, 0 missing; `npm run build` succeeds.
 
 **Screenshots** (`npm run shots`, then `python e2e/compare_shots.py`): 20 pages and states of each app, each in light
@@ -216,6 +232,9 @@ script ranks the pairs by the share of pixels that differ; the most different we
   3.20 dark). The list of 29 pairs from the earlier theme work is not in the repository, so the 29 in
   `e2e/compare_shots.py` were rebuilt from the tokens the app uses and may not be the identical list.
 
+**Differences between the two apps found by T17 to T27:** none in behaviour. One in markup only: the locked
+review's "Decision recorded on …" line has a leading space in the Vue app's text node, which does not show.
+
 **Known gaps (not fixed):**
 
 1. **Animation is simpler.** No `motion` library. Screens, notices, the result panel, step lines and the landing
@@ -231,10 +250,12 @@ script ranks the pairs by the share of pixels that differ; the most different we
 4. **No page without scripts.** The Next app serves rendered HTML; this is a single-page app and shows nothing until
    its script runs. The landing page's no-script rule has no counterpart.
 5. **Unknown addresses** show a small "Page not found" page in the app's own frame; the Next app shows Next's 404.
-6. **Not exercised in either app by the suite** (ported line by line, see N1 to N3): removing an input, Fetch from
-   CBK, the two notes boxes, carry forward, suggestions and confirming, a second draft holding the slot, a stale
-   draft, a provider problem, the Focus topic limit, a rejected section, the weekly Digital Payments review shape
-   (`DraftPane`), the Executive Summary's "not covered" panel, and a real Word export (the ready state is stood in
-   for in T14).
+6. **Reached only with help from the test backend.** The weekly Digital Payments draft and every Markets Review
+   section run on the test suite's fixed rows and captured sources, and Fetch from CBK is answered from a saved
+   bulletin (`e2e/serve_e2e.py`), so T22, T25 and T17 show what the screens do with real pipeline output, not that
+   Yahoo, CBK, KNBS or afx answer. A real Word export is still stood in for in T14: the six weekly sections cannot all
+   be approved on the test instance, because the weekly Real Estate draft is the one made to fail and the Focus piece
+   was not drafted and approved there. A dev-mode Executive Summary (the red "Dev-mode draft" line in the panel) and
+   a companion report are not exercised.
 7. **Not in Docker.** The compose files build and serve `frontend/` only.
 8. **Only Chromium was used**, for the suite and the screenshots.

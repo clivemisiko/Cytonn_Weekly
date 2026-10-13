@@ -27,6 +27,7 @@ async function openStart(page: Page, title: string, button: RegExp = /Draft sect
   await expect(page.getByRole("heading", { name: `${title}: coordinator review`, level: 1 })).toBeVisible();
 }
 
+test.skip(!!process.env.E2E_VARIANT, "runs on the default test backend");
 test.describe.configure({ mode: "serial" });
 
 test("T01 landing page loads, with Home current and Back disabled", async ({ page }) => {

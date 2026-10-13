@@ -184,6 +184,31 @@ describe("markdown", () => {
   });
 });
 
+describe("markdown, what must never render", () => {
+  it("drops every unsafe link and image address, raw tags and autolinks, and adds nothing GFM", () => {
+    const html = renderMarkdown(
+      [
+        "![x](javascript:alert(1))",
+        "[a](vbscript:msgbox(1)) [b](data:text/html,<b>x</b>) [c](JaVaScRiPt:alert(1))",
+        "<javascript:alert(1)>",
+        '<a href="https://example.com" onclick="x()">raw</a> <img src=x onerror=alert(1)>',
+        "~~struck~~ https://bare.example.com",
+        "[ok](/relative) [mail](mailto:a@example.com)",
+      ].join("\n\n"),
+    );
+    expect(html).not.toMatch(/(href|src)="(javascript|vbscript|data):/i);
+    expect(html).not.toMatch(/<(img|a) [^>]*on[a-z]+=/i); // no tag carries an event handler
+    expect(html).not.toContain("<a href=\"https://example.com\" onclick");
+    expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
+    expect(html).not.toContain("<del>"); // CommonMark only, as react-markdown without remark-gfm
+    expect(html).not.toContain('href="https://bare.example.com"');
+    expect(html).toContain('<a href="/relative" target="_blank" rel="noopener noreferrer"');
+    expect(html).toContain('<a href="mailto:a@example.com" target="_blank" rel="noopener noreferrer"');
+    // Every link that does render opens in a new tab without handing over the opener.
+    for (const tag of html.match(/<a [^>]*>/g) ?? []) expect(tag).toContain('target="_blank" rel="noopener noreferrer"');
+  });
+});
+
 describe("theme script", () => {
   it("only ever restores light or dark, inside a try", () => {
     expect(THEME_SCRIPT).toContain('localStorage.getItem("cytonn-theme")');
