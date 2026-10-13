@@ -184,8 +184,6 @@ export function StartScreen({
       <div className={cn(config.dev_mode && "pt-7")}>
         <Masthead
           title={`${section.title}: coordinator review`}
-          onHome={onHome}
-          kicker={weekly ? undefined : `${report.period}: all sections`}
           meta={weekly ? undefined : <span className="font-mono">{report.period}</span>}
         >
           {weekly
@@ -405,6 +403,8 @@ export function StartScreen({
                   disabled={drafting || blocked || providerBlocked || inputMissing || topicOver || (usesInputs && typedPending)}
                   aria-describedby={usesInputs && typedPending ? "typed-pending" : undefined}
                   onClick={() => void draft()}
+                  // A long period ("Draft the Week ending 2026-10-09 section") wraps on a phone instead of widening the page.
+                  className="h-auto min-h-10 max-w-full py-2 whitespace-normal"
                 >
                   {draftLabel}
                 </Button>

@@ -297,7 +297,7 @@ export function InputsPanel({
           <label htmlFor="week-ending" className="eyebrow block">
             Week ending (a Friday)
           </label>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <input
               id="week-ending"
               type="date"

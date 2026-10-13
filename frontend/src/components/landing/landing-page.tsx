@@ -6,6 +6,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/review/banners";
 import { Masthead } from "@/components/review/masthead";
+import { BACK_NONE, useBack } from "@/lib/nav";
 import { SSO_ENABLED } from "@/lib/sso";
 
 const EASE = [0.23, 1, 0.32, 1] as const;
@@ -54,6 +55,7 @@ function Rise({ order, reduced, className, children }: { order: number; reduced:
 export function LandingPage({ displayName }: { displayName?: string }) {
   const greeting = useGreeting();
   const reduced = useReducedMotion() ?? false;
+  useBack(BACK_NONE); // the start screen: there is nowhere to go back to, so the bar's Back is disabled
   const hello = greeting ? (displayName ? `${greeting}, ${displayName}. ` : `${greeting}. `) : "";
 
   return (
