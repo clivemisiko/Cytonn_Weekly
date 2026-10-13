@@ -63,7 +63,8 @@ from cytonn_weekly.common.run_events import RUN_STARTED, describe, review_counts
 from cytonn_weekly.digital_payments import review_run, review_store
 from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview
 from cytonn_weekly.digital_payments.provider_factory import ENV_VAR as PROVIDER_ENV_VAR
-from cytonn_weekly.env import load_env
+from cytonn_weekly.digital_payments.providers.local_provider import EXA_KEY_ENV_VAR, EXA_KEY_MISSING, SearchKeyError
+from cytonn_weekly.env import key_override_warnings, load_env
 from cytonn_weekly.focus.review_run import clean_topic
 from cytonn_weekly.periodic.executive_summary import SectionsNotApproved
 from cytonn_weekly.report_sections import (
@@ -117,11 +118,12 @@ def failure_message(exc: BaseException) -> str:
     """Why a run stopped, as one line for the screen: the error's own message, no traceback, no secrets.
 
     A ValueError is the pipeline talking to the coordinator (an unusable topic, sections not
-    yet approved), so its message stands alone, as the draft route shows it; anything else
-    is named by its type.  Any configured secret that an error message happens to quote is
-    removed before it is recorded.
+    yet approved), so its message stands alone, as the draft route shows it; so is a
+    SearchKeyError (the web-search key is missing or was refused).  Anything else is named
+    by its type.  Any configured secret that an error message happens to quote is removed
+    before it is recorded.
     """
-    text = " ".join(str(exc).split()) if isinstance(exc, ValueError) else describe(exc)
+    text = " ".join(str(exc).split()) if isinstance(exc, (ValueError, SearchKeyError)) else describe(exc)
     for name, value in os.environ.items():
         if _SECRET_NAME.search(name) and len(value) >= 8:
             text = text.replace(value, "[redacted]")
@@ -134,8 +136,9 @@ def provider_problem() -> Optional[str]:
     Checked before a draft claims the slot or fetches anything: without it, a production
     draft with no key fetched every source first and then failed inside the Anthropic SDK
     with "Could not resolve authentication method", which tells a coordinator nothing.
-    Local mode is not checked here: its Exa results may all be cached, so a missing
-    EXA_API_KEY is not necessarily fatal, and the local provider reports it itself.
+    Local mode is checked the same way for its web-search key: every section but Digital
+    Payments searches afresh each draft, and Digital Payments' cache lasts one day.  Only
+    a missing key is known here; a key Exa refuses is reported by the search itself.
     """
     provider = configured_provider()
     if provider not in ("anthropic", "local"):
@@ -146,6 +149,8 @@ def provider_problem() -> Optional[str]:
             f"API budget is approved, or set {PROVIDER_ENV_VAR}=local to draft in dev mode (Ollama + Exa, never "
             "for publication). Restart the API after changing .env."
         )
+    if provider == "local" and not (os.environ.get(EXA_KEY_ENV_VAR) or "").strip():
+        return EXA_KEY_MISSING
     return None
 
 
@@ -253,6 +258,9 @@ def create_app(
     """
     if load_dotenv:
         load_env(quiet=True)
+        # A key left in a Windows or shell variable beats .env, so editing .env would change nothing: say so once.
+        for line in key_override_warnings():
+            log.warning(line)
 
     app = FastAPI(title="Cytonn Weekly: coordinator review")
     origins = [o.strip() for o in os.environ.get(CORS_ENV_VAR, DEFAULT_WEB_ORIGINS).split(",") if o.strip()]

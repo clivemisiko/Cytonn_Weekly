@@ -57,6 +57,15 @@ def no_ambient_settings(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_real_env_file(tmp_path, monkeypatch):
+    """No test reads the developer's real .env: a refused search names the key .env holds (by its last four
+    characters), and the API loads the file at start.  A test that needs a .env writes one and points here."""
+    from cytonn_weekly import env
+
+    monkeypatch.setattr(env, "ENV_FILE", tmp_path / "no-such.env")
+
+
+@pytest.fixture(autouse=True)
 def isolated_default_db(tmp_path, monkeypatch):
     monkeypatch.setattr(sections, "_DEFAULT_DB", tmp_path / "default_app.db")
 
