@@ -124,8 +124,7 @@ const cells = (flag: Flag): [string, string][] => [
         <p class="eyebrow">Worked out from</p>
         <ul class="space-y-1 text-xs">
           <li v-for="[name, input] in inputs.slice(0, 12)" :key="name" class="[overflow-wrap:anywhere]">
-            <span class="font-mono font-medium">{{ String(input.value) }}</span>
-            <span class="text-muted-foreground">
+            <span class="font-mono font-medium">{{ String(input.value) }}</span>{{ " " }}<span class="text-muted-foreground">
               {{ input.origin === "ocr" ? "read by OCR from " : "" }}{{ input.source }}{{ input.second ? `; also ${String(input.second.value)} in ${input.second.source}` : "" }}
             </span>
           </li>

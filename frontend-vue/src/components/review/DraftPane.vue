@@ -44,7 +44,8 @@ type Row = Record<string, unknown> & { flagged: boolean };
           { text: `Drafted by ${item.drafted_by}`, style: 'mono' },
         ]"
       />
-      <div v-if="item.warnings.length" class="md:pl-11"><Warnings :items="item.warnings" /></div>
+      <!-- Always there, as in frontend/: hidden when empty, it still keeps the line above from being the last child. -->
+        <div class="md:pl-11 empty:hidden"><Warnings :items="item.warnings" /></div>
     </article>
 
     <section v-if="table" class="space-y-3 border-t px-4 py-6 sm:px-6" aria-labelledby="stock-table-title">

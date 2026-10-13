@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { PhPlus, PhTrash } from "@phosphor-icons/vue";
+import { cn } from "cn";
 import { computed, ref, watch } from "vue";
 import Button from "@/components/ui/Button.vue";
 import { FIELD } from "@/components/ui/button";
@@ -54,7 +55,7 @@ const addLine = () => (lines.value = [...lines.value, { id: `new-${Date.now()}-$
                 :value="line.typed[name.key] ?? ''"
                 :disabled="disabled"
                 placeholder="Company"
-                :class="[FIELD, 'h-8 w-40 px-2 text-sm md:text-xs']"
+                :class="cn(FIELD, 'h-8 w-40 px-2 text-sm md:text-xs')"
                 @input="setCell(line.id, name.key, typedValue($event))"
               />
             </th>
@@ -68,12 +69,14 @@ const addLine = () => (lines.value = [...lines.value, { id: `new-${Date.now()}-$
                 :disabled="disabled"
                 :placeholder="line.book[c.key] ?? ''"
                 :title="isCarried(item, line, c.key) && item.carried ? capital(cameFrom(item.carried)) : undefined"
-                :class="[
-                  FIELD,
-                  'h-8 px-2 font-mono text-sm tabular-nums md:text-xs',
-                  c.kind === 'date' ? 'w-36' : 'w-24',
-                  isCarried(item, line, c.key) && 'border-dashed bg-muted',
-                ]"
+                :class="
+                  cn(
+                    FIELD,
+                    'h-8 px-2 font-mono text-sm tabular-nums md:text-xs',
+                    c.kind === 'date' ? 'w-36' : 'w-24',
+                    isCarried(item, line, c.key) && 'border-dashed bg-muted',
+                  )
+                "
                 @input="setCell(line.id, c.key, typedValue($event))"
               />
             </td>
