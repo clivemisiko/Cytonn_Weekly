@@ -15,7 +15,12 @@ import SourceLine from "./SourceLine.vue";
  * One typed field. It is saved when the cursor leaves it; emptied, the workbook's value (if any) is used again.
  * The panel keys it on the value the API holds, so a save that was kept starts it afresh and a refused one keeps the typing.
  */
-const props = defineProps<{ item: AnalystField; disabled: boolean }>();
+const props = defineProps<{
+  item: AnalystField;
+  disabled: boolean;
+  /** Why the API refused to work out a suggestion for this field, in its words. */
+  error?: string | null;
+}>();
 const emit = defineEmits<{ save: [value: string]; dirty: [dirty: boolean]; confirm: []; suggest: [] }>();
 
 const saved = asText(props.item.value);
@@ -23,6 +28,7 @@ const value = ref(saved);
 const fromBook = computed(() => asText(props.item.workbook?.value));
 const origin = computed(() => fieldOrigin(props.item));
 const id = `analyst-${props.item.key}`;
+const describedBy = computed(() => (props.error ? `${id}-error ${id}-hint` : `${id}-hint`));
 watch(value, (next) => emit("dirty", next.trim() !== saved));
 const commit = () => {
   if (value.value.trim() !== saved) emit("save", value.value);
@@ -51,7 +57,7 @@ const commit = () => {
         :id="id"
         v-model="value"
         :disabled="disabled"
-        :aria-describedby="`${id}-hint`"
+        :aria-describedby="describedBy"
         :type="item.kind === 'date' ? 'date' : 'text'"
         :inputmode="item.kind === 'number' ? 'decimal' : undefined"
         autocomplete="off"
@@ -71,6 +77,7 @@ const commit = () => {
         Used when empty: <span class="font-mono">{{ friendlyDate(item.default) }}</span>
       </span>
     </div>
+    <p v-if="error" :id="`${id}-error`" role="alert" class="max-w-[72ch] text-xs font-medium whitespace-pre-line text-flag-fg">{{ error }}</p>
     <div :id="`${id}-hint`" class="space-y-1">
       <p v-if="item.help" class="text-xs text-muted-foreground">{{ item.help }}</p>
       <SourceLine :source="item.source" :used-in="item.used_in" :expected="range(item.min, item.max, item.unit)" />

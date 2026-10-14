@@ -626,7 +626,9 @@ def test_a_running_total_is_suggested_as_last_weeks_plus_this_weeks_worked_out_f
     stores(tmp_path)
     nothing = eq.eqw.running_total_suggestions(inputs.WeeklyInputs(WEEK, tmp_path), lambda: eq.RATES)
     assert nothing["turnover_ytd"] == {"reason": "Year-to-date equities turnover: no total is saved for the week ending "
-                                                 "2026-09-25 to add this week's figure to."}
+                                                 "2026-09-25 to add this week's figure to. Neither that week's form nor an "
+                                                 "equities workbook uploaded for that week holds one. Type this week's total "
+                                                 "yourself; once it is saved, next week's suggestion can start from it."}
     save_week(tmp_path, Week(date(2026, 9, 25)), fields={"turnover_ytd": "3035.6", "foreign_ytd": "-167.2"})
     found = eq.eqw.running_total_suggestions(inputs.WeeklyInputs(WEEK, tmp_path), lambda: eq.RATES)
     by = blocks(eq.build(tmp_path))
@@ -677,6 +679,62 @@ def test_a_suggestion_is_only_a_prefill_through_the_api_until_it_is_confirmed(tm
     r = client.post("/api/inputs/weekly/2026-10-09/analyst/carry?section=equities")
     assert r.status_code == 409 and "Nothing to carry" in r.json()["detail"]      # a running total is never carried
     assert client.put("/api/inputs/weekly/2026-10-02/analyst", json={"confirm": ["pe"]}).status_code == 422
+
+
+def test_every_refusal_of_a_suggestion_says_what_is_missing_and_what_to_do(tmp_path, text_pdfs):
+    """Each reason the suggest route gives, through the route, with its exact status; nothing is stored by any of them."""
+    root = tmp_path / "weekly"
+    stores(root)
+    client = TestClient(create_app(db_path=tmp_path / "app.db", load_dotenv=False, inputs_root=root, fetch_usd_rates=lambda: eq.RATES))
+    suggest = lambda field, week="2026-10-02", q="?section=equities": client.post(f"/api/inputs/weekly/{week}/analyst/suggest/{field}{q}")
+    # the request itself: not a Friday, not a section of the form, not a running total
+    assert suggest("turnover_ytd", "2026-10-01").status_code == 422
+    assert suggest("turnover_ytd", q="?section=real_estate").status_code == 422
+    r = suggest("pe")
+    assert r.status_code == 404 and r.json()["detail"] == "no suggestion is worked out for 'pe'"
+    # nothing for the week before at all
+    r = suggest("turnover_ytd")
+    assert r.status_code == 409 and r.json()["detail"].endswith(
+        "Neither that week's form nor an equities workbook uploaded for that week holds one. Type this week's total "
+        "yourself; once it is saved, next week's suggestion can start from it.")
+    # one held for the week before, but suggested there and never confirmed: said so, and not used
+    analyst.suggest(Week(date(2026, 9, 25)), "turnover_ytd", "3035.6", "seeded", root)
+    r = suggest("turnover_ytd")
+    assert r.status_code == 409 and r.json()["detail"] == (
+        "Year-to-date equities turnover: no total is saved for the week ending 2026-09-25 to add this week's figure to. "
+        "That week's form holds one, but it was never confirmed, so it is not used: confirm it on that week's form, or "
+        "type this week's total yourself.")
+    # confirmed there, it is the base; a day with no source then refuses with what to upload
+    save_week(root, Week(date(2026, 9, 25)), confirm=["turnover_ytd"])
+    inputs.remove(WEEK, "kcb_daily_2026-10-02.pdf", root)
+    r = suggest("turnover_ytd")
+    assert r.status_code == 409 and r.json()["detail"].startswith(
+        "Year-to-date equities turnover: this week's figure cannot be worked out: no equities turnover or CBK rate for Friday 02 October")
+    assert r.json()["detail"].endswith("Upload what is missing under \"This week's inputs\" and try again, or type this week's total yourself.")
+    # the year turned: last year's total is never the base
+    r = suggest("turnover_ytd", "2027-01-01")
+    assert r.status_code == 409 and r.json()["detail"] == (
+        "Year-to-date equities turnover: the running total restarts with the year, so last week's is not carried into it. "
+        "Type this week's total, the year so far, yourself.")
+    # typed for this week already: never replaced (with this week's figure workable again, so this is the reason left)
+    inputs.store(WEEK, "kcb_daily", wh.fake_pdf(wh.kcb_daily_text(WEEK.ending, turnover=500_000_000)), "fri.pdf", root)
+    save_week(root, WEEK, fields={"turnover_ytd": "3050"})
+    r = suggest("turnover_ytd")
+    assert r.status_code == 409 and r.json()["detail"] == (
+        "Year-to-date equities turnover is already typed for this week; clear it to have a suggestion worked out.")
+    assert analyst.read_form(WEEK, root)["fields"] == {"turnover_ytd": "3050"} and analyst.read_form(WEEK, root)["unconfirmed"] == []
+
+
+def test_the_carry_button_is_offered_only_when_last_week_holds_something_confirmed(tmp_path):
+    """can_carry agrees with carry_forward: a week holding only values never confirmed has nothing to start from."""
+    before, now = Week(date(2026, 9, 25)), WEEK
+    assert analyst.status(now, tmp_path)["can_carry"] is False
+    analyst.suggest(before, "turnover_ytd", "3035.6", "seeded", tmp_path)        # held, but never confirmed
+    assert analyst.status(now, tmp_path)["can_carry"] is False
+    assert "No analyst inputs are saved for the week ending 2026-09-25" in refused_carry(now, tmp_path)
+    save_week(tmp_path, before, fields={"large_caps": "Safaricom"})
+    assert analyst.status(now, tmp_path)["can_carry"] is True
+    assert analyst.carry_forward(now, tmp_path)["carried"] == ["large_caps"]
 
 
 # ---------------------------------------------------------------------------

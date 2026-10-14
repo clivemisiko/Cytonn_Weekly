@@ -32,6 +32,8 @@ const emit = defineEmits<{ pending: [pending: boolean] }>();
 
 const form = ref<AnalystForm | null>(null);
 const error = ref<string | null>(null);
+/** A suggestion the API refused, shown under its own button rather than at the top of a long form. */
+const fieldError = ref<{ key: string; text: string } | null>(null);
 const busy = ref(false);
 const dirty = ref<Record<string, boolean>>({});
 
@@ -63,6 +65,7 @@ const mark = (key: string, value: boolean) => {
 async function save(key: string, changes: api.AnalystChanges) {
   busy.value = true;
   error.value = null;
+  fieldError.value = null;
   try {
     form.value = await api.saveAnalystInputs(props.week, props.section, changes);
     mark(key, false);
@@ -74,20 +77,23 @@ async function save(key: string, changes: api.AnalystChanges) {
 }
 
 /** One change the API makes to the whole form (carry last week's, work out a suggestion, confirm a value). */
-async function act(work: () => Promise<AnalystForm>) {
+async function act(work: () => Promise<AnalystForm>, key?: string) {
   busy.value = true;
   error.value = null;
+  fieldError.value = null;
   try {
     form.value = await work();
   } catch (err) {
-    error.value = (err as Error).message;
+    const text = (err as Error).message;
+    if (key) fieldError.value = { key, text };
+    else error.value = text;
   } finally {
     busy.value = false;
   }
 }
 const confirm = (key: string) => act(() => api.saveAnalystInputs(props.week, props.section, { confirm: [key] }));
 const carry = () => act(() => api.carryAnalystInputs(props.week, props.section));
-const suggest = (key: string) => act(() => api.suggestAnalystInput(props.week, props.section, key));
+const suggest = (key: string) => act(() => api.suggestAnalystInput(props.week, props.section, key), key);
 
 const locked = computed(() => busy.value || !!props.disabled);
 const hasBook = computed(() => form.value?.workbooks[props.section] ?? false);
@@ -99,8 +105,9 @@ const hasBook = computed(() => form.value?.workbooks[props.section] ?? false);
       <h2 id="analyst-title" class="text-lg font-semibold">Weekly analyst inputs</h2>
       <p class="max-w-[72ch] text-sm text-muted-foreground">
         The figures only the analysts hold, for the week ending <span class="font-mono">{{ friendlyDate(week) }}</span>. Type them
-        here when no workbook is sent. Every value is carried into the draft as an analyst input for you to check; none is
-        suggested or filled in, and anything left empty is marked as missing in the draft.
+        here when no workbook is sent. Every value is carried into the draft as an analyst input for you to check. Nothing
+        is filled in by itself: a value copied from last week or suggested by a button waits for you to confirm it, and
+        anything left empty is marked as missing in the draft.
       </p>
       <template v-if="form">
         <p class="text-xs text-muted-foreground">
@@ -119,7 +126,7 @@ const hasBook = computed(() => form.value?.workbooks[props.section] ?? false);
             {{
               form.can_carry
                 ? `Copies what was saved for the week ending ${friendlyDate(form.previous_week)} into every item still empty here, each marked as carried. Figures that change every week then wait for you to confirm them.`
-                : `Nothing is saved for the week ending ${friendlyDate(form.previous_week)} to start from.`
+                : `Nothing confirmed is saved for the week ending ${friendlyDate(form.previous_week)} to start from.`
             }}
           </p>
         </div>
@@ -150,6 +157,7 @@ const hasBook = computed(() => form.value?.workbooks[props.section] ?? false);
             :key="`${item.key}:${asText(item.value)}`"
             :item="item"
             :disabled="locked"
+            :error="fieldError?.key === item.key ? fieldError.text : null"
             @confirm="confirm(item.key)"
             @suggest="suggest(item.key)"
             @dirty="(d) => mark(item.key, d)"
