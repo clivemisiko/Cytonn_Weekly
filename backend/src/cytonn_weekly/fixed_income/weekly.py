@@ -914,7 +914,8 @@ def shilling_blocks(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bullet
                                         "Neither the bulletin's reserves (Table 2) nor the remittances (typed, or in the "
                                         "workbook) are among this week's inputs." + (f" {left_out}" if left_out else ""),
                                         f"The bulletin or the {WB.lower()}. {UPLOAD}"))
-    blocks.append(_carried(issue, "shilling_pressure", "Kenya Shilling: what pressures the shilling", shilling_pressure_text))
+    blocks.append(_carried(issue, "shilling_pressure", "Kenya Shilling: what pressures the shilling", shilling_pressure_text,
+                           also=(MACRO_SECTION,)))
     return blocks
 
 
@@ -922,13 +923,32 @@ def shilling_blocks(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bullet
 # Carried-forward text
 # ---------------------------------------------------------------------------
 
+# Where the shilling paragraphs sit when the previous issue is a Markets Review: under "The Kenyan Shilling:" in its
+# Kenya Macro Economic Review, not in Fixed Income (checked on issue 892, the Q3'2026 review, 2026-10-13).
+MACRO_SECTION = "kenya-macro-economic-review"
+
+
+def _ends_pressure_bullets(paragraph: str) -> bool:
+    """Whether a paragraph after the opening line is no longer one of its bullets."""
+    low = paragraph.lower().strip()
+    return ("forex reserves" in low[:40] or low.startswith("weekly highlights")
+            # a Markets Review follows the bullets with "Key to note, ... Kenya's forex reserves increased by ..."
+            or "forex reserves increased" in low or "forex reserves decreased" in low or low.startswith("key to note")
+            # ... and then the next subsection's heading ("Monetary Policy:")
+            or (low.endswith(":") and len(low.split()) <= 8))
+
+
 def shilling_pressure_text(paragraphs: list[str]) -> Optional[str]:
-    """The previous issue's "expected to remain under pressure" paragraph and its bullets."""
+    """The previous issue's "expected to remain under pressure" paragraph and its bullets (five lines at most).
+
+    The opening line itself ends in a colon and is always kept; the heading rule applies to the lines after it.
+    """
     start = next((n for n, p in enumerate(paragraphs) if p.lower().startswith("the shilling is however expected to remain under pressure")), None)
     if start is None:
         return None
-    end = next((n for n in range(start + 1, len(paragraphs)) if "forex reserves" in paragraphs[n].lower()[:40]
-                or paragraphs[n].lower().startswith("weekly highlights")), min(start + 6, len(paragraphs)))
+    end = next((n for n in range(start + 1, len(paragraphs)) if _ends_pressure_bullets(paragraphs[n])),
+               min(start + 6, len(paragraphs)))
+    end = min(end, start + 6)
     lines = paragraphs[start:end]
     return lines[0] + "\n\n" + "\n".join(f"- {line}" for line in lines[1:]) if len(lines) > 1 else lines[0]
 
@@ -946,7 +966,14 @@ def outlook_text(paragraphs: list[str]) -> Optional[str]:
 
 
 def _carried(issue: Optional[previous_issue.Issue], block_id: str, title: str,
-             extract: Callable[[list[str]], Optional[str]], slugs: tuple[str, ...] = ("fixed-income",)) -> dict[str, Any]:
+             extract: Callable[[list[str]], Optional[str]], slugs: tuple[str, ...] = ("fixed-income",),
+             also: tuple[str, ...] = ()) -> dict[str, Any]:
+    """Text carried forward from the previous issue's section (the first of ``slugs`` the issue has).
+
+    ``also`` names further sections to try, in order, when the first holds no such paragraph: the first section in
+    which ``extract`` finds the text is used.  Text found in one of them says so on the block, and the flag repeats
+    it, because it was written for another part of another kind of report.  Without ``also`` nothing changes.
+    """
     if issue is None:
         return unavailable_block(block_id, title, "The previous issue could not be read from cytonnreport.com, so there is "
                                  "no text to carry forward. This part is the analysts' own text.",
@@ -954,11 +981,28 @@ def _carried(issue: Optional[previous_issue.Issue], block_id: str, title: str,
                                  "the paragraph by hand.")
     section = issue.section(*slugs)
     text = extract(previous_issue.html_paragraphs(section["body"])) if section else None
-    if not text:
+    source = {"issue_id": issue.issue_id, "url": issue.url, "published": issue.published.isoformat() if issue.published else None}
+    if text:
+        return carried_block(block_id, title, text, source)
+    for slug in also:
+        other = issue.sections.get(slug)
+        text = extract(previous_issue.html_paragraphs(other["body"])) if other else None
+        if text:
+            name = other.get("name") or slug
+            return carried_block(block_id, title, text, {
+                **source, "section": slug,
+                "note": f"taken from the {name} of issue {issue.issue_id}, a Markets Review, not from its Fixed Income "
+                        "section; check the dates and the period it speaks of"})
+    if not also:
         return unavailable_block(block_id, title, f"The previous issue (cytonnreport.com issue {issue.issue_id}) has no "
                                  "paragraph that reads as this part.", "Write the paragraph by hand.")
-    return carried_block(block_id, title, text, {"issue_id": issue.issue_id, "url": issue.url,
-                                                 "published": issue.published.isoformat() if issue.published else None})
+    wanted = [next((s for s in slugs if s in issue.sections), slugs[0]), *also]
+    searched = [s for s in wanted if s in issue.sections]
+    absent = [s for s in wanted if s not in issue.sections]
+    reason = (f"The previous issue (cytonnreport.com issue {issue.issue_id}) has no paragraph that reads as this part: "
+              f"searched {' and '.join(searched) if searched else 'no section'} of issue {issue.issue_id}")
+    reason += f"; the issue has no {' or '.join(absent)} section." if absent else "."
+    return unavailable_block(block_id, title, reason, "Write the paragraph by hand.")
 
 
 # ---------------------------------------------------------------------------

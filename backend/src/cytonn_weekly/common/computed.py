@@ -195,7 +195,8 @@ def computed_block(block_id: str, title: str, body_md: str, figures: list[dict[s
 
 
 def carried_block(block_id: str, title: str, body_md: str, carried_from: dict[str, Any]) -> dict[str, Any]:
-    """Text taken verbatim from the previous issue: ``carried_from`` is {issue_id, url, published, section}."""
+    """Text taken verbatim from the previous issue: ``carried_from`` is {issue_id, url, published} and, when the text
+    came from another section than the usual one, ``section`` and a ``note`` the flag repeats."""
     return {"kind": "carried", "id": block_id, "title": title, "body_md": body_md, "carried_from": carried_from}
 
 
@@ -315,4 +316,5 @@ def carried_flag(block: dict[str, Any]) -> Flag:
     where = f"issue {src.get('issue_id')} on cytonnreport.com" if src.get("issue_id") else "the previous issue"
     when = f", published {src['published']}" if src.get("published") else ""
     return Flag(kind=CARRIED_FORWARD, scope=CARRIED_SCOPE, subject=block["id"], field=None,
-                message=f"{CARRIED_MESSAGE}: this text is copied from {where}{when} and was not written for this week")
+                message=f"{CARRIED_MESSAGE}: this text is copied from {where}{when} and was not written for this week"
+                        + (f"; {src['note']}" if src.get("note") else ""))

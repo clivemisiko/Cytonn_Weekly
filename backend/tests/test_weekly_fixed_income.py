@@ -22,6 +22,7 @@ from cytonn_weekly.common.checks import check_table_block
 from cytonn_weekly.common.formatting import MULTIPLE, PCT
 from cytonn_weekly.common.review import build_review, check_section, numbered, table_block
 from cytonn_weekly.common.run_events import EventLog
+from cytonn_weekly.equities import weekly as eqw
 from cytonn_weekly.fixed_income import weekly as fiw
 from cytonn_weekly.weekly import cbk_bulletin, inputs, previous_issue
 from cytonn_weekly.weekly.week import Week
@@ -453,6 +454,105 @@ def test_a_bulletin_table_left_out_makes_only_its_own_parts_unavailable_and_says
     # and the section's warnings say it once, so no part passes over it in silence
     assert review.section["warnings"].count(why) == 1
     assert [i.status for i in items(review, "Kenya Eurobonds")] == ["flagged"]
+
+
+# The dozen paragraphs around the shilling in the Kenya Macro Economic Review of issue 892 (the Q3'2026 Markets
+# Review), as cytonnreport.com serves them: the opening line, its three bullets, "Key to note, ..." and the next heading.
+MACRO_EXCERPT = (wh.FIXTURES / "cytonn_issue_892_kenya_macro_shilling_excerpt.html").read_text(encoding="utf-8")
+FI_OF_A_REVIEW = "<p><strong>Liquidity:</strong></p><p>In Q3, liquidity eased.</p><p>Rates in the fixed income market have declined MTD.</p>"
+REVIEW_892 = previous_issue.Issue(892, date(2026, 10, 4), {
+    "kenya-macro-economic-review": {"name": "Kenya Macro Economic Review", "body": MACRO_EXCERPT, "summary": ""},
+    "fixed-income": {"name": "Fixed Income", "body": FI_OF_A_REVIEW, "summary": ""},
+    "equities": {"name": "Equities", "body": PREVIOUS_EQ, "summary": ""},
+})
+OPENING = "The shilling is however expected to remain under pressure in 2026 as a result of:"
+PRESSURE_TITLE = "Kenya Shilling: what pressures the shilling"
+
+
+def pressure(issue):
+    return fiw._carried(issue, "shilling_pressure", PRESSURE_TITLE, fiw.shilling_pressure_text, also=(fiw.MACRO_SECTION,))
+
+
+def test_the_pressure_paragraph_is_taken_from_the_macro_section_when_the_previous_issue_is_a_markets_review(root):
+    review = build(root, fetchers=fetchers(previous_issue=lambda day, ref: REVIEW_892))
+    block = blocks(review)["shilling_pressure"]
+    lines = block["body_md"].splitlines()
+    # the opening line (it ends in a colon and is kept) and its three bullets; "Key to note, ..." and "Monetary Policy:" are not bullets
+    assert block["kind"] == "carried" and lines[0] == OPENING and lines[1] == "" and len(lines) == 5
+    for line, opens in zip(lines[2:], ("- An ever-present current account deficit which widened to 3.0% of GDP",
+                                       "- The need for government debt servicing, continues to put pressure on forex reserves",
+                                       "- Rising geopolitical tensions in the Middle East")):
+        assert line.startswith(opens), line
+    assert not any("Key to note" in line or "Monetary Policy" in line for line in lines)
+    note = ("taken from the Kenya Macro Economic Review of issue 892, a Markets Review, not from its Fixed Income section; "
+            "check the dates and the period it speaks of")
+    assert block["carried_from"] == {"issue_id": 892, "url": REVIEW_892.url, "published": "2026-10-04",
+                                     "section": "kenya-macro-economic-review", "note": note}
+    item = items(review, "Kenya Shilling: what pressures the shilling (carried forward)")[0]
+    assert item.status == "flagged" and item.detail[0].message == (
+        "carried forward, edit before approving: this text is copied from issue 892 on cytonnreport.com, published 2026-10-04 "
+        f"and was not written for this week; {note}")
+    # the closing outlook still comes from Fixed Income alone, flagged in the same words as ever
+    outlook = blocks(review)["outlook"]
+    assert outlook["body_md"] == "Rates in the fixed income market have declined MTD." and set(outlook["carried_from"]) == {"issue_id", "url", "published"}
+    assert items(review, "Rates and outlook (closing paragraph) (carried forward)")[0].detail[0].message.endswith("was not written for this week")
+
+
+def test_the_fixed_income_section_wins_when_both_hold_the_paragraph():
+    both = previous_issue.Issue(891, date(2026, 9, 27), {**ISSUE.sections, "kenya-macro-economic-review": REVIEW_892.sections["kenya-macro-economic-review"]})
+    block = pressure(both)
+    assert block["body_md"].splitlines() == [
+        "The shilling is however expected to remain under pressure in 2026 as a result of:", "",
+        "- An ever-present current account deficit, and,", "- The need for government debt servicing."]
+    assert block["carried_from"] == {"issue_id": 891, "url": both.url, "published": "2026-09-27"}   # as a weekly issue always gave
+    assert pressure(ISSUE) == block                                                                 # with no macro section: the same
+
+
+def test_a_previous_issue_without_the_paragraph_says_which_sections_were_searched():
+    bare = {"name": "Kenya Macro Economic Review", "body": "<p><strong>Monetary Policy:</strong></p><p>The MPC met once.</p>", "summary": ""}
+    neither = previous_issue.Issue(892, date(2026, 10, 4), {"fixed-income": REVIEW_892.sections["fixed-income"], "kenya-macro-economic-review": bare})
+    block = pressure(neither)
+    assert block["kind"] == "unavailable" and block["reason"] == (
+        "The previous issue (cytonnreport.com issue 892) has no paragraph that reads as this part: searched fixed-income and "
+        "kenya-macro-economic-review of issue 892.")
+    weekly = previous_issue.Issue(891, date(2026, 9, 27), {"fixed-income": REVIEW_892.sections["fixed-income"]})
+    assert pressure(weekly)["reason"] == (
+        "The previous issue (cytonnreport.com issue 891) has no paragraph that reads as this part: searched fixed-income of "
+        "issue 891; the issue has no kenya-macro-economic-review section.")
+    assert pressure(None)["reason"].startswith("The previous issue could not be read from cytonnreport.com")
+
+
+def test_the_bullets_stop_at_each_thing_that_is_not_one_of_them():
+    bullets = ["A current account deficit, and,", "The need for debt servicing.", "Rising tensions in the Middle East."]
+    carried = OPENING + "\n\n" + "\n".join(f"- {b}" for b in bullets)
+    for stop in ("Kenya's forex reserves decreased by 0.3% during the week.",                              # the old rule: in its first 40 characters
+                 "Weekly Highlights",                                                                      # the old rule
+                 "During the third quarter of 2026, the country's forex reserves increased by 7.1% to USD 15.0 bn.",   # anywhere in it
+                 "Over the same period the months of import cover fell as forex reserves decreased.",
+                 "Key to note, during the third quarter the months of import cover rose.",
+                 "Monetary Policy:"):                                                                      # a heading
+        assert fiw.shilling_pressure_text(["Before.", OPENING, *bullets, stop, "After."]) == carried, stop
+    # a long line ending in a colon is a bullet, not a heading; and the opening line's own colon never ends anything
+    long_bullet = "Rising tensions in the Middle East, which could weigh on the shilling through two channels that matter here:"
+    assert fiw.shilling_pressure_text([OPENING, *bullets[:2], long_bullet, "Monetary Policy:"]) == OPENING + "\n\n" + "\n".join(
+        f"- {b}" for b in (*bullets[:2], long_bullet))
+    assert fiw.shilling_pressure_text([OPENING]) == OPENING and fiw.shilling_pressure_text([OPENING, "Monetary Policy:"]) == OPENING
+    # five lines after the opening at most, whatever follows
+    many = [f"Bullet {n}." for n in range(1, 9)]
+    assert fiw.shilling_pressure_text([OPENING, *many]).splitlines()[2:] == [f"- Bullet {n}." for n in range(1, 6)]
+
+
+def test_the_two_outlooks_look_only_in_their_own_section_as_before():
+    macro_with_outlooks = {"name": "Kenya Macro Economic Review", "summary": "",
+                           "body": "<p>Rates in the fixed income market have declined.</p><p>We maintain a cautious outlook.</p>"}
+    issue = previous_issue.Issue(892, date(2026, 10, 4), {
+        "kenya-macro-economic-review": macro_with_outlooks,
+        "fixed-income": {"name": "Fixed Income", "body": "<p>Liquidity eased.</p>", "summary": ""},
+        "equities": {"name": "Equities", "body": "<p>Turnover rose.</p>", "summary": ""}})
+    old = "The previous issue (cytonnreport.com issue 892) has no paragraph that reads as this part."
+    fi = fiw._carried(issue, "outlook", "Rates and outlook (closing paragraph)", fiw.outlook_text)
+    eq = fiw._carried(issue, "outlook", "Equities outlook (closing paragraph)", eqw.equities_outlook_text, ("equities",))
+    assert (fi["kind"], fi["reason"]) == ("unavailable", old) and (eq["kind"], eq["reason"]) == ("unavailable", old)
 
 
 def test_a_workbook_for_last_week_leaves_its_parts_unavailable_with_the_reason(tmp_path):
