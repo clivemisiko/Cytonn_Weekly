@@ -10,6 +10,7 @@ import DevRibbon from "./DevRibbon.vue";
 import DraftPane from "./DraftPane.vue";
 import ItemsPane from "./ItemsPane.vue";
 import Masthead from "./Masthead.vue";
+import RejectedDraftNotes from "./RejectedDraftNotes.vue";
 import StatusBar from "./StatusBar.vue";
 
 /**
@@ -60,6 +61,7 @@ function subline(c: StatusCounts): string {
       />
 
       <div class="space-y-6 pt-6">
+        <RejectedDraftNotes :run-id="review.run_id" />
         <div
           v-if="review.decision"
           role="status"

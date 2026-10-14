@@ -5,6 +5,7 @@ import type {
   Decision,
   ExportStatus,
   Overview,
+  RejectedDraftNotes,
   ReportChoice,
   Resolution,
   Review,
@@ -120,6 +121,9 @@ export const getRun = (runId: string) => request<Run>(`/api/runs/${encodeURIComp
 export const runEventsUrl = (runId: string) => `${API_BASE}/api/runs/${encodeURIComponent(runId)}/events`;
 
 export const getReview = (runId: number) => request<Review>(`/api/reviews/${runId}`);
+
+/** The rejected draft just before this run, with its fix-needed items and notes; null when there is none to show. */
+export const getRejectedDraftNotes = (runId: number) => request<RejectedDraftNotes | null>(`/api/reviews/${runId}/rejected-draft-notes`);
 
 /** `note` omitted keeps the item's existing note; a string replaces it (blank clears it). */
 export const resolveItem = (runId: number, index: number, resolution: Resolution, note?: string) =>

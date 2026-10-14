@@ -161,3 +161,24 @@ def load_latest_review(
     finally:
         conn.close()
     return _row_to_review(row) if row else None
+
+
+def load_previous_review(run_id: int, *, db_path: Optional[Union[Path, str]] = None) -> Optional[CoordinatorReview]:
+    """The run saved just before ``run_id`` for the same section, report type and period, or None.
+
+    Only that one run, decided or not: older history is not looked at.  KeyError if ``run_id`` is not saved.
+    """
+    conn = _open(db_path)
+    try:
+        this = conn.execute("SELECT section, report_type, period FROM coordinator_reviews WHERE run_id = ?",
+                            (run_id,)).fetchone()
+        if this is None:
+            raise KeyError(f"no saved review with run_id {run_id}")
+        row = conn.execute(
+            "SELECT * FROM coordinator_reviews WHERE section = ? AND report_type = ? AND period = ? AND run_id < ? "
+            "ORDER BY run_id DESC LIMIT 1",
+            (this["section"], this["report_type"], this["period"], run_id),
+        ).fetchone()
+    finally:
+        conn.close()
+    return _row_to_review(row) if row else None
