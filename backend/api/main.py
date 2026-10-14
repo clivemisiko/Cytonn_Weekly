@@ -101,7 +101,7 @@ from api.serialize import DEV_MODE_LABEL, is_dev_draft, serialize_review
 log = logging.getLogger(__name__)
 
 CORS_ENV_VAR = "CYTONN_WEB_ORIGINS"
-DEFAULT_WEB_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000"
+DEFAULT_WEB_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
 
 
 DISCARDED_AS_STUCK = (

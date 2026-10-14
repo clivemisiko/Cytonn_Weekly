@@ -1,19 +1,15 @@
+import { THEME_KEY } from "./theme-script";
+
 /**
  * The colour theme: Light, Dark, or System (follow the device). The choice lives in one place, the `data-theme`
- * attribute on <html>: absent means System, and globals.css resolves every token from it. Browser storage only
+ * attribute on <html>: absent means System, and styles.css resolves every token from it. Browser storage only
  * remembers the choice across reloads, so if storage is empty, blocked or throws, the page still renders (as System)
  * and the toggle still works for the visit.
  */
 export const THEMES = ["light", "dark", "system"] as const;
 export type ThemeChoice = (typeof THEMES)[number];
 
-export const THEME_KEY = "cytonn-theme";
-
-/**
- * Runs inline, before the first paint (app/layout.tsx), so a reload never shows the wrong theme first. It only
- * restores a stored Light or Dark; anything else, or a storage that throws, leaves System.
- */
-export const THEME_SCRIPT = `try{var t=localStorage.getItem("${THEME_KEY}");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}`;
+export { THEME_KEY, THEME_SCRIPT } from "./theme-script";
 
 const listeners = new Set<() => void>();
 

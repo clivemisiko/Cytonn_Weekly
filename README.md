@@ -6,7 +6,7 @@ See [CLAUDE.md](CLAUDE.md) for full project context and the task backlog.
 
 ## Setup
 
-The project has two folders: `backend/` (Python: the package in `backend/src/`, the API in `backend/api/`, `backend/scripts/`, `backend/tests/`, `backend/data/`) and `frontend/` (the Next.js web app). `.env` stays in the repo root.
+The project has two folders: `backend/` (Python: the package in `backend/src/`, the API in `backend/api/`, `backend/scripts/`, `backend/tests/`, `backend/data/`) and `frontend/` (the Vue 3 web app, built with Vite). `.env` stays in the repo root.
 
 ```sh
 cd backend
@@ -19,16 +19,16 @@ python -m pytest -q            # the test suite
 
 ## Coordinator review screen (Digital Payments)
 
-A FastAPI layer (`backend/api/`) over `review_store`, `review_run` and `coordinator_review`, and a Next.js app (`frontend/`) that talks to it. Run both:
+A FastAPI layer (`backend/api/`) over `review_store`, `review_run` and `coordinator_review`, and a Vue app (`frontend/`) that talks to it. Run both:
 
 ```sh
 cd backend
 uvicorn api.main:app --port 8000        # terminal 1: the API (loads the repo-root .env at startup)
-cd frontend && npm install              # terminal 2, first time only
-npm run dev                             # terminal 2: the web app, at http://localhost:3000 (landing page; the overview is /overview)
+cd frontend && npm ci                   # terminal 2, first time only
+npm run dev                             # terminal 2: the web app, at http://127.0.0.1:5173 (landing page; the overview is /overview)
 ```
 
-The web app calls the API at `NEXT_PUBLIC_API_URL` (default `http://127.0.0.1:8000`; set it in `frontend/.env.local`). The API accepts browser requests from `http://localhost:3000` and `http://127.0.0.1:3000`; set `CYTONN_WEB_ORIGINS` (comma-separated) to allow another origin. The API has no authentication of its own, so keep it on localhost or behind the SSO'd network.
+The browser only talks to the web app's own address: its server proxies `/api` to the API at `VITE_API_TARGET` (default `http://127.0.0.1:8000`; set it in the shell before `npm run dev` to use another instance). For a page served from elsewhere, the API accepts browser requests from `http://localhost:5173` and `http://127.0.0.1:5173`; set `CYTONN_WEB_ORIGINS` (comma-separated) to allow another origin. The API has no authentication of its own, so keep it on localhost or behind the SSO'd network.
 
 The screen's "Draft this week's section" button runs the real pipeline (price fetch, drafting, checks) and loads the result. That uses the drafting provider below, so the default Anthropic provider spends API budget; `CYTONN_LLM_PROVIDER=local` is the free dev option (output not for publication, and the screen says so). A draft takes minutes. It is saved on the server when it finishes even if the browser gives up waiting, and only one draft runs at a time.
 

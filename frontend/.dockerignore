@@ -1,8 +1,7 @@
 node_modules
-.next
+dist
 .env*
 *.log
-screenshots
 *.tsbuildinfo
 Dockerfile
 .dockerignore

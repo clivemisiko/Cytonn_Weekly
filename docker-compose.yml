@@ -39,10 +39,10 @@ services:
     build:
       context: ./frontend
       target: runner
-      args:
-        # Fixed at build time and used by the browser, so it is the address the browser
-        # can reach, not the service name.
-        NEXT_PUBLIC_API_URL: http://127.0.0.1:8000
+    environment:
+      # The web server proxies /api to the API, so this is the service name, and the
+      # browser only ever talks to port 3000.
+      VITE_API_TARGET: http://api:8000
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:

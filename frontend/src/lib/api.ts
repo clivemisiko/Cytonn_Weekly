@@ -12,7 +12,10 @@ import type {
   WeeklyInputs,
 } from "./types";
 
-export const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000").replace(/\/$/, "");
+/** Empty by default: the page calls its own origin, and Vite proxies /api to the backend (vite.config.ts). */
+export const API_BASE = ((import.meta.env.VITE_API_URL as string | undefined) ?? "").replace(/\/$/, "");
+/** The address named when the API cannot be reached. */
+const API_NAME = API_BASE || (typeof window === "undefined" ? "" : window.location.origin);
 
 const READ_TIMEOUT_MS = 30_000;
 /** An upload is read and checked by the API before it answers (a workbook takes a few seconds). */
@@ -54,7 +57,7 @@ async function request<T>(path: string, init: RequestInit = {}, timeoutMs = READ
     if ((err as Error).name === "AbortError") {
       throw new ApiError(`The request timed out after ${Math.round(timeoutMs / 1000)} seconds.`, null);
     }
-    throw new ApiError(`Could not reach the review API at ${API_BASE}. Is it running?`, null);
+    throw new ApiError(`Could not reach the review API at ${API_NAME}. Is it running?`, null);
   } finally {
     clearTimeout(timer);
   }
@@ -199,7 +202,7 @@ export const exportWeekly = async (period: string): Promise<{ blob: Blob; name: 
   try {
     res = await fetch(`${API_BASE}${exportPath(period)}`, { method: "POST", cache: "no-store" });
   } catch {
-    throw new ApiError(`Could not reach the review API at ${API_BASE}. Is it running?`, null);
+    throw new ApiError(`Could not reach the review API at ${API_NAME}. Is it running?`, null);
   }
   if (!res.ok) {
     let body: unknown = null;

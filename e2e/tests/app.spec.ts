@@ -1,8 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 
 /**
- * The shared suite: the same tests run against the Next app and the Vue app (E2E_TARGET). They use only what a person
- * sees (roles, names, text) plus the few ids and data attributes both apps carry, so a pass means the same behaviour.
+ * The suite for the web app in frontend/. The tests use only what a person sees (roles, names, text) plus the few
+ * ids and data attributes the app carries, so they do not depend on how it is built.
  * The tests run in order against one backend; T09 approves a section, which is final, so the backend restores its data
  * at every start (e2e/serve_e2e.py).
  */

@@ -1,6 +1,4 @@
-"use client";
-
-import { useEffect, useSyncExternalStore } from "react";
+import { type MaybeRefOrGetter, onUnmounted, shallowRef, toValue, watchEffect } from "vue";
 
 /** The start screen: where Home always goes, and where Back goes when a page names nowhere better. */
 export const HOME = "/";
@@ -23,46 +21,35 @@ export type BackTarget =
 export const BACK_HOME: BackTarget = { kind: "home" };
 export const BACK_NONE: BackTarget = { kind: "none" };
 
-let back: BackTarget = BACK_HOME;
+const back = shallowRef<BackTarget>(BACK_HOME);
 // Asked before Home or Back leaves the page: the question to put, or null when nothing would be lost.
 let leaveQuestion: string | null = null;
-const listeners = new Set<() => void>();
 
-const subscribe = (listener: () => void) => {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-};
-const setBack = (next: BackTarget) => {
-  back = next;
-  listeners.forEach((listener) => listener());
-};
-
-/** The page on screen tells the top bar where Back goes. Pass a stable value (a constant, or one from useMemo). */
-export function useBack(target: BackTarget): void {
-  useEffect(() => {
-    setBack(target);
-    return () => setBack(BACK_HOME);
-  }, [target]);
+/** The page on screen tells the top bar where Back goes; when the page goes away, Back is Home again. */
+export function useBack(target: MaybeRefOrGetter<BackTarget>): void {
+  let mine: BackTarget | null = null;
+  watchEffect(() => {
+    mine = toValue(target);
+    back.value = mine;
+  });
+  onUnmounted(() => {
+    // The next page may already have named its own target; only undo this page's.
+    if (back.value === mine) back.value = BACK_HOME;
+  });
 }
 
 /** What the top bar's Back button does now. */
-export function useBackTarget(): BackTarget {
-  return useSyncExternalStore(
-    subscribe,
-    () => back,
-    () => BACK_HOME,
-  );
-}
+export const useBackTarget = () => back;
 
 /** While `unsaved` is true, Home and Back ask `question` first and stay on the page unless the answer is yes. */
-export function useLeaveGuard(unsaved: boolean, question: string): void {
-  useEffect(() => {
-    if (!unsaved) return;
+export function useLeaveGuard(unsaved: MaybeRefOrGetter<boolean>, question: string): void {
+  watchEffect((onCleanup) => {
+    if (!toValue(unsaved)) return;
     leaveQuestion = question;
-    return () => {
+    onCleanup(() => {
       leaveQuestion = null;
-    };
-  }, [unsaved, question]);
+    });
+  });
 }
 
 /** True if the page may be left: nothing is unsaved, or the person said to leave anyway. */

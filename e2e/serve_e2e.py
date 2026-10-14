@@ -51,7 +51,7 @@ shutil.rmtree(DATA, ignore_errors=True)
 shutil.copytree(PRISTINE, DATA)
 
 os.environ["CYTONN_DATA_DIR"] = str(DATA)
-os.environ["CYTONN_WEB_ORIGINS"] = os.environ.get("E2E_WEB_ORIGINS", "http://127.0.0.1:3011,http://127.0.0.1:5183")
+os.environ["CYTONN_WEB_ORIGINS"] = os.environ.get("E2E_WEB_ORIGINS", "http://127.0.0.1:5183")
 os.environ["CYTONN_LLM_PROVIDER"] = "anthropic" if VARIANT == "no-key" else "local"
 os.environ["ANTHROPIC_API_KEY"] = ""  # set and empty: the environment beats .env, so no real key is ever read
 os.environ["EXA_API_KEY"] = "e2e"  # the fake provider never searches
