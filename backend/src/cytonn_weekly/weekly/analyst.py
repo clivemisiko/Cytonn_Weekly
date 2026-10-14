@@ -1405,7 +1405,7 @@ def status(week: Week, root: Optional[Path] = None, section: Optional[str] = Non
     """The form for one week: every item with what was typed, what the uploaded workbook holds, and where they differ."""
     analyst = Analyst(WeeklyInputs(week, root))
     form = analyst.stored          # what is held, confirmed or not; the readers below see only what is confirmed
-    last = read_form(week.previous, root)
+    last = usable_form(read_form(week.previous, root))   # what carry_forward() would copy: only what was confirmed
 
     def carried(key: str, value: Any) -> Optional[dict[str, Any]]:
         """Where the item's value came from, while it is still what was carried or suggested."""

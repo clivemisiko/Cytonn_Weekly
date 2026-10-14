@@ -772,16 +772,23 @@ def running_total_suggestions(inputs: WeeklyInputs, usd_rates: Callable[[], dict
             ("foreign_ytd", _day_flow, "net foreign flows (KCB IB's weekly report)")):
         label = analyst.FIELDS[key].label
         if week.previous_friday.year != week.ending.year:
-            out[key] = {"reason": f"{label}: the running total restarts with the year, so last week's is not carried into it."}
+            out[key] = {"reason": f"{label}: the running total restarts with the year, so last week's is not carried into it. "
+                                  "Type this week's total, the year so far, yourself."}
             continue
         before = last_week.analyst.field(key)
         if before is None or before.number is None:
-            out[key] = {"reason": f"{label}: no total is saved for the week ending {stamp} to add this week's figure to."}
+            held = key in analyst.read_form(week.previous, inputs.root)["fields"]   # there, but carried or suggested and never confirmed
+            out[key] = {"reason": f"{label}: no total is saved for the week ending {stamp} to add this week's figure to. " + (
+                "That week's form holds one, but it was never confirmed, so it is not used: confirm it on that week's form, "
+                "or type this week's total yourself." if held else
+                "Neither that week's form nor an equities workbook uploaded for that week holds one. Type this week's total "
+                "yourself; once it is saved, next week's suggestion can start from it.")}
             continue
         figures, expr, missing = _usd_week(market, week, lambda d, f=day_figure: f(market, d), "")
         if figures is None:
             out[key] = {"reason": f"{label}: this week's figure cannot be worked out: no {what.split(' (')[0]} or CBK rate for "
-                                  f"{_days(missing)}."}
+                                  f"{_days(missing)}. Upload what is missing under \"This week's inputs\" and try again, or "
+                                  "type this week's total yourself."}
             continue
         this_week = evaluate(expr, figures)
         total = round_half_up(evaluate(["add", "before", "week"], {"before": before.number, "week": float(this_week)}), 4)
