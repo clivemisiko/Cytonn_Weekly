@@ -427,6 +427,13 @@ export interface StatusCounts {
   fix_needed: number;
 }
 
+/** GET /api/reviews/{run_id}/rejected-draft-notes: what was said about the rejected draft just before this one. */
+export interface RejectedDraftNotes {
+  run_id: number;
+  decided_at: string | null;
+  entries: { ref: string; resolution: Resolution; note: string | null }[];
+}
+
 export interface Review {
   section_slug: string;
   section_title: string;
