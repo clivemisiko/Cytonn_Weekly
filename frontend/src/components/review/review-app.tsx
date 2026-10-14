@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import * as api from "@/lib/api";
+import { BACK_HOME, type BackTarget, useBack } from "@/lib/nav";
 import type { AppConfig, Drafting, Overview, ReportChoice, ReportType, Review, SectionSummary } from "@/lib/types";
 import { Notice } from "./banners";
 import { Masthead } from "./masthead";
@@ -180,6 +181,12 @@ export function ReviewApp() {
     setPhase({ name: "booting" });
     void fetchOverview(reportRef.current).then(show);
   }, [fetchOverview, show]);
+
+  // The top bar's Back: from a section's start screen or an open review, to this report's list of sections (as the
+  // masthead's own back link did before the bar); from the list itself, Home.
+  const inSection = phase.name === "start" || phase.name === "review";
+  const back = useMemo<BackTarget>(() => (inSection ? { kind: "go", to: "all sections", go: home } : BACK_HOME), [inSection, home]);
+  useBack(back);
 
   /** Switch the overview to another report. A period the API rejects stays in the picker with the API's reason. */
   const chooseReport = useCallback(
