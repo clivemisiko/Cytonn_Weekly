@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { type SectionState, isDraftingThis, stateOf, useDraftingPoll } from "@/lib/drafting";
+import { type SectionState, draftAgainOff, isDraftingThis, stateOf, useDraftingPoll } from "@/lib/drafting";
 import { friendlyDate, plural, reportName } from "@/lib/format";
 import type { AppConfig, Overview, ReportChoice } from "@/lib/types";
 import DevRibbon from "./DevRibbon.vue";
@@ -22,6 +22,8 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   open: [slug: string, resume: boolean];
+  /** "Draft again" on a section that already has a review: its start screen, with the saved review beside it. */
+  redraft: [slug: string];
   /** A fresher overview, from polling while a draft runs on the server. */
   overview: [next: Overview];
 }>();
@@ -85,7 +87,9 @@ const tally = computed<[string, number][]>(() => {
           :index="i"
           :period="overview.report.period"
           :drafting="isDraftingThis(drafting, s.slug, report) ? drafting : null"
+          :draft-again-off="draftAgainOff(s, drafting, config, report)"
           @open="(slug, resume) => emit('open', slug, resume)"
+          @redraft="(slug) => emit('redraft', slug)"
         />
       </ol>
     </div>

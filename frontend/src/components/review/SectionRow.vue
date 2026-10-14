@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { PhCaretRight, PhCircleNotch, PhLockSimple } from "@phosphor-icons/vue";
+import { PhArrowsClockwise, PhCaretRight, PhCircleNotch, PhLockSimple } from "@phosphor-icons/vue";
 import { computed } from "vue";
 import Button from "@/components/ui/Button.vue";
 import { CHIP as CHIP_BASE } from "@/components/ui/button";
@@ -22,8 +22,10 @@ const props = defineProps<{
   period: string;
   /** Set only on the card of the section being drafted right now. */
   drafting: Drafting | null;
+  /** Why "Draft again" is off (another draft holds the slot, the provider cannot run), or null when it is on. */
+  draftAgainOff: string | null;
 }>();
-const emit = defineEmits<{ open: [slug: string, resume: boolean] }>();
+const emit = defineEmits<{ open: [slug: string, resume: boolean]; redraft: [slug: string] }>();
 
 const state = computed(() => stateOf(props.s));
 const run = computed(() => props.s.latest);
@@ -37,6 +39,8 @@ const action = computed(() => {
   if (state.value === "not_drafted") return { label: draftLabel, resume: false, primary: true };
   return { label: "View review", resume: true, primary: false };
 });
+// A section that already has a review (in review, approved or rejected) can be drafted again; the start screen asks first.
+const canRedraft = computed(() => state.value === "in_review" || state.value === "approved" || state.value === "rejected");
 const seconds = useLiveElapsed(() => props.drafting);
 const nothing = computed(() => {
   const r = run.value;
@@ -127,11 +131,27 @@ const nothing = computed(() => {
       <p v-else class="text-sm text-muted-foreground">{{ nothing }}</p>
     </div>
 
-    <div v-if="action" class="col-start-2 md:col-start-4 md:justify-self-end">
-      <Button size="lg" :variant="action.primary ? 'default' : 'outline'" @click="emit('open', s.slug, action.resume)">
-        {{ action.label }}
-        <PhCaretRight weight="bold" data-icon="inline-end" aria-hidden="true" />
-      </Button>
+    <div v-if="action" class="col-start-2 flex min-w-0 flex-col gap-2 md:col-start-4 md:items-end">
+      <div class="flex flex-wrap gap-2 md:justify-end">
+        <Button size="lg" :variant="action.primary ? 'default' : 'outline'" @click="emit('open', s.slug, action.resume)">
+          {{ action.label }}
+          <PhCaretRight weight="bold" data-icon="inline-end" aria-hidden="true" />
+        </Button>
+        <Button
+          v-if="canRedraft"
+          size="lg"
+          variant="outline"
+          :disabled="draftAgainOff !== null"
+          :aria-describedby="draftAgainOff ? `redraft-off-${s.slug}` : undefined"
+          @click="emit('redraft', s.slug)"
+        >
+          <PhArrowsClockwise weight="bold" data-icon="inline-start" aria-hidden="true" />
+          Draft again
+        </Button>
+      </div>
+      <p v-if="canRedraft && draftAgainOff" :id="`redraft-off-${s.slug}`" class="max-w-72 text-xs text-muted-foreground md:text-right">
+        {{ draftAgainOff }}
+      </p>
     </div>
   </li>
 </template>
