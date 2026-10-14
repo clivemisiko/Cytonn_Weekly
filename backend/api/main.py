@@ -61,7 +61,7 @@ from pydantic import BaseModel, Field
 
 from cytonn_weekly.common.run_events import RUN_STARTED, describe, review_counts
 from cytonn_weekly.digital_payments import review_run, review_store
-from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview
+from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview, rejected_draft_notes
 from cytonn_weekly.digital_payments.provider_factory import ENV_VAR as PROVIDER_ENV_VAR
 from cytonn_weekly.digital_payments.providers.local_provider import EXA_KEY_ENV_VAR, EXA_KEY_MISSING, SearchKeyError
 from cytonn_weekly.env import key_override_warnings, load_env
@@ -529,6 +529,18 @@ def create_app(
     @app.get("/api/reviews/{run_id}")
     def get_review(run_id: int) -> dict:
         return serialize_review(load(run_id))
+
+    @app.get("/api/reviews/{run_id}/rejected-draft-notes")
+    def get_rejected_draft_notes(run_id: int) -> Optional[dict]:
+        """The rejected draft just before this run (same section, report and period): its fix-needed items and notes.
+
+        null when the run before was not rejected, held nothing to show, or there is none.  Read-only.
+        """
+        try:
+            previous = review_store.load_previous_review(run_id, db_path=db_path)
+        except KeyError:
+            raise HTTPException(404, f"no saved review with run_id {run_id}")
+        return rejected_draft_notes(previous)
 
     # -- this week's inputs -------------------------------------------------
 

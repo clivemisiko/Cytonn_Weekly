@@ -164,6 +164,22 @@ class CoordinatorReview:
         self.decided_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def rejected_draft_notes(previous: Optional[CoordinatorReview]) -> Optional[dict[str, Any]]:
+    """What the coordinator said about a rejected draft, for the next draft of the same section.
+
+    Only when ``previous`` (the run just before) was rejected, and only its items marked fix_needed
+    or carrying a note (a note on an accepted item is kept too).  None otherwise.  Read-only: it is
+    shown beside the new review and never copied onto its items or counted in its approval.
+    """
+    if previous is None or previous.decision != REJECTED:
+        return None
+    entries = [{"ref": i.ref, "resolution": i.resolution, "note": i.resolution_note}
+               for i in previous.review_items if i.resolution == FIX_NEEDED or (i.resolution_note or "").strip()]
+    if not entries:
+        return None
+    return {"run_id": previous.run_id, "decided_at": previous.decided_at, "entries": entries}
+
+
 # ---------------------------------------------------------------------------
 # Building
 # ---------------------------------------------------------------------------
