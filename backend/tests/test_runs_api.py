@@ -10,6 +10,7 @@ import json
 import threading
 import time
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -286,6 +287,44 @@ def test_a_development_provider_run_is_reported_as_a_dev_draft(client, db, monke
     assert served["is_dev_draft"] is True and served["dev_mode_label"] == run["dev_mode_label"]
 
 
+OLD_KEY, NEW_KEY = "exa-old-0123456789abcdef-a420", "exa-new-fedcba9876543210-c00e"   # invented; shaped like keys
+
+
+@pytest.mark.parametrize("status", [401, 403])
+def test_a_refused_search_key_ends_the_run_with_a_plain_message_and_no_key(client, monkeypatch, tmp_path, caplog, status):
+    """Seen live: a stale key in a Windows variable beat .env, Exa answered 401 and the run page showed httpx's text."""
+    from cytonn_weekly import env
+    from cytonn_weekly.digital_payments.providers.local_provider import LocalProvider
+
+    dot_env = tmp_path / ".env"
+    dot_env.write_text("=".join(["EXA_API_KEY", NEW_KEY]) + "\n", encoding="utf-8")
+    monkeypatch.setattr(env, "ENV_FILE", dot_env)
+    monkeypatch.setenv("EXA_API_KEY", OLD_KEY)             # what the process holds, and so what is sent
+    monkeypatch.setenv("CYTONN_LLM_PROVIDER", "local")
+    sent = []
+
+    def backend(request: httpx.Request) -> httpx.Response:
+        if str(request.url).endswith("/api/tags"):
+            return httpx.Response(200, json={"models": [{"name": "phi4-mini:latest"}]})
+        sent.append(request.headers["x-api-key"])
+        return httpx.Response(status, json={"error": f"key {OLD_KEY} is not valid"})
+
+    dp_pipeline(monkeypatch, provider=LocalProvider(http_client=httpx.Client(transport=httpx.MockTransport(backend))))
+    with caplog.at_level("DEBUG"):
+        run = run_to_end(client, **WEEKLY_DP)
+    assert sent == [OLD_KEY] and run["status"] == "failed" and kinds(run)[-1] == "run_failed"
+    expected = ("Web search was refused: Exa rejected the key in EXA_API_KEY (ending ...a420). This API is using the key "
+                "from the Windows or shell environment, which overrides the one in .env (ending ...c00e). Update or "
+                "remove that variable, or correct .env, then restart the API.")
+    assert run["events"][-1]["detail"] == expected
+    # nothing the run kept, served or logged holds a whole key, httpx's error text or its link
+    served = json.dumps(client.get(f"/api/runs/{run['run_id']}").json())
+    for banned in (OLD_KEY, NEW_KEY, OLD_KEY[:-4], NEW_KEY[:-4], "HTTPStatusError", "Client error", "mozilla"):
+        assert banned not in served and banned not in caplog.text, banned
+    assert "http" not in served                                     # and no address on the run page
+    assert client.get("/api/sections").json()["drafting"] is None   # the draft slot was released
+
+
 def test_a_failure_message_carries_no_traceback_and_no_secret(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-0123456789abcdef")
     message = failure_message(RuntimeError("401 for key sk-test-0123456789abcdef\n  at line 3"))
@@ -348,6 +387,7 @@ def test_provider_is_only_a_check_of_what_the_screen_showed(client, monkeypatch)
     assert client.get("/api/sections").json()["drafting"] is None
     assert run_to_end(client, **WEEKLY_DP, provider="anthropic")["status"] == "finished"
     monkeypatch.setenv("CYTONN_LLM_PROVIDER", "local")
+    monkeypatch.setenv("EXA_API_KEY", "test-placeholder-not-a-real-key")   # local mode is refused without one
     assert client.post("/api/runs", json={**WEEKLY_DP, "provider": "anthropic"}).status_code == 409
     assert run_to_end(client, **WEEKLY_DP, provider="local")["status"] == "finished"
 

@@ -203,5 +203,36 @@ def test_a_draft_without_an_anthropic_key_is_refused_before_it_starts(client, mo
 def test_local_mode_needs_no_anthropic_key(client, monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY")
     monkeypatch.setenv("CYTONN_LLM_PROVIDER", "local")
+    monkeypatch.setenv("EXA_API_KEY", "test-placeholder-not-a-real-key")   # local mode's own key check (below)
+    assert client.get("/api/config").json()["provider_problem"] is None
+    assert client.post("/api/sections/equities/draft").status_code == 200
+
+
+def test_a_local_draft_without_a_search_key_is_refused_before_it_starts(client, monkeypatch):
+    """Seen live: local mode checked nothing, so a draft fetched its sources and then stopped at its first search."""
+    monkeypatch.setenv("CYTONN_LLM_PROVIDER", "local")
+    called, faked = [], eq_weekly.build_equities_weekly_review      # the client fixture's fake pipeline
+    monkeypatch.setattr(eq_weekly, "build_equities_weekly_review", lambda *a, **k: (called.append(1), faked(*a, **k))[1])
+    missing = ("Web search needs EXA_API_KEY, and none is set (in .env or the environment). The local provider searches "
+               "with Exa. Add the key to .env, then restart the API.")
+    for value in (None, "", "   "):                                    # missing, empty, blank
+        if value is not None:
+            monkeypatch.setenv("EXA_API_KEY", value)
+        r = client.post("/api/sections/equities/draft")
+        assert r.status_code == 409 and r.json()["detail"] == missing
+        assert client.post("/api/runs", json={"section": "equities"}).json()["detail"] == missing   # the run route too
+        assert client.get("/api/config").json()["provider_problem"] == missing
+    assert called == [] and client.get("/api/sections").json()["drafting"] is None  # nothing fetched, slot never taken
+    assert client.post("/api/reviews/draft").status_code == 409  # the original Digital Payments route too
+    # a section that calls no provider needs no search key
+    assert client.post("/api/sections/company_updates/draft", json={"text": "Demo."}).status_code == 200
+    # with a key set, a faked pipeline drafts as before: the check is only that a key is there
+    monkeypatch.setenv("EXA_API_KEY", "test-placeholder-not-a-real-key")
+    assert client.post("/api/sections/equities/draft").status_code == 200 and called == [1]
+
+
+def test_the_search_key_check_is_local_modes_alone(client, monkeypatch):
+    # production mode never searches with Exa, so no Exa key is asked for (conftest leaves none set)
+    monkeypatch.delenv("CYTONN_LLM_PROVIDER", raising=False)
     assert client.get("/api/config").json()["provider_problem"] is None
     assert client.post("/api/sections/equities/draft").status_code == 200

@@ -43,6 +43,7 @@ from typing import Any, Mapping, Optional, Sequence
 
 import httpx
 
+from cytonn_weekly import env
 from cytonn_weekly.digital_payments.providers.base import (
     BODY_WORDS,
     LINK_RE,
@@ -79,6 +80,27 @@ NUM_PREDICT = 2048
 OLLAMA_TIMEOUT = 600  # small local models on CPU can be slow
 
 logger = logging.getLogger(__name__)
+
+EXA_KEY_ENV_VAR = "EXA_API_KEY"
+EXA_KEY_MISSING = (
+    f"Web search needs {EXA_KEY_ENV_VAR}, and none is set (in .env or the environment). The local provider searches "
+    f"with Exa. Add the key to .env, then restart the API."
+)
+
+
+class SearchKeyError(RuntimeError):
+    """The web-search key is missing, or Exa refused it.  Its message is written for the coordinator and is shown
+    as it stands (api/main.failure_message); it never holds more than the last four characters of a key."""
+
+
+def exa_key_refused(key: str) -> str:
+    """Why Exa's 401 or 403 stopped the draft, naming the key by its last four characters and where it came from."""
+    text = f"Web search was refused: Exa rejected the key in {EXA_KEY_ENV_VAR} ({env.ending(key)})."
+    in_file = env.env_file_value(EXA_KEY_ENV_VAR)
+    if key == os.environ.get(EXA_KEY_ENV_VAR) and in_file and in_file != key:
+        return (f"{text} This API is using the key from the Windows or shell environment, which overrides the one in "
+                f".env ({env.ending(in_file)}). Update or remove that variable, or correct .env, then restart the API.")
+    return f"{text} Put a valid key in .env, then restart the API."
 
 # Development-only speed settings, each opt-in through one environment variable.  Unset, empty
 # or whitespace-only means today's behaviour.  This table is the one place their names and
@@ -292,9 +314,9 @@ class LocalProvider(DraftingProvider):
         )
 
     def _exa_key(self) -> str:
-        key = self._exa_api_key or os.environ.get("EXA_API_KEY")
+        key = self._exa_api_key or os.environ.get(EXA_KEY_ENV_VAR)
         if not key:
-            raise RuntimeError("EXA_API_KEY is not set (the local provider searches with Exa).")
+            raise SearchKeyError(EXA_KEY_MISSING)
         return key
 
     def _ensure_model(self) -> None:
@@ -325,9 +347,11 @@ class LocalProvider(DraftingProvider):
         }
         if include_domains:
             body["includeDomains"] = include_domains
-        resp = self._http.post(
-            EXA_URL, headers={"x-api-key": self._exa_key(), "Content-Type": "application/json"}, json=body
-        )
+        key = self._exa_key()
+        resp = self._http.post(EXA_URL, headers={"x-api-key": key, "Content-Type": "application/json"}, json=body)
+        if resp.status_code in (401, 403):
+            # httpx's own text for this ("Client error '401 Unauthorized' for url ...") tells a coordinator nothing
+            raise SearchKeyError(exa_key_refused(key))
         resp.raise_for_status()
         return resp.json().get("results", [])
 

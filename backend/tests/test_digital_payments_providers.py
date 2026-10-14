@@ -4,6 +4,7 @@ AnthropicProvider's behaviour is covered through test_digital_payments_highlight
 """
 
 import json
+import os
 from datetime import date
 
 import httpx
@@ -13,7 +14,8 @@ from cytonn_weekly.digital_payments import highlights as dh
 from cytonn_weekly.digital_payments import provider_factory
 from cytonn_weekly.digital_payments.providers.anthropic_provider import AnthropicProvider
 from cytonn_weekly.digital_payments.providers.base import DraftingProvider
-from cytonn_weekly.digital_payments.providers.local_provider import LocalProvider
+from cytonn_weekly import env
+from cytonn_weekly.digital_payments.providers.local_provider import EXA_KEY_MISSING, LocalProvider, SearchKeyError
 
 TODAY = date(2026, 9, 29)
 START, END = date(2026, 9, 23), TODAY
@@ -189,6 +191,127 @@ def test_local_requires_exa_key(monkeypatch):
     p = LocalProvider(http_client=httpx.Client(transport=httpx.MockTransport(Backend({}, []))))
     with pytest.raises(RuntimeError, match="EXA_API_KEY"):
         find(p)
+    with pytest.raises(SearchKeyError) as missing:
+        find(p)
+    assert str(missing.value) == EXA_KEY_MISSING and EXA_KEY_MISSING.startswith("Web search needs EXA_API_KEY, and none is set")
+
+
+KEY_SENT, KEY_IN_FILE = "exa-sent-0123456789abcdef-a420", "exa-file-fedcba9876543210-c00e"   # invented; shaped like keys
+OTHER_SENT, OTHER_IN_FILE = "test-process-0123456789-9f3a", "test-dotenv-0123456789-77b1"
+
+
+def write_env(path, **values):
+    """A .env file for a test: one NAME=value line each."""
+    path.write_text("".join(f"{name}={value}\n" for name, value in values.items()), encoding="utf-8")
+
+
+def refusing(status):
+    def backend(request: httpx.Request) -> httpx.Response:
+        if str(request.url).endswith("/api/tags"):
+            return httpx.Response(200, json={"models": [{"name": "phi4-mini:latest"}]})
+        return httpx.Response(status, json={"error": f"invalid api key {request.headers['x-api-key']}"})
+    return httpx.Client(transport=httpx.MockTransport(backend))
+
+
+@pytest.mark.parametrize("status", [401, 403])
+def test_a_key_exa_refuses_is_named_by_its_last_four_and_by_where_it_came_from(monkeypatch, tmp_path, caplog, status):
+    dot_env = tmp_path / ".env"
+    monkeypatch.setattr(env, "ENV_FILE", dot_env)
+    refused = f"Web search was refused: Exa rejected the key in EXA_API_KEY (ending ...a420)."
+
+    def message():
+        with pytest.raises(SearchKeyError) as raised, caplog.at_level("DEBUG"):
+            find(LocalProvider(http_client=refusing(status)))
+        text = str(raised.value)
+        # never a whole key, httpx's own error text or its Mozilla link, in the message or in any log line
+        for banned in (KEY_SENT, KEY_IN_FILE, KEY_SENT[:-4], KEY_IN_FILE[:-4], "Client error", "HTTPStatusError", "mozilla"):
+            assert banned not in text and banned not in caplog.text, banned
+        assert "http" not in text                                  # and no address in the message itself
+        return text
+
+    monkeypatch.setenv("EXA_API_KEY", KEY_SENT)
+    # 1. the environment alone holds a key (no .env, or a .env without one): nothing is overridden
+    assert message() == f"{refused} Put a valid key in .env, then restart the API."
+    dot_env.write_text("CYTONN_LLM_PROVIDER=local\n", encoding="utf-8")
+    assert message() == f"{refused} Put a valid key in .env, then restart the API."
+    # 2. .env holds the same key (as after load_env, when only .env has one): nothing is overridden
+    write_env(dot_env, EXA_API_KEY=KEY_SENT)
+    assert message() == f"{refused} Put a valid key in .env, then restart the API."
+    # 3. the environment's key differs from .env's: it is the one sent, and the message says which wins
+    write_env(dot_env, EXA_API_KEY=KEY_IN_FILE)
+    assert message() == (f"{refused} This API is using the key from the Windows or shell environment, which overrides the "
+                         "one in .env (ending ...c00e). Update or remove that variable, or correct .env, then restart the API.")
+    assert os.environ["EXA_API_KEY"] == KEY_SENT          # reading .env for the message changed nothing in the process
+    # 4. a key handed to the provider itself is not the environment's, so no override is claimed
+    with pytest.raises(SearchKeyError) as raised:
+        find(LocalProvider(exa_api_key=KEY_SENT.replace("sent", "mine"), http_client=refusing(status)))
+    assert str(raised.value) == f"{refused} Put a valid key in .env, then restart the API."
+
+
+def test_any_other_search_failure_is_still_httpxs_own_error():
+    with pytest.raises(httpx.HTTPStatusError):                   # a 500 or a 429 is not a key problem
+        find(LocalProvider(exa_api_key="k", http_client=refusing(500)))
+
+
+def test_a_key_too_short_to_hide_shows_none_of_itself():
+    assert env.ending("abc12345678") == "too short to show any of it" and env.ending(KEY_SENT) == "ending ...a420"
+
+
+def test_keys_the_environment_and_dot_env_disagree_on_are_named_once_each(monkeypatch, tmp_path):
+    dot_env = tmp_path / ".env"
+    for name in env.API_KEYS:
+        monkeypatch.delenv(name, raising=False)
+    # no .env at all, and nothing set
+    assert env.key_override_warnings(dot_env) == [] and env.env_file_value("EXA_API_KEY", dot_env) is None
+    # the environment only: it overrides nothing
+    monkeypatch.setenv("EXA_API_KEY", KEY_SENT)
+    assert env.key_override_warnings(dot_env) == []
+    write_env(dot_env, EXA_API_KEY="", ANTHROPIC_API_KEY="")      # empty in .env is not a key
+    assert env.key_override_warnings(dot_env) == []
+    # .env only: load_env puts it in the environment, so the two are equal
+    monkeypatch.delenv("EXA_API_KEY")
+    write_env(dot_env, EXA_API_KEY=KEY_IN_FILE)
+    assert env.key_override_warnings(dot_env) == []                                   # before loading: nothing to override
+    assert env.load_env(dot_env, quiet=True) == ["EXA_API_KEY"] and env.key_override_warnings(dot_env) == []
+    monkeypatch.setenv("EXA_API_KEY", KEY_IN_FILE)   # (registers the variable load_env just set, so it is removed after the test)
+    # both, equal
+    assert env.key_override_warnings(dot_env) == []
+    # both, different: the environment's wins, and load_env keeps it (override=False)
+    monkeypatch.setenv("EXA_API_KEY", KEY_SENT)
+    assert env.load_env(dot_env, quiet=True) == [] and os.environ["EXA_API_KEY"] == KEY_SENT
+    assert env.key_override_warnings(dot_env) == [
+        "EXA_API_KEY: the process environment (a Windows or shell variable) holds a key ending ...a420, and .env holds a "
+        "different one ending ...c00e. The environment's key is the one used: it overrides .env. Update or remove that "
+        "variable, or correct .env, then restart."]
+    # the same check for the Anthropic key, each key on its own line
+    monkeypatch.setenv("ANTHROPIC_API_KEY", OTHER_SENT)
+    write_env(dot_env, EXA_API_KEY=KEY_IN_FILE, ANTHROPIC_API_KEY=OTHER_IN_FILE)
+    lines = env.key_override_warnings(dot_env)
+    assert [line.split(":")[0] for line in lines] == ["EXA_API_KEY", "ANTHROPIC_API_KEY"]
+    assert "ending ...9f3a" in lines[1] and "ending ...77b1" in lines[1]
+    assert not any(secret in " ".join(lines) for secret in (KEY_SENT, KEY_IN_FILE, "0123456789"))
+
+
+def test_the_api_logs_the_override_once_at_start_and_keeps_the_environments_key(monkeypatch, tmp_path, caplog):
+    from api.main import create_app
+
+    dot_env = tmp_path / ".env"
+    write_env(dot_env, EXA_API_KEY=KEY_IN_FILE)
+    monkeypatch.setattr(env, "ENV_FILE", dot_env)
+    monkeypatch.setenv("EXA_API_KEY", KEY_SENT)
+    with caplog.at_level("WARNING"):
+        create_app(db_path=tmp_path / "app.db")
+    records = [r for r in caplog.records if "EXA_API_KEY" in r.getMessage()]
+    said = [r.getMessage() for r in records]
+    assert len(said) == 1 and said[0].startswith("EXA_API_KEY: the process environment") and records[0].levelname == "WARNING"
+    assert "ending ...a420" in said[0] and "ending ...c00e" in said[0] and "overrides .env" in said[0]
+    assert KEY_SENT not in caplog.text and KEY_IN_FILE not in caplog.text
+    assert os.environ["EXA_API_KEY"] == KEY_SENT                                      # override=False: unchanged
+    # nothing is said when they agree
+    caplog.clear()
+    monkeypatch.setenv("EXA_API_KEY", KEY_IN_FILE)
+    create_app(db_path=tmp_path / "app.db")
+    assert not [r for r in caplog.records if "EXA_API_KEY" in r.getMessage()]
 
 
 def test_local_outlook_uses_shared_inputs_and_is_labelled():
