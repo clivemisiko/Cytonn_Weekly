@@ -252,7 +252,7 @@ TABLE_LIST = (
           "differ from the face value at issue). Each row is subtracted "
           "on its value date in the log built from CBK's results, as analyst input, labelled \"typed, not on a release\". It "
           "is not added to an auction log typed above: put the redemption in that log.",
-          example="2026-10-12  IFB1/2014/12  15420.55"),
+          example="2026-10-12  IFB1/2014/12  16631.48"),
     Table("foreign_history", EQ, "market", "Foreign net position, previous weeks", "The equities team's weekly sums",
           "Foreign investors (previous week and streak)",
           (Column("week_ending", "Week ending", DATE), Column("net", "Net position", unit="USD mn", lo=-2000, hi=2000)),

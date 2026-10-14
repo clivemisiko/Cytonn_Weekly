@@ -38,9 +38,9 @@ NEXT = Week(date(2026, 10, 9))      # its auctions settle 10 to 16 October: the 
 PAGE = (wh.FIXTURES / "cbk_tbond_issues_2026-10-12_excerpt.html").read_text(encoding="utf-8")
 MATURITIES = bi.maturities(bi.parse_issues(PAGE))
 TABLE = "borrowing_redemptions"
-WARNING = ("bond maturity on 12-10-2026 (IFB1/2014/12, up to 15,420.55 mn at face, outstanding may be lower): "
-           "no redemption on any release and none typed; type the amount outstanding at maturity, as shown on the NSE "
-           "Implied Yields sheet, under \"Other bond redemptions\"")
+WARNING = ("bond maturity on 12-10-2026 (IFB1/2014/12): no redemption on any release and none typed. CBK's table shows "
+           "15,420.55 mn, the face value at issue, which is only a floor; type the amount outstanding at maturity, as shown "
+           "on the NSE Implied Yields sheet, under \"Other bond redemptions\"")
 MATURITY_ROW = "2026-10-12 IFB1/2014/12 maturity"
 TYPED_ROW = "2026-10-12 IFB1/2014/12 redemption (typed, not on a release)"
 
@@ -106,9 +106,10 @@ def test_the_known_wrong_ifb1_2023_007_row_is_left_out_by_a_documented_list_and_
     # it is the list that does it, not a general silence: without the entry the same row would be asked about
     monkeypatch.setattr(bi, "KNOWN_WRONG_ROWS", {})
     asked = nb.build_log(RELEASES, FY, WEEK.value_date_window[1], maturities=bi.maturities(rows))
-    assert asked.unaccounted == ["bond maturity on 15-07-2026 (IFB1/2023/007, up to 42,650.32 mn at face, outstanding may be "
-                                 "lower): no redemption on any release and none typed; type the amount outstanding at "
-                                 "maturity, as shown on the NSE Implied Yields sheet, under \"Other bond redemptions\""]
+    assert asked.unaccounted == ["bond maturity on 15-07-2026 (IFB1/2023/007): no redemption on any release and none typed. "
+                                 "CBK's table shows 42,650.32 mn, the face value at issue, which is only a floor; type the "
+                                 "amount outstanding at maturity, as shown on the NSE Implied Yields sheet, under "
+                                 "\"Other bond redemptions\""]
 
 
 def test_a_page_without_the_table_says_so():
@@ -253,7 +254,7 @@ def test_the_form_holds_other_bond_redemptions_as_a_list_of_rows(root):
     assert (shown["label"], shown["mode"], shown["rows"]) == ("Other bond redemptions", "paste", None)
     assert [(c["key"], c["label"], c["unit"]) for c in shown["columns"]] == [
         ("date", "Value date", ""), ("bond", "Bond", ""), ("amount", "Amount redeemed", "Kshs mn")]
-    assert "typed, not on a release" in shown["help"] and shown["example"] == "2026-10-12  IFB1/2014/12  15420.55"
+    assert "typed, not on a release" in shown["help"] and shown["example"] == "2026-10-12  IFB1/2014/12  16631.48"
     save(root, "Value date  Bond  Amount\n12 October 2026  IFB1/2014/12  9,000.50\n2026-11-09\tFXD1/2021/005\t57566.3\n")
     assert json.loads((inputs.week_dir(NEXT, root) / "analyst.json").read_text(encoding="utf-8"))["tables"][TABLE] == [
         {"date": "2026-10-12", "bond": "IFB1/2014/12", "amount": "9000.50"},
@@ -322,7 +323,7 @@ def test_the_review_for_the_week_ending_9_october_asks_about_the_12_october_matu
     asked = next(i for i in rows if i.ref == f"Net domestic borrowing log: {MATURITY_ROW}")
     assert asked.status == "flagged" and [f.message for f in asked.detail] == [WARNING]
     net = next(i for i in review.review_items if "Net domestic borrowing (Kshs bn)" in i.ref)
-    assert net.status == "flagged" and WARNING in str(net.detail)            # the figure it may overstate says so too
+    assert net.status == "flagged" and any(WARNING in f.message for f in net.detail)   # the figure it may overstate says so too
     assert "typed" not in net.context["note"]
 
 
@@ -338,6 +339,8 @@ def test_a_typed_redemption_is_subtracted_in_the_review_as_analyst_input(root):
     assert row.status == "not_auto_verified" and row.detail.startswith("typed, not on a release: analyst input typed on the weekly form")
     net = next(i for i in review.review_items if "Net domestic borrowing (Kshs bn)" in i.ref)
     assert net.status == "not_auto_verified"                                    # an analyst input is in it: never clean
+    # the amount is read on the NSE sheet, not in a workbook, and the review says so
+    assert net.detail.endswith("Check them against the NSE Implied Yields sheet before accepting.")
     assert net.context["note"].endswith('Less 1 bond redemption typed under "Weekly analyst inputs" (typed, not on a release).')
     assert WARNING not in json.dumps(review.section)
 
@@ -376,8 +379,10 @@ def test_the_bond_stock_is_read_from_the_table_found_by_its_title():
              "2. Treasury Bonds 6,414.66 6,468.61"]
     cbk_bulletin._domestic_debt(lines, out)                                     # the number shifts by one in some issues
     assert out.bond_stock == {date(2026, 9, 18): 6414.66, date(2026, 9, 25): 6468.61} and out.problems == []
-    cbk_bulletin._domestic_debt(["Table 7: Composition of Government Domestic Debt by Instrument (Percent)"], out2 := cbk_bulletin.Bulletin(None))
-    assert out2.bond_stock == {} and out2.problems == ["'Government Domestic Debt' table not found"]
+    # a bulletin without the table: the table is refused by name, like any other, and gives no stock
+    with pytest.raises(cbk_bulletin.BulletinParseError, match="'Government Domestic Debt' table not found"):
+        cbk_bulletin._domestic_debt(["Table 7: Composition of Government Domestic Debt by Instrument (Percent)"], out2 := cbk_bulletin.Bulletin(None))
+    assert out2.bond_stock == {}
 
 
 def test_the_one_week_the_saved_bulletin_gives_has_the_residual_seen():

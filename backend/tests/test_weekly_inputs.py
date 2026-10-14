@@ -6,6 +6,7 @@ read from tests/fixtures/sources/.  A few tests read the real, confidential samp
 skip when those are absent.
 """
 
+import hashlib
 import json
 from datetime import date
 
@@ -159,9 +160,145 @@ def test_the_bulletin_reads_tables_1_to_6():
     assert len(b.market) == 10 and b.market[0]["date"] == date(2026, 9, 18)
 
 
+# CBK's issue of 9 October 2026 (sha256 c476c72fe5f5aa6a...), whose page layout differs: the yield curve chart is
+# printed above Table 6 on the same page, and its legend "28-Jun-24 30-Jun-25 2-Oct-26" starts with a date.
+BULLETIN_9_OCT = (wh.FIXTURES / "cbk_weekly_bulletin_2026-10-09.pdf").read_bytes()
+EIGHT_YEARS = {2028, 2031, 2032, 2034, 2036, 2038, 2039, 2048}
+
+
+def test_the_9_october_layout_is_read_table_by_table_from_each_title_down():
+    b = cbk_bulletin.parse_bulletin(BULLETIN_9_OCT)
+    assert (b.issue_date, b.last_day) == (date(2026, 10, 9), date(2026, 10, 8))
+    # Table 6: the chart's legend above the title is not a row
+    assert [r["date"] for r in b.market] == [date(2026, 9, 25), date(2026, 9, 28), date(2026, 9, 29), date(2026, 9, 30),
+                                             date(2026, 10, 1), date(2026, 10, 2), date(2026, 10, 5), date(2026, 10, 6),
+                                             date(2026, 10, 7), date(2026, 10, 8)]
+    assert b.market[-1] == {"date": date(2026, 10, 8), "nasi": 245.34, "nse_25": 6967.38, "nse_20": 4323.26, "deals": 10567.0,
+                            "shares_mn": 11.86, "equity_turnover_mn": 429.51, "market_cap_bn": 4117.4,
+                            "bond_turnover_mn": 12622.85,
+                            "eurobond_yields": {2028: 7.3377, 2031: 8.0999, 2032: 8.7222, 2034: 9.3053, 2036: 9.6665,
+                                                2038: 10.0021, 2039: 10.0349, 2048: 9.8329}}
+    # Tables 1 to 4 and the debt table, as printed
+    assert len(b.exchange_rates) == 10 and b.exchange_rates[date(2026, 10, 8)] == 129.94
+    assert b.reserves[-1] == {"date": date(2026, 10, 8), "usd_mn": 14736.0, "months": 5.9}
+    assert [(w["last_day"], w["value_mn"], w["kesonia"]) for w in b.interbank_weeks] == [
+        (date(2026, 10, 1), 9500.0, 8.75), (date(2026, 10, 8), 5876.0, 8.75)]
+    assert b.tbills["91-day"][-1] == {"date": date(2026, 10, 8), "offered": 8000.0, "bids": 50204.94, "accepted": 20446.72,
+                                      "rate": 8.762}
+    assert (b.bond_stock[date(2026, 9, 25)], b.bond_stock[date(2026, 10, 2)]) == (6468.61, 6468.61)
+
+
+def test_table_5_reads_its_amounts_however_the_labels_wrap():
+    # 2 October: "Amount offered (KSh M) 60,000.00 ..." on one line, "Amount Accepted (KSh" over the figures over "M)"
+    two = cbk_bulletin.parse_bulletin(BULLETIN)
+    assert two.unavailable == {} and two.problems == []
+    assert two.tbonds == {
+        "auction_dates": [date(2026, 9, 2), date(2026, 9, 9), date(2026, 9, 16), date(2026, 9, 30)],
+        "codes": ["FXD3/2019/015", "SDB1/2011/030", "FXD4/2019/010", "FXD1/2019/020", "FXD1/2026/030", "FXD3/2019/015",
+                  "FXD1/2019/020"],
+        "offered": [60000.0, 10000.0, 60000.0, 50000.0],
+        "bids": [57101.4, 11093.49, 13524.24, 43803.82, 37601.48, 34559.26, 46003.11],
+        "accepted": [41139.13, 6609.37, 11020.44, 33456.74, 16718.32, 28602.5, 28902.51],
+        "rates": [12.76, 13.69, 11.14, 13.61, 14.24, 12.73, 13.6]}
+    # 9 October: "Amount offered (KSh" over the figures over "M)", "Amount Accepted" over the figures over "(KSh M)"
+    nine = cbk_bulletin.parse_bulletin(BULLETIN_9_OCT)
+    assert nine.unavailable == {} and nine.problems == []
+    assert nine.tbonds == {
+        "auction_dates": two.tbonds["auction_dates"] + [date(2026, 10, 5)], "codes": two.tbonds["codes"] + ["FXD1/2018/015"],
+        "offered": two.tbonds["offered"] + [10000.0], "bids": two.tbonds["bids"] + [9080.58],
+        "accepted": two.tbonds["accepted"] + [8963.83], "rates": two.tbonds["rates"] + [12.61]}
+
+
+def test_a_table_5_row_is_never_read_from_a_line_that_is_not_only_its_figures():
+    head = ["Table 5: Performance of Treasury Bond Auctions", "Date of Auction 30-Sep-26", "FXD3/ FXD1/", "Tenor", "2019/015 2019/020",
+            "Amount offered (KSh M) 50,000.00", "Bids received (KSh M) 34,559.26 46,003.11"]
+    tail = ["Average interest Rate", "12.73 13.60", "(%)", "Source: Central Bank of Kenya"]
+    good = cbk_bulletin.Bulletin(issue_date=None)
+    cbk_bulletin._table_5(head + ["Amount Accepted", "28,602.50 28,902.51", "(KSh M)"] + tail, good)
+    assert good.tbonds["accepted"] == [28602.5, 28902.51] and good.tbonds["offered"] == [50000.0]
+    # the figures are missing under the label: the next row's are not taken for them, and the table is refused
+    for lines in (head + ["Amount Accepted", "(KSh M)", "Maturities (KSh M) 1.00 2.00"] + tail,
+                  head + ["Amount Accepted", "28,602.50 n/a", "(KSh M)"] + tail):
+        with pytest.raises(cbk_bulletin.BulletinParseError, match="Table 5: 0 'accepted' figures for 2 bonds"):
+            cbk_bulletin._table_5(lines, out := cbk_bulletin.Bulletin(issue_date=None))
+        assert out.tbonds == {}
+    with pytest.raises(cbk_bulletin.BulletinParseError, match="Table 5: 2 'offered' figures for 1 auctions"):
+        cbk_bulletin._table_5([line.replace("50,000.00", "50,000.00 10,000.00") for line in head]
+                              + ["Amount Accepted", "28,602.50 28,902.51", "(KSh M)"] + tail, cbk_bulletin.Bulletin(issue_date=None))
+
+
+@pytest.mark.parametrize("pdf", [BULLETIN, BULLETIN_9_OCT], ids=["2 October layout", "9 October layout"])
+def test_both_layouts_give_ten_table_6_rows_with_all_eight_yields(pdf):
+    market = cbk_bulletin.parse_bulletin(pdf).market
+    assert len(market) == 10 and all(set(row["eurobond_yields"]) == EIGHT_YEARS for row in market)
+    assert all(len(row) == 10 for row in market)   # the date, eight market figures and the yields: nothing left out
+
+
+def test_a_dated_line_outside_a_table_is_never_one_of_its_rows():
+    legend = "28-Jun-24 30-Jun-25 2-Oct-26"
+    table = ["Table 1: Kenya Shilling Exchange Rates", "USD Euro", "07-Oct-26 129.89 172.28", "08-Oct-26 129.94 171.62",
+             "Source: Central Bank of Kenya"]
+    rates = {date(2026, 10, 7): 129.89, date(2026, 10, 8): 129.94}
+    for lines in ([legend] + table, table + [legend], table + ["Chart 1: Yield Curve", legend]):
+        out = cbk_bulletin.Bulletin(issue_date=None)
+        cbk_bulletin._table_1(lines, out)
+        assert out.exchange_rates == rates
+    # inside the table it is not a row of rates either: the table is refused, and no rate is taken from the line
+    with pytest.raises(cbk_bulletin.BulletinParseError, match="Table 1 row for 28-Jun-24 does not hold 2 rates"):
+        cbk_bulletin._table_1(table[:2] + [legend] + table[2:], cbk_bulletin.Bulletin(issue_date=None))
+
+
+SHA_9_OCT = "c476c72fe5f5aa6a59547f238938cb1d634baad093fe4ff32af8d5d36b9b0006"
+TABLE_6_LEFT_OUT = (f"CBK Weekly Bulletin of 2026-10-09 (sha256 {SHA_9_OCT}): Table 6 could not be read and is left out: "
+                    "Table 6 row for 2026-10-08 has 15 figures, expected 16")
+
+
+def test_a_table_that_fails_its_checks_is_left_out_whole_and_the_others_still_load(monkeypatch):
+    whole = cbk_bulletin.parse_bulletin(BULLETIN_9_OCT)
+    assert whole.sha256 == SHA_9_OCT and "Table 6" not in whole.unavailable and len(whole.market) == 10
+    wh.break_table_6(monkeypatch, "12622.85")   # the 8 October row, the last of the ten, is one figure short
+    b = cbk_bulletin.parse_bulletin(BULLETIN_9_OCT)
+    # the refusal names the table, the issue and the file, so the file can be inspected later
+    assert b.unavailable["Table 6"] == TABLE_6_LEFT_OUT and TABLE_6_LEFT_OUT in b.problems
+    # nothing of the failed table is kept: the nine rows read before the short one are not used
+    assert b.market == [] and b.last_day == date(2026, 10, 8)   # the last day is then Table 1's
+    # every other table is exactly what it is in the unbroken file
+    for table in ("exchange_rates", "reserves", "interbank", "interbank_weeks", "tbills", "tbonds", "bond_stock"):
+        assert getattr(b, table) == getattr(whole, table), table
+    assert len(b.exchange_rates) == 10 and len(b.tbills["91-day"]) == 8 and len(b.bond_stock) == 8
+    assert {k: v for k, v in b.unavailable.items() if k != "Table 6"} == whole.unavailable
+    assert b.to_dict()["unavailable"]["Table 6"] == TABLE_6_LEFT_OUT and b.to_dict()["sha256"] == SHA_9_OCT
+
+
+def test_an_error_no_reader_expected_also_stops_only_its_own_table(monkeypatch):
+    def boom(lines, out):
+        out.reserves.append({"half": "read"})
+        raise KeyError("usd")
+
+    monkeypatch.setattr(cbk_bulletin, "_table_2", boom)
+    b = cbk_bulletin.parse_bulletin(BULLETIN)
+    sha = "878b70c2cf23602d"
+    assert b.reserves == [] and list(b.unavailable) == ["Table 2"]
+    assert b.unavailable["Table 2"].startswith(f"CBK Weekly Bulletin of 2026-10-02 (sha256 {sha}")
+    assert b.unavailable["Table 2"].endswith("Table 2 could not be read and is left out: KeyError: 'usd'")
+    assert len(b.market) == 10 and b.exchange_rates[date(2026, 10, 1)] == 129.71
+
+
+def test_a_bulletin_with_a_table_left_out_is_still_kept_and_the_panel_says_which_table(tmp_path, monkeypatch):
+    wh.break_table_6(monkeypatch, "12622.85")
+    week = Week(date(2026, 10, 9))
+    entry = inputs.store(week, "cbk_bulletin", BULLETIN_9_OCT, "bulletin.pdf", tmp_path)
+    assert (entry["read_date"], entry["matches"], entry["note"]) == ("2026-10-09", True, TABLE_6_LEFT_OUT)
+    kept = inputs.WeeklyInputs(week, tmp_path).bulletin
+    assert kept.market == [] and len(kept.exchange_rates) == 10 and kept.unavailable == {"Table 6": TABLE_6_LEFT_OUT}
+
+
 def test_a_pdf_that_is_not_the_bulletin_is_refused():
-    with pytest.raises(cbk_bulletin.BulletinParseError, match="not a CBK Weekly Bulletin"):
-        cbk_bulletin.parse_bulletin((wh.FIXTURES / "nse_yield_curve_07-10-2026.pdf").read_bytes())
+    pdf = (wh.FIXTURES / "nse_yield_curve_07-10-2026.pdf").read_bytes()
+    with pytest.raises(cbk_bulletin.BulletinParseError, match="not a CBK Weekly Bulletin") as refused:
+        cbk_bulletin.parse_bulletin(pdf)
+    # the refusal says which file it was
+    assert f"sha256 {hashlib.sha256(pdf).hexdigest()})" in str(refused.value) and "issue date read from the file: none" in str(refused.value)
 
 
 LISTING = """

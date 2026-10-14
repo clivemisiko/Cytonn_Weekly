@@ -19,9 +19,10 @@ What the table is (read 2026-10-12):
 * **It is incomplete**: 333 rows, and its issue dates stop at 6 April 2026.  Reopenings and tap
   sales are missing for some bonds, so the face value summed per bond and maturity date is a
   **floor**, not the amount issued (FXD1/2016/10, maturing 17-08-2026, adds to 103,380.70 mn here
-  while the results of that day print 118,137.00 mn of redemptions).  And it is face at issue:
-  buybacks, switches and amortisation since mean the amount outstanding may be lower.  Hence
-  the wording "up to <face> mn at face, outstanding may be lower".
+  while the results of that day print 118,137.00 mn of redemptions).  And it is face at issue,
+  not the amount outstanding at maturity, which the team reads on the NSE Implied Yields sheet
+  (IFB1/2014/12: 15,420.55 mn here, 16,631.48 mn outstanding there).  Hence the wording "CBK's
+  table shows <face> mn, the face value at issue, which is only a floor".
 * **Some rows are wrong.**  ``KNOWN_WRONG_ROWS`` below lists each one found, with the reason; a
   row on it never raises the maturity question.  Nothing else is ever hidden.
 """

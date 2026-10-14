@@ -266,6 +266,7 @@ def check_figure_record(block: dict[str, Any], fig: dict[str, Any]) -> tuple[lis
         flags.append(Flag(kind=UNSOURCED, message=f"{fig['label']}: {fig['flag']}", **common))
 
     analyst: list[str] = []
+    against: list[str] = []
     for name, item in (fig.get("inputs") or {}).items():
         second = item.get("second")
         agrees: Optional[bool] = None
@@ -288,13 +289,15 @@ def check_figure_record(block: dict[str, Any], fig: dict[str, Any]) -> tuple[lis
                                        f"and no second source confirms it. {check_hint(item)}."), **common))
         elif item["origin"] == ANALYST and not (agrees and second.get("origin") == SOURCE):
             analyst.append(f"{name} ({item['value']}) is an {item['source']}")
+            against.append(item.get("check_against") or "the workbook")   # an input may name where its figure is read
         elif item["origin"] == OCR and agrees and second.get("origin") == ANALYST and not confirmed:
             analyst.append(f"{name} ({item['value']}) was read by OCR from {item['source']} and agrees with the "
                            f"{second['source']}, which is itself typed; no published second source")
     note = ""
     if analyst and not flags:
+        where = list(dict.fromkeys(against)) or ["the workbook"]
         note = ("Not auto-verified: " + "; ".join(analyst) + ". The arithmetic is checked; the typed values are not. "
-                "Check them against the workbook before accepting.")
+                f"Check them against {' and '.join(where)} before accepting.")
     return flags, note
 
 

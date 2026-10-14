@@ -447,3 +447,23 @@ def no_draft(briefs, target, **kwargs) -> dict[str, Any]:
     """Stands in for narrative drafting: nothing found, so no model is called."""
     return {"week_start": (WEEK.ending - timedelta(days=6)).isoformat(), "week_end": WEEK.ending.isoformat(), "pieces": [],
             "shortfall": target, "warnings": []}
+
+
+def break_table_6(monkeypatch, figure: str) -> None:
+    """Make the bulletin's Table 6 fail its own check: the row printing ``figure`` loses it (15 figures, not 16).
+
+    The real reader still runs, on the real page less that one word, so it fails where a
+    misprinted row would: after the rows above it were already read.
+    """
+    from cytonn_weekly.weekly import cbk_bulletin
+
+    real = cbk_bulletin._table_6
+
+    class OneFigureShort:
+        def __init__(self, page):
+            self.page = page
+
+        def extract_words(self, **kwargs):
+            return [w for w in self.page.extract_words(**kwargs) if w["text"] != figure]
+
+    monkeypatch.setattr(cbk_bulletin, "_table_6", lambda page, out: real(OneFigureShort(page), out))

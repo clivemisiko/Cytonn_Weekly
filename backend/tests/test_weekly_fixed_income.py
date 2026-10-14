@@ -8,6 +8,7 @@ workbook are asserted in the tests that read the real, confidential sample and s
 without it.
 """
 
+import hashlib
 import json
 from collections import Counter
 from datetime import date
@@ -22,7 +23,7 @@ from cytonn_weekly.common.formatting import MULTIPLE, PCT
 from cytonn_weekly.common.review import build_review, check_section, numbered, table_block
 from cytonn_weekly.common.run_events import EventLog
 from cytonn_weekly.fixed_income import weekly as fiw
-from cytonn_weekly.weekly import inputs, previous_issue
+from cytonn_weekly.weekly import cbk_bulletin, inputs, previous_issue
 from cytonn_weekly.weekly.week import Week
 from tests import weekly_helpers as wh
 from tests.weekly_helpers import text_pdfs  # noqa: F401 - a fixture
@@ -421,6 +422,37 @@ def test_the_bulletin_is_fetched_and_kept_when_it_was_not_uploaded(tmp_path):
     assert "eurobonds_issues" not in by and [r["label"] for r in by["eurobonds_table"]["rows"]][-1] == "Weekly Change"
     assert {i.status for i in items(review, "Cytonn Report: Kenya Eurobonds Performance:")} == {"clean"}   # all from the bulletin
     assert any("MTD Change row is left out" in w for w in review.section["warnings"])
+
+
+def test_a_fetched_file_refused_as_the_bulletin_is_named_by_issue_and_sha256(tmp_path):
+    curve = (wh.FIXTURES / "nse_yield_curve_07-10-2026.pdf").read_bytes()    # a PDF, but not the bulletin
+    review = build(tmp_path, fetchers=fetchers(bulletin=lambda day: (curve, "https://www.centralbank.go.ke/x/wrong.pdf")))
+    sha = hashlib.sha256(curve).hexdigest()
+    refusal = [w for w in review.section["warnings"] if "not a CBK Weekly Bulletin" in w]
+    assert len(refusal) == 1 and f"sha256 {sha})" in refusal[0]
+    assert blocks(review)["tbills"]["kind"] == "unavailable" and "cbk_bulletin.pdf" not in inputs.read_manifest(WEEK, tmp_path)
+    # a file no reader can open carries no sha256 of its own in the error, so it is added, with the issue asked for
+    assert cbk_bulletin.refused(ValueError("no pages"), b"%PDF-x", WEEK.ending) == (
+        f"no pages (the issue asked for: 2026-10-02; sha256 {hashlib.sha256(b'%PDF-x').hexdigest()})")
+    assert cbk_bulletin.refused(ValueError(refusal[0]), b"", WEEK.ending) == refusal[0]
+
+
+def test_a_bulletin_table_left_out_makes_only_its_own_parts_unavailable_and_says_so(tmp_path, monkeypatch):
+    wh.break_table_6(monkeypatch, "10336.9")   # Table 6's 1 October row is one figure short
+    inputs.store(WEEK, "cbk_bulletin", BULLETIN, "b.pdf", tmp_path)
+    review = build(tmp_path)
+    by = blocks(review)
+    why = (f"CBK Weekly Bulletin of 2026-10-02 (sha256 {hashlib.sha256(BULLETIN).hexdigest()}): Table 6 could not be read "
+           "and is left out: Table 6 row for 2026-10-01 has 15 figures, expected 16")
+    # the part that needs Table 6 is unavailable and gives the table's own refusal as the reason
+    assert by["eurobonds"]["kind"] == "unavailable" and by["eurobonds"]["reason"] == why
+    assert "eurobonds_table" not in by
+    # the parts read from the other tables are worked out as before
+    assert by["tbills"]["kind"] == "computed" and by["liquidity"]["kind"] == "computed"
+    assert by["shilling_support"]["kind"] == "computed"
+    # and the section's warnings say it once, so no part passes over it in silence
+    assert review.section["warnings"].count(why) == 1
+    assert [i.status for i in items(review, "Kenya Eurobonds")] == ["flagged"]
 
 
 def test_a_workbook_for_last_week_leaves_its_parts_unavailable_with_the_reason(tmp_path):
