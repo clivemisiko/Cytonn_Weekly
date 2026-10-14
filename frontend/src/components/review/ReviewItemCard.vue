@@ -96,7 +96,11 @@ const cells = (flag: Flag): [string, string][] => [
 
     <div v-if="hasDetail" class="space-y-3">
       <div v-for="(flag, i) in flags" :key="i" class="space-y-2">
-        <p class="text-sm">
+        <!-- A web link in supplied text: the message names it in plain text (never a link to click); a possible one is softer. -->
+        <p v-if="flag.kind === 'link' || flag.kind === 'possible_link'" class="text-sm font-medium [overflow-wrap:anywhere]" :class="flag.kind === 'link' ? 'text-flag-fg' : 'text-warn-fg'">
+          {{ flag.message }}
+        </p>
+        <p v-else class="text-sm">
           <strong class="font-semibold text-flag-fg">{{ flag.kind }}</strong><span class="text-muted-foreground"> in </span>{{ flag.message }}
         </p>
         <dl v-if="flag.drafted !== null || flag.expected !== null" class="grid gap-2 sm:grid-cols-3">
@@ -132,7 +136,7 @@ const cells = (flag: Flag): [string, string][] => [
         </ul>
         <p v-if="ctx.note" class="text-xs text-muted-foreground">{{ ctx.note }}</p>
       </div>
-      <p v-if="item.status === 'not_auto_verified' && typeof item.detail === 'string'" class="text-xs text-muted-foreground">{{ item.detail }}</p>
+      <p v-if="item.status === 'not_auto_verified' && typeof item.detail === 'string'" class="text-xs whitespace-pre-line text-muted-foreground [overflow-wrap:anywhere]">{{ item.detail }}</p>
     </div>
 
     <div class="flex flex-wrap items-center gap-2">
