@@ -76,8 +76,8 @@ origin and Vite proxies `/api` to the backend, so the "could not reach" message 
 | A14 | `PUT /api/inputs/weekly/{week}/notes` | `{bidding_range}` or `{previous_issue}` | on blur, only when changed | controls disabled | Notice role=alert | verified by T17 | T17 |
 | A15 | `GET /api/inputs/weekly/{week}/analyst?section=` | none | analyst panel; re-read when uploads change | "Reading the form…" (aria-busy) | Notice role=alert (pre-line) | verified by T08 | T08 |
 | A16 | `PUT …/analyst?section=` | `{fields}`, `{tables: {key: {text} or {rows} or null}}`, or `{confirm: [key]}` | field on blur or Enter, table Save, Clear, Confirm | every control in the panel disabled | Notice role=alert, `white-space: pre-line`, every reason on its own line; nothing stored; what was typed stays in the field | verified by T08 | T08 |
-| A17 | `POST …/analyst/carry?section=` | none | "Start from last week's form" (disabled unless `can_carry`) | controls disabled | Notice role=alert | verified by T19 | T19 |
-| A18 | `POST …/analyst/suggest/{field}?section=` | none | "Suggest from last week's total" | controls disabled | Notice role=alert | verified by T20 | T20 |
+| A17 | `POST …/analyst/carry?section=` | none | "Start from last week's form" (disabled unless `can_carry`, which since 2026-10-14 counts only what last week confirmed, as the carry itself does) | controls disabled | Notice role=alert | verified by T19, T28 to T30 | T19, T28 to T30 |
+| A18 | `POST …/analyst/suggest/{field}?section=` | none | "Suggest from last week's total" | controls disabled | role=alert under that field, named in its `aria-describedby` (since 2026-10-14; the Next app showed it at the top of the panel) | verified by T20, T31 to T33 | T20, T31 to T33 |
 | A19 | `GET /api/export/weekly?period=` | none | export bar; re-read when any section's run or decision changes | bar hidden until it answers | Notice role=alert in the bar | verified by T03, T14 | T03, T14 |
 | A20 | `POST /api/export/weekly?period=` | none; answer is the .docx | "Export weekly report" | button "Preparing…" | Notice role=alert (409 names each section) | verified by T14 | T14 |
 
