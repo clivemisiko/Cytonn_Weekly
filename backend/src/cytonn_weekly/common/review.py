@@ -80,6 +80,7 @@ from cytonn_weekly.common.computed import (
     figure_subject,
 )
 from cytonn_weekly.common.formatting import format_rows
+from cytonn_weekly.common.links import LINK, find_links
 from cytonn_weekly.common.run_events import CHECK_FINISHED, CHECK_STARTED, Observer, emit
 from cytonn_weekly.digital_payments.coordinator_review import (
     CLEAN,
@@ -99,6 +100,11 @@ CARRIED_TEXT = "carried_text"
 
 ANALYST_ROW_NOTE = ("Not auto-verified: this row's figures match their source exactly, but the source is typed by "
                     "an analyst, not published. Check it against the workbook before accepting.")
+
+# Flags on supplied text that holds a web link (common/links.py); never a figure check.
+SUPPLIED_SCOPE = "supplied"
+LINK_FLAG = "link"
+POSSIBLE_LINK_FLAG = "possible_link"
 
 SUPPLIED_NOTE = (
     "Supplied by you and carried verbatim. The tool neither drafts nor checks this text, so read it "
@@ -216,6 +222,25 @@ def _claim_context(claim: dict[str, Any]) -> dict[str, Any]:
     return {k: claim.get(k, "") for k in ("text", "url", "title", "cited_text")}
 
 
+def supplied_item(b: dict[str, Any]) -> ReviewItem:
+    """The coordinator's own text: one item, never verified, and flagged when it holds a web link.
+
+    A certain link (an http address, www., a markdown or HTML link, a shortener) makes the item
+    flagged, every hit one line; only possible ones (a bare domain, an email address, "click here"
+    with no link) leave it not auto-verified, with the lines under the usual note.  Nothing is
+    fetched or opened, and the text is never changed.  Neither blocks approval: the coordinator
+    resolves the item as usual.
+    """
+    ref, context = f"{b['title']} (supplied by you)", {"text": b.get("body_md", "")}
+    found = find_links(b.get("body_md", ""))
+    if any(f.confidence == LINK for f in found):
+        flags = [Flag(kind=LINK_FLAG if f.confidence == LINK else POSSIBLE_LINK_FLAG, scope=SUPPLIED_SCOPE,
+                      subject=b["id"], field=None, message=f.message) for f in found]
+        return ReviewItem(kind=SUPPLIED_TEXT, ref=ref, status=FLAGGED, detail=flags, context=context)
+    note = "\n".join([SUPPLIED_NOTE, *(f.message for f in found)])
+    return ReviewItem(kind=SUPPLIED_TEXT, ref=ref, status=NOT_AUTO_VERIFIED, detail=note, context=context)
+
+
 def build_review(content: dict[str, Any], report: CheckReport) -> CoordinatorReview:
     """One ReviewItem per table row, per drafted claim, and per unavailable part.
 
@@ -295,9 +320,7 @@ def build_review(content: dict[str, Any], report: CheckReport) -> CoordinatorRev
                                  message="this drafted piece records no cited claim; nothing in it traces to a source")],
                 ))
         elif b["kind"] == "supplied":
-            items.append(ReviewItem(kind=SUPPLIED_TEXT, ref=f"{b['title']} (supplied by you)",
-                                    status=NOT_AUTO_VERIFIED, detail=SUPPLIED_NOTE,
-                                    context={"text": b.get("body_md", "")}))
+            items.append(supplied_item(b))
         elif b["kind"] == "unavailable":
             subject = (UNAVAILABLE_SCOPE, b["id"])
             used.add(subject)
