@@ -31,8 +31,8 @@ Playwright starts the API and the app itself, and stops them afterwards. From `e
 npm test                       # frontend/ on Vite's dev server (127.0.0.1:5183), /api proxied to the test API
 ```
 
-`npm test` runs `tests/app.spec.ts` (T01 to T16) and then `tests/more.spec.ts` (T17 to
-T25), each with its own start of the API and so on freshly restored data: a section that has a review no longer
+`npm test` runs `tests/app.spec.ts` (T01 to T16), then `tests/more.spec.ts` (T17 to T25) and then
+`tests/buttons.spec.ts` (T28 to T36: every button of the two input panels with the week before present and absent), each with its own start of the API and so on freshly restored data: a section that has a review no longer
 offers its start screen, and the first file leaves several in review. Run one file with `npx playwright test app` or
 `npx playwright test more` (not both in one command). Two tests
 need the API started in another state, so they have their own runs, one start of the API each:
