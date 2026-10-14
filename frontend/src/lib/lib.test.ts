@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { canonical, isCarried, linesOf, originLabel, range, rowsOf, tableOrigin } from "./analyst";
-import { stateOf, when } from "./drafting";
+import { draftAgainOff, stateOf, when } from "./drafting";
 import { elapsed, friendlyDate, friendlyTime, plural, pyRepr } from "./format";
 import { renderMarkdown } from "./markdown";
+import { redraftNotes } from "./redraft";
 import { mergeEvents, overviewHref, stepLines } from "./run";
 import { THEME_SCRIPT } from "./theme-script";
 import { MAX_TOPIC, topicLength } from "./topic";
-import type { AnalystTable, RunEvent, SectionSummary } from "./types";
+import type { AnalystTable, AppConfig, Drafting, RunEvent, SectionSummary } from "./types";
 
 const event = (seq: number, kind: RunEvent["kind"], label = "", extra: Partial<RunEvent> = {}): RunEvent => ({
   seq,
@@ -99,6 +100,39 @@ describe("format", () => {
     expect(stateOf(run({ decision: "approved" }))).toBe("approved");
     expect(stateOf(run({ decision: "rejected" }))).toBe("rejected");
     expect(stateOf(run({ current: false }))).toBe("not_drafted");
+  });
+});
+
+describe("draft again", () => {
+  const section = (uses_provider: boolean) => ({ slug: "equities", uses_provider }) as unknown as SectionSummary;
+  const config = (provider_problem: string | null) => ({ provider_problem }) as unknown as AppConfig;
+  const running = (over: Partial<Drafting> = {}) =>
+    ({ slug: "real_estate", title: "Real Estate (Week ending 2026-10-09)", report_type: "weekly", period: "Week ending 2026-10-09", stale: false, ...over }) as Drafting;
+  const weekly = { type: "weekly", period: "Week ending 2026-10-09", kind: null } as const;
+
+  it("is off for the same two reasons the draft button is, and only for a section that calls the provider", () => {
+    expect(draftAgainOff(section(true), null, config(null), weekly)).toBeNull();
+    expect(draftAgainOff(section(true), running(), config(null), weekly)).toBe(
+      "Real Estate (Week ending 2026-10-09) is drafting now. Only one draft runs at a time, across every section.",
+    );
+    expect(draftAgainOff(section(true), running({ slug: "equities", title: "Equities" }), config(null), weekly)).toMatch(/^This section is drafting now/);
+    expect(draftAgainOff(section(true), null, config("No key."), weekly)).toBe("No key. Drafting is off until then.");
+    // a stuck draft does not hold the slot (the next draft replaces it); a section with no provider is never held up
+    expect(draftAgainOff(section(true), running({ stale: true }), config(null), weekly)).toBeNull();
+    expect(draftAgainOff(section(false), running(), config("No key."), weekly)).toBeNull();
+  });
+
+  it("tells a coordinator what happens to the earlier review, and about the export only after an approval", () => {
+    expect(redraftNotes({ run_id: 7, decision: "rejected" }, "weekly", false)).toEqual([
+      "The earlier review (run 7, rejected) stays saved and read-only.",
+      "The new draft becomes the current one and starts undecided.",
+    ]);
+    expect(redraftNotes({ run_id: 8, decision: null }, "weekly", false)[0]).toMatch(/run 8\) was still in review\. It stays saved as it is, undecided/);
+    const approved = redraftNotes({ run_id: 9, decision: "approved" }, "weekly", false);
+    expect(approved).toHaveLength(3);
+    expect(approved[2]).toBe("This section is approved now. The weekly export needs it approved again.");
+    expect(redraftNotes({ run_id: 9, decision: "approved" }, "quarterly", false)[2]).toMatch(/^This section is approved now\. The Executive Summary needs it approved again/);
+    expect(redraftNotes({ run_id: 9, decision: "approved" }, "quarterly", true)).toHaveLength(2); // the summary itself composes the others
   });
 });
 

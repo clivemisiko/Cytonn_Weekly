@@ -242,9 +242,13 @@ test("T23 rejecting a section is final: the dialog, the locked review, the overv
   await expect(card(page, "Company Updates").getByRole("button", { name: "View review" })).toBeVisible();
   await expect(page.getByText("Company Updates: Rejected")).toBeVisible();
   await expect(page.getByRole("button", { name: "Export weekly report" })).toBeDisabled();
-  // The start screen says what happened and offers a new draft.
-  await card(page, "Company Updates").getByRole("button", { name: "View review" }).click();
-  await expect(page.getByText("Rejected and locked")).toBeVisible();
+  // "Draft again" opens the start screen, which says what happened and offers a new draft (T42 to T44 go through it).
+  await card(page, "Company Updates").getByRole("button", { name: "Draft again" }).click();
+  await expect(page.getByRole("heading", { name: "Company Updates: coordinator review", level: 1 })).toBeVisible();
+  await expect(page.getByText(new RegExp(`review \\(run ${review}\\) was rejected`))).toBeVisible();
+  await expect(page.getByRole("button", { name: "View it" })).toBeVisible();
+  await expect(page.getByText("Or start over with a new draft.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save your text as the section" })).toBeVisible();
 });
 
 test("T24 a draft holding the one draft slot: the overview and the other sections say so, and unlock when it ends", async ({ page, request }) => {

@@ -212,6 +212,7 @@ const key = computed(() => {
         :report="report"
         :on-report="chooseReport"
         @open="openSection"
+        @redraft="(slug) => openSection(slug, false)"
         @overview="refreshOverview"
       />
 

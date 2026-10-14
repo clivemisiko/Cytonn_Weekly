@@ -5,8 +5,9 @@ import Button from "@/components/ui/Button.vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import { LINK } from "@/components/ui/button";
 import * as api from "@/lib/api";
-import { isDraftingThis, useDraftingPoll, useLiveElapsed } from "@/lib/drafting";
+import { isDraftingThis, providerOff, slotTaken, useDraftingPoll, useLiveElapsed } from "@/lib/drafting";
 import { elapsed, friendlyTime, weekRange } from "@/lib/format";
+import { redraftNotes } from "@/lib/redraft";
 import { MAX_TOPIC, topicLength } from "@/lib/topic";
 import type { AppConfig, Drafting, Overview, ReportChoice, Review, SectionSummary } from "@/lib/types";
 import AnalystPanel from "./analyst/AnalystPanel.vue";
@@ -14,6 +15,7 @@ import DevRibbon from "./DevRibbon.vue";
 import InputsPanel from "./InputsPanel.vue";
 import Masthead from "./Masthead.vue";
 import Notice from "./Notice.vue";
+import RedraftDialog from "./RedraftDialog.vue";
 
 /** The weekly sections worked out from the week's uploaded inputs. */
 const USES_INPUTS = ["fixed_income", "equities"];
@@ -65,7 +67,7 @@ const typedPending = ref(false);
 const usesInputs = computed(() => props.report.type === "weekly" && !!props.week && USES_INPUTS.includes(props.section.slug));
 // Company Updates and the Executive Summary call no LLM: no API budget, no key needed, no draft slot.
 const llm = computed(() => props.section.uses_provider);
-const providerBlocked = computed(() => llm.value && !!props.config.provider_problem);
+const providerBlocked = computed(() => providerOff(llm.value, props.config));
 
 // A draft already running on the server (this section's or another's) blocks this one until it finishes.
 const serverDrafting = ref<Drafting | null>(props.drafting);
@@ -77,12 +79,24 @@ function onServerOverview(next: Overview) {
   if (wasMine && !watched) void props.onRecheck(); // offer what it saved
 }
 useDraftingPoll(serverDrafting, onServerOverview, () => props.report, () => !starting.value);
-const blocked = computed(() => llm.value && serverDrafting.value !== null && !serverDrafting.value.stale);
+const blocked = computed(() => slotTaken(llm.value, serverDrafting.value));
 const mine = computed(() => isDraftingThis(serverDrafting.value, props.section.slug, props.report));
 const seconds = useLiveElapsed(serverDrafting);
 const cannotDraft = computed(
   () => starting.value || blocked.value || providerBlocked.value || inputMissing.value || topicOver.value || (usesInputs.value && typedPending.value),
 );
+
+// Drafting over a section that already has a review asks first (what happens to the earlier one), then drafts.
+const confirming = ref(false);
+const notes = computed(() => (props.saved ? redraftNotes(props.saved, props.report.type, props.section.requires_approved) : []));
+function start() {
+  if (props.saved) confirming.value = true;
+  else void draft();
+}
+function confirmed() {
+  confirming.value = false;
+  void draft();
+}
 
 async function draft() {
   error.value = null;
@@ -116,7 +130,7 @@ async function recheck() {
 }
 
 function topicEnter() {
-  if (!inputMissing.value && !topicOver.value && !starting.value && !blocked.value && !providerBlocked.value) void draft();
+  if (!inputMissing.value && !topicOver.value && !starting.value && !blocked.value && !providerBlocked.value) start();
 }
 
 const items = computed(() => props.saved?.review_items ?? []);
@@ -325,7 +339,7 @@ const lists = computed(() => [
               :disabled="cannotDraft"
               :aria-describedby="usesInputs && typedPending ? 'typed-pending' : undefined"
               class="h-auto min-h-10 max-w-full py-2 whitespace-normal"
-              @click="draft"
+              @click="start"
             >
               {{ draftLabel }}
             </Button>
@@ -338,6 +352,15 @@ const lists = computed(() => [
               <Notice role="alert" class="font-medium">{{ error.message }}</Notice>
               <Button v-if="error.lostConnection" variant="outline" @click="recheck">Check for a saved draft</Button>
             </div>
+
+            <RedraftDialog
+              :open="confirming"
+              :title="`Draft ${section.title} again?`"
+              :notes="notes"
+              confirm-label="Draft again"
+              @confirm="confirmed"
+              @cancel="confirming = false"
+            />
           </div>
         </section>
       </div>

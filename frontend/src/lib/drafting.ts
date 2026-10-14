@@ -1,7 +1,7 @@
 import { type MaybeRefOrGetter, computed, ref, toValue, watch, watchEffect } from "vue";
 import * as api from "./api";
 import { friendlyDate } from "./format";
-import type { Drafting, Overview, ReportChoice, SectionSummary } from "./types";
+import type { AppConfig, Drafting, Overview, ReportChoice, SectionSummary } from "./types";
 
 const POLL_MS = 5_000;
 
@@ -44,6 +44,21 @@ export const isDraftingThis = (drafting: Drafting | null, slug: string, report: 
   drafting.slug === slug &&
   (drafting.report_type ?? "weekly") === report.type &&
   (drafting.period ?? "") === report.period;
+
+/**
+ * The two checks every draft button makes, in one place: a section that calls the LLM waits while another draft holds
+ * the one draft slot (unless that draft looks stuck, which a new draft replaces), and while the provider cannot run.
+ * A section that calls no provider (Company Updates, the Executive Summary) is never held up by either.
+ */
+export const slotTaken = (llm: boolean, drafting: Drafting | null) => llm && drafting !== null && !drafting.stale;
+export const providerOff = (llm: boolean, config: AppConfig) => llm && !!config.provider_problem;
+
+/** Why "Draft again" is off on this section's card (the same checks as the start screen's draft button), or null. */
+export function draftAgainOff(s: SectionSummary, drafting: Drafting | null, config: AppConfig, report: ReportChoice): string | null {
+  if (providerOff(s.uses_provider, config)) return `${config.provider_problem} Drafting is off until then.`;
+  if (!slotTaken(s.uses_provider, drafting)) return null;
+  return `${isDraftingThis(drafting, s.slug, report) ? "This section is" : `${drafting?.title} is`} drafting now. Only one draft runs at a time, across every section.`;
+}
 
 /** The server's elapsed seconds, counted on locally between polls (the browser's clock never enters into it). */
 export function useLiveElapsed(drafting: MaybeRefOrGetter<Drafting | null>) {
