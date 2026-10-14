@@ -2,8 +2,17 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-/* One theme per page, chosen by the system setting (no manual toggle: nothing here is brand expression). */
-@custom-variant dark (@media (prefers-color-scheme: dark));
+/* Dark when the top bar's toggle says Dark, or when it says System (no data-theme) and the device is dark. */
+@custom-variant dark {
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme="light"]), :root:not([data-theme="light"]) *) {
+      @slot;
+    }
+  }
+}
 
 /* ---------------------------------------------------------------------------
    Identity: a proof desk. Warm paper ground, deep teal-black ink, hairline rules.
@@ -56,6 +65,10 @@
   --color-ok-fg: var(--ok-fg);
   --color-ok-on: var(--ok-on);
 
+  /* The dev-mode hazard label (ribbon, DEV DRAFT chip): its ink and its edge. */
+  --color-dev-ink: var(--dev-ink);
+  --color-dev-rule: var(--dev-rule);
+
   /* Type scale: 12 / 14 / 16 / 20 / 24 / 32. Nothing in the app sets a size outside it. */
   --text-xs: 0.75rem;
   --text-xs--line-height: 1rem;
@@ -81,84 +94,64 @@
 }
 
 /* Spacing scale: 4 / 8 / 12 / 16 / 24 / 32 (Tailwind steps 1 / 2 / 3 / 4 / 6 / 8). */
+/* Every colour is one token holding its light and its dark value. Which one applies follows `color-scheme`: the
+   device's setting by default (System), or the theme chosen on the top bar, which lib/theme.ts writes to
+   <html data-theme>. Components use the tokens and never a colour of their own. */
 :root {
   color-scheme: light dark;
 
-  --background: #efece2;
-  --foreground: #0e1f1e;
-  --card: #fbfaf5;
-  --card-foreground: #0e1f1e;
-  --popover: #fbfaf5;
-  --popover-foreground: #0e1f1e;
-  --primary: #0f3b38;
-  --primary-hover: #1d514d;
-  --primary-foreground: #f5f2e8;
-  --secondary: #e7e3d5;
-  --secondary-foreground: #0e1f1e;
-  --muted: #e7e3d5;
-  --muted-foreground: #4b5a57;
-  --accent: #e7e3d5;
-  --accent-foreground: #0e1f1e;
-  --destructive: #b42318;
-  --border: #d3cebc;
-  --input: #85836f; /* 3:1 against card and paper: a control's edge must be findable */
-  --ring: #0e6b62;
-  --link: #0b5a54;
+  --background: light-dark(#efece2, #091110);
+  --foreground: light-dark(#0e1f1e, #eae7db);
+  --card: light-dark(#fbfaf5, #0f1a19);
+  --card-foreground: light-dark(#0e1f1e, #eae7db);
+  --popover: light-dark(#fbfaf5, #142220);
+  --popover-foreground: light-dark(#0e1f1e, #eae7db);
+  --primary: light-dark(#0f3b38, #8ed3c6);
+  --primary-hover: light-dark(#1d514d, #a8e0d5);
+  --primary-foreground: light-dark(#f5f2e8, #052321);
+  --secondary: light-dark(#e7e3d5, #16262a);
+  --secondary-foreground: light-dark(#0e1f1e, #eae7db);
+  --muted: light-dark(#e7e3d5, #16262a);
+  --muted-foreground: light-dark(#4b5a57, #9daca8);
+  --accent: light-dark(#e7e3d5, #1b2e2c);
+  --accent-foreground: light-dark(#0e1f1e, #eae7db);
+  --destructive: light-dark(#b42318, #f27f73);
+  --border: light-dark(#d3cebc, #203230);
+  --input: light-dark(#85836f, #5a6c68); /* 3:1 against card and paper: a control's edge must be findable */
+  --ring: light-dark(#0e6b62, #7fd0c2);
+  --link: light-dark(#0b5a54, #8ed3c6);
 
-  --band: #0a2b29;
-  --band-foreground: #efece2;
-  --band-muted: #9ccdc3;
-  --band-rule: #174341;
+  --band: light-dark(#0a2b29, #0e2421);
+  --band-foreground: light-dark(#efece2, #eae7db);
+  --band-muted: light-dark(#9ccdc3, #8fbfb5);
+  --band-rule: light-dark(#174341, #1d3a36);
 
-  --flag: #b42318;
-  --flag-fg: #9a1b12;
-  --flag-on: #fff6f4;
-  --warn: #b26a00;
-  --warn-fg: #7a4700;
-  --ok: #1b7a4b;
-  --ok-fg: #14633c;
-  --ok-on: #f3fbf6;
+  --flag: light-dark(#b42318, #f27f73);
+  --flag-fg: light-dark(#9a1b12, #f6a59c);
+  --flag-on: light-dark(#fff6f4, #2a0906);
+  --warn: light-dark(#b26a00, #e8b04f);
+  --warn-fg: light-dark(#7a4700, #efc57f);
+  --ok: light-dark(#1b7a4b, #5fc795);
+  --ok-fg: light-dark(#14633c, #8bdbb4);
+  --ok-on: light-dark(#f3fbf6, #04160d);
+
+  /* The dev-mode hazard stripe is the same in both themes: it is a warning label, not part of the page's palette. */
+  --dev-a: #ffcf5c;
+  --dev-b: #f3b72f;
+  --dev-ink: #2a0a07;
+  --dev-rule: #b07d0f;
+
+  /* The top bar's height: everything that sticks or is fixed below it starts here. */
+  --topbar-h: 2.75rem;
 
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #091110;
-    --foreground: #eae7db;
-    --card: #0f1a19;
-    --card-foreground: #eae7db;
-    --popover: #142220;
-    --popover-foreground: #eae7db;
-    --primary: #8ed3c6;
-    --primary-hover: #a8e0d5;
-    --primary-foreground: #052321;
-    --secondary: #16262a;
-    --secondary-foreground: #eae7db;
-    --muted: #16262a;
-    --muted-foreground: #9daca8;
-    --accent: #1b2e2c;
-    --accent-foreground: #eae7db;
-    --destructive: #f27f73;
-    --border: #203230;
-    --input: #5a6c68;
-    --ring: #7fd0c2;
-    --link: #8ed3c6;
-
-    --band: #0e2421;
-    --band-foreground: #eae7db;
-    --band-muted: #8fbfb5;
-    --band-rule: #1d3a36;
-
-    --flag: #f27f73;
-    --flag-fg: #f6a59c;
-    --flag-on: #2a0906;
-    --warn: #e8b04f;
-    --warn-fg: #efc57f;
-    --ok: #5fc795;
-    --ok-fg: #8bdbb4;
-    --ok-on: #04160d;
-  }
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 @layer base {
@@ -167,9 +160,9 @@
   }
   html {
     @apply font-sans;
-    /* The sticky status bar (plus the 28px dev ribbon) must not cover a focused element. It holds the decision too,
-       so on a phone it stacks to about 170px; from lg it is a single row. */
-    scroll-padding-top: 13rem;
+    /* The top bar, the sticky status bar and the 28px dev ribbon must not cover a focused element or an anchor. The
+       status bar holds the decision too, so on a phone it stacks to about 170px; from lg it is a single row. */
+    scroll-padding-top: calc(13rem + var(--topbar-h));
     font-variant-numeric: tabular-nums;
     text-size-adjust: 100%;
   }
@@ -185,7 +178,7 @@
   }
   @media (width >= 64rem) {
     html {
-      scroll-padding-top: 9rem;
+      scroll-padding-top: calc(9rem + var(--topbar-h));
     }
   }
   .font-mono {
@@ -274,7 +267,7 @@
   }
 
   .hatch-dev {
-    background: repeating-linear-gradient(-45deg, #ffcf5c 0 14px, #f3b72f 14px 28px);
+    background: repeating-linear-gradient(-45deg, var(--dev-a) 0 14px, var(--dev-b) 14px 28px);
   }
 }
 

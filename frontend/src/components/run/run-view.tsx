@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { motion, useReducedMotion } from "motion/react";
 import { CheckIcon, CircleNotchIcon, MinusIcon } from "@phosphor-icons/react";
 import { cn } from "cn";
@@ -11,6 +10,7 @@ import { DevAlert, DevRibbon, Notice } from "@/components/review/banners";
 import { Masthead } from "@/components/review/masthead";
 import * as api from "@/lib/api";
 import { STATUS_META, STATUS_ORDER, friendlyTime, reportName } from "@/lib/format";
+import { type BackTarget, useBack } from "@/lib/nav";
 import { isTerminal, mergeEvents, overviewHref, stepLines, type StepLine } from "@/lib/run";
 import type { AppConfig, Run, RunEvent, Status } from "@/lib/types";
 
@@ -96,10 +96,10 @@ function CountTile({ status, value }: { status: Status; value: number }) {
   );
 }
 
-function Shell({ title, children, onHome }: { title: string; children: React.ReactNode; onHome: () => void }) {
+function Shell({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <main id="main" tabIndex={-1}>
-      <Masthead title={title} onHome={onHome} />
+      <Masthead title={title} />
       <div className="mx-auto w-full max-w-275 px-4 pt-8 pb-16 sm:px-6">
         <div className="max-w-3xl space-y-6">{children}</div>
       </div>
@@ -114,7 +114,6 @@ function Shell({ title, children, onHome }: { title: string; children: React.Rea
  * here: no code path on this screen starts one or retries one.
  */
 export function RunView({ runId }: { runId: string }) {
-  const router = useRouter();
   const reduced = useReducedMotion() ?? false;
   const [run, setRun] = useState<Run | null>(null);
   const [events, setEvents] = useState<RunEvent[]>([]);
@@ -221,14 +220,14 @@ export function RunView({ runId }: { runId: string }) {
     if (following.current) foot.current?.scrollIntoView({ block: "nearest", behavior: reduced ? "auto" : "smooth" });
   }, [lines.length, settled, reduced]);
 
-  const home = useCallback(
-    () => router.push(run ? overviewHref(run.report_type, run.period) : "/overview"),
-    [router, run],
-  );
+  // The top bar's Back: to the run's own report's list of sections (as the masthead's back link did before the bar).
+  const reportHref = run ? overviewHref(run.report_type, run.period) : "/overview";
+  const back = useMemo<BackTarget>(() => ({ kind: "href", to: "all sections", href: reportHref }), [reportHref]);
+  useBack(back);
 
   if (missing) {
     return (
-      <Shell title="Draft run" onHome={home}>
+      <Shell title="Draft run">
         <Notice tone="warn" role="status">
           This run is no longer available. If the draft finished, open the section from the overview.{" "}
           <Link href="/overview" className={LINK}>
@@ -257,8 +256,6 @@ export function RunView({ runId }: { runId: string }) {
         <main id="main" tabIndex={-1}>
           <Masthead
             title={run ? `${run.section_title}: draft run` : "Draft run"}
-            onHome={home}
-            kicker={weekly ? undefined : `${run!.period}: all sections`}
             meta={run && !weekly ? <span className="font-mono">{run.period}</span> : undefined}
           >
             {run ? `${reportName(run.report_title, run.period)}. Each line below is a step the draft has really taken.` : undefined}

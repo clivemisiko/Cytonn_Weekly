@@ -28,8 +28,6 @@ export function ReviewScreen({ initial, onClose }: { initial: Review; onClose: (
         <Masthead
           wide
           title={`${review.section_title}: coordinator review`}
-          onHome={onClose}
-          kicker={review.period ? `${review.period}: all sections` : undefined}
           meta={
             review.period && review.report_type !== "weekly" ? (
               <>

@@ -33,12 +33,12 @@ export function Notice({
   );
 }
 
-/** Fixed ribbon: a local-model draft can never be mistaken for a production one. */
+/** Fixed ribbon, directly under the top bar: a local-model draft can never be mistaken for a production one. */
 export function DevRibbon({ label }: { label: string }) {
   return (
     <div
       role="status"
-      className="hatch-dev fixed inset-x-0 top-0 z-40 flex h-7 items-center justify-center border-b border-[#b07d0f] px-4 font-mono text-xs font-semibold tracking-[0.06em] text-[#2a0a07]"
+      className="hatch-dev fixed inset-x-0 top-(--topbar-h) z-40 flex h-7 items-center justify-center border-b border-dev-rule px-4 font-mono text-xs font-semibold tracking-[0.06em] text-dev-ink"
     >
       <span className="truncate">{label}</span>
     </div>

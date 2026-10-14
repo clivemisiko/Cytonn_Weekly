@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import * as api from "@/lib/api";
 import { friendlyDate, friendlyTime } from "@/lib/format";
+import { useLeaveGuard } from "@/lib/nav";
 import type { AnalystCarried, AnalystColumn, AnalystField, AnalystForm, AnalystRow, AnalystTable } from "@/lib/types";
 import { Notice } from "./banners";
 import { FIELD } from "./inputs-panel";
@@ -186,7 +187,7 @@ function FieldRow({
           className="py-2 font-mono"
         />
       ) : (
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <input
             {...shared}
             type={item.kind === "date" ? "date" : "text"}
@@ -682,7 +683,10 @@ export function AnalystPanel({
   }, [week, section, refresh]);
 
   const waiting = form?.unconfirmed ?? [];
-  const pending = busy || Object.values(dirty).some(Boolean) || waiting.length > 0;
+  const unsaved = Object.values(dirty).some(Boolean);
+  const pending = busy || unsaved || waiting.length > 0;
+  // Home and Back on the top bar ask before leaving while something typed here is not saved.
+  useLeaveGuard(unsaved, "Something typed under \"Weekly analyst inputs\" is not saved yet. Leave this page and lose it?");
   useEffect(() => onPending(pending), [pending, onPending]);
   useEffect(() => () => onPending(false), [onPending]);
 

@@ -72,7 +72,7 @@ export function StatusBar({
     <div
       className={cn(
         "sticky z-30 -mx-4 border-b bg-background/95 px-4 py-3 backdrop-blur supports-backdrop-filter:bg-background/85 sm:-mx-6 sm:px-6",
-        hasDevRibbon ? "top-7" : "top-0",
+        hasDevRibbon ? "top-[calc(var(--topbar-h)+1.75rem)]" : "top-(--topbar-h)",
       )}
     >
       <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
