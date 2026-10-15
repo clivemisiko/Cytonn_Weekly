@@ -270,3 +270,27 @@ test("T56 Show working on a card the real detector library built: the rule, the 
   await expect(rows.last()).toContainText("12 Feb 2027");
   await expect(rows.last()).toContainText("Kshs 18.4 bn");
 });
+
+test("T57 Show working draws the points as a line: a dot for each, the scale and the latest value labelled, and no doubled colon in the figures", async ({ page }) => {
+  await fixedIncome(page, "2027-02-19");
+  const first = candidates(page).first();
+  // A figure's label may hold a colon of its own ("<series>: latest"); the value is joined to it with " = ".
+  await expect(first).toContainText("Invented 91-day yield: latest = 9.05%");
+  await expect(first).not.toContainText("latest: 9.05%");
+
+  await first.getByRole("button", { name: "Show working" }).click();
+  const chart = first.getByRole("img", { name: /^Invented 91-day yield: 10 points from 18 Dec 2026, 8\.10%, to 19 Feb 2027, 9\.05%$/ });
+  await expect(chart).toBeVisible();
+  await expect(chart.locator("circle")).toHaveCount(10); // one dot for each point of the table below it
+  await expect(chart.locator("polyline")).toHaveCount(1);
+  await expect(chart.locator("text").filter({ hasText: /^8\.10%$/ })).toHaveCount(1); // the foot of the scale
+  await expect(chart.locator("text").filter({ hasText: /^9\.05%$/ })).toHaveCount(2); // the head of the scale, and the latest point's own label
+  await expect(chart.locator("text").filter({ hasText: /^18 Dec 2026$/ })).toHaveCount(1);
+  await expect(chart.locator("text").filter({ hasText: /^19 Feb 2027$/ })).toHaveCount(1);
+  await expect(first.getByRole("table").getByRole("row")).toHaveCount(1 + 10);
+
+  // On a phone the page does not scroll sideways because of it.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(chart).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+});

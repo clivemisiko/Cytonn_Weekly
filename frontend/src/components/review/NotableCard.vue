@@ -5,8 +5,9 @@ import Button from "@/components/ui/Button.vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import { CHIP } from "@/components/ui/button";
 import { friendlyDate } from "@/lib/format";
-import { DISMISS_REASONS, KIND_LABELS, checkEdit, headlineOf, isEdited, reasonLabel } from "@/lib/notable";
+import { DISMISS_REASONS, KIND_LABELS, checkEdit, figureLine, headlineOf, isEdited, reasonLabel } from "@/lib/notable";
 import type { DismissReason, Suggestion } from "@/lib/types";
+import WorkingChart from "./WorkingChart.vue";
 
 /**
  * One "Notable this week" suggestion in whichever list it is in: open (Accept, Edit, Dismiss), selected (Edit, Remove from
@@ -32,7 +33,7 @@ const reason = ref<DismissReason | "">("");
 const editError = computed(() => checkEdit(draft.value));
 // A workbook-derived or invented item is marked by shape (the warning glyph) as well as colour.
 const caution = computed(() => ["demo", "analyst_workbook"].includes(s.value.provenance.kind));
-const figures = computed(() => s.value.figures.map((f) => `${f.label}: ${f.display}`).join("; "));
+const figures = computed(() => figureLine(s.value.figures));
 
 function startEdit() {
   draft.value = headlineOf(s.value);
@@ -103,6 +104,7 @@ function confirmDismiss() {
         <dt class="eyebrow">Window</dt>
         <dd>{{ s.working.window }}</dd>
       </dl>
+      <WorkingChart :working="s.working" />
       <div class="overflow-x-auto">
         <table class="w-full border-collapse text-xs">
           <caption class="sr-only">
