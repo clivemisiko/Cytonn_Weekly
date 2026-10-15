@@ -65,3 +65,5 @@ screenshots/
 # directory (CYTONN_DATA_DIR, backend/data by default).  None of it is ever committed.
 sample data/
 backend/data/
+.playwright-mcp/
+Claude outputs/

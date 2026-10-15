@@ -51,7 +51,7 @@ import time
 from dataclasses import replace
 from datetime import date
 from pathlib import Path
-from typing import Any, Callable, Literal, Optional, Union
+from typing import Any, Callable, Literal, Mapping, Optional, Sequence, Union
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
@@ -66,6 +66,10 @@ from cytonn_weekly.digital_payments.provider_factory import ENV_VAR as PROVIDER_
 from cytonn_weekly.digital_payments.providers.local_provider import EXA_KEY_ENV_VAR, EXA_KEY_MISSING, SearchKeyError
 from cytonn_weekly.env import key_override_warnings, load_env
 from cytonn_weekly.focus.review_run import clean_topic
+from cytonn_weekly import notable
+from cytonn_weekly.notable import store as notable_store
+from cytonn_weekly.notable.registry import Detector, DetectorContext, run_detectors
+from cytonn_weekly.notable.suggestion import MAX_HEADLINE
 from cytonn_weekly.periodic.executive_summary import SectionsNotApproved
 from cytonn_weekly.report_sections import (
     DraftContext,
@@ -204,6 +208,16 @@ class AnalystInputs(BaseModel):
     confirm: list[str] = Field(default_factory=list, max_length=60)
 
 
+class NotableDecision(BaseModel):
+    """What the analyst did with one suggestion.  An edit (``edited_headline``) belongs to a selection and a
+    ``dismiss_reason`` to a dismissal; the route refuses the other pairings."""
+
+    suggestion_id: str = Field(min_length=1, max_length=64)
+    decision: Literal["selected", "dismissed"]
+    edited_headline: Optional[str] = None
+    dismiss_reason: Optional[Literal["not_relevant", "already_covered", "figures_look_wrong", "other"]] = None
+
+
 class RunRequest(DraftRequest):
     """POST /api/runs: the draft route's inputs, with the section in the body.
 
@@ -238,6 +252,7 @@ def create_app(
     fetch_bulletin: Callable[[date], tuple[bytes, str]] = cbk_bulletin.fetch_bulletin,
     export_root: Optional[Union[Path, str]] = None,
     fetch_usd_rates: Callable[[], dict] = cbk_rates.fetch_usd_rates,
+    notable_registry: Optional[Mapping[str, Sequence[Detector]]] = None,
 ) -> FastAPI:
     """Build the app.  ``db_path`` defaults to data/app.db; tests pass a temp file.
 
@@ -249,6 +264,10 @@ def create_app(
     tests pass a temp folder) and ``fetch_bulletin`` how the CBK Weekly Bulletin is fetched
     (tests pass a fake, so none reaches CBK).  ``export_root`` is where exported weekly reports
     are written (default: under the data directory).
+
+    ``notable_registry`` is where the "Notable this week" detectors come from (section slug -> detectors).  Left out it is
+    the real registry, which is empty: the real app shows no suggestion.  Only a caller that passes one, as the end-to-end
+    instance does (e2e/serve_e2e.py), can show any.  There is no environment variable or file that does it.
 
     ``load_dotenv`` loads the repo-root .env first, before anything here reads os.environ,
     as every entrypoint does: CYTONN_WEB_ORIGINS is read right below, and the pipeline
@@ -662,6 +681,68 @@ def create_app(
         except weekly_inputs.InputError as exc:
             raise HTTPException(502, f"CBK's file could not be read as the bulletin: {exc}")
         return weekly_inputs.status(week, root)
+
+    # -- Notable this week: suggestions for the analyst, and the analyst's decisions on them ---------------
+    # Nothing here reads or writes a review, an approval, the analyst form or the export (cytonn_weekly/notable/).
+
+    detectors = notable.REGISTRY if notable_registry is None else notable_registry
+
+    def notable_section(slug: str) -> None:
+        if spec_for(WEEKLY, slug) is None:
+            raise HTTPException(404, f"no section {slug!r} in the weekly report")
+
+    def notable_state(slug: str, week: Optional[Week]) -> dict:
+        """The section's suggestions for the week, each with the analyst's decision on it (or null)."""
+        if week is None:  # a report that is not the weekly one: nothing is computed for it yet
+            return {"section": slug, "week_ending": None, "suggestions": [], "failed_checks": 0}
+        found, failed = run_detectors(detectors, slug, DetectorContext(week.ending))
+        decided = notable_store.load(db_path, week.ending.isoformat(), slug)
+        return {"section": slug, "week_ending": week.ending.isoformat(), "failed_checks": failed,
+                "suggestions": [{**s.to_dict(), "decision": decided.get(s.id)} for s in found]}
+
+    @app.get("/api/notable/{section}")
+    def notable_get(section: str, week_ending: Optional[str] = Query(default=None, max_length=10),
+                    report_type: ReportType = Query(default=WEEKLY)) -> dict:
+        """The suggestions for one section of one week, highest rank first.  Only the weekly report has any, for now."""
+        notable_section(section)
+        if report_type != WEEKLY:
+            return notable_state(section, None)
+        if week_ending is None:
+            raise HTTPException(422, "the weekly report's suggestions need week_ending, the Friday the week ends on (2026-10-02)")
+        return notable_state(section, week_of(week_ending))
+
+    @app.post("/api/notable/{section}/decisions")
+    def notable_decide(section: str, body: NotableDecision, week_ending: str = Query(max_length=10)) -> dict:
+        """Select (accept, or edit and select) or dismiss a suggestion.  404 for an id the section does not have this week."""
+        notable_section(section)
+        week = week_of(week_ending)
+        edited = body.edited_headline
+        if edited is not None:
+            edited = " ".join(edited.split())
+            if body.decision != "selected":
+                raise HTTPException(422, "only a selected suggestion can carry a reworded headline")
+            if not edited:
+                raise HTTPException(422, "the headline cannot be empty")
+            if len(edited) > MAX_HEADLINE:
+                raise HTTPException(422, f"the headline can be at most {MAX_HEADLINE} characters")
+        if body.dismiss_reason is not None and body.decision != "dismissed":
+            raise HTTPException(422, "only a dismissed suggestion can carry a reason")
+        # ponytail: the detectors run again on every write; cache per request if one ever reads heavy history.
+        current = next((s for s in notable_state(section, week)["suggestions"] if s["id"] == body.suggestion_id), None)
+        if current is None:
+            raise HTTPException(404, f"no suggestion {body.suggestion_id!r} for {section} in the week ending {week.ending.isoformat()}")
+        notable_store.save(db_path, week.ending.isoformat(), section, body.suggestion_id, body.decision,
+                           None if edited == current["headline"] else edited, body.dismiss_reason)
+        return notable_state(section, week)
+
+    @app.delete("/api/notable/{section}/decisions/{suggestion_id}")
+    def notable_restore(section: str, suggestion_id: str, week_ending: str = Query(max_length=10)) -> dict:
+        """Take the decision back: the suggestion is open again.  404 if there was none."""
+        notable_section(section)
+        week = week_of(week_ending)
+        if not notable_store.delete(db_path, week.ending.isoformat(), section, suggestion_id):
+            raise HTTPException(404, f"no saved decision for suggestion {suggestion_id!r} in the week ending {week.ending.isoformat()}")
+        return notable_state(section, week)
 
     # -- export: the approved weekly report as one Word file ---------------------
 

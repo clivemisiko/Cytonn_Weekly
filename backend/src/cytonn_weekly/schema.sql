@@ -76,3 +76,25 @@ CREATE INDEX IF NOT EXISTS idx_coordinator_reviews_lookup
 
 -- The (report_type, period, section) index is created by sections._migrate(), after it has
 -- added those columns to a database that predates them; creating it here would fail there.
+
+-- ---------------------------------------------------------------------------
+-- suggestion_decisions: what the analyst did with each "Notable this week"
+-- suggestion (notable/store.py).  One row per week, section and suggestion; a
+-- new decision on the same suggestion replaces the old one, and deleting the
+-- row restores the suggestion.  Nothing here is read by a draft, a review, an
+-- approval or the export.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS suggestion_decisions (
+    -- The report week's Friday (YYYY-MM-DD) and the section slug.
+    week_ending      TEXT NOT NULL,
+    section          TEXT NOT NULL,
+    -- notable/suggestion.py: a hash of the finding's kind, section, week, series and window.
+    suggestion_id    TEXT NOT NULL,
+    decision         TEXT NOT NULL CHECK (decision IN ('selected', 'dismissed')),
+    -- The analyst's rewording of the headline; only on a selected suggestion, and the original is never changed.
+    edited_headline  TEXT CHECK (edited_headline IS NULL OR decision = 'selected'),
+    -- Why it was dismissed (optional); only on a dismissed suggestion.
+    dismiss_reason   TEXT CHECK (dismiss_reason IS NULL OR decision = 'dismissed'),
+    decided_at       TEXT NOT NULL,   -- ISO-8601 UTC
+    UNIQUE (week_ending, section, suggestion_id)
+);

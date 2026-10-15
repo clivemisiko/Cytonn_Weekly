@@ -2,6 +2,7 @@
 import { PhLockSimple } from "@phosphor-icons/vue";
 import { computed } from "vue";
 import { STATUS_ORDER, friendlyTime, weekRange } from "@/lib/format";
+import { weekOfReview } from "@/lib/notable";
 import { useReviewSession } from "@/lib/session";
 import { isBlocksSection, type Review, type StatusCounts } from "@/lib/types";
 import BlocksPane from "./BlocksPane.vue";
@@ -10,6 +11,7 @@ import DevRibbon from "./DevRibbon.vue";
 import DraftPane from "./DraftPane.vue";
 import ItemsPane from "./ItemsPane.vue";
 import Masthead from "./Masthead.vue";
+import NotablePanel from "./NotablePanel.vue";
 import RejectedDraftNotes from "./RejectedDraftNotes.vue";
 import StatusBar from "./StatusBar.vue";
 
@@ -24,6 +26,7 @@ const session = useReviewSession(props.initial);
 const review = session.review;
 const dev = computed(() => (review.value.is_dev_draft && review.value.dev_mode_label ? review.value.dev_mode_label : null));
 const approved = computed(() => review.value.decision === "approved");
+const week = computed(() => weekOfReview(review.value));
 
 function subline(c: StatusCounts): string {
   if (c.total === 0) return "None in this draft";
@@ -86,6 +89,14 @@ function subline(c: StatusCounts): string {
           <DraftPane v-else :review="review" :section="review.section" />
           <ItemsPane :review="review" :locked="review.locked" :on-resolve="session.resolve" :on-accept-clean="session.acceptClean" />
         </div>
+        <!-- The analyst's worklist for this week: separate from the review above, which it never changes. -->
+        <NotablePanel
+          v-if="week"
+          :key="`notable-${review.section_slug}-${week}`"
+          :section="review.section_slug"
+          :section-title="review.section_title"
+          :week="week"
+        />
       </div>
     </div>
   </div>

@@ -585,3 +585,42 @@ export interface Overview {
   companion_kinds: CompanionKind[];
   sections: SectionSummary[];
 }
+
+// -- Notable this week (backend/src/cytonn_weekly/notable/) ------------------------------------------------------
+
+export type SuggestionKind = "streak" | "record" | "since" | "trailing_compare" | "threshold_cross" | "expected_range" | "pace" | "drift";
+export type DismissReason = "not_relevant" | "already_covered" | "figures_look_wrong" | "other";
+
+/** What the analyst did with a suggestion; null on the suggestion when nothing yet. */
+export interface SuggestionDecision {
+  decision: "selected" | "dismissed";
+  /** The analyst's rewording, on a selected suggestion; the original headline is never changed. */
+  edited_headline: string | null;
+  dismiss_reason: DismissReason | null;
+  decided_at: string;
+}
+
+/** A note to the analyst, built by code from history with the working that produced it. Never written into a draft. */
+export interface Suggestion {
+  id: string;
+  kind: SuggestionKind;
+  section: string;
+  week_ending: string;
+  headline: string;
+  figures: { label: string; value: number; display: string; unit: string }[];
+  working: { series: string; rule: string; window: string; points: { date: string; value: number; display: string }[] };
+  /** `label` for a workbook-derived item reads "from the analyst workbook, not verified", for an invented one "invented demo item". */
+  provenance: { kind: "published" | "approved_review" | "analyst_workbook" | "typed" | "demo"; label: string };
+  /** 0 to 100. */
+  rank: number;
+  version: number;
+  decision: SuggestionDecision | null;
+}
+
+/** GET /api/notable/{section}: the section's suggestions for the week, and how many checks could not run. */
+export interface Notable {
+  section: string;
+  week_ending: string | null;
+  suggestions: Suggestion[];
+  failed_checks: number;
+}
