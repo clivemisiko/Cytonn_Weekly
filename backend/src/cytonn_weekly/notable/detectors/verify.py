@@ -122,6 +122,26 @@ def _headline(s: Suggestion, *accepted: str) -> None:
         _fail(f"headline: {s.headline!r} is not what the figures say ({' | '.join(accepted)})")
 
 
+# The sentence that says where a window starts, for the two forms that claim "nothing earlier in the window": a record, and a
+# first-time crossing. This module keeps its own copy of the wording.
+_WINDOW = (r"(?: (The window begins at the first point we hold\.|"
+           r"The window begins after a gap of more than (\d+) days; points before the gap are not looked at\.))?")
+
+
+def _window_sentence(edge: Optional[str], edge_gap: Optional[str], gap: int, needed: bool) -> Optional[bool]:
+    """Whether the rule says the window begins at the first point held (True) or after a gap (False); None when it says neither.
+
+    The sentence is required by the forms that claim nothing earlier in the window, and refused by the forms that do not.
+    """
+    if needed and not edge:
+        _fail("window: the rule must say where the window starts")
+    if not needed and edge:
+        _fail("window: this form names the point that ended its stretch and carries no window sentence")
+    if edge_gap is not None and int(edge_gap) != gap:
+        _fail("rule: the window sentence names a different gap from the rule's")
+    return None if not edge else edge.startswith("The window begins at the first")
+
+
 # -- one check per detector ----------------------------------------------------------------------------------------------
 
 def _streak(s: Suggestion) -> None:
@@ -160,7 +180,7 @@ def _streak(s: Suggestion) -> None:
 def _since(s: Suggestion) -> None:
     m = _rule(s, r"(Highest|Lowest) value in the unbroken weekly points\. A value equal to the latest counts as at or (above|below) "
                  r"it, so a tie ends the stretch\. Gaps of more than (\d+) days end the window\. The latest value must stand for "
-                 r"at least (\d+) weekly points, in a window of at least (\d+) points\.")
+                 r"at least (\d+) weekly points, in a window of at least (\d+) points\." + _WINDOW)
     highest = m[1] == "Highest"
     if m[2] != ("above" if highest else "below"):
         _fail("rule: the tie rule does not match the direction")
@@ -176,6 +196,7 @@ def _since(s: Suggestion) -> None:
     if n - 1 < min_stretch:
         _fail(f"stretch: {n - 1} weekly points, the rule needs {min_stretch}")
     since_case = beyond(pts[0][1])
+    whole = _window_sentence(m[6], m[7], gap, needed=not since_case)
     if since_case:
         if any(beyond(v) for _, v in pts[1:-1]):
             _fail("stretch: a later point is as extreme as the latest, so the stretch is shorter than shown")
@@ -187,18 +208,23 @@ def _since(s: Suggestion) -> None:
         if n < min_points:
             _fail(f"history: {n} points, the rule needs {min_points}")
     weeks = (pts[-1][0] - pts[0][0]).days // 7
+    if not since_case and weeks != n - 1:
+        _fail(f"weeks: {weeks} weeks are counted but {n} points are shown, so the weeks are not one point a week")
     name = s.working["series"]
     _figures(s, [(f"{name}: latest", latest), ("Weeks the latest value has stood", weeks)])
     value, first = _display(s, 0), pts[0][0].isoformat()
     if since_case:
         _headline(s, f"The {name}, {value}, is the {extreme} since {first}.")
         return
-    earliest = (f"the earliest point we hold is {first}", f"weekly points unbroken from {first}")
+    if not whole:  # a gap kept earlier points out of the check: the claim is about the weeks checked, not about the history
+        _headline(s, f"The {name}, {value}, is the {extreme} in the {weeks} weeks checked, since {first}.")
+        return
+    earliest = f"the earliest point we hold is {first}"
     if weeks >= 52:
         hl = "high" if highest else "low"
-        _headline(s, *[f"The {name}, {value}, is a record {hl} in the history we hold: the {extreme} in {weeks} weeks ({e})." for e in earliest])
+        _headline(s, f"The {name}, {value}, is a record {hl} in the history we hold: the {extreme} in {weeks} weeks ({earliest}).")
     else:
-        _headline(s, *[f"The {name}, {value}, is the {extreme} in the available history, {weeks} weeks ({e})." for e in earliest])
+        _headline(s, f"The {name}, {value}, is the {extreme} in the available history, {weeks} weeks ({earliest}).")
 
 
 def _trailing(s: Suggestion) -> None:
@@ -260,7 +286,7 @@ def _trailing(s: Suggestion) -> None:
 def _cross(s: Suggestion) -> None:
     m = _rule(s, r"The latest point is at or (above|below) (-?[0-9.]+) and the previous point was strictly (below|above) it\. Equal "
                  r"to the level counts as reaching it\. The last time the series was at or (above|below) the level is looked up in "
-                 r"the unbroken weekly points \(gaps of more than (\d+) days end the window\)\.")
+                 r"the unbroken weekly points \(gaps of more than (\d+) days end the window\)\." + _WINDOW)
     up = m[1] == "above"
     if m[4] != m[1] or m[3] != ("below" if up else "above"):
         _fail("rule: the sides of the level do not agree")
@@ -278,6 +304,7 @@ def _cross(s: Suggestion) -> None:
     if not (strictly_other(before) and at_or_beyond(latest)):
         _fail("crossing: the previous point is not strictly on the other side, or the latest is not at or beyond the level")
     since_case = len(pts) > 2 and at_or_beyond(pts[0][1])
+    whole = _window_sentence(m[6], m[7], gap, needed=not since_case)
     if since_case:
         if not all(strictly_other(v) for _, v in pts[1:-1]):
             _fail("history: a later point is on the same side, so it was not the last time")
@@ -286,9 +313,11 @@ def _cross(s: Suggestion) -> None:
     weeks = (pts[-1][0] - pts[0][0]).days // 7
     name, side = s.working["series"], m[1]
     _figures(s, [(f"{name}: latest", latest), (f"{name}: previous week", before), ("Level", level),
-                 (f"Weeks since the series was last at or {side} the level" if since_case else "Weeks of history held", weeks)])
+                 (f"Weeks since the series was last at or {side} the level" if since_case else "Weeks checked", weeks)])
     verb = "reached" if latest == level else f"moved {side}"
-    when = f"since {pts[0][0].isoformat()}" if since_case else "in the history we hold"
+    first = pts[0][0].isoformat()
+    # a first-time crossing claims only the weeks checked: "we hold" only when the rule says the window began at the first point held
+    when = f"since {first}" if since_case else f"in the {weeks} weeks {'we hold' if whole else 'checked'}, since {first}"
     _headline(s, f"The {name} {verb} {_display(s, 2)} for the first time {when}, from {_display(s, 1)} to {_display(s, 0)}.")
 
 
@@ -383,17 +412,27 @@ def _pace(s: Suggestion) -> None:
 def _drift(s: Suggestion) -> None:
     from cytonn_weekly.equities.weekly import recommendation  # imported here: the module pulls in the workbook readers
 
-    m = _rule(s, r"Upside is the dividend per share over the price plus the target over the price, less one\. The target \(Kshs "
-                 r"([0-9.]+)\) and the dividend per share \(Kshs ([0-9.]+)\) are the same in both weeks, and nothing here changes "
-                 r"them\. Bands from the equities team's rule: Buy at 20% or more, Accumulate at 10% or more, Hold at 5% or more, "
-                 r"Lighten at 0\.1% or more, Sell at 0% or less; between 0% and 0\.1% there is no band\.")
-    target, dividend = Decimal(m[1]), Decimal(m[2])
+    _rule(s, re.escape("Upside is the dividend per share over the price plus the target over the price, less one. The target and the "
+                       "dividend per share are shown for both weeks, and a move is shown only when each is the same in both weeks. "
+                       "Bands from the equities team's rule: Buy at 20% or more, Accumulate at 10% or more, Hold at 5% or more, "
+                       "Lighten at 0.1% or more, Sell at 0% or less; between 0% and 0.1% there is no band."))
     pts = _points(s)
     _on_the_week(s, pts)
     _kind(s, "drift")
     _window(s, "week on week")
     if len(pts) != 2 or (pts[1][0] - pts[0][0]).days != 7:
         _fail("points: two prices a week apart are the working")
+    # "on price alone" holds only if the target and the dividend per share are the same in both weeks: both weeks' are shown, and
+    # nothing is accepted until each pair is equal
+    shown = {f["label"]: _d(f["value"]) for f in s.figures}
+    for label in ("Target now", "Target a week earlier", "Dividend per share now", "Dividend per share a week earlier"):
+        if label not in shown:
+            _fail(f"figures: {label!r} is missing; both weeks' target and dividend per share must be shown")
+    if shown["Target now"] != shown["Target a week earlier"]:
+        _fail("target: the target changed between the weeks, so this is not a move on price alone")
+    if shown["Dividend per share now"] != shown["Dividend per share a week earlier"]:
+        _fail("dividend: the dividend per share changed between the weeks, so this is not a move on price alone")
+    target, dividend = shown["Target now"], shown["Dividend per share now"]
     (_, before), (_, now) = pts
     up_before, up_now = (dividend + target - before) / before * 100, (dividend + target - now) / now * 100
     # called as the Universe of Coverage table calls it, with float(Decimal): its thresholds are float literals
@@ -405,7 +444,8 @@ def _drift(s: Suggestion) -> None:
         _fail("series: a drift's series is the company's price")
     name = name[: -len(" price")]
     _figures(s, [(f"{name}: price now", now), (f"{name}: price a week earlier", before), ("Upside now", up_now),
-                 ("Upside a week earlier", up_before), ("Target", target), ("Dividend per share", dividend)])
+                 ("Upside a week earlier", up_before), ("Target now", target), ("Target a week earlier", target),
+                 ("Dividend per share now", dividend), ("Dividend per share a week earlier", dividend)])
     for index, band in ((2, band_now), (3, band_before)):  # the displayed upside must fall in the band it is named with
         negative, number, _ = _shown_number(_display(s, index))
         if recommendation(float(-number if negative else number)) != band:

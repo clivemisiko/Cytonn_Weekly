@@ -86,11 +86,13 @@ TEMPLATES = {
     "since.headline.record": ("The {name}, {value}, is a record {hl} in the history we hold: the {extreme} in {weeks} weeks "
                               "({earliest})."),
     "since.earliest.whole": "the earliest point we hold is {date}",
-    "since.earliest.window": "weekly points unbroken from {date}",
+    "since.headline.window": "The {name}, {value}, is the {extreme} in the {weeks} weeks checked, since {date}.",
     "since.rule": ("{extreme} value in the unbroken weekly points. A value equal to the latest counts as at or {side} it, so a tie "
                    "ends the stretch. Gaps of more than {gap} days end the window. The latest value must stand for at least "
                    "{min_stretch} weekly points, in a window of at least {min_points} points."),
     "since.window": "unbroken weekly points, {extreme}",
+    "window.edge.start": "The window begins at the first point we hold.",
+    "window.edge.gap": "The window begins after a gap of more than {gap} days; points before the gap are not looked at.",
     "trailing.headline": ("The {name}, {latest}, is {diff} {side} the average of the previous {n} weeks, {mean}.{sigma}"),
     "trailing.sigma": " That is {sigma} standard deviations {side} the average.",
     "trailing.rule": ("Latest value against the mean of the previous {n} weekly points (the latest point is not in the mean), "
@@ -101,7 +103,8 @@ TEMPLATES = {
     "trailing.window": "previous {n} weeks",
     "cross.headline": "The {name} {verb} {level} for the first time {when}, from {previous} to {latest}.",
     "cross.when.since": "since {date}",
-    "cross.when.never": "in the history we hold",
+    "cross.when.never.whole": "in the {weeks} weeks we hold, since {date}",
+    "cross.when.never.cut": "in the {weeks} weeks checked, since {date}",
     "cross.rule": ("The latest point is at or {side} {level} and the previous point was strictly {other} it. Equal to the level "
                    "counts as reaching it. The last time the series was at or {side} the level is looked up in the unbroken "
                    "weekly points (gaps of more than {gap} days end the window)."),
@@ -127,10 +130,10 @@ TEMPLATES = {
     "pace.window": "period to date",
     "drift.headline": ("{name} moves from {was} to {now} on price alone: upside {upside_was} to {upside_now}, target unchanged at "
                        "Kshs {target}."),
-    "drift.rule": ("Upside is the dividend per share over the price plus the target over the price, less one. The target (Kshs "
-                   "{target}) and the dividend per share (Kshs {dividend}) are the same in both weeks, and nothing here changes "
-                   "them. Bands from the equities team's rule: Buy at 20% or more, Accumulate at 10% or more, Hold at 5% or "
-                   "more, Lighten at 0.1% or more, Sell at 0% or less; between 0% and 0.1% there is no band."),
+    "drift.rule": ("Upside is the dividend per share over the price plus the target over the price, less one. The target and the "
+                   "dividend per share are shown for both weeks, and a move is shown only when each is the same in both weeks. "
+                   "Bands from the equities team's rule: Buy at 20% or more, Accumulate at 10% or more, Hold at 5% or more, "
+                   "Lighten at 0.1% or more, Sell at 0% or less; between 0% and 0.1% there is no band."),
     "drift.window": "week on week",
 }
 

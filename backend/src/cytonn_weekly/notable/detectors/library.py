@@ -26,7 +26,11 @@ Detectors, defaults and what makes each fire
         The latest value is the highest (or lowest) since an earlier date, or in all the unbroken points we hold. A value equal to
         the latest counts as at or above (below) it, so a tie ends the stretch. Needs a window of min_points and a stretch of at
         least min_stretch weekly points. The word "record" is used only when the history spans 52 weeks, and then still "in the
-        history we hold". Working: from the point that ends the stretch, or the whole window.
+        history we hold". Working: from the point that ends the stretch, or the whole window. When nothing in the window is as
+        extreme (the record form) the rule says where the window starts: "The window begins at the first point we hold." and the
+        headline may say "the earliest point we hold"; when a gap cut the window the rule says so and the headline says "the N weeks
+        checked, since DATE", never "history". The record form also needs one point a week (the weeks counted equal the points
+        shown); a window whose points are not one a week gets no record.
     trailing_compare(series, *, section, week_ending, threshold, mode="pct", window_n=12, require_sigma=None, max_gap_days=10)
         The latest against the mean of the previous window_n points (the latest is not in the mean), as a percentage ("pct"),
         an absolute difference ("abs") or basis points ("bps", percentage series only). The caller supplies the threshold; there is
@@ -34,8 +38,9 @@ Detectors, defaults and what makes each fire
         standard deviations (sample) is shown, and required only when require_sigma is set. A zero mean in "pct" mode gives nothing.
     threshold_cross(series, *, section, week_ending, level, min_points=12, max_gap_days=10)
         The previous point was strictly on one side of ``level`` and the latest is at or beyond it (equal to the level counts as
-        reaching it). Says when the series was last on that side, or that it was never in the history we hold. The two points must
-        be consecutive weeks. Working: from the last time on that side, or the whole window.
+        reaching it). Says when the series was last on that side, or that it was not on that side in the N weeks checked, since
+        DATE (the first point of the window; "we hold" only when nothing is held before it, which the rule then says). The two
+        points must be consecutive weeks. Working: from the last time on that side, or the whole window.
     expected_range(series, *, section, week_ending, window_n=26, slip_factor=5, max_gap_days=10)
         The latest is strictly outside the lowest-to-highest of the previous window_n points; and, as a separate signal, the latest
         is at least slip_factor times or at most 1/slip_factor of their median (a decimal-slip check; needs a median and a latest
@@ -46,10 +51,13 @@ Detectors, defaults and what makes each fire
         fiscal year). The cumulative figure's latest point must be dated ``as_of``, and ``as_of`` must fall from week_ending to
         seven days after it (a value date after the Friday). Fires at a gap of at least threshold_pp percentage points. States a
         straight-line projection, labelled as one.
-    drift(*, name, section, week_ending, price_now, price_previous, target, dividend_per_share, provenance)
+    drift(*, name, section, week_ending, price_now, price_previous, target, dividend_per_share, target_previous,
+          dividend_per_share_previous, provenance)
         Upside (dividend per share over price plus target over price, less one) in both weeks, with the band from
-        equities.weekly.recommendation. Fires only when the band changes. The target and the dividend per share are one pair of
-        numbers, passed once, and the suggestion states they did not change. It never says the target should.
+        equities.weekly.recommendation. Fires only when the band changes AND the target and the dividend per share are the same
+        in both weeks (compared as numbers); if either moved it returns nothing, because that is not a move on price alone and
+        no other kind for it exists yet. Both weeks' target and dividend are in the figures, and the verifier checks they are
+        equal. It never says the target should change.
 
 Rank (0 to 100, whole numbers, no randomness; each rises with what the detector measures)
     streak            min(100, 40 + 10 x (run - min_run))
@@ -223,18 +231,24 @@ def since(series: Series, *, section: str, week_ending: date, min_points: int = 
             continue
         start = window[j] if j is not None else window[0]
         weeks = _weeks(latest.date, start.date)
+        whole = len(window) == len(series.points)  # nothing is held before the window
         value = fmt(latest.value, unit, dec)
         if j is not None:
             headline = say("since.headline.since", name=name, value=value, extreme=extreme, date=start.date.isoformat())
-        else:
-            earliest = say("since.earliest.whole" if len(window) == len(series.points) else "since.earliest.window",
-                           date=start.date.isoformat())
+        elif weeks != n - 1:
+            continue  # not one point a week, so "weeks" would not be what the points show: no record is claimed
+        elif whole:
+            earliest = say("since.earliest.whole", date=start.date.isoformat())
             key = "since.headline.record" if weeks >= 52 else "since.headline.history"
             headline = say(key, name=name, value=value, extreme=extreme, hl=hl, weeks=weeks, earliest=earliest)
+        else:  # points were held before a gap and not looked at: the claim is about the weeks checked
+            headline = say("since.headline.window", name=name, value=value, extreme=extreme, weeks=weeks, date=start.date.isoformat())
         figures = [_fig(f"{name}: latest", latest.value, value, unit),
                    _fig("Weeks the latest value has stood", weeks, count(weeks), "weeks")]
         rule = say("since.rule", extreme=extreme.capitalize(), side=side, gap=max_gap_days, min_stretch=min_stretch,
                    min_points=min_points)
+        if j is None:
+            rule += " " + say("window.edge.start" if whole else "window.edge.gap", gap=max_gap_days)
         shown = window[j:] if j is not None else window
         out.append(_make("since" if j is not None else "record", section, week, headline, figures, name, rule,
                          say("since.window", extreme=extreme), _shown(shown, unit, dec), series.provenance, 30 + weeks))
@@ -335,15 +349,19 @@ def threshold_cross(series: Series, *, section: str, week_ending: date, level: A
     weeks = _weeks(latest.date, start.date)
     reached = latest.value == line
     verb = "reached" if reached else f"moved {side}"
-    when = say("cross.when.since", date=start.date.isoformat()) if j is not None else say("cross.when.never")
+    whole = len(window) == len(series.points)  # nothing is held before the window
+    when = (say("cross.when.since", date=start.date.isoformat()) if j is not None
+            else say("cross.when.never.whole" if whole else "cross.when.never.cut", weeks=weeks, date=start.date.isoformat()))
     level_shown = fmt(line, unit, dec)
     headline = say("cross.headline", name=name, verb=verb, level=level_shown, when=when, previous=fmt(before.value, unit, dec),
                    latest=fmt(latest.value, unit, dec))
-    weeks_label = f"Weeks since the series was last at or {side} the level" if j is not None else "Weeks of history held"
+    weeks_label = f"Weeks since the series was last at or {side} the level" if j is not None else "Weeks checked"
     figures = [_fig(f"{name}: latest", latest.value, fmt(latest.value, unit, dec), unit),
                _fig(f"{name}: previous week", before.value, fmt(before.value, unit, dec), unit),
                _fig("Level", line, level_shown, unit), _fig(weeks_label, weeks, count(weeks), "weeks")]
     rule = say("cross.rule", side=side, other=other, level=_raw(line), gap=max_gap_days)
+    if j is None:
+        rule += " " + say("window.edge.start" if whole else "window.edge.gap", gap=max_gap_days)
     shown = window[j:] if j is not None else window
     return _finish([_make("threshold_cross", section, week, headline, figures, name, rule,
                           say("cross.window", level=_raw(line)), _shown(shown, unit, dec), series.provenance, 40 + weeks)])
@@ -454,7 +472,7 @@ _BAND_ORDER = {"Sell": 0, None: 1, "Lighten": 2, "Hold": 3, "Accumulate": 4, "Bu
 
 
 def drift(*, name: str, section: str, week_ending: date, price_now: Any, price_previous: Any, target: Any, dividend_per_share: Any,
-          provenance: Provenance) -> list[Suggestion]:
+          target_previous: Any, dividend_per_share_previous: Any, provenance: Provenance) -> list[Suggestion]:
     if not isinstance(name, str) or not name.strip():
         raise ValueError("name must be the company's name")
     if not isinstance(provenance, Provenance):
@@ -463,6 +481,10 @@ def drift(*, name: str, section: str, week_ending: date, price_now: Any, price_p
     now, before = _dec("price_now", price_now, positive=True), _dec("price_previous", price_previous, positive=True)
     goal = _dec("target", target, positive=True)
     dividend = _dec("dividend per share", dividend_per_share, nonnegative=True)
+    goal_before = _dec("target_previous", target_previous, positive=True)
+    dividend_before = _dec("dividend_per_share_previous", dividend_per_share_previous, nonnegative=True)
+    if goal != goal_before or dividend != dividend_before:
+        return []  # a different target or dividend moves the band by itself: not a move on price alone, and no other kind exists yet
     from cytonn_weekly.equities.weekly import recommendation  # imported here: the module pulls in the workbook readers
 
     def upside(p: Decimal) -> Decimal:  # (dividend + target - price) / price, the Universe of Coverage's formula in one division
@@ -492,10 +514,12 @@ def drift(*, name: str, section: str, week_ending: date, price_now: Any, price_p
                    upside_now=text_now, target=fmt_value(goal, PRICE, 2))
     figures = [_fig(f"{name}: price now", now, price(now), "kes"), _fig(f"{name}: price a week earlier", before, price(before), "kes"),
                _fig("Upside now", u_now, text_now, "pct"), _fig("Upside a week earlier", u_before, text_before, "pct"),
-               _fig("Target", goal, price(goal), "kes"), _fig("Dividend per share", dividend, price(dividend), "kes")]
+               _fig("Target now", goal, price(goal), "kes"), _fig("Target a week earlier", goal_before, price(goal_before), "kes"),
+               _fig("Dividend per share now", dividend, price(dividend), "kes"),
+               _fig("Dividend per share a week earlier", dividend_before, price(dividend_before), "kes")]
     points = [{"date": (week - timedelta(days=7)).isoformat(), "value": before, "display": price(before)},
               {"date": week.isoformat(), "value": now, "display": price(now)}]
-    rule = say("drift.rule", target=_raw(goal), dividend=_raw(dividend))
+    rule = say("drift.rule")
     steps = abs(_BAND_ORDER[band_now] - _BAND_ORDER[band_before])
     return _finish([_make("drift", section, week, headline, figures, f"{name} price", rule, say("drift.window"), points, provenance,
                           50 + 10 * steps)])
