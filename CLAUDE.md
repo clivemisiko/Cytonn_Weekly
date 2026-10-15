@@ -29,7 +29,7 @@ Python >=3.10 (developed on 3.12). No linter or formatter is configured; don't i
 cp .env.example .env              # in the repo root; then fill in what you need; every variable is documented there
 cd backend                        # every Python command below runs from backend/
 pip install -e .                  # editable install; scripts and tests import cytonn_weekly without PYTHONPATH
-python -m pytest -q               # whole suite (1581 tests: 1580 passed with the confidential samples present and 1 deselected, `--deselect tests/test_report_type_migration.py::test_migration_on_a_copy_of_the_real_database`, the one test that reads a byte copy of the real `app.db`; counted 2026-10-15; how many skip without them was not re-counted, it was 10 when the suite had 1099; ~9 to 11 min, no network, no LLM; one test runs the OCR engine for about a minute)
+python -m pytest -q               # whole suite (1664 tests collected: 1663 passed, 0 failed and 0 skipped with the confidential samples present, and 1 deselected, `--deselect tests/test_report_type_migration.py::test_migration_on_a_copy_of_the_real_database`, the one test that reads a byte copy of the real `app.db`; counted 2026-10-15 after merging main; how many skip without them was not re-counted, it was 10 when the suite had 1099; ~9 to 11 min, no network, no LLM; one test runs the OCR engine for about a minute)
 python -m pytest tests/test_digital_payments_checks.py::test_exact_match_passes -q   # one test
 python -m pytest -k "resume" -q   # by keyword
 uvicorn api.main:app --port 8000                     # review API (from backend/)
