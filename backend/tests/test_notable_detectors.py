@@ -31,6 +31,8 @@ STREAK_RULE = ("Consecutive weekly {w} ending at the latest point. An unchanged 
                "points, ends the run. At least {m} {w} in a row are needed. {e}")
 EDGE_BEFORE = "The first point shown is the one before the run and is not part of it."
 EDGE_START = "The run begins at the first point we hold, which is the first point shown; nothing earlier is held."
+WINDOW_HOLD = "The window begins at the first point we hold."
+WINDOW_GAP = "The window begins after a gap of more than 10 days; points before the gap are not looked at."
 
 
 def one(found):
@@ -197,6 +199,7 @@ def test_since_golden_highest_in_the_available_history():
     assert s.working["points"] == points(values) and s.rank == 55
     assert s.figures == [fig(f"{Y182}: latest", "9.50", "9.50%", "pct"), fig("Weeks the latest value has stood", 25, "25", "weeks")]
     assert s.working["window"] == "unbroken weekly points, highest"
+    assert s.working["rule"] == SINCE_RULE.format(h="Highest", a="above") + " " + WINDOW_HOLD  # a record says where its window starts
 
 
 def test_since_golden_record_only_with_at_least_52_weeks_and_still_in_the_history_we_hold():
@@ -205,6 +208,7 @@ def test_since_golden_record_only_with_at_least_52_weeks_and_still_in_the_histor
     assert s.headline == ("The Invented 182-day yield, 9.50%, is a record high in the history we hold: the highest in 59 weeks "
                           "(the earliest point we hold is 2025-08-22).")
     assert s.rank == 89 and s.kind == "record" and s.working["points"] == points(values)
+    assert s.working["rule"].endswith(" " + WINDOW_HOLD)
 
 
 def test_since_52_weeks_exactly_is_enough_for_the_word_record_and_51_is_not():
@@ -224,6 +228,7 @@ def test_since_golden_lowest():
     assert s.working["rule"] == SINCE_RULE.format(h="Lowest", a="below")
     lone = one(since(series(Y182, "pct", BASE25 + ["8.50"]), **KW))
     assert lone.headline.startswith("The Invented 182-day yield, 8.50%, is the lowest in the available history, 25 weeks")
+    assert lone.working["rule"] == SINCE_RULE.format(h="Lowest", a="below") + " " + WINDOW_HOLD
 
 
 def test_since_ties_count_as_equal_or_above_so_an_equal_value_just_before_stops_it():
@@ -254,9 +259,29 @@ def test_since_a_gap_inside_the_series_ends_the_usable_window():
     ds = [FRI - timedelta(days=7 * n) for n in range(30, -1, -1)]
     gapped = [d - timedelta(days=7) if i < 4 else d for i, d in enumerate(ds)]
     s = one(since(Series(Y182, "pct", list(zip(gapped, longer)), PUBLISHED), **KW))
-    assert s.headline == ("The Invented 182-day yield, 9.50%, is the highest in the available history, 26 weeks "
-                          "(weekly points unbroken from 2026-04-10).")
+    # points were held before the gap and not looked at, so the sentence is about the weeks checked, not the history
+    assert s.headline == "The Invented 182-day yield, 9.50%, is the highest in the 26 weeks checked, since 2026-04-10."
+    assert s.working["rule"] == SINCE_RULE.format(h="Highest", a="above") + " " + WINDOW_GAP
+    assert "history" not in s.headline and "record" not in s.headline
     assert len(s.working["points"]) == 27  # the window after the gap only
+
+
+def test_since_record_wording_belongs_to_a_window_that_begins_at_the_first_point_held():
+    whole = one(since(series(Y182, "pct", BASE25 + ["9.50"]), **KW))
+    assert "the earliest point we hold is 2026-04-17" in whole.headline and whole.working["rule"].endswith(WINDOW_HOLD)
+    early = [(FRI - timedelta(days=7 * 25 + 14 + 7 * k), "9.00") for k in (2, 1, 0)]  # held, but behind a 14-day gap
+    tail = list(zip(dates(26), BASE25 + ["9.50"]))
+    cut = one(since(Series(Y182, "pct", early + tail, PUBLISHED), **KW))
+    assert cut.working["rule"].endswith(WINDOW_GAP) and "we hold" not in cut.headline
+    assert cut.working["points"] == points(BASE25 + ["9.50"])  # the three earlier points are not in the working
+
+
+def test_since_record_needs_the_weeks_counted_to_equal_the_points_shown():
+    ds = [FRI - timedelta(days=10 * n) for n in range(29, -1, -1)]  # 30 points, 10 days apart: 41 calendar weeks, 29 steps
+    rising = list(zip(ds, [f"{9 + 0.01 * i:.2f}" for i in range(30)]))
+    assert since(Series(Y182, "pct", rising, PUBLISHED), **KW) == []  # "41 weeks" would not be what the points show
+    weekly_rising = list(zip(dates(30), [f"{9 + 0.01 * i:.2f}" for i in range(30)]))
+    assert one(since(Series(Y182, "pct", weekly_rising, PUBLISHED), **KW)).figures[1] == fig("Weeks the latest value has stood", 29, "29", "weeks")
 
 
 def test_since_a_flat_series_returns_nothing():
@@ -417,13 +442,27 @@ def test_threshold_cross_golden_up_first_time_since():
     }
 
 
-def test_threshold_cross_golden_first_time_in_the_history_we_hold():
+def test_threshold_cross_golden_first_time_in_the_weeks_we_hold():
     values = [v for v in UP14[:2]] + ["9.90"] + UP14[3:]  # nothing at or above 10.00 before the latest
     s = one(threshold_cross(series(Y182, "pct", values), level="10", **KW))
-    assert s.headline == ("The Invented 182-day yield moved above 10.00% for the first time in the history we hold, "
+    assert s.headline == ("The Invented 182-day yield moved above 10.00% for the first time in the 13 weeks we hold, since 2026-07-10, "
                           "from 9.95% to 10.10%.")
-    assert s.figures[3] == fig("Weeks of history held", 13, "13", "weeks")
+    assert s.figures[3] == fig("Weeks checked", 13, "13", "weeks")
     assert s.working["points"] == points(values) and s.rank == 53
+    assert s.working["rule"] == CROSS_RULE.format(s="above", o="below", level="10") + " " + WINDOW_HOLD
+    assert "history" not in s.headline
+
+
+def test_threshold_cross_points_held_behind_a_gap_are_not_claimed_as_history():
+    """The probe: three earlier points at 10.5 behind a 14-day gap used to give "for the first time in the history we hold"."""
+    early = [(FRI - timedelta(days=7 * 13 + 14 + 7 * k), "10.5") for k in (2, 1, 0)]
+    tail = list(zip(dates(14), ["9.60", "9.70", "9.80", "9.75", "9.65", "9.70", "9.80", "9.75", "9.70", "9.65", "9.70", "9.80", "9.95", "10.10"]))
+    s = one(threshold_cross(Series(Y182, "pct", early + tail, PUBLISHED), level="10", **KW))
+    assert s.headline == ("The Invented 182-day yield moved above 10.00% for the first time in the 13 weeks checked, since 2026-07-10, "
+                          "from 9.95% to 10.10%.")
+    assert "history" not in s.headline and "we hold" not in s.headline
+    assert s.working["rule"] == CROSS_RULE.format(s="above", o="below", level="10") + " " + WINDOW_GAP
+    assert s.working["points"] == points([v for _, v in tail])  # what was checked: the points after the gap
 
 
 def test_threshold_cross_golden_down_and_touching():
@@ -675,11 +714,12 @@ def test_pace_refuses_inputs_that_make_no_sense():
 
 # ================================================================================================================ drift
 
-DRIFT = dict(name="Equity Group", target="52.00", dividend_per_share="2.00", provenance=PUBLISHED, **KW)
-DRIFT_RULE = ("Upside is the dividend per share over the price plus the target over the price, less one. The target (Kshs {t}) and "
-              "the dividend per share (Kshs {d}) are the same in both weeks, and nothing here changes them. Bands from the equities "
-              "team's rule: Buy at 20% or more, Accumulate at 10% or more, Hold at 5% or more, Lighten at 0.1% or more, Sell at "
-              "0% or less; between 0% and 0.1% there is no band.")
+DRIFT = dict(name="Equity Group", target="52.00", dividend_per_share="2.00", target_previous="52.00", dividend_per_share_previous="2.00",
+             provenance=PUBLISHED, **KW)
+DRIFT_RULE = ("Upside is the dividend per share over the price plus the target over the price, less one. The target and the dividend "
+              "per share are shown for both weeks, and a move is shown only when each is the same in both weeks. Bands from the "
+              "equities team's rule: Buy at 20% or more, Accumulate at 10% or more, Hold at 5% or more, Lighten at 0.1% or more, "
+              "Sell at 0% or less; between 0% and 0.1% there is no band.")
 
 
 def test_drift_golden_accumulate_to_hold():
@@ -689,8 +729,10 @@ def test_drift_golden_accumulate_to_hold():
         "headline": "Equity Group moves from Accumulate to Hold on price alone: upside 11.3% to 9.5%, target unchanged at Kshs 52.00.",
         "figures": [fig("Equity Group: price now", "49.30", "Kshs 49.30", "kes"), fig("Equity Group: price a week earlier", "48.50", "Kshs 48.50", "kes"),
                     fig("Upside now", "9.533469", "9.5%", "pct"), fig("Upside a week earlier", "11.340206", "11.3%", "pct"),
-                    fig("Target", "52.00", "Kshs 52.00", "kes"), fig("Dividend per share", "2.00", "Kshs 2.00", "kes")],
-        "working": {"series": "Equity Group price", "rule": DRIFT_RULE.format(t="52.00", d="2.00"), "window": "week on week",
+                    fig("Target now", "52.00", "Kshs 52.00", "kes"), fig("Target a week earlier", "52.00", "Kshs 52.00", "kes"),
+                    fig("Dividend per share now", "2.00", "Kshs 2.00", "kes"),
+                    fig("Dividend per share a week earlier", "2.00", "Kshs 2.00", "kes")],
+        "working": {"series": "Equity Group price", "rule": DRIFT_RULE, "window": "week on week",
                     "points": [{"date": "2026-10-02", "value": D("48.50"), "display": "Kshs 48.50"},
                                {"date": "2026-10-09", "value": D("49.30"), "display": "Kshs 49.30"}]},
         "provenance": {"kind": "published", "label": "CBK weekly bulletin"}, "rank": 60,
@@ -714,19 +756,19 @@ def test_drift_golden_lighten_to_sell_with_a_negative_upside_in_brackets():
 def test_drift_the_band_edges_are_the_recommendation_functions_edges():
     from cytonn_weekly.equities.weekly import recommendation
 
-    d = dict(name="Equity Group", dividend_per_share="0", provenance=PUBLISHED, **KW)
+    d = dict(name="Equity Group", dividend_per_share="0", dividend_per_share_previous="0", provenance=PUBLISHED, **KW)
     # exactly 20%: price 45 against a target of 54 is 20.0%, which is Buy, and 45.01 is just under (Accumulate)
-    s = one(drift(price_now="45.00", price_previous="45.01", target="54", **d))
+    s = one(drift(price_now="45.00", price_previous="45.01", target="54", target_previous="54", **d))
     assert "from Accumulate to Buy" in s.headline and "upside 19.97% to 20.0%" in s.headline
     assert recommendation(20.0) == "Buy"
     # exactly 10%: 50 against 55
-    t = one(drift(price_now="50", price_previous="50.10", target="55", **d))
+    t = one(drift(price_now="50", price_previous="50.10", target="55", target_previous="55", **d))
     assert "from Hold to Accumulate" in t.headline
     # exactly 0.1%: 1000 against 1001 is Lighten, and 1001.5 is below zero (Sell)
-    u = one(drift(price_now="1000", price_previous="1001.5", target="1001", **d))
+    u = one(drift(price_now="1000", price_previous="1001.5", target="1001", target_previous="1001", **d))
     assert "from Sell to Lighten" in u.headline
     # exactly 0%: price equals target plus dividend is Sell
-    v = one(drift(price_now="54", price_previous="53", target="54", **d))
+    v = one(drift(price_now="54", price_previous="53", target="54", target_previous="54", **d))
     assert "from Lighten to Sell" in v.headline and v.figures[2]["value"] == D("0")
 
 
@@ -739,7 +781,7 @@ def test_drift_the_rule_text_states_the_real_functions_thresholds():
     for name, edge in edges.items():
         assert recommendation(edge) == name and recommendation(edge - 0.0001) != name
     assert recommendation(0.0) == "Sell" and recommendation(0.05) is None and recommendation(-0.01) == "Sell"
-    text = DRIFT_RULE.format(t="52.00", d="2.00")
+    text = DRIFT_RULE
     for fragment in ("Buy at 20% or more", "Accumulate at 10% or more", "Hold at 5% or more", "Lighten at 0.1% or more",
                      "Sell at 0% or less", "between 0% and 0.1% there is no band"):
         assert fragment in text
@@ -754,7 +796,7 @@ def test_drift_no_change_of_band_returns_nothing():
 def test_drift_states_that_the_target_did_not_change_and_never_says_it_should():
     s = one(drift(price_now="49.30", price_previous="48.50", **DRIFT))
     assert "target unchanged at Kshs 52.00" in s.headline
-    assert "are the same in both weeks" in s.working["rule"]
+    assert "only when each is the same in both weeks" in s.working["rule"]
     text = (s.headline + " " + s.working["rule"]).lower()
     assert not re.search(r"revis|should|raise the target|cut the target|lower the target", text)
 
@@ -769,6 +811,34 @@ def test_drift_refuses_prices_and_inputs_that_make_no_sense():
         drift(price_now="49.30", price_previous="48.50", **{**DRIFT, "dividend_per_share": "-1"})
     with pytest.raises(ValueError, match="name"):
         drift(price_now="49.30", price_previous="48.50", **{**DRIFT, "name": " "})
+    with pytest.raises(ValueError, match="target_previous"):
+        drift(price_now="49.30", price_previous="48.50", **{**DRIFT, "target_previous": "0"})
+    with pytest.raises(ValueError, match="dividend_per_share_previous"):
+        drift(price_now="49.30", price_previous="48.50", **{**DRIFT, "dividend_per_share_previous": "-1"})
+    for missing in ("target_previous", "dividend_per_share_previous"):  # the previous week's pair is asked for, never assumed
+        kw = {k: v for k, v in DRIFT.items() if k != missing}
+        with pytest.raises(TypeError):
+            drift(price_now="49.30", price_previous="48.50", **kw)
+
+
+def test_drift_returns_nothing_when_the_target_or_the_dividend_changed_between_the_weeks():
+    assert len(drift(price_now="49.30", price_previous="48.50", **DRIFT)) == 1  # the same prices fire when nothing else moved
+    # a different target last week would move the band by itself: that is not a move on price alone, and not this suggestion
+    assert drift(price_now="49.30", price_previous="48.50", **{**DRIFT, "target_previous": "51.00"}) == []
+    assert drift(price_now="49.30", price_previous="48.50", **{**DRIFT, "target_previous": "56.00"}) == []
+    assert drift(price_now="49.30", price_previous="48.50", **{**DRIFT, "dividend_per_share_previous": "1.00"}) == []
+    assert drift(price_now="49.30", price_previous="48.50", **{**DRIFT, "target_previous": "51.00", "dividend_per_share_previous": "1.00"}) == []
+
+
+def test_drift_compares_the_target_and_the_dividend_as_numbers_not_as_text():
+    s = one(drift(price_now="49.30", price_previous="48.50", **{**DRIFT, "target_previous": "52", "dividend_per_share_previous": "2"}))
+    assert [f["value"] for f in s.figures[4:]] == [D("52.00"), D("52"), D("2.00"), D("2")]
+
+
+def test_drift_puts_both_weeks_target_and_dividend_in_the_figures():
+    s = one(drift(price_now="49.30", price_previous="48.50", **DRIFT))
+    assert [f["label"] for f in s.figures[4:]] == ["Target now", "Target a week earlier", "Dividend per share now", "Dividend per share a week earlier"]
+    assert len(s.figures) == 8
 
 
 # ============================================================================================ ranks, ids, wording

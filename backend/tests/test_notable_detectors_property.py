@@ -142,8 +142,22 @@ def test_since_random_series():
         dates = weekly_dates(rng, n)
         series = build(dates, values)
         min_points, min_stretch = rng.choice([8, 20, 26]), rng.choice([3, 8, 12])
-        return (lambda week: since(series, section=SECTION, week_ending=week, min_points=min_points, min_stretch=min_stretch),
-                FRI, dates[-1], values[-1], n < min_points)
+
+        def call(week):
+            found = since(series, section=SECTION, week_ending=week, min_points=min_points, min_stretch=min_stretch)
+            for s in found:
+                shown, rule = s.working["points"], s.working["rule"]
+                if s.kind != "record":
+                    assert "The window begins" not in rule  # a "since" names the point that ended the stretch, and needs no window start
+                    continue
+                whole = len(shown) == len(series.points)  # nothing was held before the window
+                assert rule.endswith("The window begins at the first point we hold.") == whole
+                assert rule.endswith("points before the gap are not looked at.") != whole
+                assert s.figures[1]["value"] == len(shown) - 1  # the weeks counted equal the points shown
+                assert ("we hold" in s.headline) == whole
+            return found
+
+        return call, FRI, dates[-1], values[-1], n < min_points
 
     assert loop("since", make_case, 60) >= 60
 
@@ -179,8 +193,23 @@ def test_threshold_cross_random_series():
         dates = weekly_dates(rng, n, gap=0.05)
         series = build(dates, values)
         min_points = rng.choice([6, 12])
-        return (lambda week: threshold_cross(series, section=SECTION, week_ending=week, level=level, min_points=min_points),
-                FRI, dates[-1], values[-1], n < min_points)
+
+        def call(week):
+            found = threshold_cross(series, section=SECTION, week_ending=week, level=level, min_points=min_points)
+            for s in found:
+                shown, rule = s.working["points"], s.working["rule"]
+                assert "history" not in s.headline  # it never claims more than the weeks it checked
+                if " for the first time since " in s.headline:
+                    assert "The window begins" not in rule
+                    continue
+                whole = len(shown) == len(series.points)
+                assert rule.endswith("The window begins at the first point we hold.") == whole
+                assert rule.endswith("points before the gap are not looked at.") != whole
+                assert (f"in the {s.figures[3]['value']} weeks we hold, since {shown[0]['date']}" in s.headline) == whole
+                assert (f"in the {s.figures[3]['value']} weeks checked, since {shown[0]['date']}" in s.headline) != whole
+            return found
+
+        return call, FRI, dates[-1], values[-1], n < min_points
 
     assert loop("threshold_cross", make_case, 40) >= 40
 
@@ -231,20 +260,27 @@ def test_drift_random_cases():
         now, before = (dec(rng, 0.7, 1.4) * target).quantize(Decimal("0.01")), (dec(rng, 0.7, 1.4) * target).quantize(Decimal("0.01"))
         now = max(now, Decimal("0.01"))
         before = max(before, Decimal("0.01"))
+        moved = rng.random() < 0.3  # last week's target or dividend was different: that is not a move on price alone
+        target_before = target + dec(rng, 0.01, 5) if moved and rng.random() < 0.5 else target
+        dps_before = dps + dec(rng, 0.01, 2) if moved and target_before == target else dps
         return (lambda week: drift(name="Invented Co", section=SECTION, week_ending=week, price_now=now, price_previous=before,
-                                   target=target, dividend_per_share=dps, provenance=PUBLISHED), FRI, FRI, now, False)
+                                   target=target, dividend_per_share=dps, target_previous=target_before,
+                                   dividend_per_share_previous=dps_before, provenance=PUBLISHED), FRI, FRI, now,
+                moved)
 
     rng = random.Random(SEED)
     # drift has no series, so "a week the latest point is not on" does not apply: the loop's last check is for series only
-    fired = 0
+    fired = silent = 0
     for i in range(CASES):
-        call, week, latest_date, latest_value, _ = make_case(rng)
+        call, week, latest_date, latest_value, moved = make_case(rng)
         found = call(week)
+        assert not (moved and found), (i, "fired although the target or the dividend changed")
+        silent += moved
         assert [snap(x) for x in found] == [snap(x) for x in call(week)]
         for s in found:
             check(s, week, latest_date, latest_value)
         fired += bool(found)
-    assert fired >= 100, fired
+    assert fired >= 100 and silent >= 100, (fired, silent)
 
 
 def test_every_loop_is_reproducible():

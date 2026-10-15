@@ -26,13 +26,15 @@ from cytonn_weekly.notable.detectors import (
 from cytonn_weekly.notable.detectors import library
 from cytonn_weekly.notable.detectors.verify import verify
 from cytonn_weekly.notable.registry import DetectorContext, run_detectors
-from tests.detector_helpers import FRI, PUBLISHED, SECTION, series
+from tests.detector_helpers import FRI, PUBLISHED, SECTION, dates, series
 from tests.test_notable_detectors import (
     BASE25,
     DRIFT,
     EDGE_BEFORE,
     EDGE_START,
     KW,
+    WINDOW_GAP,
+    WINDOW_HOLD,
     PREV12,
     PREV26,
     UP14,
@@ -42,44 +44,65 @@ from tests.test_notable_detectors import (
 )
 
 D = Decimal
+CROSS_TAIL = ["9.60", "9.70", "9.80", "9.75", "9.65", "9.70", "9.80", "9.75", "9.70", "9.65", "9.70", "9.80", "9.95", "10.10"]
+
+
+def gap_before(n_tail, values, kept="9.00"):
+    """Three points held before a 14-day gap, then ``values`` as n_tail weekly points ending on the week."""
+    first = FRI - timedelta(days=7 * (n_tail - 1))
+    early = [(first - timedelta(days=14 + 7 * k), kept) for k in (2, 1, 0)]
+    return early + list(zip(dates(n_tail), values))
+
+
 STREAK_BEFORE = ["7.00", "9.00", "8.50", "8.00", "7.50", "7.00", "6.50", "6.00"]  # a fall of six weeks, after a rise into 9.00
 
 
-def cases() -> dict[str, object]:
-    """One suggestion of every kind of finding, each from a different case, keyed by a short name."""
-    out = {
-        "streak up": streak(series(YIELD, "pct", ["8.62", "8.70", "8.81", "8.93", "9.00", "9.05"]), **KW),
-        "streak down": streak(series(YIELD, "pct", ["0.20", "0.10", "0.00", "-0.10", "-0.20"]), min_run=3, **KW),
-        "streak before": streak(series(YIELD, "pct", STREAK_BEFORE), **KW),
-        "since tie": since(series(Y182, "pct", BASE25[:3] + ["9.50"] + BASE25[4:] + ["9.50"]), **KW),
-        "since history": since(series(Y182, "pct", BASE25 + ["9.50"]), **KW),
-        "since record": since(series(Y182, "pct", (BASE25 + BASE25 + BASE25[:9])[:59] + ["9.50"]), **KW),
-        "since lowest": since(series(Y182, "pct", BASE25 + ["8.50"]), **KW),
-        "trail pct sigma": trailing_compare(series("Invented interbank volume", "kes_bn", PREV12 + ["18.0"]), threshold="10", **KW),
-        "trail bps": trailing_compare(series(YIELD, "pct", ["9.00"] * 12 + ["9.45"]), threshold="25", mode="bps", **KW),
-        "trail abs below": trailing_compare(series("Invented net borrowing", "kes_bn", ["10.0"] * 12 + ["6.5"]), threshold="3", mode="abs", **KW),
-        "trail abs pct": trailing_compare(series(YIELD, "pct", ["9.00"] * 12 + ["9.45"]), threshold="0.30", mode="abs", **KW),
-        "cross up": threshold_cross(series(Y182, "pct", UP14), level="10", **KW),
-        "cross first": threshold_cross(series(Y182, "pct", UP14[:2] + ["9.90"] + UP14[3:]), level="10", **KW),
-        "cross touch": threshold_cross(series(Y182, "pct", UP14[:-1] + ["10.00"]), level="10", **KW),
-        "range above": expected_range(series(YIELD, "pct", PREV26 + ["9.05"]), **KW),
-        "range slip": expected_range(series(YIELD, "pct", PREV26 + ["87.00"]), **KW),
-        "range slip low": expected_range(series(YIELD, "pct", PREV26 + ["0.87"]), **KW),
-        "pace ahead": run_pace(["150", "280", "390", "450"]),
-        "pace behind": run_pace(["60", "110", "160", "200"], thr="5"),
-        "drift down": drift(price_now="49.30", price_previous="48.50", **DRIFT),
-        "drift no band": drift(price_now="53.97", price_previous="50.00", **DRIFT),
-        "drift sell": drift(price_now="54.50", price_previous="53.00", **DRIFT),
+def builders() -> dict[str, object]:
+    """One builder for each case: calling it runs the detector and returns its suggestions, keyed by a short name."""
+    return {
+        "streak up": lambda: streak(series(YIELD, "pct", ["8.62", "8.70", "8.81", "8.93", "9.00", "9.05"]), **KW),
+        "streak down": lambda: streak(series(YIELD, "pct", ["0.20", "0.10", "0.00", "-0.10", "-0.20"]), min_run=3, **KW),
+        "streak before": lambda: streak(series(YIELD, "pct", STREAK_BEFORE), **KW),
+        "since tie": lambda: since(series(Y182, "pct", BASE25[:3] + ["9.50"] + BASE25[4:] + ["9.50"]), **KW),
+        "since history": lambda: since(series(Y182, "pct", BASE25 + ["9.50"]), **KW),
+        "since record": lambda: since(series(Y182, "pct", (BASE25 + BASE25 + BASE25[:9])[:59] + ["9.50"]), **KW),
+        "since lowest": lambda: since(series(Y182, "pct", BASE25 + ["8.50"]), **KW),
+        "since cut": lambda: since(Series(Y182, "pct", gap_before(26, BASE25 + ["9.50"]), PUBLISHED), **KW),
+        "trail pct sigma": lambda: trailing_compare(series("Invented interbank volume", "kes_bn", PREV12 + ["18.0"]), threshold="10", **KW),
+        "trail bps": lambda: trailing_compare(series(YIELD, "pct", ["9.00"] * 12 + ["9.45"]), threshold="25", mode="bps", **KW),
+        "trail abs below": lambda: trailing_compare(series("Invented net borrowing", "kes_bn", ["10.0"] * 12 + ["6.5"]), threshold="3", mode="abs", **KW),
+        "trail abs pct": lambda: trailing_compare(series(YIELD, "pct", ["9.00"] * 12 + ["9.45"]), threshold="0.30", mode="abs", **KW),
+        "cross up": lambda: threshold_cross(series(Y182, "pct", UP14), level="10", **KW),
+        "cross first": lambda: threshold_cross(series(Y182, "pct", UP14[:2] + ["9.90"] + UP14[3:]), level="10", **KW),
+        "cross cut": lambda: threshold_cross(Series(Y182, "pct", gap_before(14, CROSS_TAIL, "10.5"), PUBLISHED), level="10", **KW),
+        "cross touch": lambda: threshold_cross(series(Y182, "pct", UP14[:-1] + ["10.00"]), level="10", **KW),
+        "range above": lambda: expected_range(series(YIELD, "pct", PREV26 + ["9.05"]), **KW),
+        "range slip": lambda: expected_range(series(YIELD, "pct", PREV26 + ["87.00"]), **KW),
+        "range slip low": lambda: expected_range(series(YIELD, "pct", PREV26 + ["0.87"]), **KW),
+        "pace ahead": lambda: run_pace(["150", "280", "390", "450"]),
+        "pace behind": lambda: run_pace(["60", "110", "160", "200"], thr="5"),
+        "drift down": lambda: drift(price_now="49.30", price_previous="48.50", **DRIFT),
+        "drift no band": lambda: drift(price_now="53.97", price_previous="50.00", **DRIFT),
+        "drift sell": lambda: drift(price_now="54.50", price_previous="53.00", **DRIFT),
     }
+
+
+def cases() -> dict[str, object]:
+    """Every case built (a detector that breaks fails here), flattened to "name #index" -> suggestion."""
     flat = {}
-    for name, found in out.items():
-        for i, s in enumerate(found):
+    for name, build in builders().items():
+        for i, s in enumerate(build()):
             flat[f"{name} #{i}"] = s
     return flat
 
 
+@functools.lru_cache(maxsize=None)
+def case_group(name):
+    return builders()[name]()
+
+
 NAMES = sorted(f"{n} #{i}" for n, count in {
-    "streak up": 1, "streak down": 1, "streak before": 1, "since tie": 1, "since history": 1, "since record": 1, "since lowest": 1,
+    "streak up": 1, "streak down": 1, "streak before": 1, "since tie": 1, "since history": 1, "since record": 1, "since lowest": 1, "since cut": 1, "cross cut": 1,
     "trail pct sigma": 1, "trail bps": 1, "trail abs below": 1, "trail abs pct": 1, "cross up": 1, "cross first": 1,
     "cross touch": 1, "range above": 1, "range slip": 2, "range slip low": 2, "pace ahead": 1, "pace behind": 1,
     "drift down": 1, "drift no band": 1, "drift sell": 1}.items() for i in range(count))
@@ -94,7 +117,8 @@ class _Cases:
     """The cases, built on first use: a detector that breaks fails the tests that use it, not the collection of this file."""
 
     def __getitem__(self, name):
-        return cases_cached()[name]
+        group, _, index = name.rpartition(" #")
+        return case_group(group)[int(index)]  # only this case is built: a broken detector fails only the tests that use it
 
     def __iter__(self):
         return iter(NAMES)
@@ -114,7 +138,7 @@ def replaced(s, **changes):
 
 
 def test_every_case_fires_and_the_verifier_accepts_each_output():
-    assert sorted(cases_cached()) == NAMES and len(NAMES) == 24  # every case fires; one that stops firing is noticed
+    assert sorted(cases_cached()) == NAMES and len(NAMES) == 26  # every case fires; one that stops firing is noticed
     for name, s in CASES.items():
         assert verify(s) is None, name
 
@@ -195,7 +219,7 @@ RULE_EDITS = {  # case: (what the rule says, what is put in its place); each mus
     "range above #0": ("previous 26 weekly points", "previous 25 weekly points"),
     "range slip #1": ("at least 5 times the median or at most 1/5", "at least 11 times the median or at most 1/11"),
     "pace ahead #0": ("at least 10 percentage points", "at least 20 percentage points"),
-    "drift down #0": ("The target (Kshs 52.00)", "The target (Kshs 53.00)"),
+    "drift down #0": ("Buy at 20% or more", "Buy at 25% or more"),
 }
 
 
@@ -290,6 +314,138 @@ def test_a_rule_with_neither_ending_is_unreadable_and_therefore_refused():
         verify(replaced(s, working={**s.working, "rule": s.working["rule"].replace(EDGE_START, "").rstrip()}))
 
 
+# -- threshold_cross: the headline claims only the stretch that was checked ------------------------------------------------------
+
+def swapped(s, old, new):
+    assert old in s.headline, (old, s.headline)
+    return replaced(s, headline=s.headline.replace(old, new, 1))
+
+
+def rule_swapped(s, old, new):
+    assert old in s.working["rule"], (old, s.working["rule"])
+    return replaced(s, working={**s.working, "rule": s.working["rule"].replace(old, new, 1)})
+
+
+FIRST = "in the 13 weeks we hold, since 2026-07-10"
+
+
+def test_a_threshold_cross_headline_that_claims_the_whole_history_is_refused():
+    s = CASES["cross first #0"]
+    assert FIRST in s.headline
+    with pytest.raises(DetectorSelfCheckError, match="headline"):
+        verify(swapped(s, FIRST, "in the history we hold"))  # the old claim: more than the working shows
+
+
+def test_a_threshold_cross_headline_that_counts_more_weeks_than_the_working_shows_is_refused():
+    s = CASES["cross first #0"]
+    with pytest.raises(DetectorSelfCheckError, match="headline"):
+        verify(swapped(s, FIRST, "in the 20 weeks we hold, since 2026-07-10"))
+    with pytest.raises(DetectorSelfCheckError, match="headline"):
+        verify(swapped(s, FIRST, "in the 20 weeks we hold, since 2026-05-22"))  # consistent with itself, but before the first point shown
+
+
+def test_a_threshold_cross_headline_must_use_the_wording_its_rule_allows():
+    whole, cut = CASES["cross first #0"], CASES["cross cut #0"]
+    assert "weeks we hold" in whole.headline and "weeks checked" in cut.headline
+    assert whole.working["rule"].endswith(WINDOW_HOLD) and cut.working["rule"].endswith(WINDOW_GAP)
+    with pytest.raises(DetectorSelfCheckError, match="headline"):
+        verify(swapped(cut, "weeks checked", "weeks we hold"))  # claims points held that a gap kept out of the check
+    with pytest.raises(DetectorSelfCheckError, match="headline"):
+        verify(swapped(whole, "weeks we hold", "weeks checked"))
+    with pytest.raises(DetectorSelfCheckError):
+        verify(rule_swapped(cut, WINDOW_GAP, WINDOW_HOLD))  # the rule says the window began at the first point held: it did not
+    with pytest.raises(DetectorSelfCheckError):
+        verify(rule_swapped(whole, WINDOW_HOLD, WINDOW_GAP))
+
+
+def test_a_first_time_crossing_needs_its_window_sentence_and_a_last_time_crossing_has_none():
+    with pytest.raises(DetectorSelfCheckError, match="window"):
+        verify(rule_swapped(CASES["cross first #0"], " " + WINDOW_HOLD, ""))
+    up = CASES["cross up #0"]
+    with pytest.raises(DetectorSelfCheckError, match="window"):
+        verify(replaced(up, working={**up.working, "rule": up.working["rule"] + " " + WINDOW_HOLD}))
+
+
+# -- since, the record form: where the window starts, and the weeks counted ----------------------------------------------------
+
+def test_a_record_headline_is_accepted_only_for_the_window_start_its_rule_states():
+    whole, cut = CASES["since history #0"], CASES["since cut #0"]
+    assert whole.working["rule"].endswith(WINDOW_HOLD) and "the earliest point we hold is" in whole.headline
+    assert cut.working["rule"].endswith(WINDOW_GAP) and "weeks checked, since" in cut.headline
+    with pytest.raises(DetectorSelfCheckError):
+        verify(rule_swapped(whole, WINDOW_HOLD, WINDOW_GAP))  # the earliest-point wording under a rule that says a gap cut the window
+    with pytest.raises(DetectorSelfCheckError):
+        verify(rule_swapped(cut, WINDOW_GAP, WINDOW_HOLD))  # the weeks-checked wording under a rule that says it began at the first point
+
+
+def test_a_record_needs_the_window_sentence_and_a_since_has_none():
+    whole = CASES["since history #0"]
+    with pytest.raises(DetectorSelfCheckError, match="window"):
+        verify(rule_swapped(whole, " " + WINDOW_HOLD, ""))
+    tie = CASES["since tie #0"]
+    with pytest.raises(DetectorSelfCheckError, match="window"):
+        verify(replaced(tie, working={**tie.working, "rule": tie.working["rule"] + " " + WINDOW_HOLD}))
+
+
+def test_a_record_whose_weeks_do_not_equal_the_points_shown_is_refused():
+    for name in ("since history #0", "since cut #0", "since record #0"):
+        s = CASES[name]
+        pts = [dict(p) for p in s.working["points"]]
+        mid = len(pts) // 2
+        extra = dict(pts[mid])
+        extra["date"] = (date.fromisoformat(pts[mid]["date"]) + timedelta(days=3)).isoformat()
+        pts.insert(mid + 1, extra)  # the first and last dates, and so the weeks, stay as they were; one point more than weeks is shown
+        with pytest.raises(DetectorSelfCheckError, match="weeks"):
+            verify(replaced(s, working={**s.working, "points": pts}))
+
+
+def test_a_record_whose_first_point_is_not_the_start_it_names_is_refused():
+    s = CASES["since history #0"]
+    pts = [dict(p) for p in s.working["points"]]
+    pts[0]["date"] = "2026-04-10"  # the headline names 2026-04-17 as the earliest point we hold
+    with pytest.raises(DetectorSelfCheckError):
+        verify(replaced(s, working={**s.working, "points": pts}))
+    with pytest.raises(DetectorSelfCheckError, match="headline"):
+        verify(swapped(s, "the earliest point we hold is 2026-04-17", "the earliest point we hold is 2026-04-24"))
+
+
+# -- drift: a move "on price alone" needs the same target and dividend in both weeks --------------------------------------------
+
+def drift_with(s, **by_label):
+    """The suggestion with some figures replaced, each as (value, display); nothing else is touched."""
+    figures = [dict(f) for f in s.figures]
+    for f in figures:
+        if f["label"] in by_label:
+            f["value"], f["display"] = by_label[f["label"]]
+    return replaced(s, figures=figures)
+
+
+def test_a_drift_whose_target_changed_is_refused_even_when_every_figure_is_consistent():
+    s = CASES["drift down #0"]  # Accumulate to Hold, 52.00 in both weeks
+    assert verify(s) is None
+    # last week's target 53.00: last week's upside is then 13.4% (still a different band from now), headline and figures agree
+    changed = drift_with(s, **{"Target a week earlier": (D("53.00"), "Kshs 53.00"), "Upside a week earlier": (D("13.402062"), "13.4%")})
+    changed = swapped(changed, "upside 11.3% to 9.5%", "upside 13.4% to 9.5%")
+    with pytest.raises(DetectorSelfCheckError, match="target"):
+        verify(changed)
+
+
+def test_a_drift_whose_dividend_changed_is_refused_even_when_every_figure_is_consistent():
+    s = CASES["drift down #0"]
+    changed = drift_with(s, **{"Dividend per share a week earlier": (D("3.00"), "Kshs 3.00"), "Upside a week earlier": (D("13.402062"), "13.4%")})
+    changed = swapped(changed, "upside 11.3% to 9.5%", "upside 13.4% to 9.5%")
+    with pytest.raises(DetectorSelfCheckError, match="dividend"):
+        verify(changed)
+
+
+def test_a_drift_that_shows_only_one_weeks_target_or_dividend_is_refused():
+    s = CASES["drift down #0"]
+    for label in ("Target a week earlier", "Dividend per share a week earlier"):
+        gone = replaced(s, figures=[f for f in s.figures if f["label"] != label])
+        with pytest.raises(DetectorSelfCheckError):
+            verify(gone)
+
+
 def test_the_week_and_the_latest_point_must_agree():
     s = CASES["streak up #0"]
     with pytest.raises(DetectorSelfCheckError, match="week"):
@@ -311,7 +467,7 @@ def test_every_detector_runs_the_verifier_on_each_suggestion_before_returning(mo
     seen = []
     monkeypatch.setattr(library, "verify", lambda s: seen.append(s))
     got = cases()  # builds every case again, now through the spy
-    assert len(seen) == len(got) == 24
+    assert len(seen) == len(got) == 26
     assert {s.id for s in seen} == {s.id for s in got.values()}
     assert {s.kind for s in seen} == {"streak", "since", "record", "trailing_compare", "threshold_cross", "expected_range", "pace", "drift"}
 
