@@ -169,20 +169,33 @@ describe("chartGeometry", () => {
     pt("2026-10-02", 9.0),
     pt("2026-10-09", 9.05),
   ];
+  const BN = (value: number) => ({ value, display: `Kshs ${value.toLocaleString("en-US", { minimumFractionDigits: 1 })} bn` });
+  const LONG = [
+    { date: "2027-01-29", ...BN(450) },
+    { date: "2027-02-05", ...BN(612.5) },
+    { date: "2027-02-12", ...BN(1100.2) },
+    { date: "2027-02-19", ...BN(1234.5) },
+  ];
+  /** The box a label of this text occupies: its anchor and the width of its characters. */
+  const box = (l: { text: string; x: number; anchor: "start" | "end" }) => {
+    const w = l.text.length * CHAR_W;
+    return l.anchor === "start" ? { x0: l.x, x1: l.x + w } : { x0: l.x - w, x1: l.x };
+  };
+  const overlap = (a: { x0: number; x1: number }, b: { x0: number; x1: number }) => a.x0 < b.x1 && b.x0 < a.x1;
 
   it("is null when there are no points", () => {
     expect(chartGeometry([], 400)).toBeNull();
   });
 
   it("puts the oldest point on the left edge of the plot and the latest on the right edge, in the order given", () => {
-    const g = chartGeometry(WEEKLY, 400)!;
+    const g = chartGeometry(WEEKLY, 600)!;
     expect(g.dots.map((d) => d.date)).toEqual(WEEKLY.map((p) => p.date));
     expect(g.oldest).toBe(g.dots[0]);
     expect(g.latest).toBe(g.dots[4]);
     expect(g.oldest.x).toBeCloseTo(g.left, 5);
     expect(g.latest.x).toBeCloseTo(g.right, 5);
     expect(g.right).toBeGreaterThan(g.left);
-    expect(g.right).toBeLessThan(400);
+    expect(g.right).toBeLessThan(600);
   });
 
   it("spaces points by the days between their dates, so a gap looks like a gap", () => {
@@ -195,7 +208,7 @@ describe("chartGeometry", () => {
   });
 
   it("puts a higher value higher up (a smaller y), the lowest at the foot of the scale and the highest at its head", () => {
-    const g = chartGeometry(WEEKLY, 400)!;
+    const g = chartGeometry(WEEKLY, 600)!;
     const ys = g.dots.map((d) => d.y);
     expect(Math.min(...ys)).toBeCloseTo(g.top, 5); // 9.05
     expect(Math.max(...ys)).toBeCloseTo(g.bottom, 5); // 8.1
@@ -203,58 +216,144 @@ describe("chartGeometry", () => {
     expect(ys[3]).toBeLessThan(ys[2]);
     expect(g.top).toBeGreaterThan(0); // padding above the highest point and below the lowest, inside the drawing
     expect(g.bottom).toBeLessThan(g.height);
-    // y is linear in the value
-    const frac = (v: number) => (g.bottom - ((v - 8.1) / (9.05 - 8.1)) * (g.bottom - g.top));
+    const frac = (v: number) => g.bottom - ((v - 8.1) / (9.05 - 8.1)) * (g.bottom - g.top); // y is linear in the value
     expect(g.dots[1].y).toBeCloseTo(frac(8.4), 1);
   });
 
   it("labels the scale with the display strings of the lowest and the highest points, never a number it made itself", () => {
-    const g = chartGeometry([pt("2026-09-25", 3, "Kshs 3.0 bn"), pt("2026-10-02", 1, "Kshs 1.0 bn"), pt("2026-10-09", 2, "Kshs 2.0 bn")], 400)!;
-    expect(g.scale).toEqual([
-      { y: g.top, text: "Kshs 3.0 bn" },
-      { y: g.bottom, text: "Kshs 1.0 bn" },
+    const g = chartGeometry([pt("2026-09-25", 3, "Kshs 3.0 bn"), pt("2026-10-02", 1, "Kshs 1.0 bn"), pt("2026-10-09", 2, "Kshs 2.0 bn")], 600)!;
+    expect(g.scale.map((m) => [m.y, m.text])).toEqual([
+      [g.top, "Kshs 3.0 bn"],
+      [g.bottom, "Kshs 1.0 bn"],
     ]);
-  });
-
-  it("makes room at the left for the longest scale label and at the right for the latest point's own label", () => {
-    const g = chartGeometry([pt("2026-09-25", 3, "Kshs 1,000.0 bn"), pt("2026-10-09", 1, "Kshs 9.0 bn")], 600)!;
-    expect(g.left).toBeGreaterThanOrEqual("Kshs 1,000.0 bn".length * CHAR_W);
-    expect(600 - g.right).toBeGreaterThanOrEqual("Kshs 9.0 bn".length * CHAR_W);
   });
 
   it("works with negative values", () => {
     const g = chartGeometry([pt("2026-10-02", -0.2, "(0.20%)"), pt("2026-10-09", -0.5, "(0.50%)")], 400)!;
     expect(g.dots[0].y).toBeCloseTo(g.top, 5);
     expect(g.dots[1].y).toBeCloseTo(g.bottom, 5);
-    expect(g.scale.map((s) => s.text)).toEqual(["(0.20%)", "(0.50%)"]);
+    expect(g.scale.map((m) => m.text)).toEqual(["(0.20%)", "(0.50%)"]);
   });
 
   it("draws a flat series as a flat line through the middle, with one scale label", () => {
-    const g = chartGeometry([pt("2026-09-25", 9), pt("2026-10-02", 9), pt("2026-10-09", 9)], 400)!;
+    const g = chartGeometry([pt("2026-09-25", 9), pt("2026-10-02", 9), pt("2026-10-09", 9)], 600)!;
     const mid = (g.top + g.bottom) / 2;
     expect(g.dots.map((d) => d.y)).toEqual([mid, mid, mid]);
-    expect(g.scale).toEqual([{ y: mid, text: "9.00%" }]);
+    expect(g.scale.map((m) => [m.y, m.text])).toEqual([[mid, "9.00%"]]);
   });
 
   it("draws one point as one dot at the right end, centred, with one scale label", () => {
-    const g = chartGeometry([pt("2026-10-09", 9.05)], 400)!;
+    const g = chartGeometry([pt("2026-10-09", 9.05)], 600)!;
     expect(g.dots).toHaveLength(1);
     expect(g.oldest).toBe(g.latest);
     expect(g.latest.x).toBeCloseTo(g.right, 5);
     expect(g.latest.y).toBeCloseTo((g.top + g.bottom) / 2, 5);
-    expect(g.scale).toEqual([{ y: g.latest.y, text: "9.05%" }]);
-  });
-
-  it("keeps a usable plot when the width is very small: the drawing is widened, never inverted", () => {
-    const g = chartGeometry(WEEKLY, 60)!;
-    expect(g.right - g.left).toBeGreaterThanOrEqual(160); // room for the oldest and the latest date under the two ends
-    expect(g.width).toBeGreaterThanOrEqual(g.right);
+    expect(g.scale.map((m) => [m.y, m.text])).toEqual([[g.latest.y, "9.05%"]]);
+    expect(g.dates.oldest).toBeNull(); // one date, under the dot
   });
 
   it("rounds every coordinate to two decimals", () => {
-    const g = chartGeometry(WEEKLY, 333)!;
-    for (const n of [g.left, g.right, g.top, g.bottom, ...g.dots.flatMap((d) => [d.x, d.y])]) {
-      expect(Math.abs(n * 100 - Math.round(n * 100))).toBeLessThan(1e-6);
+    for (const w of [333, 256]) {
+      const g = chartGeometry(WEEKLY, w)!;
+      const numbers = [g.left, g.right, g.top, g.bottom, ...g.dots.flatMap((d) => [d.x, d.y]), g.latestLabel.x, g.latestLabel.y];
+      for (const n of numbers) expect(Math.abs(n * 100 - Math.round(n * 100))).toBeLessThan(1e-6);
+    }
+  });
+
+  describe("wide: room beside the line for the scale labels and the latest label", () => {
+    it("keeps the scale at the left and the latest point's own label beside its dot", () => {
+      const g = chartGeometry(WEEKLY, 600)!;
+      expect(g.compact).toBe(false);
+      expect(g.left).toBeGreaterThanOrEqual("9.05%".length * CHAR_W);
+      expect(600 - g.right).toBeGreaterThanOrEqual("9.05%".length * CHAR_W);
+      expect(g.scale.every((m) => m.x === 0 && m.anchor === "start")).toBe(true);
+      expect(g.latestLabel).toMatchObject({ text: "9.05%", anchor: "start" });
+      expect(g.latestLabel.x).toBeGreaterThan(g.latest.x);
+      expect(g.latestLabel.y).toBeCloseTo(g.latest.y + 4, 1);
+    });
+
+    it("makes room for long display strings while the line still keeps 160px", () => {
+      const g = chartGeometry(LONG, 700)!;
+      expect(g.compact).toBe(false);
+      expect(g.left).toBeGreaterThanOrEqual("Kshs 1,234.5 bn".length * CHAR_W);
+      expect(700 - g.right).toBeGreaterThanOrEqual("Kshs 1,234.5 bn".length * CHAR_W);
+      expect(g.right - g.left).toBeGreaterThanOrEqual(160);
+    });
+  });
+
+  describe("compact: a narrow box (a phone) with long display strings", () => {
+    const W = 256; // the chart's box on a 390px screen
+    const g = chartGeometry(LONG, W)!;
+
+    it("lays the chart out to fit its box: never wider than asked, and the plot keeps at least 160px", () => {
+      expect(g.compact).toBe(true);
+      expect(g.width).toBe(W);
+      expect(g.right - g.left).toBeGreaterThanOrEqual(160);
+      expect(g.left).toBeGreaterThanOrEqual(0);
+      expect(g.right).toBeLessThanOrEqual(W);
+    });
+
+    it("puts the scale labels above the top line and below the foot line, from the left edge", () => {
+      const [head, foot] = g.scale;
+      expect([head.text, foot.text]).toEqual(["Kshs 1,234.5 bn", "Kshs 450.0 bn"]);
+      expect(head.x).toBe(0);
+      expect(foot.x).toBe(0);
+      expect(head.ty).toBeLessThan(head.y); // above its hairline
+      expect(foot.ty).toBeGreaterThan(foot.y); // below its hairline
+      for (const m of g.scale) expect(box({ ...m, anchor: "start" }).x1).toBeLessThanOrEqual(W);
+    });
+
+    it("keeps the latest point's label inside the box, ending at the dot's right edge", () => {
+      const label = g.latestLabel;
+      expect(label.text).toBe("Kshs 1,234.5 bn");
+      expect(label.anchor).toBe("end");
+      const b = box(label);
+      expect(b.x0).toBeGreaterThanOrEqual(0);
+      expect(b.x1).toBeLessThanOrEqual(W);
+      expect(label.y).toBeGreaterThan(0);
+      expect(label.y).toBeLessThan(g.height);
+    });
+
+    it("puts the latest label on the side the line is not on: above when the line rises into it, below when it falls into it", () => {
+      expect(g.latestLabel.y).toBeLessThan(g.latest.y); // LONG rises: the line arrives from below, the label goes above the dot
+      const falling = chartGeometry([...LONG].reverse().map((p, i) => ({ ...p, date: LONG[i].date })), W)!;
+      expect(falling.latest.y).toBeGreaterThan(falling.dots[falling.dots.length - 2].y); // it arrives from above
+      expect(falling.latestLabel.y).toBeGreaterThan(falling.latest.y); // so the label goes below the dot
+      const flat = chartGeometry(LONG.map((p) => ({ ...p, value: 5 })), W)!;
+      expect(flat.latestLabel.y).toBeLessThan(flat.latest.y); // flat or a single point: above
+    });
+
+    it("keeps the labels clear of one another", () => {
+      const [head, foot] = g.scale;
+      const latest = box(g.latestLabel);
+      const sameRow = (a: number, b: number) => Math.abs(a - b) < 11; // the 12px text rows
+      for (const m of [head, foot]) if (sameRow(m.ty, g.latestLabel.y)) expect(overlap(box({ ...m, anchor: "start" }), latest)).toBe(false);
+    });
+
+    it("shows both dates under the ends when the plot is wide enough for them, and only the latest when it is not", () => {
+      expect(g.dates.oldest).not.toBeNull();
+      const b = g.dates;
+      expect(b.oldest!.anchor).toBe("start");
+      expect(b.latest.anchor).toBe("end");
+      expect(b.latest.x).toBeLessThanOrEqual(W);
+      const narrow = chartGeometry(LONG, 150)!;
+      expect(narrow.width).toBe(150);
+      expect(narrow.dates.oldest).toBeNull();
+    });
+  });
+
+  it("never draws wider than its box, and keeps the latest dot and its label inside it, at any width and with long or short labels", () => {
+    for (const points of [WEEKLY, LONG]) {
+      for (let w = 200; w <= 1200; w += 7) {
+        const g = chartGeometry(points, w)!;
+        expect(g.width).toBe(w);
+        expect(g.right).toBeLessThanOrEqual(w);
+        expect(g.latest.x + 5).toBeLessThanOrEqual(w); // the dot, radius 5
+        const b = box(g.latestLabel);
+        expect(b.x0).toBeGreaterThanOrEqual(0);
+        expect(b.x1).toBeLessThanOrEqual(w);
+        for (const m of g.scale) expect(box({ ...m, anchor: "start" }).x1).toBeLessThanOrEqual(w);
+      }
     }
   });
 });
