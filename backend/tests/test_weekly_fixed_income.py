@@ -26,6 +26,7 @@ from cytonn_weekly.equities import weekly as eqw
 from cytonn_weekly.fixed_income import weekly as fiw
 from cytonn_weekly.weekly import cbk_bulletin, inputs, previous_issue
 from cytonn_weekly.weekly.week import Week
+from tests import previous_issue_fixture as fx
 from tests import weekly_helpers as wh
 from tests.weekly_helpers import text_pdfs  # noqa: F401 - a fixture
 
@@ -605,3 +606,66 @@ def test_the_real_workbook_reproduces_the_published_week(tmp_path):
     # every typed figure agrees with the published one where both exist: no "sources disagree" anywhere
     assert not [f for i in review.review_items if isinstance(i.detail, list) for f in i.detail if f.kind == SOURCES_DISAGREE]
     assert figures(by["shilling_support"])["north_america_share"] == "50.3%"
+
+
+# ---------------------------------------------------------------------------
+# A twin skipped by the previous-issue lookup is said on the carried text it affects
+# ---------------------------------------------------------------------------
+
+def previous_by_lookup(friday):
+    """The real previous_issue lookup over the fixture's metadata, as it would run for the week ending ``friday``."""
+    site = fx.site(fx.ISSUES, fx.newest_as_of(fx.ISSUES, friday))
+    return lambda day, ref: previous_issue.find_previous_issue(friday, site)
+
+
+TWIN_SENTENCE = ("the lookup skipped issue 850 on cytonnreport.com, a copy of this issue with its charts stripped; "
+                 "the text is from issue 849, a weekly")
+
+
+def test_the_week_ending_27_february_finds_the_outlook_in_849_and_says_it_skipped_850(root):
+    review = build(root, fetchers=fetchers(previous_issue=previous_by_lookup(date(2026, 2, 27))))
+    outlook = blocks(review)["outlook"]
+    assert outlook["kind"] == "carried" and "(issue 849)" in outlook["body_md"]  # 850's Fixed Income has no such paragraph
+    assert outlook["carried_from"] == {"issue_id": 849, "url": "https://cytonnreport.com/api/series/1/research-reports/849",
+                                       "published": "2026-02-22", "kind": "weekly", "skipped": [850]}
+    flagged = items(review, "Rates and outlook (closing paragraph) (carried forward)")[0]
+    assert flagged.status == "flagged" and flagged.detail[0].message == (
+        "carried forward, edit before approving: this text is copied from issue 849 on cytonnreport.com, published 2026-02-22 "
+        f"and was not written for this week; {TWIN_SENTENCE}")
+    # the shilling paragraph and the Equities outlook come from the same issue and say the same
+    assert blocks(review)["shilling_pressure"]["carried_from"]["skipped"] == [850]
+
+
+def test_a_review_used_after_a_twin_is_skipped_is_named_as_one_and_the_shilling_lookup_is_still_not_found(root):
+    review = build(root, fetchers=fetchers(previous_issue=previous_by_lookup(date(2026, 1, 9))))
+    outlook = blocks(review)["outlook"]
+    assert outlook["carried_from"]["issue_id"] == 840 and outlook["carried_from"]["kind"] == "review"
+    assert outlook["carried_from"]["skipped"] == [841]
+    message = items(review, "Rates and outlook (closing paragraph) (carried forward)")[0].detail[0].message
+    assert message.endswith("the lookup skipped issue 841 on cytonnreport.com, a copy of this issue with its charts stripped; "
+                            "the text is from issue 840, a Markets Review")
+    # 840 is also a review and has no such paragraph in Fixed Income or Kenya Macro: not found, as for 841 (not chased here)
+    assert blocks(review)["shilling_pressure"]["kind"] == "unavailable"
+
+
+def test_nothing_is_added_to_the_carried_text_when_no_twin_was_skipped(root):
+    review = build(root, fetchers=fetchers(previous_issue=previous_by_lookup(date(2026, 4, 17))))  # 861: its twin has the lower id
+    outlook = blocks(review)["outlook"]
+    assert set(outlook["carried_from"]) == {"issue_id", "url", "published"}
+    assert items(review, "Rates and outlook (closing paragraph) (carried forward)")[0].detail[0].message.endswith(
+        "published 2026-04-12 and was not written for this week")
+
+
+def test_the_flag_names_the_issue_used_its_kind_and_every_issue_skipped():
+    block = computed.carried_block("outlook", "Outlook", "Old text.", {
+        "issue_id": 888, "url": "u", "published": "2026-09-20", "kind": "weekly", "skipped": [889]})
+    assert computed.carried_flag(block).message == (
+        "carried forward, edit before approving: this text is copied from issue 888 on cytonnreport.com, published 2026-09-20 "
+        "and was not written for this week; the lookup skipped issue 889 on cytonnreport.com, a copy of this issue with its "
+        "charts stripped; the text is from issue 888, a weekly")
+    several = computed.carried_block("outlook", "Outlook", "Old text.", {
+        "issue_id": 840, "url": "u", "published": "2026-01-04", "kind": "review", "skipped": [841, 842],
+        "section": "kenya-macro-economic-review", "note": "taken from another section"})
+    assert computed.carried_flag(several).message.endswith(
+        "was not written for this week; the lookup skipped issues 841 and 842 on cytonnreport.com, copies of this issue with "
+        "their charts stripped; the text is from issue 840, a Markets Review; taken from another section")
