@@ -35,7 +35,7 @@ const rise = (order: number) => ({ animationDelay: `${order * 60}ms` });
 
 <template>
   <main id="main" tabindex="-1">
-    <Masthead title="Draft generator" />
+    <Masthead title="Report generator" />
     <div class="mx-auto w-full max-w-xl px-4 pt-8 pb-16 sm:px-6 sm:pt-16">
       <div class="space-y-6">
         <div class="rise-slow" :style="rise(0)">
