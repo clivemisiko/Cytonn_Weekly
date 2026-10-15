@@ -14,7 +14,9 @@ What differs from the real API, all of it set here and nothing in the backend ch
 - the weekly Digital Payments draft runs the real pipeline on the test suite's fixed price rows and fake provider,
   and every Markets Review section runs on the test suite's captured sources (tests/periodic_helpers.py), so neither
   reaches Yahoo, CBK, KNBS, afx or the NSE;
-- "Fetch from CBK" is answered from the bulletin saved in backend/tests/fixtures/sources, never by CBK.
+- "Fetch from CBK" is answered from the bulletin saved in backend/tests/fixtures/sources, never by CBK;
+- the "Notable this week" panel has invented items here (e2e/notable_demo.py, each marked "invented demo item"), passed to
+  create_app() as its notable_registry. The real app passes none, so its registry is empty and it shows nothing.
 
 E2E_VARIANT starts it in another state, for the tests that need one:
 - "no-key": the provider is "anthropic" with no API key, so every drafting section shows a provider problem;
@@ -62,6 +64,7 @@ from api.main import create_app  # noqa: E402
 from cytonn_weekly import paths  # noqa: E402
 from cytonn_weekly.digital_payments import review_run as digital_payments  # noqa: E402
 from cytonn_weekly.narrative import drafter  # noqa: E402
+import notable_demo  # noqa: E402 - e2e/notable_demo.py, beside this file
 from cytonn_weekly.real_estate import review_run as real_estate  # noqa: E402
 from tests import periodic_helpers, review_helpers  # noqa: E402
 from tests.section_helpers import FakeNarrativeProvider  # noqa: E402
@@ -99,5 +102,6 @@ def fetch_bulletin(issue_date: date) -> tuple[bytes, str]:
 
 
 print(f"E2E instance: data folder {paths.DATA_DIR}, port {PORT}, variant {VARIANT or 'default'}", flush=True)
-app = create_app(fetch_bulletin=fetch_bulletin, **({"draft_stale_after": 6} if VARIANT == "stale" else {}))
+app = create_app(fetch_bulletin=fetch_bulletin, notable_registry=notable_demo.REGISTRY,
+                 **({"draft_stale_after": 6} if VARIANT == "stale" else {}))
 uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="warning")

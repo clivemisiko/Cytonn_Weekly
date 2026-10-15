@@ -348,12 +348,30 @@ def snapshot(path):
         conn.close()
 
 
+# The definitions of everything that existed before this feature (sections, coordinator_reviews, their indexes), as schema.sql
+# and the migration build them, fixed here so no later change to schema.sql can alter them unnoticed.  Computed from the
+# schema.sql committed before the feature, with line endings normalized.
+EXISTING_TABLES_SHA256 = "c652b66365634e9d460f7c5ea2982b19b3dda4b2dee61141820601c24e309886"
+
+
+def fingerprint(path) -> str:
+    ddl, _, info = snapshot(path)
+    return hashlib.sha256(repr(([(t, n, tn, (s or "").replace("\r\n", "\n")) for t, n, tn, s in ddl], info)).encode()).hexdigest()
+
+
+def test_the_definitions_of_the_existing_tables_are_exactly_what_they_were(tmp_path):
+    sections.init_db(tmp_path / "fresh.db")
+    assert fingerprint(tmp_path / "fresh.db") == EXISTING_TABLES_SHA256
+
+
 def test_the_new_table_is_added_beside_the_others_and_changes_none_of_them(tmp_path):
     old = tmp_path / "old.db"
     schema = sections._SCHEMA_SQL.read_text(encoding="utf-8")
     assert "suggestion_decisions" in schema and "CREATE TABLE IF NOT EXISTS suggestion_decisions" in schema
     conn = sqlite3.connect(old)
+    conn.row_factory = sqlite3.Row  # as sections._connect opens it
     conn.executescript(strip_new_table(schema))
+    sections._migrate(conn)  # the existing migration step, which init_db also runs; the only difference left is the new table
     conn.commit()
     conn.close()
     assert "suggestion_decisions" not in {r["name"] for r in rows(old, "SELECT name FROM sqlite_master")}
@@ -451,7 +469,7 @@ def test_the_notable_package_imports_nothing_that_drafts_checks_exports_fetches_
 
 def test_the_notable_store_touches_only_its_own_table():
     sql = (NOTABLE_DIR / "store.py").read_text(encoding="utf-8")
-    touched = set(re.findall(r"(?:FROM|INTO|UPDATE|JOIN)\s+([a-z_]+)", sql, re.I))
+    touched = set(re.findall(r"(?:FROM|INTO|UPDATE|JOIN)\s+([a-z_]+)", sql))  # SQL is upper case here; Python's own "from" is not
     assert touched == {"suggestion_decisions"}
 
 
