@@ -17,10 +17,12 @@ const candidates = (page: Page) => panel(page).getByRole("list", { name: "Sugges
 const selected = (page: Page) => panel(page).getByRole("list", { name: "Selected items" }).getByRole("listitem");
 const item = (list: Locator, headline: string | RegExp) => list.filter({ hasText: headline });
 
-const STREAK = "The 91-day T-bill yield has risen for a third week in a row.";
-const RECORD = "Subscription on the 364-day bill was the highest this year.";
-const SINCE = "The 3-month bank placement rate is the lowest since June.";
-const PACE = "Net domestic borrowing is on pace to reach its full-year target in March.";
+// The headlines the real detector library builds from e2e/notable_demo.py's invented series. A headline that carries a date
+// (it moves with the week) is matched by its start.
+const STREAK = "The Invented 91-day yield has risen for 9 weeks in a row, from 8.10% to 9.05%.";
+const RECORD = "The Invented 364-day bill subscription, 152.30%, is the highest in the available history, 25 weeks";
+const SINCE = "The Invented 3-month bank placement rate, 9.40%, is the lowest since";
+const PACE = "The Invented net domestic borrowing is at";
 
 async function fixedIncome(page: Page, week: string) {
   await openStart(page, "Fixed Income", period(week));
@@ -56,9 +58,9 @@ test("T47 the panel lists the top five by rank, each saying it is an invented de
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
   await toggle.click();
   await expect(first.getByRole("button", { name: "Hide working" })).toHaveAttribute("aria-expanded", "true");
-  await expect(first).toContainText("Three weekly rises in a row.");
-  await expect(first).toContainText("last 12 weeks");
-  await expect(first.getByRole("table").getByRole("row")).toHaveCount(1 + 5); // a header row and five points
+  await expect(first).toContainText("Consecutive weekly rises ending at the latest point.");
+  await expect(first).toContainText("current run");
+  await expect(first.getByRole("table").getByRole("row")).toHaveCount(1 + 10); // a header row and ten points: nine rises and where they began
   await first.getByRole("button", { name: "Hide working" }).click();
   await expect(first.getByRole("table")).toHaveCount(0);
 });
@@ -95,8 +97,9 @@ test("T49 edit: the new wording is saved and selected, and the original is kept 
   await fixedIncome(page, "2026-12-25");
   const row = item(candidates(page), RECORD);
   await row.getByRole("button", { name: "Edit" }).click();
+  const original = ((await row.getByText(RECORD).textContent()) ?? "").trim(); // the whole headline, whose date moves with the week
   const box = row.getByLabel("Reworded headline");
-  await expect(box).toHaveValue(RECORD);
+  await expect(box).toHaveValue(original);
 
   await box.fill("   ");
   await expect(row.getByText("The headline cannot be empty.")).toBeVisible();
@@ -107,11 +110,11 @@ test("T49 edit: the new wording is saved and selected, and the original is kept 
   await expect(item(candidates(page), RECORD)).toHaveCount(0);
   const saved = selected(page).first();
   await expect(saved).toContainText("364-day bill subscription: a 2026 high.");
-  await expect(saved).toContainText(`Original: ${RECORD}`);
+  await expect(saved).toContainText(`Original: ${original}`);
 
   await reopen(page, "Fixed Income", "2026-12-25");
   await expect(selected(page).first()).toContainText("364-day bill subscription: a 2026 high.");
-  await expect(selected(page).first()).toContainText(`Original: ${RECORD}`);
+  await expect(selected(page).first()).toContainText(`Original: ${original}`);
 
   // Cancel leaves it as it was.
   await selected(page).first().getByRole("button", { name: "Edit" }).click();
@@ -241,4 +244,29 @@ test("T55 on a phone-width screen nothing overflows, and the actions work from t
   await page.keyboard.press("Space");
   await expect(selected(page).first().getByRole("table")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+});
+
+test("T56 Show working on a card the real detector library built: the rule, the window and the points table are shown", async ({ page }) => {
+  await fixedIncome(page, "2027-02-12");
+  await panel(page).getByRole("button", { name: "Show all (7)" }).click(); // this card ranks sixth of seven
+  const card = item(candidates(page), "Invented interbank volume");
+  await expect(card).toContainText(
+    "is 24.7% above the average of the previous 12 weeks, Kshs 14.8 bn. That is 6.8 standard deviations above the average.",
+  );
+  await expect(card.getByRole("table")).toHaveCount(0); // nothing of the working until it is asked for
+  await card.getByRole("button", { name: "Show working" }).click();
+
+  // The rule, in the library's words, with the parameters the check was made with.
+  await expect(card).toContainText("Latest value against the mean of the previous 12 weekly points (the latest point is not in the mean), measured as a percentage difference.");
+  await expect(card).toContainText("Shown when the difference is at least 18.7 (percent).");
+  // The series and the window, as the id knows them: no date and no value in either.
+  await expect(card.getByText("Invented interbank volume", { exact: true })).toBeVisible();
+  await expect(card.getByText("previous 12 weeks", { exact: true })).toBeVisible();
+  // The points: the twelve before and the latest, each with its date and its value.
+  const rows = card.getByRole("table").getByRole("row");
+  await expect(rows).toHaveCount(1 + 13);
+  await expect(rows.nth(1)).toContainText("20 Nov 2026");
+  await expect(rows.nth(1)).toContainText("Kshs 14.2 bn");
+  await expect(rows.last()).toContainText("12 Feb 2027");
+  await expect(rows.last()).toContainText("Kshs 18.4 bn");
 });
