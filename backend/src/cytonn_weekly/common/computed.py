@@ -198,7 +198,8 @@ def carried_block(block_id: str, title: str, body_md: str, carried_from: dict[st
     """Text taken verbatim from the previous issue: ``carried_from`` is {issue_id, url, published} and, when the text
     came from another section than the usual one, ``section`` and a ``note`` the flag repeats.  When the lookup skipped a
     stripped copy of the issue it also holds ``kind`` ("weekly" or "review") and ``skipped`` (the ids passed over), which the
-    flag says."""
+    flag says.  ``kind`` is also held when the text came from a Markets Review (the flag then says so, unless a skipped twin or
+    the section ``note`` already has)."""
     return {"kind": "carried", "id": block_id, "title": title, "body_md": body_md, "carried_from": carried_from}
 
 
@@ -319,7 +320,16 @@ def carried_flag(block: dict[str, Any]) -> Flag:
     when = f", published {src['published']}" if src.get("published") else ""
     return Flag(kind=CARRIED_FORWARD, scope=CARRIED_SCOPE, subject=block["id"], field=None,
                 message=f"{CARRIED_MESSAGE}: this text is copied from {where}{when} and was not written for this week"
-                        + _skipped_twins(src) + (f"; {src['note']}" if src.get("note") else ""))
+                        + _skipped_twins(src) + _review(src) + (f"; {src['note']}" if src.get("note") else ""))
+
+
+def _review(src: dict[str, Any]) -> str:
+    """What the flag adds when a Markets Review supplied the text, unless the flag already says it: a skipped twin's sentence names
+    the kind, and so does the note on text taken from a review's Kenya Macro section (it has a ``section``)."""
+    if src.get("kind") != "review" or src.get("skipped") or src.get("section"):
+        return ""
+    return (f"; the text is from issue {src.get('issue_id')}, a Markets Review (a quarterly, half-year or annual review), "
+            "not a weekly; check that it speaks of this week's period and not only of the review's")
 
 
 def _skipped_twins(src: dict[str, Any]) -> str:
