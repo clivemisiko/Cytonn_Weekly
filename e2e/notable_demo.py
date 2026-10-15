@@ -69,7 +69,7 @@ def fixed_income(ctx):
 def equities(ctx):
     w, kw = ctx.week_ending, dict(section="equities", week_ending=ctx.week_ending)
     found = drift(name="Invented Equity Co", price_now="49.30", price_previous="48.50", target="52.00", dividend_per_share="2.00",
-                  provenance=INVENTED, **kw)
+                  target_previous="52.00", dividend_per_share_previous="2.00", provenance=INVENTED, **kw)
     found += since(series("Invented market P/E", "multiple",
                           ["6.4", "6.2", "6.1", "6.3", "6.0", "6.2", "6.1", "6.3", "6.4", "6.2", "6.0", "6.1", "6.3", "6.2", "6.4",
                            "6.1", "6.0", "6.2", "6.3", "6.1", "6.2", "6.4", "6.0", "6.3", "6.2", "5.9"], w), **kw)

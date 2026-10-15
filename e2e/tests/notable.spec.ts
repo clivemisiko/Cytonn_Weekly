@@ -294,3 +294,50 @@ test("T57 Show working draws the points as a line: a dot for each, the scale and
   await expect(chart).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
+
+
+test("T58 at 390px the working chart fits its box: no sideways scroll, and the latest point and its label lie inside the chart, even for a long value", async ({ page }) => {
+  // The first card's points are swapped for four with long display strings (the API's answer is edited in the browser only).
+  const longPoints = [
+    { date: "2027-01-29", value: 450, display: "Kshs 450.0 bn" },
+    { date: "2027-02-05", value: 612.5, display: "Kshs 612.5 bn" },
+    { date: "2027-02-12", value: 1100.2, display: "Kshs 1,100.2 bn" },
+    { date: "2027-02-19", value: 1234.5, display: "Kshs 1,234.5 bn" },
+  ];
+  await page.route("**/api/notable/fixed_income**", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.suggestions[0].working.points = longPoints;
+    await route.fulfill({ response, json: body });
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await fixedIncome(page, "2027-02-19");
+  const first = candidates(page).first();
+  await first.getByRole("button", { name: "Show working" }).click();
+  const chart = first.getByRole("img", { name: /Kshs 1,234\.5 bn$/ });
+  await expect(chart).toBeVisible();
+
+  const fits = async () => {
+    const box = await chart.evaluate((svg) => {
+      const parent = svg.parentElement!;
+      return { scroll: parent.scrollWidth, client: parent.clientWidth, drawn: svg.getBoundingClientRect().width };
+    });
+    expect(box.scroll).toBeLessThanOrEqual(box.client); // nothing to scroll inside the chart
+    expect(box.drawn).toBeLessThanOrEqual(box.client + 0.5); // and the drawing is no wider than its box
+    const outer = (await chart.boundingBox())!;
+    for (const part of ["latest-label", "latest-dot"]) {
+      const inner = (await chart.locator(`[data-part="${part}"]`).boundingBox())!;
+      expect(inner.x, part).toBeGreaterThanOrEqual(outer.x - 0.5);
+      expect(inner.x + inner.width, part).toBeLessThanOrEqual(outer.x + outer.width + 0.5);
+      expect(inner.y, part).toBeGreaterThanOrEqual(outer.y - 0.5);
+      expect(inner.y + inner.height, part).toBeLessThanOrEqual(outer.y + outer.height + 0.5);
+    }
+  };
+  await expect(chart.locator('[data-part="latest-label"]')).toHaveText("Kshs 1,234.5 bn");
+  await fits();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+
+  await page.setViewportSize({ width: 1280, height: 800 }); // and the same chart on a desktop screen
+  await expect.poll(async () => (await chart.boundingBox())!.width).toBeGreaterThan(450);
+  await fits();
+});
