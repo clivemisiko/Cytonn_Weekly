@@ -462,10 +462,17 @@ def test_a_bulletin_table_left_out_makes_only_its_own_parts_unavailable_and_says
 MACRO_EXCERPT = (wh.FIXTURES / "cytonn_issue_892_kenya_macro_shilling_excerpt.html").read_text(encoding="utf-8")
 FI_OF_A_REVIEW = "<p><strong>Liquidity:</strong></p><p>In Q3, liquidity eased.</p><p>Rates in the fixed income market have declined MTD.</p>"
 REVIEW_892 = previous_issue.Issue(892, date(2026, 10, 4), {
+    "global-markets-review": {"name": "Global Markets Review", "body": "", "summary": ""},   # what makes an issue a review (Issue.kind)
     "kenya-macro-economic-review": {"name": "Kenya Macro Economic Review", "body": MACRO_EXCERPT, "summary": ""},
     "fixed-income": {"name": "Fixed Income", "body": FI_OF_A_REVIEW, "summary": ""},
     "equities": {"name": "Equities", "body": PREVIOUS_EQ, "summary": ""},
 })
+def review_sentence(issue_id):
+    """What the flag says when a Markets Review supplied the text and no twin was skipped (a quarterly, half-year or annual review)."""
+    return (f"; the text is from issue {issue_id}, a Markets Review (a quarterly, half-year or annual review), not a weekly; "
+            "check that it speaks of this week's period and not only of the review's")
+
+
 OPENING = "The shilling is however expected to remain under pressure in 2026 as a result of:"
 PRESSURE_TITLE = "Kenya Shilling: what pressures the shilling"
 
@@ -487,16 +494,18 @@ def test_the_pressure_paragraph_is_taken_from_the_macro_section_when_the_previou
     assert not any("Key to note" in line or "Monetary Policy" in line for line in lines)
     note = ("taken from the Kenya Macro Economic Review of issue 892, a Markets Review, not from its Fixed Income section; "
             "check the dates and the period it speaks of")
-    assert block["carried_from"] == {"issue_id": 892, "url": REVIEW_892.url, "published": "2026-10-04",
+    assert block["carried_from"] == {"issue_id": 892, "url": REVIEW_892.url, "published": "2026-10-04", "kind": "review",
                                      "section": "kenya-macro-economic-review", "note": note}
     item = items(review, "Kenya Shilling: what pressures the shilling (carried forward)")[0]
     assert item.status == "flagged" and item.detail[0].message == (
         "carried forward, edit before approving: this text is copied from issue 892 on cytonnreport.com, published 2026-10-04 "
         f"and was not written for this week; {note}")
+    assert item.detail[0].message.count("Markets Review") == 1 and "not a weekly" not in item.detail[0].message
     # the closing outlook still comes from Fixed Income alone, flagged in the same words as ever
     outlook = blocks(review)["outlook"]
-    assert outlook["body_md"] == "Rates in the fixed income market have declined MTD." and set(outlook["carried_from"]) == {"issue_id", "url", "published"}
-    assert items(review, "Rates and outlook (closing paragraph) (carried forward)")[0].detail[0].message.endswith("was not written for this week")
+    assert outlook["body_md"] == "Rates in the fixed income market have declined MTD." and set(outlook["carried_from"]) == {"issue_id", "url", "published", "kind"}
+    assert outlook["carried_from"]["kind"] == "review"
+    assert items(review, "Rates and outlook (closing paragraph) (carried forward)")[0].detail[0].message.endswith(review_sentence(892))
 
 
 def test_the_fixed_income_section_wins_when_both_hold_the_paragraph():
@@ -669,3 +678,98 @@ def test_the_flag_names_the_issue_used_its_kind_and_every_issue_skipped():
     assert computed.carried_flag(several).message.endswith(
         "was not written for this week; the lookup skipped issues 841 and 842 on cytonnreport.com, copies of this issue with "
         "their charts stripped; the text is from issue 840, a Markets Review; taken from another section")
+
+
+# ---------------------------------------------------------------------------
+# A Markets Review that supplies the carried text is named in the flag, whether or not a twin was skipped
+# ---------------------------------------------------------------------------
+
+def previous_issue_for(friday):
+    return previous_by_lookup(friday)(friday, None)
+
+
+def outlook_flag(review):
+    return items(review, "Rates and outlook (closing paragraph) (carried forward)")[0].detail[0].message
+
+
+def copied_from(issue_id, published):
+    return (f"carried forward, edit before approving: this text is copied from issue {issue_id} on cytonnreport.com, "
+            f"published {published} and was not written for this week")
+
+
+@pytest.mark.parametrize("friday, used, published", [
+    (date(2026, 1, 23), 843, "2026-01-18"),   # the markets outlook issue, which has the same Global Markets sections
+    (date(2026, 4, 10), 859, "2026-04-05"),   # Q1
+    (date(2026, 7, 10), 877, "2026-07-05"),   # H1
+    (date(2026, 10, 9), 892, "2026-10-04"),   # Q3
+])
+def test_a_review_that_supplies_the_fixed_income_outlook_is_named_in_the_flag(root, friday, used, published):
+    review = build(root, fetchers=fetchers(previous_issue=previous_by_lookup(friday)))
+    carried = blocks(review)["outlook"]["carried_from"]
+    assert carried == {"issue_id": used, "url": f"https://cytonnreport.com/api/series/1/research-reports/{used}",
+                       "published": published, "kind": "review"}   # no twin was skipped, so no "skipped"
+    assert outlook_flag(review) == copied_from(used, published) + review_sentence(used)
+
+
+@pytest.mark.parametrize("friday, used, published", [
+    (date(2026, 4, 10), 859, "2026-04-05"),
+    (date(2026, 7, 10), 877, "2026-07-05"),
+    (date(2026, 10, 9), 892, "2026-10-04"),
+])
+def test_a_review_that_supplies_the_equities_outlook_is_named_in_the_flag(friday, used, published):
+    block = fiw._carried(previous_issue_for(friday), "outlook", "Equities outlook (closing paragraph)", eqw.equities_outlook_text, ("equities",))
+    assert block["kind"] == "carried" and block["carried_from"]["kind"] == "review"
+    assert computed.carried_flag(block).message == copied_from(used, published) + review_sentence(used)
+
+
+def test_the_week_ending_23_january_finds_no_equities_outlook_in_the_markets_outlook_issue():
+    block = fiw._carried(previous_issue_for(date(2026, 1, 23)), "outlook", "Equities outlook (closing paragraph)", eqw.equities_outlook_text, ("equities",))
+    assert block["kind"] == "unavailable"   # nothing is carried, so there is no flag to add a sentence to
+
+
+def test_a_review_that_supplies_the_shilling_text_from_its_own_fixed_income_is_named_once(root):
+    review = build(root, fetchers=fetchers(previous_issue=previous_by_lookup(date(2026, 4, 10))))   # 859: the text is in Fixed Income
+    block = blocks(review)["shilling_pressure"]
+    assert block["kind"] == "carried" and "section" not in block["carried_from"] and block["carried_from"]["kind"] == "review"
+    message = items(review, "Kenya Shilling: what pressures the shilling (carried forward)")[0].detail[0].message
+    assert message == copied_from(859, "2026-04-05") + review_sentence(859)
+
+
+def test_the_shilling_text_taken_from_the_kenya_macro_section_does_not_say_the_kind_twice(root):
+    review = build(root, fetchers=fetchers(previous_issue=lambda day, ref: REVIEW_892))
+    message = items(review, "Kenya Shilling: what pressures the shilling (carried forward)")[0].detail[0].message
+    assert message.count("Markets Review") == 1 and "not a weekly" not in message
+    assert blocks(review)["shilling_pressure"]["carried_from"]["kind"] == "review"   # the data says it, the message already did
+
+
+def test_a_plain_weekly_week_is_unchanged(root):
+    review = build(root, fetchers=fetchers(previous_issue=previous_by_lookup(date(2026, 4, 3))))   # 856, the weekly of 29 March
+    carried = blocks(review)["outlook"]["carried_from"]
+    assert carried == {"issue_id": 856, "url": "https://cytonnreport.com/api/series/1/research-reports/856", "published": "2026-03-29"}
+    assert outlook_flag(review) == copied_from(856, "2026-03-29")
+
+
+def test_a_weekly_used_after_a_twin_was_skipped_keeps_the_message_of_the_twin_change(root):
+    review = build(root, fetchers=fetchers(previous_issue=previous_by_lookup(date(2026, 2, 27))))
+    assert outlook_flag(review) == copied_from(849, "2026-02-22") + "; " + TWIN_SENTENCE
+    assert "Markets Review" not in outlook_flag(review) and "not a weekly" not in outlook_flag(review)
+
+
+def test_a_review_used_after_a_twin_was_skipped_says_its_kind_once(root):
+    review = build(root, fetchers=fetchers(previous_issue=previous_by_lookup(date(2026, 1, 9))))   # 841 skipped, 840 used
+    message = outlook_flag(review)
+    assert message.count("Markets Review") == 1 and "not a weekly" not in message
+    assert message.endswith("the text is from issue 840, a Markets Review")
+
+
+def test_the_flag_adds_the_review_sentence_only_where_the_kind_is_not_already_said():
+    base = {"issue_id": 892, "url": "u", "published": "2026-10-04"}
+    review = computed.carried_flag(computed.carried_block("o", "Outlook", "Text.", {**base, "kind": "review"})).message
+    assert review == copied_from(892, "2026-10-04") + review_sentence(892)
+    weekly = computed.carried_flag(computed.carried_block("o", "Outlook", "Text.", base)).message
+    assert weekly == copied_from(892, "2026-10-04")   # no kind: nothing is added
+    macro = computed.carried_flag(computed.carried_block("o", "Outlook", "Text.", {
+        **base, "kind": "review", "section": "kenya-macro-economic-review", "note": "taken from the Kenya Macro Economic Review of issue 892, a Markets Review"})).message
+    assert macro == copied_from(892, "2026-10-04") + "; taken from the Kenya Macro Economic Review of issue 892, a Markets Review"
+    twin = computed.carried_flag(computed.carried_block("o", "Outlook", "Text.", {**base, "kind": "review", "skipped": [893]})).message
+    assert twin.count("Markets Review") == 1 and "not a weekly" not in twin

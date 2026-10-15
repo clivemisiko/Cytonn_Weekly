@@ -79,6 +79,9 @@ NO_FI_OUTLOOK = {850}
 # The two FY'2025 review copies, which have no "The shilling is however expected to remain under pressure" paragraph in Fixed Income or
 # in Kenya Macro (checked against the saved issues): the week ending 9 January 2026 has no shilling text from either.
 NO_SHILLING = {840, 841}
+# The markets outlook issue of 18 January 2026 (843) has no closing Equities outlook paragraph (checked against the saved issue): the
+# week ending 23 January 2026 finds no Equities outlook from it.
+NO_EQ_OUTLOOK = {843}
 
 
 def newest_as_of(issues: dict, friday: date) -> int:
@@ -86,14 +89,15 @@ def newest_as_of(issues: dict, friday: date) -> int:
     return max(i for i, row in issues.items() if row is not None and date.fromisoformat(row[0]) <= friday)
 
 
-def body(issue_id: int, slug: str, images: int, outlook: bool = True, shilling: bool = True) -> str:
+def body(issue_id: int, slug: str, images: int, outlook: bool = True, shilling: bool = True, eq_outlook: bool = True) -> str:
     """One paragraph (up to two for Fixed Income) and ``images`` img tags: the smallest body the closing-text lookups can read."""
     if slug == "fixed-income":
         paragraphs = ([f"Rates in the fixed income market have declined MTD (issue {issue_id})."] if outlook else []) + (
             ["The shilling is however expected to remain under pressure in 2026 as a result of:"] if shilling else [])
         paragraphs = paragraphs or [f"Fixed Income of issue {issue_id}."]
     elif slug == "equities":
-        paragraphs = [f"We maintain a cautiously optimistic short-term outlook (issue {issue_id})."]
+        paragraphs = [f"We maintain a cautiously optimistic short-term outlook (issue {issue_id})."] if eq_outlook else [
+            f"Equities of issue {issue_id}."]
     else:
         paragraphs = [f"Section {slug} of issue {issue_id}."]
     return "".join(f"<p>{p}</p>" for p in paragraphs) + '<img src="chart.png" />' * images
@@ -121,7 +125,7 @@ def site(issues: dict, newest: int, asked: Optional[list] = None):
         return json.dumps([
             {"name": slug, "slug": slug, "summary": "", "created_at": f"{published} 12:00:00",
              "body": body(issue_id, slug, images.get(slug, 0), outlook=issue_id not in NO_FI_OUTLOOK,
-                          shilling=issue_id not in NO_SHILLING)}
+                          shilling=issue_id not in NO_SHILLING, eq_outlook=issue_id not in NO_EQ_OUTLOOK)}
             for slug in slugs]).encode()
 
     return get
