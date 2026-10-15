@@ -1,6 +1,6 @@
 # End-to-end tests
 
-One Playwright suite (Chromium, T01 to T55) for the web app in `frontend/`. `frontend/PARITY.md` says which test
+One Playwright suite (Chromium, T01 to T56) for the web app in `frontend/`. `frontend/PARITY.md` says which test
 covers which behaviour.
 
 ## The backend the tests use
@@ -35,7 +35,7 @@ npm test                       # frontend/ on Vite's dev server (127.0.0.1:5183)
 `tests/buttons.spec.ts` (T28 to T36: every button of the two input panels with the week before present and absent) and
 `tests/notes.spec.ts` (T37 to T39: the notes of a rejected draft shown on the next one) and `tests/links.spec.ts`
 (T40 and T41: web links in Company Updates) and `tests/draftagain.spec.ts` (T42 to T46: "Draft again" on a section that
-already has a review) and `tests/notable.spec.ts` (T47 to T55: the "Notable this week" panel on invented demo items), each with its own start of the API and so on freshly restored data: a section that has a review
+already has a review) and `tests/notable.spec.ts` (T47 to T56: the "Notable this week" panel on invented demo items), each with its own start of the API and so on freshly restored data: a section that has a review
 offers its start screen only through its card's "Draft again" button, and the first file leaves several in review. Run one file with `npx playwright test app` or
 `npx playwright test more` (not both in one command). Two tests
 need the API started in another state, so they have their own runs, one start of the API each:
@@ -51,8 +51,9 @@ What the test API does so that these tests need no outside service (all in `serv
 - the weekly Digital Payments draft runs the real pipeline on the unit tests' fixed price rows and fake provider (T22),
   and every Markets Review section runs on the unit tests' captured sources (T25);
 - "Fetch from CBK" is answered from the bulletin saved in `backend/tests/fixtures/sources` (T17);
-- the "Notable this week" panel has invented items here (`e2e/notable_demo.py`, each marked "invented demo item"), passed to
-  `create_app()` as `notable_registry`; the real app passes none, so it shows nothing (T47 to T55). Each of those tests uses its own Friday,
+- the "Notable this week" panel has invented items here (`e2e/notable_demo.py`: invented series run through the real detector
+  library, each item marked "invented demo item"), passed to
+  `create_app()` as `notable_registry`; the real app passes none, so it shows nothing (T47 to T56). Each of those tests uses its own Friday,
   because a decision belongs to its week;
 - `no-key` sets the provider to `anthropic` with an empty key (a provider problem, T26); `stale` counts a draft as
   stuck after six seconds (T27).
