@@ -3,7 +3,9 @@ import type {
   AnalystRow,
   AppConfig,
   Decision,
+  DismissReason,
   ExportStatus,
+  Notable,
   Overview,
   RejectedDraftNotes,
   ReportChoice,
@@ -220,3 +222,34 @@ export const exportWeekly = async (period: string): Promise<{ blob: Blob; name: 
   const named = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "");
   return { blob: await res.blob(), name: named ? named[1] : "Cytonn-Weekly.docx" };
 };
+
+const notablePath = (section: string) => `/api/notable/${encodeURIComponent(section)}`;
+const weekQuery = (weekEnding: string) => `week_ending=${encodeURIComponent(weekEnding)}`;
+
+/** The section's "Notable this week" suggestions for one report week, each with the analyst's decision on it. */
+export const getNotable = (section: string, weekEnding: string) => request<Notable>(`${notablePath(section)}?${weekQuery(weekEnding)}`);
+
+export interface NotableChoice {
+  suggestionId: string;
+  decision: "selected" | "dismissed";
+  /** A rewording of the headline; selected only. */
+  editedHeadline?: string;
+  /** Why it was dismissed; dismissed only. */
+  dismissReason?: DismissReason;
+}
+
+/** Accept (or edit and accept) or dismiss one suggestion. Returns the section's whole list again. */
+export const decideNotable = (section: string, weekEnding: string, c: NotableChoice) =>
+  request<Notable>(`${notablePath(section)}/decisions?${weekQuery(weekEnding)}`, {
+    method: "POST",
+    body: JSON.stringify({
+      suggestion_id: c.suggestionId,
+      decision: c.decision,
+      edited_headline: c.editedHeadline ?? null,
+      dismiss_reason: c.dismissReason ?? null,
+    }),
+  });
+
+/** Take a decision back: the suggestion is open again. */
+export const restoreNotable = (section: string, weekEnding: string, suggestionId: string) =>
+  request<Notable>(`${notablePath(section)}/decisions/${encodeURIComponent(suggestionId)}?${weekQuery(weekEnding)}`, { method: "DELETE" });
