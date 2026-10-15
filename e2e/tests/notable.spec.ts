@@ -28,6 +28,13 @@ async function fixedIncome(page: Page, week: string) {
   await expect(candidates(page).first()).toBeVisible();
 }
 
+/** Leave and come back, as after a reload: the start screen is a phase of /overview, so a reload lands on the overview. */
+async function reopen(page: Page, title: string, week: string) {
+  await page.reload();
+  await openStart(page, title, period(week));
+  await expect(panel(page)).toBeVisible();
+}
+
 test("T47 the panel lists the top five by rank, each saying it is an invented demo item, and show all reveals the rest", async ({ page }) => {
   await fixedIncome(page, "2026-12-11");
   await expect(candidates(page)).toHaveCount(5);
@@ -68,15 +75,15 @@ test("T48 accept: the item moves to the Selected list, survives a reload, and co
   await expect(selected(page).first()).toContainText(STREAK);
   await expect(candidates(page).first()).toContainText(RECORD);
 
-  await page.reload();
+  await reopen(page, "Fixed Income", week);
   await expect(selected(page)).toHaveCount(1);
   await expect(selected(page).first()).toContainText(STREAK);
 
   await panel(page).getByRole("button", { name: "Copy as text" }).click();
   await expect(panel(page).getByText("Copied to the clipboard.")).toBeVisible();
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
-    `Selected for this week: Fixed Income, week ending ${week}\n\n1. ${STREAK}\n   Source: invented demo item`,
-  );
+  // Windows hands the clipboard's line breaks back as CRLF.
+  const copiedText = (await page.evaluate(() => navigator.clipboard.readText())).split("\r\n").join("\n");
+  expect(copiedText).toBe(`Selected for this week: Fixed Income, week ending ${week}\n\n1. ${STREAK}\n   Source: invented demo item`);
 
   // Taking it off the list puts it back among the suggestions.
   await selected(page).first().getByRole("button", { name: "Remove from list" }).click();
@@ -102,7 +109,7 @@ test("T49 edit: the new wording is saved and selected, and the original is kept 
   await expect(saved).toContainText("364-day bill subscription: a 2026 high.");
   await expect(saved).toContainText(`Original: ${RECORD}`);
 
-  await page.reload();
+  await reopen(page, "Fixed Income", "2026-12-25");
   await expect(selected(page).first()).toContainText("364-day bill subscription: a 2026 high.");
   await expect(selected(page).first()).toContainText(`Original: ${RECORD}`);
 
@@ -122,7 +129,7 @@ test("T50 dismiss: hidden with its reason, still hidden after a reload, and can 
 
   await expect(item(candidates(page), SINCE)).toHaveCount(0);
   await expect(candidates(page)).toHaveCount(5); // the sixth moved up
-  await page.reload();
+  await reopen(page, "Fixed Income", "2027-01-01");
   await expect(item(candidates(page), SINCE)).toHaveCount(0);
 
   const dismissed = panel(page).getByRole("button", { name: "Dismissed (1)" });
@@ -136,7 +143,7 @@ test("T50 dismiss: hidden with its reason, still hidden after a reload, and can 
   await gone.first().getByRole("button", { name: "Restore" }).click();
   await expect(panel(page).getByRole("button", { name: /^Dismissed/ })).toHaveCount(0);
   await expect(item(candidates(page), SINCE)).toHaveCount(1);
-  await page.reload();
+  await reopen(page, "Fixed Income", "2027-01-01");
   await expect(item(candidates(page), SINCE)).toHaveCount(1);
   await expect(candidates(page).nth(2)).toContainText(SINCE); // back in its place by rank
 });

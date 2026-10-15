@@ -14,6 +14,7 @@ import AnalystPanel from "./analyst/AnalystPanel.vue";
 import DevRibbon from "./DevRibbon.vue";
 import InputsPanel from "./InputsPanel.vue";
 import Masthead from "./Masthead.vue";
+import NotablePanel from "./NotablePanel.vue";
 import Notice from "./Notice.vue";
 import RedraftDialog from "./RedraftDialog.vue";
 
@@ -364,6 +365,14 @@ const lists = computed(() => [
           </div>
         </section>
       </div>
+      <!-- The weekly report's analyst worklist: suggestions with their working, never added to the draft. -->
+      <NotablePanel
+        v-if="report.type === 'weekly' && week"
+        :key="`notable-${section.slug}-${week}`"
+        :section="section.slug"
+        :section-title="section.title"
+        :week="week"
+      />
     </div>
   </div>
 </template>
