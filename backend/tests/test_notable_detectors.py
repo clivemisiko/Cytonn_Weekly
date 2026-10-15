@@ -28,7 +28,9 @@ KW = dict(section=SECTION, week_ending=FRI)
 YIELD = "Invented 91-day yield"
 Y182 = "Invented 182-day yield"
 STREAK_RULE = ("Consecutive weekly {w} ending at the latest point. An unchanged value, or a gap of more than {g} days between "
-               "points, ends the run. At least {m} {w} in a row are needed.")
+               "points, ends the run. At least {m} {w} in a row are needed. {e}")
+EDGE_BEFORE = "The first point shown is the one before the run and is not part of it."
+EDGE_START = "The run begins at the first point we hold, which is the first point shown; nothing earlier is held."
 
 
 def one(found):
@@ -46,7 +48,8 @@ def test_streak_golden_rises():
         "headline": "The Invented 91-day yield has risen for 5 weeks in a row, from 8.62% to 9.05%.",
         "figures": [fig("Weeks in a row", 5, "5", "weeks"),
                     fig(f"{YIELD}: start of run", "8.62", "8.62%", "pct"), fig(f"{YIELD}: latest", "9.05", "9.05%", "pct")],
-        "working": {"series": YIELD, "rule": STREAK_RULE.format(w="rises", g=10, m=4), "window": "current run", "points": points(values)},
+        "working": {"series": YIELD, "rule": STREAK_RULE.format(w="rises", g=10, m=4, e=EDGE_START), "window": "current run",
+                    "points": points(values)},
         "provenance": {"kind": "published", "label": "CBK weekly bulletin"}, "rank": 50,
     }
 
@@ -56,7 +59,7 @@ def test_streak_golden_falls_at_exactly_the_minimum():
     s = one(streak(series(YIELD, "pct", values), **KW))
     assert s.headline == "The Invented 91-day yield has fallen for 4 weeks in a row, from 9.30% to 8.90%."
     assert s.rank == 40
-    assert s.working["rule"] == STREAK_RULE.format(w="falls", g=10, m=4)
+    assert s.working["rule"] == STREAK_RULE.format(w="falls", g=10, m=4, e=EDGE_START)
     assert s.working["points"] == points(values)
     assert [f["display"] for f in s.figures] == ["4", "9.30%", "8.90%"]
 
@@ -66,33 +69,70 @@ def test_streak_golden_negative_values_and_a_lower_minimum():
     s = one(streak(series(YIELD, "pct", values), min_run=3, **KW))
     assert s.headline == "The Invented 91-day yield has fallen for 4 weeks in a row, from 0.20% to (0.20%)."
     assert s.rank == 50  # 40 + 10 x (4 - 3)
-    assert s.working["rule"] == STREAK_RULE.format(w="falls", g=10, m=3)
+    assert s.working["rule"] == STREAK_RULE.format(w="falls", g=10, m=3, e=EDGE_START)
     assert s.figures[2] == fig(f"{YIELD}: latest", "-0.20", "(0.20%)", "pct")
 
 
-def test_streak_takes_the_run_that_ends_at_the_latest_point_and_shows_the_point_before_it():
-    values = ["7.00", "9.00", "8.50", "8.00", "7.50", "7.00", "6.50", "6.00"]
+# -- the point that ended the run is the oldest point of the working: one golden for each way a run ends ---------------------
+
+def test_streak_working_ends_the_run_at_a_reversal():
+    values = ["7.00", "9.00", "8.50", "8.00", "7.50", "7.00", "6.50", "6.00"]  # the fall began from 9.00; before it, a rise to 9.00
     s = one(streak(series(YIELD, "pct", values), **KW))
-    assert s.headline == "The Invented 91-day yield has fallen for 6 weeks in a row, from 9.00% to 6.00%."
-    assert s.working["points"] == points(values[1:])  # the run and the point it began from, not the earlier rise
-    assert s.rank == 60
+    assert snap(s) == {
+        "kind": "streak", "section": SECTION, "week_ending": "2026-10-09",
+        "headline": "The Invented 91-day yield has fallen for 6 weeks in a row, from 9.00% to 6.00%.",
+        "figures": [fig("Weeks in a row", 6, "6", "weeks"),
+                    fig(f"{YIELD}: start of run", "9.00", "9.00%", "pct"), fig(f"{YIELD}: latest", "6.00", "6.00%", "pct")],
+        "working": {"series": YIELD, "rule": STREAK_RULE.format(w="falls", g=10, m=4, e=EDGE_BEFORE), "window": "current run",
+                    "points": points(values)},  # all eight: the 7.00 before the run is the oldest point and is not counted
+        "provenance": {"kind": "published", "label": "CBK weekly bulletin"}, "rank": 60,
+    }
 
 
-def test_streak_an_unchanged_value_breaks_the_run():
-    values = ["8.00", "8.10", "8.20", "8.30", "8.30", "8.40", "8.50", "8.60", "8.70"]
+def test_streak_working_ends_the_run_at_a_tie():
+    values = ["8.00", "8.10", "8.20", "8.30", "8.30", "8.40", "8.50", "8.60", "8.70"]  # 8.30 to 8.30 is not a rise
     s = one(streak(series(YIELD, "pct", values), **KW))
-    assert s.headline.endswith("from 8.30% to 8.70%.") and "4 weeks" in s.headline
-    assert s.working["points"] == points(values[4:])
+    assert s.headline == "The Invented 91-day yield has risen for 4 weeks in a row, from 8.30% to 8.70%."
+    assert s.working["points"] == points(values[3:])  # the 8.30 before the run, then the run that begins from the other 8.30
+    assert s.working["rule"] == STREAK_RULE.format(w="rises", g=10, m=4, e=EDGE_BEFORE)
+    assert s.working["points"][0]["value"] == s.working["points"][1]["value"]
+    assert [f["display"] for f in s.figures] == ["4", "8.30%", "8.70%"]  # the figures count the run only
 
 
-def test_streak_a_gap_above_max_gap_days_breaks_the_run():
+def test_streak_working_ends_the_run_at_a_gap_above_max_gap_days():
     values = ["8.00", "8.10", "8.20", "8.30", "8.40", "8.50", "8.60", "8.70"]
     after = [FRI - timedelta(days=21 - 7 * i) for i in range(4)]  # four weekly points ending on the week
     before = [FRI - timedelta(days=35 + 7 * i) for i in range(3, -1, -1)]  # four weekly points, 14 days before those
     gapped = Series(YIELD, "pct", list(zip(before + after, values)), PUBLISHED)
     assert streak(gapped, **KW) == []  # only three rises are unbroken: one short of the minimum
     s = one(streak(gapped, min_run=3, **KW))
-    assert s.working["points"] == [{"date": d.isoformat(), "value": D(v), "display": f"{v}%"} for d, v in zip(after, values[4:])]
+    run = [{"date": d.isoformat(), "value": D(v), "display": f"{v}%"} for d, v in zip(after, values[4:])]
+    ended_by = {"date": before[-1].isoformat(), "value": D("8.30"), "display": "8.30%"}  # a rise into the run, but 14 days earlier
+    assert s.working["points"] == [ended_by] + run
+    assert s.working["rule"] == STREAK_RULE.format(w="rises", g=10, m=3, e=EDGE_BEFORE)
+    assert [f["display"] for f in s.figures] == ["3", "8.40%", "8.70%"]
+
+
+def test_streak_working_has_no_earlier_point_when_the_run_begins_at_the_start_of_the_series():
+    values = ["8.00", "8.10", "8.20", "8.30", "8.40"]
+    s = one(streak(series(YIELD, "pct", values), **KW))
+    assert s.working["points"] == points(values)  # nothing before the run exists, so nothing is added
+    assert s.working["rule"].endswith(EDGE_START) and EDGE_BEFORE not in s.working["rule"]
+
+
+def test_streak_the_pre_run_point_does_not_change_the_window_text_or_the_id():
+    run = ["8.00", "8.10", "8.20", "8.30", "8.40"]
+    plain = one(streak(series(YIELD, "pct", run), **KW))
+    longer = one(streak(series(YIELD, "pct", ["9.00"] + run), **KW))  # a fall into the run: the pre-run point is shown
+    assert len(longer.working["points"]) == len(plain.working["points"]) + 1
+    assert plain.working["window"] == longer.working["window"] == "current run"
+    assert plain.id == longer.id  # the id does not read the working's points or its rule
+
+
+def test_streak_a_gap_of_exactly_max_gap_days_is_part_of_the_run_not_its_end():
+    tight = [(FRI - timedelta(days=10 * n), f"{9 - n * 0.1:.2f}") for n in range(5, -1, -1)]  # 8.50 ... 9.00 every 10 days
+    s = one(streak(Series(YIELD, "pct", tight, PUBLISHED), max_gap_days=10, **KW))
+    assert len(s.working["points"]) == 6 and s.working["rule"].endswith(EDGE_START)  # all six are the run, none ends it
 
 
 def test_streak_a_gap_of_exactly_max_gap_days_does_not_break_it():

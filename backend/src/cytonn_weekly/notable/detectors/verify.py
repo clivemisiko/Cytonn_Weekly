@@ -126,24 +126,34 @@ def _headline(s: Suggestion, *accepted: str) -> None:
 
 def _streak(s: Suggestion) -> None:
     m = _rule(s, r"Consecutive weekly (rises|falls) ending at the latest point\. An unchanged value, or a gap of more than (\d+) "
-                 r"days between points, ends the run\. At least (\d+) (rises|falls) in a row are needed\.")
+                 r"days between points, ends the run\. At least (\d+) (rises|falls) in a row are needed\. "
+                 r"(The first point shown is the one before the run and is not part of it\.|"
+                 r"The run begins at the first point we hold, which is the first point shown; nothing earlier is held\.)")
     way = 1 if m[1] == "rises" else -1
     if m[4] != m[1]:
         _fail("rule: the run is named as rises and as falls")
     gap, minimum = int(m[2]), int(m[3])
+    ended_by_a_point = m[5].startswith("The first point")
     pts = _points(s)
     _on_the_week(s, pts)
     _kind(s, "streak")
     _window(s, "current run")
-    steps = len(pts) - 1
+    run = pts[1:] if ended_by_a_point else pts  # the rule says which: the first point shown is not part of the run, or it is
+    steps = len(run) - 1
     if steps < minimum:
         _fail(f"run: {steps} {m[1]} in the points, the rule needs {minimum}")
-    _gaps_within(pts, gap)
-    for (_, a), (_, b) in zip(pts, pts[1:]):
+    _gaps_within(run, gap)
+    for (_, a), (_, b) in zip(run, run[1:]):
         if (b > a) - (b < a) != way:
             _fail(f"run: the points are not {m[1]} all the way")
+    if ended_by_a_point:
+        # The run is the longest ending at the latest point only if the point before it could not be part of it: it must be level
+        # with the run's first point, or move the other way into it, or lie more than the gap earlier.
+        (before_day, before), (first_day, first) = pts[0], run[0]
+        if (first_day - before_day).days <= gap and (first > before) - (first < before) == way:
+            _fail("run: the point before the run continues it, so the run is longer than shown")
     name = s.working["series"]
-    _figures(s, [("Weeks in a row", steps), (f"{name}: start of run", pts[0][1]), (f"{name}: latest", pts[-1][1])])
+    _figures(s, [("Weeks in a row", steps), (f"{name}: start of run", run[0][1]), (f"{name}: latest", run[-1][1])])
     _headline(s, f"The {name} has {'risen' if way > 0 else 'fallen'} for {steps} weeks in a row, from {_display(s, 1)} to {_display(s, 2)}.")
 
 

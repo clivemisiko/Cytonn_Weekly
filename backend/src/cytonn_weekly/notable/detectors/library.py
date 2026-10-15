@@ -19,7 +19,9 @@ Rules every detector shares
 Detectors, defaults and what makes each fire
     streak(series, *, section, week_ending, min_run=4, max_gap_days=10)
         Consecutive weekly rises (or falls) ending at the latest point; an unchanged value or a gap ends the run. Needs at least
-        min_run + 1 points. Working: the run and the point it began from.
+        min_run + 1 points. Working: the point before the run (oldest, and not part of it: a tie, a move the other way, or a gap
+        above max_gap_days, which is what stopped the run from being longer), then the run and the point it began from. When the
+        run begins at the first point of the series, nothing is added and the rule says so.
     since(series, *, section, week_ending, min_points=26, min_stretch=12, max_gap_days=10)
         The latest value is the highest (or lowest) since an earlier date, or in all the unbroken points we hold. A value equal to
         the latest counts as at or above (below) it, so a tie ends the stretch. Needs a window of min_points and a stretch of at
@@ -183,6 +185,7 @@ def streak(series: Series, *, section: str, week_ending: date, min_run: int = 4,
     if run < min_run:
         return []
     shown = pts[n - 1 - run:]
+    ended_by = pts[n - 2 - run:n - 1 - run]  # the point that stopped the run from being longer; empty when the run begins the series
     unit, dec, name = series.unit, series.decimals, series.name
     rises = "rises" if way > 0 else "falls"
     headline = say("streak.headline", name=name, verb="risen" if way > 0 else "fallen", n=run,
@@ -191,7 +194,8 @@ def streak(series: Series, *, section: str, week_ending: date, min_run: int = 4,
                _fig(f"{name}: start of run", shown[0].value, fmt(shown[0].value, unit, dec), unit),
                _fig(f"{name}: latest", shown[-1].value, fmt(shown[-1].value, unit, dec), unit)]
     rule = say("streak.rule", w=rises, gap=max_gap_days, min_run=min_run)
-    return _finish([_make("streak", section, week, headline, figures, name, rule, "current run", _shown(shown, unit, dec),
+    rule += " " + say("streak.edge.before" if ended_by else "streak.edge.start")
+    return _finish([_make("streak", section, week, headline, figures, name, rule, "current run", _shown(ended_by + shown, unit, dec),
                           series.provenance, 40 + 10 * (run - min_run))])
 
 

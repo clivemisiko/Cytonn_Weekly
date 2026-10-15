@@ -99,10 +99,35 @@ def test_streak_random_series():
                 values.append(values[-1] + sign * dec(rng, 0.01, 0.4))
         dates = weekly_dates(rng, len(values))
         series, min_run = build(dates, values), rng.choice([2, 3, 4, 5])
-        return (lambda week: streak(series, section=SECTION, week_ending=week, min_run=min_run), FRI, dates[-1], values[-1],
-                len(values) < min_run + 1)
+
+        def call(week):
+            found = streak(series, section=SECTION, week_ending=week, min_run=min_run)
+            for s in found:
+                run = true_run(series.points)
+                assert s.figures[0]["value"] == run >= min_run
+                held, shown = len(series.points), s.working["points"]
+                begins_at_start = run + 1 == held  # nothing is earlier than the run
+                assert len(shown) == (run + 1 if begins_at_start else run + 2)
+                assert [p["date"] for p in shown] == [p.date.isoformat() for p in series.points[held - len(shown):]]
+                assert s.working["rule"].endswith("nothing earlier is held.") == begins_at_start
+                assert s.working["rule"].endswith("is not part of it.") != begins_at_start
+            return found
+
+        return call, FRI, dates[-1], values[-1], len(values) < min_run + 1
 
     assert loop("streak", make_case, 100) >= 100
+
+
+def true_run(pts, max_gap_days=10):
+    """The length of the unbroken run of rises (or falls) that ends at the latest point, counted here without the library."""
+    way = None
+    run = 0
+    for i in range(len(pts) - 1, 0, -1):
+        step = (pts[i].value > pts[i - 1].value) - (pts[i].value < pts[i - 1].value)
+        if (pts[i].date - pts[i - 1].date).days > max_gap_days or step == 0 or (way is not None and step != way):
+            break
+        way, run = step, run + 1
+    return run
 
 
 def test_since_random_series():

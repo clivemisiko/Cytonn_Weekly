@@ -8,12 +8,14 @@ point, rule parameter, headline word or figure list, and the detectors are shown
 import dataclasses
 import functools
 import re
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
 
 from cytonn_weekly.notable.detectors import (
     DetectorSelfCheckError,
+    Series,
     drift,
     expected_range,
     since,
@@ -24,10 +26,12 @@ from cytonn_weekly.notable.detectors import (
 from cytonn_weekly.notable.detectors import library
 from cytonn_weekly.notable.detectors.verify import verify
 from cytonn_weekly.notable.registry import DetectorContext, run_detectors
-from tests.detector_helpers import FRI, SECTION, series
+from tests.detector_helpers import FRI, PUBLISHED, SECTION, series
 from tests.test_notable_detectors import (
     BASE25,
     DRIFT,
+    EDGE_BEFORE,
+    EDGE_START,
     KW,
     PREV12,
     PREV26,
@@ -38,6 +42,7 @@ from tests.test_notable_detectors import (
 )
 
 D = Decimal
+STREAK_BEFORE = ["7.00", "9.00", "8.50", "8.00", "7.50", "7.00", "6.50", "6.00"]  # a fall of six weeks, after a rise into 9.00
 
 
 def cases() -> dict[str, object]:
@@ -45,6 +50,7 @@ def cases() -> dict[str, object]:
     out = {
         "streak up": streak(series(YIELD, "pct", ["8.62", "8.70", "8.81", "8.93", "9.00", "9.05"]), **KW),
         "streak down": streak(series(YIELD, "pct", ["0.20", "0.10", "0.00", "-0.10", "-0.20"]), min_run=3, **KW),
+        "streak before": streak(series(YIELD, "pct", STREAK_BEFORE), **KW),
         "since tie": since(series(Y182, "pct", BASE25[:3] + ["9.50"] + BASE25[4:] + ["9.50"]), **KW),
         "since history": since(series(Y182, "pct", BASE25 + ["9.50"]), **KW),
         "since record": since(series(Y182, "pct", (BASE25 + BASE25 + BASE25[:9])[:59] + ["9.50"]), **KW),
@@ -73,7 +79,7 @@ def cases() -> dict[str, object]:
 
 
 NAMES = sorted(f"{n} #{i}" for n, count in {
-    "streak up": 1, "streak down": 1, "since tie": 1, "since history": 1, "since record": 1, "since lowest": 1,
+    "streak up": 1, "streak down": 1, "streak before": 1, "since tie": 1, "since history": 1, "since record": 1, "since lowest": 1,
     "trail pct sigma": 1, "trail bps": 1, "trail abs below": 1, "trail abs pct": 1, "cross up": 1, "cross first": 1,
     "cross touch": 1, "range above": 1, "range slip": 2, "range slip low": 2, "pace ahead": 1, "pace behind": 1,
     "drift down": 1, "drift no band": 1, "drift sell": 1}.items() for i in range(count))
@@ -108,7 +114,7 @@ def replaced(s, **changes):
 
 
 def test_every_case_fires_and_the_verifier_accepts_each_output():
-    assert sorted(cases_cached()) == NAMES and len(NAMES) == 23  # every case fires; one that stops firing is noticed
+    assert sorted(cases_cached()) == NAMES and len(NAMES) == 24  # every case fires; one that stops firing is noticed
     for name, s in CASES.items():
         assert verify(s) is None, name
 
@@ -142,8 +148,9 @@ def test_a_changed_latest_point_is_caught(name):
         verify(replaced(s, working={**s.working, "points": pts}))
 
 
-@pytest.mark.parametrize("name", sorted(n for n in CASES if n.startswith(("streak", "trail", "range above", "drift"))))
+@pytest.mark.parametrize("name", sorted(n for n in CASES if n.startswith(("streak up", "streak down", "trail", "range above", "drift"))))
 def test_a_changed_first_point_is_caught_where_it_feeds_a_figure(name):
+    # not "streak before": its first point is the one before the run, which may be any value that still ends the run (see below)
     s = CASES[name]
     pts = [dict(p) for p in s.working["points"]]
     pts[0]["value"] = pts[0]["value"] + D("1")
@@ -207,6 +214,82 @@ def test_a_rule_the_verifier_cannot_read_is_a_mismatch_not_a_pass():
         verify(replaced(s, working={**s.working, "rule": "Some other wording."}))
 
 
+# -- a streak is the longest run: the point that ended it must really end it ----------------------------------------------------
+
+def _streak_ended_by_a_tie():
+    return streak(series(YIELD, "pct", ["8.00", "8.10", "8.20", "8.30", "8.30", "8.40", "8.50", "8.60", "8.70"]), **KW)[0]
+
+
+def _streak_ended_by_a_gap():
+    after = [FRI - timedelta(days=21 - 7 * i) for i in range(4)]
+    before = [FRI - timedelta(days=35 + 7 * i) for i in range(3, -1, -1)]
+    values = ["8.00", "8.10", "8.20", "8.30", "8.40", "8.50", "8.60", "8.70"]
+    return streak(Series(YIELD, "pct", list(zip(before + after, values)), PUBLISHED), min_run=3, **KW)[0]
+
+
+def _first_point(s, **changes):
+    pts = [dict(p) for p in s.working["points"]]
+    pts[0].update(changes)
+    return replaced(s, working={**s.working, "points": pts})
+
+
+def test_every_way_a_run_can_end_is_accepted_as_the_proof_that_it_is_the_longest():
+    assert verify(CASES["streak before #0"]) is None  # a reversal
+    assert verify(_streak_ended_by_a_tie()) is None
+    assert verify(_streak_ended_by_a_gap()) is None
+    assert verify(CASES["streak up #0"]) is None  # the run begins at the first point held, and the rule says so
+
+
+def test_the_verifier_refuses_a_pre_run_point_that_would_continue_a_reversed_run():
+    s = CASES["streak before #0"]  # falls from 9.00; the point before is 7.00, a rise into 9.00
+    with pytest.raises(DetectorSelfCheckError, match="point before the run"):
+        verify(_first_point(s, value=D("9.50"), display="9.50%"))  # 9.50 to 9.00 is one more fall: the run was longer
+
+
+def test_the_verifier_refuses_a_pre_run_point_that_would_continue_a_run_ended_by_a_tie():
+    s = _streak_ended_by_a_tie()  # rises from 8.30; the point before is 8.30, level with it
+    with pytest.raises(DetectorSelfCheckError, match="point before the run"):
+        verify(_first_point(s, value=D("8.20"), display="8.20%"))  # 8.20 to 8.30 is one more rise
+
+
+def test_the_verifier_refuses_a_pre_run_point_that_is_not_a_gap_away_after_all():
+    s = _streak_ended_by_a_gap()  # rises from 8.40; the point before is 8.30, 14 days earlier: a rise, but across a gap
+    run_start = date.fromisoformat(s.working["points"][1]["date"])
+    with pytest.raises(DetectorSelfCheckError, match="point before the run"):
+        verify(_first_point(s, date=(run_start - timedelta(days=7)).isoformat()))  # a week earlier it is part of the run
+
+
+@pytest.mark.parametrize("make, value", [(lambda: CASES["streak before #0"], "0.00"), (lambda: CASES["streak before #0"], "9.00"),
+                                         (_streak_ended_by_a_tie, "99.00")])
+def test_a_pre_run_point_that_still_ends_the_run_is_accepted_whatever_its_value(make, value):
+    s = make()
+    verify(_first_point(s, value=D(value), display=f"{value}%"))  # a rise into a fall, a tie, or a fall into a rise: all end it
+
+
+def test_a_working_that_leaves_out_the_pre_run_point_but_whose_rule_names_it_is_refused():
+    for s in (CASES["streak before #0"], _streak_ended_by_a_tie(), _streak_ended_by_a_gap()):
+        left_out = replaced(s, working={**s.working, "points": s.working["points"][1:]})  # the run alone, rule unchanged
+        with pytest.raises(DetectorSelfCheckError):
+            verify(left_out)  # the run's own first point is now taken as the one before it, and it continues the run
+
+
+def test_a_rule_that_claims_the_start_of_the_series_is_accepted_only_when_every_point_is_in_the_run():
+    before = CASES["streak before #0"]
+    claims_start = replaced(before, working={**before.working, "rule": before.working["rule"].replace(EDGE_BEFORE, EDGE_START)})
+    with pytest.raises(DetectorSelfCheckError, match="all the way"):
+        verify(claims_start)  # the rise into 9.00 is in the working, so the run does not begin at the first point
+    start = CASES["streak up #0"]
+    claims_before = replaced(start, working={**start.working, "rule": start.working["rule"].replace(EDGE_START, EDGE_BEFORE)})
+    with pytest.raises(DetectorSelfCheckError, match="point before the run"):
+        verify(claims_before)  # the first point is not the end of anything: it rises into the second
+
+
+def test_a_rule_with_neither_ending_is_unreadable_and_therefore_refused():
+    s = CASES["streak up #0"]
+    with pytest.raises(DetectorSelfCheckError, match="rule"):
+        verify(replaced(s, working={**s.working, "rule": s.working["rule"].replace(EDGE_START, "").rstrip()}))
+
+
 def test_the_week_and_the_latest_point_must_agree():
     s = CASES["streak up #0"]
     with pytest.raises(DetectorSelfCheckError, match="week"):
@@ -228,7 +311,7 @@ def test_every_detector_runs_the_verifier_on_each_suggestion_before_returning(mo
     seen = []
     monkeypatch.setattr(library, "verify", lambda s: seen.append(s))
     got = cases()  # builds every case again, now through the spy
-    assert len(seen) == len(got) == 23
+    assert len(seen) == len(got) == 24
     assert {s.id for s in seen} == {s.id for s in got.values()}
     assert {s.kind for s in seen} == {"streak", "since", "record", "trailing_compare", "threshold_cross", "expected_range", "pace", "drift"}
 

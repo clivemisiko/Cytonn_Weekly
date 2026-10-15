@@ -79,6 +79,8 @@ TEMPLATES = {
     "streak.headline": "The {name} has {verb} for {n} weeks in a row, from {first} to {last}.",
     "streak.rule": ("Consecutive weekly {w} ending at the latest point. An unchanged value, or a gap of more than {gap} days between "
                     "points, ends the run. At least {min_run} {w} in a row are needed."),
+    "streak.edge.before": "The first point shown is the one before the run and is not part of it.",
+    "streak.edge.start": "The run begins at the first point we hold, which is the first point shown; nothing earlier is held.",
     "since.headline.since": "The {name}, {value}, is the {extreme} since {date}.",
     "since.headline.history": "The {name}, {value}, is the {extreme} in the available history, {weeks} weeks ({earliest}).",
     "since.headline.record": ("The {name}, {value}, is a record {hl} in the history we hold: the {extreme} in {weeks} weeks "
