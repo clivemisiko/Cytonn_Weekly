@@ -12,9 +12,11 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import math
 import re
 from dataclasses import dataclass
 from datetime import date
+from decimal import Decimal
 from typing import Any
 
 VERSION = 1
@@ -39,9 +41,23 @@ def _text(value: Any, what: str) -> str:
     return value
 
 
-def _number(value: Any, what: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+def _number(value: Any, what: str) -> Decimal | float:
+    """A finite number: an int, a float or an exact Decimal (the detectors work in Decimal)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float, Decimal)):
         raise InvalidSuggestion(f"{what} must be a number")
+    if not (value.is_finite() if isinstance(value, Decimal) else math.isfinite(value)):
+        raise InvalidSuggestion(f"{what} must be a finite number")
+    return value
+
+
+def _jsonable(value: Any) -> Any:
+    """The same structure with every Decimal as a float: the one place an exact value becomes a JSON number."""
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, dict):
+        return {k: _jsonable(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_jsonable(v) for v in value]
     return value
 
 
@@ -113,6 +129,7 @@ class Suggestion:
     def to_dict(self) -> dict:
         return {
             "id": self.id, "kind": self.kind, "section": self.section, "week_ending": self.week_ending,
-            "headline": self.headline, "figures": copy.deepcopy(self.figures), "working": copy.deepcopy(self.working),
-            "provenance": dict(self.provenance), "rank": self.rank, "version": self.version,
+            "headline": self.headline, "figures": _jsonable(copy.deepcopy(self.figures)),
+            "working": _jsonable(copy.deepcopy(self.working)), "provenance": dict(self.provenance),
+            "rank": _jsonable(self.rank), "version": self.version,
         }
