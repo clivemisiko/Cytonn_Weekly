@@ -32,7 +32,8 @@ function toggle() {
     <aside
       v-if="slots.aside"
       :aria-label="asideTitle"
-      class="min-w-0 max-[1099px]:border-t max-[1099px]:pt-6 min-[1100px]:sticky min-[1100px]:top-[calc(var(--topbar-h)+var(--ribbon-h,0rem)+1.5rem)] min-[1100px]:max-h-[calc(100dvh-var(--topbar-h)-var(--ribbon-h,0rem)-3rem)] min-[1100px]:self-start min-[1100px]:overflow-y-auto min-[1100px]:border-l min-[1100px]:pl-6"
+      class="min-w-0 max-[1099px]:mx-auto max-[1099px]:w-full max-[1099px]:max-w-184 max-[1099px]:border-t max-[1099px]:pt-6 min-[1100px]:sticky min-[1100px]:top-[calc(var(--topbar-h)+var(--ribbon-h,0rem)+1.5rem)] min-[1100px]:max-h-[calc(100dvh-var(--topbar-h)-var(--ribbon-h,0rem)-3rem)] min-[1100px]:self-start min-[1100px]:overflow-x-hidden min-[1100px]:overflow-y-auto min-[1100px]:border-l"
+      :class="open ? 'min-[1100px]:pl-6' : 'min-[1100px]:pl-2'"
     >
       <div class="flex items-center justify-between gap-2 pb-4">
         <h2 class="eyebrow" :class="!open && 'min-[1100px]:sr-only'">{{ asideTitle }}</h2>

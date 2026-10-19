@@ -45,6 +45,13 @@ test("T59 the rail lists the six sections with their state; it is a full rail, a
   expect(Math.round((await ribbon.boundingBox())!.y)).toBe(44);
   expect(Math.round((await ribbon.boundingBox())!.height)).toBe(28);
   expect(Math.round((await nav.boundingBox())!.y)).toBe(72);
+  // It sticks: after the page has scrolled, the rail is still under the ribbon, as tall as the room left, not scrolled away.
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(200);
+  await expect.poll(async () => Math.round((await nav.boundingBox())!.y)).toBe(72);
+  expect(Math.round((await nav.boundingBox())!.height)).toBe(768 - 72);
+  await expect(nav.getByRole("button", { name: "Focus of the Week, Not drafted" })).toBeInViewport();
+  await page.evaluate(() => window.scrollTo(0, 0));
 
   // From 768px it is a narrow strip of icons that a button expands over the page; Escape folds it again.
   await page.setViewportSize({ width: 1280, height: 720 });
@@ -167,4 +174,39 @@ test("T65 when the sections cannot be read again, every state is the neutral mar
   await expect(rail(page).getByRole("button", { name: "Fixed Income, State not known" })).toBeVisible();
   await expect(rail(page).getByText("Approved count not known")).toBeVisible();
   await expect(rail(page).getByRole("progressbar")).toHaveCount(0);
+});
+
+test("T69 the dev ribbon is the shell's: on the overview, a start screen and a review of a dev draft, never on the start page, and the review's sticky bar sits below it", async ({ page, request }) => {
+  const period = "Week ending 2026-12-11";
+  await draftCompanyUpdates(request, period, "Investment Updates:\nSYNTHETIC e2e text, for the ribbon.");
+  await page.setViewportSize({ width: 1366, height: 500 });
+  const ribbon = page.getByRole("status").filter({ hasText: "DEV MODE DRAFT" });
+
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: /Welcome to Cytonn Weekly\./ })).toBeVisible();
+  await expect(ribbon).toHaveCount(0); // the start page makes no API call and carries no dev mark
+
+  // The test API is in dev mode, so the overview and a section's start screen show it, directly under the top bar.
+  await openStart(page, "Equities", period);
+  await expect(ribbon).toBeVisible();
+  expect(Math.round((await ribbon.boundingBox())!.y)).toBe(44);
+
+  // A review is a dev draft only if it says so; this API has none, so its answer for the review is changed to say it.
+  await page.route(/\/api\/reviews\/\d+$/, async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as Record<string, unknown>;
+    body.is_dev_draft = true;
+    body.dev_mode_label = "DEV MODE DRAFT (stub): NOT FOR PUBLICATION OR CIRCULATION";
+    await route.fulfill({ response, json: body });
+  });
+  await page.goto(overviewUrl(period));
+  await card(page, "Company Updates").getByRole("button", { name: "Resume review" }).click();
+  await expect(page.getByRole("heading", heading("Company Updates"))).toBeVisible();
+  const reviewRibbon = page.getByRole("status").filter({ hasText: "DEV MODE DRAFT (stub)" });
+  await expect(reviewRibbon).toBeVisible();
+  expect(Math.round((await reviewRibbon.boundingBox())!.y)).toBe(44);
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(50);
+  const bar = page.locator("div.sticky", { has: page.getByRole("progressbar", { name: "Items resolved" }) });
+  await expect.poll(async () => Math.round((await bar.boundingBox())?.y ?? -1)).toBe(72); // 44px top bar, then the ribbon's 28px
 });

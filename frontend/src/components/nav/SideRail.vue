@@ -93,11 +93,16 @@ const ITEM =
 </script>
 
 <template>
-  <div class="relative w-14 shrink-0 max-md:hidden min-[1366px]:w-56">
+  <!-- The wrapper is what sticks (under the top bar and the ribbon) and what holds the strip's 56px in the layout; the nav
+       fills it, and when the strip is expanded it is wider than the wrapper and lies over the page. -->
+  <div
+    class="sticky top-[calc(var(--topbar-h)+var(--ribbon-h,0rem))] h-[calc(100dvh-var(--topbar-h)-var(--ribbon-h,0rem))] w-14 shrink-0 max-md:hidden min-[1366px]:w-56"
+    :class="open && 'z-40'"
+  >
     <nav
       aria-label="Report sections"
-      class="sticky top-[calc(var(--topbar-h)+var(--ribbon-h,0rem))] flex h-[calc(100dvh-var(--topbar-h)-var(--ribbon-h,0rem))] w-14 flex-col gap-4 overflow-y-auto border-r bg-card p-2 min-[1366px]:w-56 min-[1366px]:p-3"
-      :class="open && 'z-40 max-[1365px]:w-56'"
+      class="flex h-full w-14 flex-col gap-4 overflow-x-hidden overflow-y-auto border-r bg-card p-1.5 min-[1366px]:w-56 min-[1366px]:p-3"
+      :class="open && 'max-[1365px]:w-56'"
       @keydown.esc="open = false"
     >
       <button
