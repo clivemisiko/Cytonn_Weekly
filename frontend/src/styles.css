@@ -1,4 +1,5 @@
-/* The design tokens and base styles of the whole app (the "proof desk" identity). */
+/* The design tokens and base styles of the whole app (a pale workbench: navy for where you are and what you can do,
+   white cards for what needs a decision, colour spent only on state). */
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "@fontsource-variable/plus-jakarta-sans";
@@ -21,13 +22,15 @@
 }
 
 /* ---------------------------------------------------------------------------
-   Identity: a proof desk. Warm paper ground, deep teal-black ink, hairline rules.
-   Built from `ant` (data-dense enterprise discipline: the type scale, the spacing
-   scale, explicit states) and `stitch` (clean, high-contrast: ink on warm paper).
+   Identity: a pale workbench. A cool pale page, white cards with hairline borders, navy ink and navy primary,
+   pale blue for selected states. Built from `ant` (data-dense enterprise discipline: the type scale, the
+   spacing scale, explicit states) and `stitch` (clean, high-contrast ink).
 
-   Saturation is rationed. The brand is near-neutral ink, so the only loud colours on
-   screen are the three review states: flagged (red), not auto-verified (amber), clean
-   (green). For the same reason figures are never coloured red or green.
+   Light blue (--sky) is a decorative accent on navy surfaces and, in the dark theme, the primary colour. On a
+   light surface it is never text, a focus ring, a control edge or a progress fill (1.9:1 on white).
+
+   The review states stay the only state colours: flagged (red), not auto-verified (amber), clean (green).
+   Figures are never coloured red or green.
    --------------------------------------------------------------------------- */
 @theme inline {
   --font-sans: var(--font-jakarta);
@@ -54,8 +57,9 @@
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
   --color-link: var(--link);
+  --color-sky: var(--sky);
 
-  /* The masthead band: the one dark surface in the light theme. */
+  /* The top bar and the dialog overlay: the one dark surface in the light theme. */
   --color-band: var(--band);
   --color-band-foreground: var(--band-foreground);
   --color-band-muted: var(--band-muted);
@@ -89,13 +93,13 @@
   --text-2xl: 2rem;
   --text-2xl--line-height: 2.5rem;
 
-  /* Shape rule: chips and small boxes 3px, controls 4px, containers 6px, badges and pills round. */
-  --radius-sm: 3px;
-  --radius-md: 4px;
-  --radius-lg: 6px;
-  --radius-xl: 6px;
-  --radius-2xl: 6px;
-  --radius-3xl: 6px;
+  /* Shape rule: chips and small boxes 4px, controls 8px, containers 12px, badges and pills round. */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 12px;
+  --radius-2xl: 12px;
+  --radius-3xl: 12px;
   --radius-4xl: 999px;
 }
 
@@ -110,31 +114,37 @@
   --font-jakarta: "Plus Jakarta Sans Variable", ui-sans-serif, system-ui, sans-serif;
   --font-jetbrains: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  --background: light-dark(#efece2, #091110);
-  --foreground: light-dark(#0e1f1e, #eae7db);
-  --card: light-dark(#fbfaf5, #0f1a19);
-  --card-foreground: light-dark(#0e1f1e, #eae7db);
-  --popover: light-dark(#fbfaf5, #142220);
-  --popover-foreground: light-dark(#0e1f1e, #eae7db);
-  --primary: light-dark(#0f3b38, #8ed3c6);
-  --primary-hover: light-dark(#1d514d, #a8e0d5);
-  --primary-foreground: light-dark(#f5f2e8, #052321);
-  --secondary: light-dark(#e7e3d5, #16262a);
-  --secondary-foreground: light-dark(#0e1f1e, #eae7db);
-  --muted: light-dark(#e7e3d5, #16262a);
-  --muted-foreground: light-dark(#4b5a57, #9daca8);
-  --accent: light-dark(#e7e3d5, #1b2e2c);
-  --accent-foreground: light-dark(#0e1f1e, #eae7db);
+  /* Navy #013660, light blue #6FC3FF and pale blue #E6F1FB are the brand's; the rest is derived from those hues.
+     Contrast (WCAG), measured: ink on card 16.7, navy on page 11.6, white on navy 12.4, muted text on card 5.5 and on
+     the muted fill 4.9, link on card 6.7 and on pale blue 5.8; dark: ink on card 15.2, light blue on card 9.1,
+     muted text on card 7.8. A control's edge is at least 3:1 against every surface it sits on: light 3.7 on a card, about
+     3.4 on the page and 3.3 on the muted fill, dark 3.9 to 4.7. The hairline (--border) is decorative only. */
+  --background: light-dark(#f6f8fb, #07131f);
+  --foreground: light-dark(#0b1f33, #e6f1fb);
+  --card: light-dark(#ffffff, #0c1b2b);
+  --card-foreground: light-dark(#0b1f33, #e6f1fb);
+  --popover: light-dark(#ffffff, #112538);
+  --popover-foreground: light-dark(#0b1f33, #e6f1fb);
+  --primary: light-dark(#013660, #6fc3ff);
+  --primary-hover: light-dark(#0a4a82, #8fd1ff);
+  --primary-foreground: light-dark(#ffffff, #013660);
+  --secondary: light-dark(#eef2f7, #12263a);
+  --secondary-foreground: light-dark(#0b1f33, #e6f1fb);
+  --muted: light-dark(#eef2f7, #12263a);
+  --muted-foreground: light-dark(#5b6b7a, #9fb0c2);
+  --accent: light-dark(#e6f1fb, #12304d); /* the selected state: a pale blue pill */
+  --accent-foreground: light-dark(#013660, #e6f1fb);
   --destructive: light-dark(#b42318, #f27f73);
-  --border: light-dark(#d3cebc, #203230);
-  --input: light-dark(#85836f, #5a6c68); /* 3:1 against card and paper: a control's edge must be findable */
-  --ring: light-dark(#0e6b62, #7fd0c2);
-  --link: light-dark(#0b5a54, #8ed3c6);
+  --border: light-dark(#d9e1ea, #1e3248);
+  --input: light-dark(#7a8794, #6b829a); /* 3:1 against every surface a control sits on: its edge must be findable */
+  --ring: light-dark(#0b5cad, #6fc3ff);
+  --link: light-dark(#0b5cad, #6fc3ff);
+  --sky: #6fc3ff; /* decorative on navy surfaces only (see the identity note at the top) */
 
-  --band: light-dark(#0a2b29, #0e2421);
-  --band-foreground: light-dark(#efece2, #eae7db);
-  --band-muted: light-dark(#9ccdc3, #8fbfb5);
-  --band-rule: light-dark(#174341, #1d3a36);
+  --band: light-dark(#013660, #0c1b2b);
+  --band-foreground: light-dark(#ffffff, #e6f1fb);
+  --band-muted: light-dark(#a9cbea, #9fb0c2);
+  --band-rule: light-dark(#0f4a80, #1e3248);
 
   --flag: light-dark(#b42318, #f27f73);
   --flag-fg: light-dark(#9a1b12, #f6a59c);

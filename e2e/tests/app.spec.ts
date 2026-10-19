@@ -115,7 +115,7 @@ test("T05 theme toggle: Light, Dark, System, kept after a reload and applied bef
   await expect(group).toHaveAccessibleName("Theme: Dark");
   await expect(page.getByRole("radio", { name: "Dark theme" })).toBeChecked();
   expect(await stored()).toBe("dark");
-  expect(await paper()).toBe("rgb(9, 17, 16)");
+  expect(await paper()).toBe("rgb(7, 19, 31)");
   await page.reload();
   expect(await firstFrame()).toBe("dark");
   await expect(page.getByRole("radio", { name: "Dark theme" })).toBeChecked();
@@ -123,16 +123,16 @@ test("T05 theme toggle: Light, Dark, System, kept after a reload and applied bef
   await page.getByRole("radio", { name: "Light theme" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   expect(await stored()).toBe("light");
-  expect(await paper()).toBe("rgb(239, 236, 226)");
+  expect(await paper()).toBe("rgb(246, 248, 251)");
   await page.emulateMedia({ colorScheme: "dark" }); // the device says dark; the stored Light still wins
   await page.reload();
   expect(await firstFrame()).toBe("light");
-  expect(await paper()).toBe("rgb(239, 236, 226)");
+  expect(await paper()).toBe("rgb(246, 248, 251)");
 
   await page.getByRole("radio", { name: "System theme" }).click();
   await expect(page.locator("html")).not.toHaveAttribute("data-theme", /.*/);
   expect(await stored()).toBeNull();
-  expect(await paper()).toBe("rgb(9, 17, 16)"); // follows the (dark) device
+  expect(await paper()).toBe("rgb(7, 19, 31)"); // follows the (dark) device
   await page.reload();
   expect(await firstFrame()).toBe("system");
   await expect(group).toHaveAccessibleName("Theme: System");
