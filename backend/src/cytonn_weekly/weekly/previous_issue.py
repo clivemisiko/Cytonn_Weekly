@@ -15,6 +15,10 @@ How the previous issue is found (checked 2026-10-09):
 * The previous issue of the week ending Friday F is the newest one published on or before
   F (this week's own issue goes out the Sunday after), found by walking ids down from the
   newest and reading each one's ``created_at``.
+* The site also holds copies of an issue with the charts stripped out, and the stripped copy can
+  have the higher id (850 for 849, 889 for 888, 841 for 840).  The walk skips a candidate that is
+  such a twin; see ``STRIPPED_BELOW_IMAGES`` and ``TWIN_WINDOW_DAYS``.  A Markets Review is a
+  valid previous issue and is never skipped.
 
 A coordinator can also paste the previous issue's address; it is resolved the same way.
 """
@@ -36,6 +40,18 @@ SITE = "https://cytonnreport.com"
 API = f"{SITE}/api/series/1/research-reports"
 MAX_WALK = 12   # issues looked at when walking back from the newest
 
+# A twin of an issue is skipped only if BOTH hold: (a) its Fixed Income and Equities sections together hold fewer than
+# STRIPPED_BELOW_IMAGES images, and (b) an issue with more images in those two sections was published within TWIN_WINDOW_DAYS
+# before it.  An image-light issue with no such twin is kept, and the walk never falls back to an older full issue for it.
+# Where the numbers come from (the 53 issues saved 2026-10-15, ids 840 to 892):
+#   4: every full weekly of 2026 (35) has at least 6 images in Fixed Income and 2 in Equities, 8 or more together; the stripped
+#      copies (841, 850, 860, 875, 876, 889, 890) have 0 or 1.
+#   6: the stripped copies were published 0 to 5 days after the full one (849/850: 5, 840/841: 1, 888/889: 1, 860/861: 0,
+#      890/891: 0), and a weekly comes every 7 days, so a fuller issue 7 days earlier is last week's, not a twin.
+STRIPPED_BELOW_IMAGES = 4
+TWIN_WINDOW_DAYS = 6
+REVIEW_SECTIONS = ("global-markets", "sub-saharan")   # what a Markets Review has and a weekly has not
+
 Getter = Callable[[str], bytes]
 
 
@@ -48,10 +64,21 @@ class Issue:
     issue_id: int
     published: Optional[date]
     sections: dict[str, dict[str, str]] = field(default_factory=dict)   # slug -> {name, body (html), summary (html)}
+    skipped_twins: list[int] = field(default_factory=list)   # ids of stripped copies the lookup passed over to reach this one
 
     @property
     def url(self) -> str:
         return f"{API}/{self.issue_id}"
+
+    @property
+    def kind(self) -> str:
+        """"review" for a Markets Review (or the markets outlook, which has the same Global Markets and Africa sections), else "weekly"."""
+        return "review" if any(slug.startswith(REVIEW_SECTIONS) for slug in self.sections) else "weekly"
+
+    @property
+    def chart_images(self) -> int:
+        """The images in the Fixed Income and Equities sections together: what tells a full issue from a stripped copy."""
+        return sum(len(re.findall(r"(?i)<img\b", (self.sections.get(slug) or {}).get("body") or "")) for slug in ("fixed-income", "equities"))
 
     def section(self, *slugs: str) -> Optional[dict[str, str]]:
         return next((self.sections[s] for s in slugs if s in self.sections), None)
@@ -136,25 +163,54 @@ def newest_issue_id(get: Getter = http_get) -> int:
     raise PreviousIssueError("cytonnreport.com's series page links no issue that its search can find")
 
 
+def _has_fuller_twin(candidate: Issue, candidate_id: int, floor: int, issue_at: Callable[[int], Optional[Issue]]) -> bool:
+    """Whether the candidate is a stripped twin: image-light (a) and with a fuller issue shortly before it (b), within the walk."""
+    images = candidate.chart_images
+    if images >= STRIPPED_BELOW_IMAGES:
+        return False
+    for other_id in range(candidate_id - 1, floor - 1, -1):
+        other = issue_at(other_id)
+        if other is None or other.published is None:
+            continue
+        days_before = (candidate.published - other.published).days
+        if days_before > TWIN_WINDOW_DAYS:
+            break   # ids rise with time: nothing further down is a twin
+        if days_before >= 0 and other.chart_images > images:
+            return True
+    return False
+
+
 def find_previous_issue(week_ending: date, get: Getter = http_get, reference: Optional[str] = None) -> Issue:
     """The issue to carry text forward from, for the week ending ``week_ending``.
 
     With ``reference`` (an id or address the coordinator pasted) it is that issue.  Otherwise
-    the newest issue published on or before ``week_ending``.  PreviousIssueError if none.
+    the newest issue published on or before ``week_ending``, passing over any stripped twin of
+    an issue (``skipped_twins`` names them).  PreviousIssueError if none within the newest
+    ``MAX_WALK`` ids; the look-ahead for a twin stays inside them too.
     """
     if reference and reference.strip():
         return fetch_issue(resolve_issue_id(reference, get), get)
-    issue_id = newest_issue_id(get)
-    for _ in range(MAX_WALK):
-        if issue_id < 1:
-            break
-        try:
-            issue = fetch_issue(issue_id, get)
-        except PreviousIssueError:
-            issue_id -= 1
+    newest = newest_issue_id(get)
+    floor = max(newest - MAX_WALK + 1, 1)
+    seen: dict[int, Optional[Issue]] = {}
+
+    def issue_at(issue_id: int) -> Optional[Issue]:
+        if issue_id not in seen:
+            try:
+                seen[issue_id] = fetch_issue(issue_id, get)
+            except PreviousIssueError:
+                seen[issue_id] = None   # an empty or unpublished id
+        return seen[issue_id]
+
+    skipped: list[int] = []
+    for issue_id in range(newest, floor - 1, -1):
+        issue = issue_at(issue_id)
+        if issue is None or issue.published is None or issue.published > week_ending:
             continue
-        if issue.published is not None and issue.published <= week_ending:
-            return issue
-        issue_id -= 1
+        if _has_fuller_twin(issue, issue_id, floor, issue_at):
+            skipped.append(issue_id)
+            continue
+        issue.skipped_twins = skipped
+        return issue
     raise PreviousIssueError(f"no issue published on or before {week_ending.isoformat()} among the newest {MAX_WALK} "
                              "on cytonnreport.com")

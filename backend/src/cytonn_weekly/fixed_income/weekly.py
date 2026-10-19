@@ -982,6 +982,10 @@ def _carried(issue: Optional[previous_issue.Issue], block_id: str, title: str,
     section = issue.section(*slugs)
     text = extract(previous_issue.html_paragraphs(section["body"])) if section else None
     source = {"issue_id": issue.issue_id, "url": issue.url, "published": issue.published.isoformat() if issue.published else None}
+    if issue.skipped_twins or issue.kind == "review":   # the flag says what kind of issue this is when it was a twin's stand-in or a review
+        source = {**source, "kind": issue.kind}
+    if issue.skipped_twins:   # a stripped copy was passed over: the flag names it
+        source = {**source, "skipped": list(issue.skipped_twins)}
     if text:
         return carried_block(block_id, title, text, source)
     for slug in also:
