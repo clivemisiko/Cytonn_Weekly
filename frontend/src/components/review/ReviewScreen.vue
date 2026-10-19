@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { PhLockSimple } from "@phosphor-icons/vue";
-import { computed } from "vue";
+import { computed, watch } from "vue";
 import { STATUS_ORDER, friendlyTime, weekRange } from "@/lib/format";
 import { weekOfReview } from "@/lib/notable";
 import { useReviewSession } from "@/lib/session";
+import { shell, useShellRibbon } from "@/lib/shell";
 import { isBlocksSection, type Review, type StatusCounts } from "@/lib/types";
 import BlocksPane from "./BlocksPane.vue";
 import CountTile from "./CountTile.vue";
-import DevRibbon from "./DevRibbon.vue";
 import DraftPane from "./DraftPane.vue";
 import ItemsPane from "./ItemsPane.vue";
 import Masthead from "./Masthead.vue";
@@ -27,6 +27,18 @@ const review = session.review;
 const dev = computed(() => (review.value.is_dev_draft && review.value.dev_mode_label ? review.value.dev_mode_label : null));
 const approved = computed(() => review.value.decision === "approved");
 const week = computed(() => weekOfReview(review.value));
+useShellRibbon(dev); // the shell draws it under the top bar
+
+// An approval or a rejection changes the section's state: the rail's states are unknown at once and read again.
+watch(
+  () => review.value.decision,
+  (now, before) => {
+    if (now && now !== before) {
+      shell.invalidate();
+      void shell.refreshFor(review.value.report_type, review.value.period);
+    }
+  },
+);
 
 function subline(c: StatusCounts): string {
   if (c.total === 0) return "None in this draft";
@@ -36,8 +48,7 @@ function subline(c: StatusCounts): string {
 </script>
 
 <template>
-  <DevRibbon v-if="dev" :label="dev" />
-  <div :class="dev && 'pt-7'">
+  <div>
     <Masthead wide :title="`${review.section_title}: coordinator review`">
       <template #meta>
         <template v-if="review.period && review.report_type !== 'weekly'">

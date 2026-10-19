@@ -1,6 +1,6 @@
 # End-to-end tests
 
-One Playwright suite (Chromium, T01 to T58) for the web app in `frontend/`. `frontend/PARITY.md` says which test
+One Playwright suite (Chromium, T01 to T65) for the web app in `frontend/`. `frontend/PARITY.md` says which test
 covers which behaviour.
 
 ## The backend the tests use
@@ -35,7 +35,7 @@ npm test                       # frontend/ on Vite's dev server (127.0.0.1:5183)
 `tests/buttons.spec.ts` (T28 to T36: every button of the two input panels with the week before present and absent) and
 `tests/notes.spec.ts` (T37 to T39: the notes of a rejected draft shown on the next one) and `tests/links.spec.ts`
 (T40 and T41: web links in Company Updates) and `tests/draftagain.spec.ts` (T42 to T46: "Draft again" on a section that
-already has a review) and `tests/notable.spec.ts` (T47 to T58: the "Notable this week" panel on invented demo items, and the working chart at 390px and on a desktop), each with its own start of the API and so on freshly restored data: a section that has a review
+already has a review) and `tests/notable.spec.ts` (T47 to T58: the "Notable this week" panel on invented demo items, and the working chart at 390px and on a desktop) and `tests/rail.spec.ts` (T59 to T65: the side rail), each with its own start of the API and so on freshly restored data: a section that has a review
 offers its start screen only through its card's "Draft again" button, and the first file leaves several in review. Run one file with `npx playwright test app` or
 `npx playwright test more` (not both in one command). Two tests
 need the API started in another state, so they have their own runs, one start of the API each:

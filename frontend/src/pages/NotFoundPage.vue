@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import Masthead from "@/components/review/Masthead.vue";
+import { shell } from "@/lib/shell";
+
+shell.invalidate(); // the rail knows no section's state here
 </script>
 
 <template>

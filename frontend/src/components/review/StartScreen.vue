@@ -8,10 +8,10 @@ import * as api from "@/lib/api";
 import { isDraftingThis, providerOff, slotTaken, useDraftingPoll, useLiveElapsed } from "@/lib/drafting";
 import { elapsed, friendlyTime, weekRange } from "@/lib/format";
 import { redraftNotes } from "@/lib/redraft";
+import { shell, useShellRibbon } from "@/lib/shell";
 import { MAX_TOPIC, topicLength } from "@/lib/topic";
 import type { AppConfig, Drafting, Overview, ReportChoice, Review, SectionSummary } from "@/lib/types";
 import AnalystPanel from "./analyst/AnalystPanel.vue";
-import DevRibbon from "./DevRibbon.vue";
 import InputsPanel from "./InputsPanel.vue";
 import Masthead from "./Masthead.vue";
 import NotablePanel from "./NotablePanel.vue";
@@ -50,6 +50,7 @@ const emit = defineEmits<{
 }>();
 
 const router = useRouter();
+useShellRibbon(() => (props.config.dev_mode ? props.config.dev_mode_label : null)); // the shell draws it under the top bar
 const weekly = computed(() => props.report.type === "weekly" && !props.report.period);
 const thisRun = computed(() => (weekly.value ? "this week’s" : `the ${props.report.period}`));
 const topic = ref("");
@@ -74,6 +75,7 @@ const providerBlocked = computed(() => providerOff(llm.value, props.config));
 const serverDrafting = ref<Drafting | null>(props.drafting);
 let watched = isDraftingThis(props.drafting, props.section.slug, props.report);
 function onServerOverview(next: Overview) {
+  shell.setOverview(next); // the rail reads the same payload as this screen's poll
   serverDrafting.value = next.drafting;
   const wasMine = watched;
   watched = isDraftingThis(next.drafting, props.section.slug, props.report);
@@ -157,8 +159,7 @@ const lists = computed(() => [
 </script>
 
 <template>
-  <DevRibbon v-if="config.dev_mode" :label="config.dev_mode_label" />
-  <div :class="config.dev_mode && 'pt-7'">
+  <div>
     <Masthead :title="`${section.title}: coordinator review`">
       <template v-if="!weekly" #meta><span class="font-mono">{{ report.period }}</span></template>
       {{ weekly ? "Draft this week’s section, check it, and review it here." : `Draft ${thisRun} section, check it, and review it here.` }}

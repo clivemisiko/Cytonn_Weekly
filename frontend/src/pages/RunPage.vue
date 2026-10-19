@@ -4,7 +4,6 @@ import { cn } from "cn";
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, useTemplateRef, watch } from "vue";
 import { RouterLink } from "vue-router";
 import CountTile from "@/components/review/CountTile.vue";
-import DevRibbon from "@/components/review/DevRibbon.vue";
 import Masthead from "@/components/review/Masthead.vue";
 import Notice from "@/components/review/Notice.vue";
 import Button from "@/components/ui/Button.vue";
@@ -13,6 +12,7 @@ import * as api from "@/lib/api";
 import { STATUS_ORDER, friendlyTime, reportName } from "@/lib/format";
 import { type BackTarget, useBack } from "@/lib/nav";
 import { isTerminal, mergeEvents, overviewHref, stepLines } from "@/lib/run";
+import { shell, useShellRibbon } from "@/lib/shell";
 import type { AppConfig, Run, RunEvent } from "@/lib/types";
 
 const POLL_MS = 2_000;
@@ -45,6 +45,9 @@ const config = shallowRef<AppConfig | null>(null);
 let live = true;
 let source: EventSource | null = null;
 
+// The rail knows no section's state until this run's report has been read (below): nothing from the screen before.
+shell.invalidate();
+
 const ended = computed(() => events.value.some(isTerminal));
 // The saved review's id and dev mark come with the run itself, which is read once more after its last event.
 const settled = computed(() => run.value !== null && run.value.status !== "running");
@@ -66,7 +69,11 @@ async function read(): Promise<boolean> {
 onMounted(async () => {
   // The drafting provider, for the DEV MODE ribbon while a development draft is still running.
   api.getConfig().then(
-    (c) => live && (config.value = c),
+    (c) => {
+      if (!live) return;
+      config.value = c;
+      shell.config.value = c;
+    },
     () => {},
   );
   // First the run itself (who it is, what it has reported so far, or that it is gone), then its live stream.
@@ -123,6 +130,12 @@ const lines = computed(() => stepLines(events.value));
 const last = computed(() => events.value[events.value.length - 1]);
 const final = computed(() => events.value.find(isTerminal));
 
+// The rail's sections and states, read for this run's report once the run is known, and again when it ends (the draft it
+// saved is then the section's current review).
+const rereadRail = () => run.value && void shell.refreshFor(run.value.report_type, run.value.period);
+watch(() => run.value?.run_id, rereadRail, { immediate: true });
+watch(final, (now) => now && rereadRail());
+
 // Keep the newest line in view, but only for someone already at the foot of the page: scrolling up to read
 // an earlier step is never undone.
 let following = true;
@@ -143,6 +156,7 @@ useBack((): BackTarget => ({ kind: "href", to: "all sections", href: backHref.va
 
 const devLabel = computed(() => run.value?.dev_mode_label ?? config.value?.dev_mode_label ?? "");
 const dev = computed(() => (run.value?.is_dev_draft === true || (config.value?.dev_mode === true && !settled.value)) && !!devLabel.value);
+useShellRibbon(() => (dev.value ? devLabel.value : null)); // the shell draws it under the top bar
 const weekly = computed(() => (run.value ? run.value.report_type === "weekly" && !run.value.period : true));
 const failed = computed(() => final.value?.kind === "run_failed");
 const still = computed(() => reduced || feed.value === "lost");
@@ -167,8 +181,7 @@ const status = computed(() => {
   </main>
 
   <template v-else>
-    <DevRibbon v-if="dev" :label="devLabel" />
-    <div :class="dev && 'pt-7'">
+    <div>
       <main id="main" tabindex="-1">
         <Masthead :title="run ? `${run.section_title}: draft run` : 'Draft run'">
           <template v-if="run && !weekly" #meta><span class="font-mono">{{ run.period }}</span></template>

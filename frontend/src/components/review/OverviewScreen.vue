@@ -2,8 +2,8 @@
 import { computed } from "vue";
 import { type SectionState, draftAgainOff, isDraftingThis, stateOf, useDraftingPoll } from "@/lib/drafting";
 import { friendlyDate, plural, reportName } from "@/lib/format";
+import { useShellRibbon } from "@/lib/shell";
 import type { AppConfig, Overview, ReportChoice } from "@/lib/types";
-import DevRibbon from "./DevRibbon.vue";
 import DraftingBanner from "./DraftingBanner.vue";
 import ExportBar from "./ExportBar.vue";
 import Masthead from "./Masthead.vue";
@@ -28,6 +28,7 @@ const emit = defineEmits<{
   overview: [next: Overview];
 }>();
 
+useShellRibbon(() => (props.config.dev_mode ? props.config.dev_mode_label : null)); // the shell draws it under the top bar
 const drafting = computed(() => props.overview.drafting);
 useDraftingPoll(drafting, (next) => emit("overview", next), () => props.report);
 const name = computed(() => reportName(props.overview.report.title, props.overview.report.period));
@@ -46,8 +47,7 @@ const tally = computed<[string, number][]>(() => {
 </script>
 
 <template>
-  <DevRibbon v-if="config.dev_mode" :label="config.dev_mode_label" />
-  <div :class="config.dev_mode && 'pt-7'">
+  <div>
     <Masthead title="Coordinator review">
       <template #meta>Today {{ friendlyDate(overview.today) }}</template>
       {{ kind ? `${kind.title}: ` : `${name}: ` }}{{ plural(overview.sections.length, "report section") }}. Each is drafted, checked and approved or rejected on its own.

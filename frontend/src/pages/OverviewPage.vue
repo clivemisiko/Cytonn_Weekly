@@ -9,6 +9,7 @@ import StartScreen from "@/components/review/StartScreen.vue";
 import Button from "@/components/ui/Button.vue";
 import * as api from "@/lib/api";
 import { BACK_HOME, type BackTarget, useBack } from "@/lib/nav";
+import { shell, useShellActions, useShellHere } from "@/lib/shell";
 import type { AppConfig, Drafting, Overview, ReportChoice, ReportType, Review, SectionSummary } from "@/lib/types";
 
 type Phase =
@@ -32,6 +33,8 @@ const phase = shallowRef<Phase>({ name: "booting" });
 const report = shallowRef<ReportChoice>(api.WEEKLY_REPORT);
 let live = true;
 onUnmounted(() => (live = false));
+// The rail shows no section's state until this page has read the overview (or a review's report): nothing from before.
+shell.invalidate();
 
 /** The report in the address bar (?report=quarterly&period=Q3'2026), so a reload stays on it. Weekly when absent. */
 function reportFromUrl(): ReportChoice {
@@ -81,14 +84,18 @@ function show(next: Phase) {
   if (next.name === "overview") {
     report.value = normalized(next.overview);
     reportToUrl(report.value);
+    shell.config.value = next.config;
+    shell.setOverview(next.overview); // the rail takes the very payload the cards are built from
   }
   phase.value = next;
 }
 
-/** A section's start screen, with its current saved review (if any) offered for resume. */
-async function fetchStart(slug: string): Promise<Phase> {
+/** A section's start screen, with its current saved review (if any) offered for resume. `known` is an overview just read. */
+async function fetchStart(slug: string, known?: Overview): Promise<Phase> {
   try {
-    const [config, overview] = await Promise.all([api.getConfig(), api.getOverview(report.value)]);
+    const [config, overview] = await Promise.all([api.getConfig(), known ?? api.getOverview(report.value)]);
+    shell.config.value = config;
+    shell.setOverview(overview);
     const section = overview.sections.find((s) => s.slug === slug);
     if (!section) return { name: "overview", config, overview };
     const run = section.latest;
@@ -115,6 +122,7 @@ onMounted(async () => {
       const review = await api.getReview(reviewId);
       report.value = { type: review.report_type, period: review.period, kind: wanted.kind };
       set({ name: "review", review });
+      void shell.refreshFor(review.report_type, review.period); // the rail's sections and states, read for this review's report
       return;
     } catch {
       /* fall through to the overview */
@@ -124,6 +132,7 @@ onMounted(async () => {
 });
 
 function home() {
+  shell.invalidate(); // the overview is read again below, which then hands the rail its payload
   set({ name: "booting" });
   void fetchOverview(report.value).then(show);
 }
@@ -160,6 +169,44 @@ async function openSection(slug: string, resume: boolean) {
   set(await fetchStart(slug));
 }
 
+/**
+ * A section opened from the rail, from any screen of this page. It goes where that section's own card button goes (its
+ * review when it has a current one, else its start screen), decided on a fresh read of the report's sections, never on
+ * what the rail was showing.
+ */
+async function goToSection(slug: string) {
+  let overview: Overview;
+  try {
+    overview = await api.getOverview(report.value);
+  } catch (err) {
+    set({ name: "unreachable", message: messageOf(err) });
+    return;
+  }
+  shell.setOverview(overview);
+  const section = overview.sections.find((s) => s.slug === slug);
+  if (!section || !section.available) return;
+  const run = section.latest;
+  if (run && (run.current ?? run.this_week)) {
+    try {
+      set({ name: "review", review: await api.getReview(run.run_id) });
+    } catch (err) {
+      set({ name: "unreachable", message: messageOf(err) });
+    }
+    return;
+  }
+  set(await fetchStart(slug, overview));
+}
+
+// What the rail's items do while this page is on screen, and which of its screens the rail marks.
+useShellActions({ openSection: goToSection, toOverview: home });
+useShellHere(() => {
+  const p = phase.value;
+  if (p.name === "overview") return { view: "overview" };
+  if (p.name === "start") return { view: "section", slug: p.section.slug };
+  if (p.name === "review") return { view: "section", slug: p.review.section_slug };
+  return null;
+});
+
 /** On a start screen, switch the weekly report to the week ending on another Friday and show that week's section. */
 async function chooseWeek(slug: string, weekEnding: string) {
   report.value = { type: "weekly", period: api.weekPeriod(weekEnding), kind: null };
@@ -170,7 +217,10 @@ async function chooseWeek(slug: string, weekEnding: string) {
 /** A polled overview replaces the shown one in place (same phase, so no screen transition). */
 function refreshOverview(overview: Overview) {
   const now = phase.value;
-  if (now.name === "overview") set({ ...now, overview });
+  if (now.name === "overview") {
+    set({ ...now, overview });
+    shell.setOverview(overview);
+  }
 }
 
 const key = computed(() => {
