@@ -233,7 +233,7 @@ const key = computed(() => {
   <Transition name="phase" mode="out-in">
     <main id="main" :key="key" tabindex="-1">
       <div v-if="phase.name === 'booting'" aria-busy="true" aria-label="Loading">
-        <div class="h-28 border-b border-band-rule bg-band" />
+        <div class="h-28 border-b bg-card" />
         <div class="mx-auto w-full max-w-275 space-y-3 px-4 pt-8 sm:px-6">
           <div data-slot="skeleton" class="h-16 w-full animate-pulse rounded-lg bg-border/60" />
           <div v-for="i in 5" :key="i" data-slot="skeleton" class="h-24 w-full animate-pulse rounded-lg bg-border/60" />
