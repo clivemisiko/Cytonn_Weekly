@@ -15,6 +15,9 @@ What differs from the real API, all of it set here and nothing in the backend ch
   and every Markets Review section runs on the test suite's captured sources (tests/periodic_helpers.py), so neither
   reaches Yahoo, CBK, KNBS, afx or the NSE;
 - "Fetch from CBK" is answered from the bulletin saved in backend/tests/fixtures/sources, never by CBK;
+- four more Fridays hold invented equities workbooks for the chart tests (e2e/chart_demo.py): one that draws both charts,
+  one with rows left out of the series, one not yet updated for the week and one with no workbook; the Equities draft for
+  those weeks reads no outside source;
 - the "Notable this week" panel has invented items here (e2e/notable_demo.py, each marked "invented demo item"), passed to
   create_app() as its notable_registry. The real app passes none, so its registry is empty and it shows nothing.
 
@@ -64,6 +67,7 @@ from api.main import create_app  # noqa: E402
 from cytonn_weekly import paths  # noqa: E402
 from cytonn_weekly.digital_payments import review_run as digital_payments  # noqa: E402
 from cytonn_weekly.narrative import drafter  # noqa: E402
+import chart_demo  # noqa: E402 - e2e/chart_demo.py, beside this file
 import notable_demo  # noqa: E402 - e2e/notable_demo.py, beside this file
 from cytonn_weekly.real_estate import review_run as real_estate  # noqa: E402
 from tests import periodic_helpers, review_helpers  # noqa: E402
@@ -82,6 +86,9 @@ def _fail(**_):
 
 
 real_estate.build_real_estate_review = _fail
+
+chart_demo.seed()
+chart_demo.offline_equities()
 
 _real_dp = digital_payments.build_digital_payments_review
 digital_payments.build_digital_payments_review = lambda today=None, on_event=None, **_: _real_dp(
