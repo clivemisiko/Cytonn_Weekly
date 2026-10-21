@@ -17,9 +17,15 @@ const STATE_LABEL: Record<string, string> = {
  * "Export weekly report": the approved week as one Word file, in the real issue's order. Enabled only when the API says
  * every weekly section of this report is approved; until then it lists each section's state. Nothing is sent or
  * published: the file is downloaded to the coordinator.
+ *
+ * It reads the export's status and tells its screen (`status`), because one thing in that status is not this bar's to show:
+ * that the export carries the DEV MODE watermark. That is a warning, so the overview shows it in its feed beside the dev-mode
+ * notice, where folding the panel this bar sits in cannot hide it.
  */
 const props = defineProps<{ period: string; refreshKey: string }>();
+const emit = defineEmits<{ status: [status: ExportStatus | null] }>();
 const status = ref<ExportStatus | null>(null);
+watch(status, (now) => emit("status", now), { immediate: true });
 const busy = ref(false);
 const error = ref<string | null>(null);
 
@@ -96,9 +102,6 @@ const iconOf = (state: string) => (state === "approved" ? PhCheck : state === "r
         {{ s.title }}: {{ STATE_LABEL[s.state] ?? s.state }}
       </li>
     </ul>
-    <Notice v-if="status?.is_dev_draft" role="alert" class="font-semibold">
-      {{ status.dev_mode_label }} The export carries a DEV MODE watermark on every page and must not be sent or published ({{ status.dev_sections.join(", ") }}).
-    </Notice>
     <Notice v-if="error" role="alert" class="font-medium">{{ error }}</Notice>
   </section>
 </template>

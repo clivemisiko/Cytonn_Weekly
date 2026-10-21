@@ -6,7 +6,7 @@ import PageGrid from "@/components/nav/PageGrid.vue";
 import { type SectionState, draftAgainOff, isDraftingThis, stateOf, useDraftingPoll } from "@/lib/drafting";
 import { friendlyDate, plural, reportName } from "@/lib/format";
 import { useShellRibbon } from "@/lib/shell";
-import type { AppConfig, Overview, ReportChoice } from "@/lib/types";
+import type { AppConfig, ExportStatus, Overview, ReportChoice } from "@/lib/types";
 import DraftingBanner from "./DraftingBanner.vue";
 import ExportBar from "./ExportBar.vue";
 import Masthead from "./Masthead.vue";
@@ -55,6 +55,10 @@ const tally = computed<[string, number][]>(() => {
 // The group of cards: named by its week or period, with how many are approved and (always shown, even when the group
 // is folded) how many items the checker flagged across the sections' current reviews, as the payload counts them.
 const groupOpen = ref(true);
+
+// What the export bar in the panel last read. Whether the export would carry the dev-mode watermark is shown in the feed,
+// beside the dev-mode notice, because the panel can be folded and a warning must not fold away with it.
+const exportStatus = ref<ExportStatus | null>(null);
 const groupLabel = computed(() => {
   const period = props.overview.report.period;
   return period.startsWith("Week ending ") ? `Week ending ${friendlyDate(period.slice(12))}` : period || "This week";
@@ -82,6 +86,9 @@ const flagged = computed(() =>
       />
       <Notice v-if="config.dev_mode" role="alert" class="font-semibold">
         CYTONN_LLM_PROVIDER=local: DEV MODE. Drafts from the local model are NOT FOR PUBLICATION.
+      </Notice>
+      <Notice v-if="exportStatus?.is_dev_draft" role="alert" class="font-semibold">
+        {{ exportStatus.dev_mode_label }} The export carries a DEV MODE watermark on every page and must not be sent or published ({{ exportStatus.dev_sections.join(", ") }}).
       </Notice>
       <DraftingBanner v-if="drafting" :drafting="drafting" />
       <Notice v-if="overview.report.type === 'companion'" tone="info">
@@ -131,6 +138,7 @@ const flagged = computed(() =>
         v-if="overview.report.type === 'weekly'"
         :period="overview.report.period"
         :refresh-key="overview.sections.map((s) => `${s.latest?.run_id ?? ''}:${s.latest?.decision ?? ''}`).join('|')"
+        @status="(status) => (exportStatus = status)"
       />
     </template>
   </PageGrid>

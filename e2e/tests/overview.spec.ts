@@ -123,3 +123,36 @@ test("T68 an unavailable section's reason and what unblocks it are always in ful
   await expect(re.getByText("SYNTHETIC built part one")).toBeVisible();
   await expect(re.getByText("SYNTHETIC reason: nothing here can be drafted yet, whatever the length of this sentence is.")).toBeVisible();
 });
+
+test("T70 the export's dev-mode notice is in the feed right under the dev-mode notice, shown once, and stays when the panel is folded", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  // No section in this test API is a dev draft, so the export status the page reads is changed to say one is.
+  await page.route(/\/api\/export\/weekly/, async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    const response = await route.fetch();
+    const body = (await response.json()) as Record<string, unknown>;
+    Object.assign(body, { is_dev_draft: true, dev_mode_label: "DEV MODE DRAFT (stub): NOT FOR PUBLICATION OR CIRCULATION.", dev_sections: ["Fixed Income", "Equities"] });
+    await route.fulfill({ response, json: body });
+  });
+  await page.goto(overviewUrl());
+  const panel = page.getByRole("complementary", { name: "Report status" });
+  const notice = page.getByRole("alert").filter({ hasText: "The export carries a DEV MODE watermark" });
+  await expect(notice).toHaveCount(1); // once only
+  await expect(notice).toHaveText("DEV MODE DRAFT (stub): NOT FOR PUBLICATION OR CIRCULATION. The export carries a DEV MODE watermark on every page and must not be sent or published (Fixed Income, Equities).");
+  await expect(panel.getByText("The export carries a DEV MODE watermark")).toHaveCount(0); // not in the panel
+  await expect(panel.getByRole("button", { name: "Export weekly report" })).toBeVisible(); // the button is
+
+  const dev = page.getByRole("alert").filter({ hasText: "CYTONN_LLM_PROVIDER=local: DEV MODE." });
+  const above = (await dev.boundingBox())!;
+  const below = (await notice.boundingBox())!;
+  expect(below.y).toBeGreaterThan(above.y + above.height - 1); // after it
+  expect(below.y - (above.y + above.height)).toBeLessThan(40); // and right under it, in the same column
+
+  await panel.getByRole("button", { name: "Hide Report status" }).click();
+  await expect(page.getByRole("button", { name: "Export weekly report" })).toBeHidden(); // folded away with the panel
+  await expect(notice).toBeVisible(); // the warning is not
+  await expect(notice).toHaveCount(1);
+  await page.reload();
+  await expect(panel.getByRole("button", { name: "Show Report status" })).toBeVisible(); // still folded after a reload
+  await expect(notice).toBeVisible();
+});
