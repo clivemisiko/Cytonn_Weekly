@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { PhCaretDown } from "@phosphor-icons/vue";
+import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "reka-ui";
+import { computed, ref } from "vue";
+import PageGrid from "@/components/nav/PageGrid.vue";
 import { type SectionState, draftAgainOff, isDraftingThis, stateOf, useDraftingPoll } from "@/lib/drafting";
 import { friendlyDate, plural, reportName } from "@/lib/format";
-import type { AppConfig, Overview, ReportChoice } from "@/lib/types";
-import DevRibbon from "./DevRibbon.vue";
+import { useShellRibbon } from "@/lib/shell";
+import type { AppConfig, ExportStatus, Overview, ReportChoice } from "@/lib/types";
 import DraftingBanner from "./DraftingBanner.vue";
 import ExportBar from "./ExportBar.vue";
 import Masthead from "./Masthead.vue";
@@ -11,7 +14,11 @@ import Notice from "./Notice.vue";
 import ReportPicker from "./ReportPicker.vue";
 import SectionRow from "./SectionRow.vue";
 
-/** Every section of the chosen report at a glance; each one is reviewed and decided on its own. */
+/**
+ * Every section of the chosen report at a glance; each one is reviewed and decided on its own. The feed in the middle
+ * is the report picker, the notices that must be seen (dev mode, a draft running) and one card per section in the issue's
+ * order. Beside it, a panel the person can fold holds how the sections stand and the weekly export.
+ */
 const props = defineProps<{
   overview: Overview;
   config: AppConfig;
@@ -28,6 +35,7 @@ const emit = defineEmits<{
   overview: [next: Overview];
 }>();
 
+useShellRibbon(() => (props.config.dev_mode ? props.config.dev_mode_label : null)); // the shell draws it under the top bar
 const drafting = computed(() => props.overview.drafting);
 useDraftingPoll(drafting, (next) => emit("overview", next), () => props.report);
 const name = computed(() => reportName(props.overview.report.title, props.overview.report.period));
@@ -43,16 +51,32 @@ const tally = computed<[string, number][]>(() => {
     ["Not available yet", n("unavailable")],
   ];
 });
+
+// The group of cards: named by its week or period, with how many are approved and (always shown, even when the group
+// is folded) how many items the checker flagged across the sections' current reviews, as the payload counts them.
+const groupOpen = ref(true);
+
+// What the export bar in the panel last read. Whether the export would carry the dev-mode watermark is shown in the feed,
+// beside the dev-mode notice, because the panel can be folded and a warning must not fold away with it.
+const exportStatus = ref<ExportStatus | null>(null);
+const groupLabel = computed(() => {
+  const period = props.overview.report.period;
+  return period.startsWith("Week ending ") ? `Week ending ${friendlyDate(period.slice(12))}` : period || "This week";
+});
+const approved = computed(() => props.overview.sections.filter((s) => stateOf(s) === "approved").length);
+const flagged = computed(() =>
+  props.overview.sections.reduce((n, s) => (s.latest && (s.latest.current ?? s.latest.this_week) ? n + s.latest.counts.flagged.total : n), 0),
+);
 </script>
 
 <template>
-  <DevRibbon v-if="config.dev_mode" :label="config.dev_mode_label" />
-  <div :class="config.dev_mode && 'pt-7'">
-    <Masthead title="Coordinator review">
+  <PageGrid aside-title="Report status" storage-key="overview">
+    <Masthead flush title="Coordinator review">
       <template #meta>Today {{ friendlyDate(overview.today) }}</template>
       {{ kind ? `${kind.title}: ` : `${name}: ` }}{{ plural(overview.sections.length, "report section") }}. Each is drafted, checked and approved or rejected on its own.
     </Masthead>
-    <div class="mx-auto w-full max-w-275 space-y-6 px-4 pt-8 pb-16 sm:px-6">
+
+    <div class="mt-6 space-y-6">
       <ReportPicker
         :key="`${report.type}|${report.period}|${report.kind ?? ''}`"
         :current="report"
@@ -63,13 +87,49 @@ const tally = computed<[string, number][]>(() => {
       <Notice v-if="config.dev_mode" role="alert" class="font-semibold">
         CYTONN_LLM_PROVIDER=local: DEV MODE. Drafts from the local model are NOT FOR PUBLICATION.
       </Notice>
+      <Notice v-if="exportStatus?.is_dev_draft" role="alert" class="font-semibold">
+        {{ exportStatus.dev_mode_label }} The export carries a DEV MODE watermark on every page and must not be sent or published ({{ exportStatus.dev_sections.join(", ") }}).
+      </Notice>
       <DraftingBanner v-if="drafting" :drafting="drafting" />
       <Notice v-if="overview.report.type === 'companion'" tone="info">
         Companion research reports ride inside a weekly issue as its Focus of the Week. Every section below is Cytonn’s own
         analysis, so none can be drafted yet; the weekly Focus of the Week can still draft a cited piece on the same topic.
       </Notice>
-      <dl role="group" aria-label="Sections by state" class="grid grid-cols-2 divide-border rounded-lg border bg-card sm:grid-cols-5 sm:divide-x">
-        <div v-for="[label, value] in tally" :key="label" class="flex flex-col gap-1 px-4 py-3 last:col-span-2 sm:last:col-span-1">
+
+      <CollapsibleRoot v-model:open="groupOpen" class="space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <h2 class="text-base font-semibold">
+            <CollapsibleTrigger class="flex items-center gap-2 rounded-md py-1 text-left outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring">
+              <PhCaretDown weight="bold" class="size-4 shrink-0 text-muted-foreground transition-transform duration-200" :class="!groupOpen && '-rotate-90'" aria-hidden="true" />
+              {{ groupLabel }} · {{ approved }} of {{ overview.sections.length }} approved
+            </CollapsibleTrigger>
+          </h2>
+          <span v-if="flagged > 0" class="state-flagged inline-flex items-center gap-1 text-sm font-semibold text-(--hue-fg)">
+            <span class="glyph size-4 text-xs" aria-hidden="true">!</span>
+            {{ flagged }} flagged
+          </span>
+        </div>
+        <CollapsibleContent class="collapsible -m-1 overflow-hidden p-1">
+          <ol class="space-y-4">
+            <SectionRow
+              v-for="(s, i) in overview.sections"
+              :key="s.slug"
+              :s="s"
+              :index="i"
+              :period="overview.report.period"
+              :drafting="isDraftingThis(drafting, s.slug, report) ? drafting : null"
+              :draft-again-off="draftAgainOff(s, drafting, config, report)"
+              @open="(slug, resume) => emit('open', slug, resume)"
+              @redraft="(slug) => emit('redraft', slug)"
+            />
+          </ol>
+        </CollapsibleContent>
+      </CollapsibleRoot>
+    </div>
+
+    <template #aside>
+      <dl role="group" aria-label="Sections by state" class="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border @xl:grid-cols-5">
+        <div v-for="[label, value] in tally" :key="label" class="flex flex-col gap-1 bg-card px-4 py-3 last:col-span-2 @xl:last:col-span-1">
           <dt class="eyebrow">{{ label }}</dt>
           <dd class="font-mono text-xl font-semibold">{{ value }}<span class="text-sm font-medium text-muted-foreground"> / {{ overview.sections.length }}</span></dd>
         </div>
@@ -78,20 +138,8 @@ const tally = computed<[string, number][]>(() => {
         v-if="overview.report.type === 'weekly'"
         :period="overview.report.period"
         :refresh-key="overview.sections.map((s) => `${s.latest?.run_id ?? ''}:${s.latest?.decision ?? ''}`).join('|')"
+        @status="(status) => (exportStatus = status)"
       />
-      <ol class="space-y-3">
-        <SectionRow
-          v-for="(s, i) in overview.sections"
-          :key="s.slug"
-          :s="s"
-          :index="i"
-          :period="overview.report.period"
-          :drafting="isDraftingThis(drafting, s.slug, report) ? drafting : null"
-          :draft-again-off="draftAgainOff(s, drafting, config, report)"
-          @open="(slug, resume) => emit('open', slug, resume)"
-          @redraft="(slug) => emit('redraft', slug)"
-        />
-      </ol>
-    </div>
-  </div>
+    </template>
+  </PageGrid>
 </template>

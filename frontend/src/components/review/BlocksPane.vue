@@ -77,7 +77,7 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
             </Notice>
             <p v-if="leftOut(s).length === 0" class="text-xs text-muted-foreground">Nothing else in this section.</p>
             <dl v-else class="space-y-1 text-sm">
-              <div v-for="[label, names] in leftOut(s)" :key="label" class="grid gap-x-3 sm:grid-cols-[10rem_1fr]">
+              <div v-for="[label, names] in leftOut(s)" :key="label" class="grid gap-x-3 @min-[28rem]:grid-cols-[10rem_1fr]">
                 <dt class="eyebrow">{{ label }}</dt>
                 <dd class="min-w-0">{{ names.join("; ") }}</dd>
               </div>

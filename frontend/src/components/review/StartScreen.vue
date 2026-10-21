@@ -8,10 +8,11 @@ import * as api from "@/lib/api";
 import { isDraftingThis, providerOff, slotTaken, useDraftingPoll, useLiveElapsed } from "@/lib/drafting";
 import { elapsed, friendlyTime, weekRange } from "@/lib/format";
 import { redraftNotes } from "@/lib/redraft";
+import { shell, useShellRibbon } from "@/lib/shell";
 import { MAX_TOPIC, topicLength } from "@/lib/topic";
 import type { AppConfig, Drafting, Overview, ReportChoice, Review, SectionSummary } from "@/lib/types";
+import PageGrid from "@/components/nav/PageGrid.vue";
 import AnalystPanel from "./analyst/AnalystPanel.vue";
-import DevRibbon from "./DevRibbon.vue";
 import InputsPanel from "./InputsPanel.vue";
 import Masthead from "./Masthead.vue";
 import NotablePanel from "./NotablePanel.vue";
@@ -50,6 +51,7 @@ const emit = defineEmits<{
 }>();
 
 const router = useRouter();
+useShellRibbon(() => (props.config.dev_mode ? props.config.dev_mode_label : null)); // the shell draws it under the top bar
 const weekly = computed(() => props.report.type === "weekly" && !props.report.period);
 const thisRun = computed(() => (weekly.value ? "this week’s" : `the ${props.report.period}`));
 const topic = ref("");
@@ -74,6 +76,7 @@ const providerBlocked = computed(() => providerOff(llm.value, props.config));
 const serverDrafting = ref<Drafting | null>(props.drafting);
 let watched = isDraftingThis(props.drafting, props.section.slug, props.report);
 function onServerOverview(next: Overview) {
+  shell.setOverview(next); // the rail reads the same payload as this screen's poll
   serverDrafting.value = next.drafting;
   const wasMine = watched;
   watched = isDraftingThis(next.drafting, props.section.slug, props.report);
@@ -157,53 +160,17 @@ const lists = computed(() => [
 </script>
 
 <template>
-  <DevRibbon v-if="config.dev_mode" :label="config.dev_mode_label" />
-  <div :class="config.dev_mode && 'pt-7'">
-    <Masthead :title="`${section.title}: coordinator review`">
+  <div>
+    <Masthead wide :title="`${section.title}: coordinator review`">
       <template v-if="!weekly" #meta><span class="font-mono">{{ report.period }}</span></template>
       {{ weekly ? "Draft this week’s section, check it, and review it here." : `Draft ${thisRun} section, check it, and review it here.` }}
     </Masthead>
 
-    <div class="mx-auto w-full max-w-275 space-y-8 px-4 pt-8 pb-16 sm:px-6">
-      <template v-if="usesInputs && week">
-        <InputsPanel :key="week" :week="week" :disabled="starting" @week="(w) => emit('week', w)" @change="uploads++" />
-        <AnalystPanel :key="`analyst-${week}`" :week="week" :section="section.slug" :disabled="starting" :refresh="uploads" @pending="(p) => (typedPending = p)" />
-      </template>
-      <div class="grid grid-cols-1 items-start gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-12">
-        <div class="space-y-6">
-          <section aria-labelledby="flow-title">
-            <h2 id="flow-title" class="pb-4 text-lg font-semibold">What a run does</h2>
-            <ol>
-              <li
-                v-for="(step, i) in section.steps"
-                :key="step.title"
-                class="relative flex gap-4 pb-6 last:pb-0 not-last:before:absolute not-last:before:top-7 not-last:before:bottom-1 not-last:before:left-3 not-last:before:w-px not-last:before:bg-input"
-              >
-                <span
-                  class="relative z-10 grid size-6 shrink-0 place-items-center rounded-sm border font-mono text-xs font-semibold"
-                  :class="i === section.steps.length - 1 ? 'border-primary bg-primary text-primary-foreground' : 'border-input bg-card'"
-                >
-                  {{ i + 1 }}
-                </span>
-                <div>
-                  <p class="text-sm font-semibold">{{ step.title }}</p>
-                  <p class="text-sm text-muted-foreground">{{ step.body }}</p>
-                </div>
-              </li>
-            </ol>
-          </section>
-          <!-- Short lists from the real issue (its own headings, its charts), shown beside the run's steps. -->
-          <template v-for="list in lists" :key="list.title">
-            <section v-if="list.items.length" class="space-y-2 border-t pt-6">
-              <h3 class="eyebrow">{{ list.title }}</h3>
-              <p v-if="list.note" class="text-xs text-muted-foreground">{{ list.note }}</p>
-              <ul class="list-disc space-y-1 pl-5 text-sm marker:text-input">
-                <li v-for="s in list.items" :key="s">{{ s }}</li>
-              </ul>
-            </section>
-          </template>
-        </div>
-
+    <!-- The panel is first in the page's order: what is uploaded and typed there is what the form and the draft button use.
+         It is never folded (it holds the uploads' warnings) and, being tall, it does not stick. -->
+    <PageGrid aside-title="Inputs and steps" hide-title aside-first wide-body :sticky="false">
+      <div class="space-y-8">
+        <AnalystPanel v-if="usesInputs && week" :key="`analyst-${week}`" :week="week" :section="section.slug" :disabled="starting" :refresh="uploads" @pending="(p) => (typedPending = p)" />
         <section aria-labelledby="start-title" class="space-y-6 rounded-lg border border-t-[3px] border-t-primary bg-card p-6">
           <h2 id="start-title" class="sr-only">Start or resume a review</h2>
 
@@ -364,15 +331,52 @@ const lists = computed(() => [
             />
           </div>
         </section>
+        <!-- The weekly report's analyst worklist: suggestions with their working, never added to the draft. -->
+        <NotablePanel
+          v-if="report.type === 'weekly' && week"
+          :key="`notable-${section.slug}-${week}`"
+          :section="section.slug"
+          :section-title="section.title"
+          :week="week"
+        />
       </div>
-      <!-- The weekly report's analyst worklist: suggestions with their working, never added to the draft. -->
-      <NotablePanel
-        v-if="report.type === 'weekly' && week"
-        :key="`notable-${section.slug}-${week}`"
-        :section="section.slug"
-        :section-title="section.title"
-        :week="week"
-      />
-    </div>
+
+      <template #aside>
+        <InputsPanel v-if="usesInputs && week" :key="week" :week="week" :disabled="starting" @week="(w) => emit('week', w)" @change="uploads++" />
+        <div class="space-y-6" :class="usesInputs && week && 'border-t pt-6'">
+          <section aria-labelledby="flow-title">
+            <h2 id="flow-title" class="pb-4 text-lg font-semibold">What a run does</h2>
+            <ol>
+              <li
+                v-for="(step, i) in section.steps"
+                :key="step.title"
+                class="relative flex gap-4 pb-6 last:pb-0 not-last:before:absolute not-last:before:top-7 not-last:before:bottom-1 not-last:before:left-3 not-last:before:w-px not-last:before:bg-input"
+              >
+                <span
+                  class="relative z-10 grid size-6 shrink-0 place-items-center rounded-sm border font-mono text-xs font-semibold"
+                  :class="i === section.steps.length - 1 ? 'border-primary bg-primary text-primary-foreground' : 'border-input bg-card'"
+                >
+                  {{ i + 1 }}
+                </span>
+                <div>
+                  <p class="text-sm font-semibold">{{ step.title }}</p>
+                  <p class="text-sm text-muted-foreground">{{ step.body }}</p>
+                </div>
+              </li>
+            </ol>
+          </section>
+          <!-- Short lists from the real issue (its own headings, its charts), shown beside the run's steps. -->
+          <template v-for="list in lists" :key="list.title">
+            <section v-if="list.items.length" class="space-y-2 border-t pt-6">
+              <h3 class="eyebrow">{{ list.title }}</h3>
+              <p v-if="list.note" class="text-xs text-muted-foreground">{{ list.note }}</p>
+              <ul class="list-disc space-y-1 pl-5 text-sm marker:text-input">
+                <li v-for="s in list.items" :key="s">{{ s }}</li>
+              </ul>
+            </section>
+          </template>
+        </div>
+      </template>
+    </PageGrid>
   </div>
 </template>

@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { PhLockSimple } from "@phosphor-icons/vue";
-import { computed } from "vue";
+import { computed, watch } from "vue";
 import { STATUS_ORDER, friendlyTime, weekRange } from "@/lib/format";
+import PageGrid from "@/components/nav/PageGrid.vue";
 import { weekOfReview } from "@/lib/notable";
 import { useReviewSession } from "@/lib/session";
+import { shell, useShellRibbon } from "@/lib/shell";
 import { isBlocksSection, type Review, type StatusCounts } from "@/lib/types";
 import BlocksPane from "./BlocksPane.vue";
 import CountTile from "./CountTile.vue";
-import DevRibbon from "./DevRibbon.vue";
 import DraftPane from "./DraftPane.vue";
 import ItemsPane from "./ItemsPane.vue";
 import Masthead from "./Masthead.vue";
@@ -27,6 +28,18 @@ const review = session.review;
 const dev = computed(() => (review.value.is_dev_draft && review.value.dev_mode_label ? review.value.dev_mode_label : null));
 const approved = computed(() => review.value.decision === "approved");
 const week = computed(() => weekOfReview(review.value));
+useShellRibbon(dev); // the shell draws it under the top bar
+
+// An approval or a rejection changes the section's state: the rail's states are unknown at once and read again.
+watch(
+  () => review.value.decision,
+  (now, before) => {
+    if (now && now !== before) {
+      shell.invalidate();
+      void shell.refreshFor(review.value.report_type, review.value.period);
+    }
+  },
+);
 
 function subline(c: StatusCounts): string {
   if (c.total === 0) return "None in this draft";
@@ -36,8 +49,7 @@ function subline(c: StatusCounts): string {
 </script>
 
 <template>
-  <DevRibbon v-if="dev" :label="dev" />
-  <div :class="dev && 'pt-7'">
+  <div>
     <Masthead wide :title="`${review.section_title}: coordinator review`">
       <template #meta>
         <template v-if="review.period && review.report_type !== 'weekly'">
@@ -51,19 +63,23 @@ function subline(c: StatusCounts): string {
         </template>
       </template>
     </Masthead>
-    <div class="mx-auto w-full max-w-375 px-4 pb-16 sm:px-6">
-      <StatusBar
-        :review="review"
-        :saving="session.saving.value"
-        :save-error="session.saveError.value"
-        :has-dev-ribbon="Boolean(dev)"
-        :deciding="session.deciding.value"
-        :decision-error="session.decisionError.value"
-        :on-decide="session.decide"
-        @close="emit('close')"
-      />
+    <!-- The status bar sticks under the top bar across both columns: the count of unresolved items, whether the section can be
+         approved, and the decision never scroll out of reach. -->
+    <StatusBar
+      :review="review"
+      :saving="session.saving.value"
+      :save-error="session.saveError.value"
+      :has-dev-ribbon="Boolean(dev)"
+      :deciding="session.deciding.value"
+      :decision-error="session.decisionError.value"
+      :on-decide="session.decide"
+      @close="emit('close')"
+    />
 
-      <div class="space-y-6 pt-6">
+    <!-- The draft is the content; the review items are the panel beside it. The panel is never folded (it is the work and it
+         holds the flags) and, being as tall as the section, it is left in the flow. -->
+    <PageGrid aside-title="Review items" hide-title wide-body :sticky="false">
+      <div class="space-y-6">
         <RejectedDraftNotes :run-id="review.run_id" />
         <div
           v-if="review.decision"
@@ -81,14 +97,11 @@ function subline(c: StatusCounts): string {
           </span>
         </div>
         <!-- Three counts, one per status, in the same colour, glyph and border style the item cards use. -->
-        <div role="group" aria-label="Review items by status" class="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div role="group" aria-label="Review items by status" class="grid grid-cols-1 gap-3 @min-[34rem]:grid-cols-3">
           <CountTile v-for="s in STATUS_ORDER" :key="s" :status="s" :value="review.counts[s].total" :sub="subline(review.counts[s])" />
         </div>
-        <div class="grid grid-cols-1 items-start gap-x-8 gap-y-8 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-          <BlocksPane v-if="isBlocksSection(review.section)" :review="review" :section="review.section" />
-          <DraftPane v-else :review="review" :section="review.section" />
-          <ItemsPane :review="review" :locked="review.locked" :on-resolve="session.resolve" :on-accept-clean="session.acceptClean" />
-        </div>
+        <BlocksPane v-if="isBlocksSection(review.section)" :review="review" :section="review.section" />
+        <DraftPane v-else :review="review" :section="review.section" />
         <!-- The analyst's worklist for this week: separate from the review above, which it never changes. -->
         <NotablePanel
           v-if="week"
@@ -98,6 +111,10 @@ function subline(c: StatusCounts): string {
           :week="week"
         />
       </div>
-    </div>
+
+      <template #aside>
+        <ItemsPane :review="review" :locked="review.locked" :on-resolve="session.resolve" :on-accept-clean="session.acceptClean" />
+      </template>
+    </PageGrid>
   </div>
 </template>

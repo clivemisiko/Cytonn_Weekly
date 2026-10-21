@@ -13,11 +13,11 @@ the behaviour on the Next app; `none` means no automated test, with the reason i
 
 | # | Route | What it shows | Next source | Vue | Test |
 | --- | --- | --- | --- | --- | --- |
-| R1 | `/` | Landing page: greeting by the viewer's clock, "Ready" line, disabled SSO button, "Continue without signing in", no-sign-in notice. Makes no API call. | `app/page.tsx`, `components/landing/landing-page.tsx` | verified by T01 | T01 |
+| R1 | `/` | Landing page (one centred card outside the shell since 2026-10-19): greeting by the viewer's clock, "Ready" line, disabled SSO button, "Continue without signing in", no-sign-in notice. Makes no API call. | `app/page.tsx`, `components/landing/landing-page.tsx` | verified by T01 | T01 |
 | R2 | `/?report=`, `?period=`, `?kind=` | Old bookmark: redirects to `/overview` with the whole query string kept | `app/page.tsx` | verified by T02 | T02 |
 | R3 | `/overview` | Phase machine: booting, unreachable, overview, start, review. Report mirrored in the address bar (`?report=&period=&kind=`), absent means weekly; a report the API rejects (422) falls back to weekly | `app/overview/page.tsx`, `components/review/review-app.tsx` | verified by T03, T04 | T03, T04 |
 | R4 | `/overview?review=<id>` | Opens that saved review directly; if it cannot be read, the overview | `review-app.tsx` (`reviewFromUrl`, `boot`) | verified by T09 | T09 |
-| R5 | `/runs/:runId` | The draft run view | `app/runs/[runId]/page.tsx`, `components/run/run-view.tsx` | verified by T09, T11, T12, T15 | T09, T11, T12, T15 |
+| R5 | `/runs/:runId` | The draft run view (its facts in a panel beside the steps since 2026-10-19) | `app/runs/[runId]/page.tsx`, `components/run/run-view.tsx` | verified by T09, T11, T12, T15 | T09, T11, T12, T15 |
 | R6 | every page | Root layout: `<html lang="en">`, title "Cytonn Weekly review", description, theme-color metas (#0a2b29 light, #0e2421 dark), the two fonts, skip link, top bar | `app/layout.tsx` | verified by T16 | T16 |
 
 ## 2. Components
@@ -49,6 +49,9 @@ the behaviour on the Next app; `none` means no automated test, with the reason i
 | C23 | Markdown (no raw HTML, safe links, new tab) | `components/review/markdown.tsx` | `components/review/Markdown.vue`, `lib/markdown.ts` (markdown-it, `html: false`) | done |
 | C24 | RunView (Mark, Step, CountTile, Shell) | `components/run/run-view.tsx` | `pages/RunPage.vue` | done |
 | C25 | Button (variants and sizes), Skeleton, Textarea | `components/ui/button.tsx`, `skeleton.tsx`, `textarea.tsx` | `components/ui/Button.vue`, `button.ts`, `Textarea.vue`; the skeleton is plain divs in `OverviewPage.vue` | done |
+| C26 | AppShell, SideRail (since 2026-10-19; not in the Next app) | none | `components/nav/AppShell.vue`, `SideRail.vue`, `lib/shell.ts` | verified by T59 to T65, T69 |
+| C27 | PageGrid, PageAside (since 2026-10-19; not in the Next app) | none | `components/nav/PageGrid.vue`, `PageAside.vue`, `lib/panel.ts` | verified by T66, T70 to T75 |
+| C28 | NotFoundPage (a card in the shell's frame) | Next's own 404 | `pages/NotFoundPage.vue` | verified by T77 |
 
 ## 3. Backend calls
 
@@ -129,7 +132,7 @@ Pinia is not used: S3 and S4 are two small module-level stores, as in the Next a
 | B20 | Draft button also disabled while starting, while another draft holds the slot (unless stale), when the provider has a problem, when the topic or text is missing, when the topic is over 500 characters (counted as the API counts) | `start-screen.tsx`, `lib/topic.ts` | verified by T09, T21, T24, T26 | T09, T21, T24, T26 |
 | B21 | Run view shows only real events: a "started" line is replaced in place by its closing event; the spinner is on the latest open step only; no timers | `lib/run.ts`, `run-view.tsx` | verified by T12 | T12 |
 | B22 | Run view never navigates by itself: a finished run shows the three counts and "Open review"; a failed one "The draft stopped. <error>" and "Back to overview"; an unknown run says so | `run-view.tsx` | verified by T09, T11, T15 | T09, T11, T15 |
-| B23 | DEV MODE ribbon (fixed under the top bar) on the overview, start screen, run view and a dev review; DEV MODE notices; DEV DRAFT chip on a section card | `banners.tsx` and callers | verified by T03, T12 | T03, T12 |
+| B23 | DEV MODE ribbon (under the top bar; since 2026-10-19 drawn by the shell and sticky) on the overview, start screen, run view and a dev review; DEV MODE notices; DEV DRAFT chip on a section card | `banners.tsx` and callers | verified by T03, T12 | T03, T12 |
 | B24 | Run view follows the newest line only for someone already within 96px of the foot of the page | `run-view.tsx` | done | none (N4) |
 | B25 | Word export: enabled only when the API says every section is approved; downloads the blob under the name in `Content-Disposition` (fallback "Cytonn-Weekly.docx"); per-section chips | `export-bar.tsx`, `lib/api.ts` | verified by T03, T14 | T03, T14 |
 | B26 | Keyboard and focus: skip link "Skip to main content" is the first tab stop and targets `#main`; `main` is focusable (`tabindex=-1`) with no outline; scroll-padding keeps focused things clear of the sticky bars; data tables and row previews are focusable scroll regions; every control has a visible focus ring | `layout.tsx`, `globals.css` | verified by T16 | T16 |
@@ -259,7 +262,7 @@ review's "Decision recorded on …" line has a leading space in the Vue app's te
    "could not reach" message names the page's own origin (the proxy), not port 8000. By design (N6).
 4. **No page without scripts.** The Next app serves rendered HTML; this is a single-page app and shows nothing until
    its script runs. The landing page's no-script rule has no counterpart.
-5. **Unknown addresses** show a small "Page not found" page in the app's own frame; the Next app shows Next's 404.
+5. **Unknown addresses** show a "Page not found" card in the app's own frame, with the rail beside it (since 2026-10-19); the Next app shows Next's 404.
 6. **Reached only with help from the test backend.** The weekly Digital Payments draft and every Markets Review
    section run on the test suite's fixed rows and captured sources, and Fetch from CBK is answered from a saved
    bulletin (`e2e/serve_e2e.py`), so T22, T25 and T17 show what the screens do with real pipeline output, not that
@@ -270,3 +273,28 @@ review's "Decision recorded on …" line has a leading space in the Vue app's te
 7. **Docker.** At the time of the comparison the Vue app was not in Docker. Since the cut-over the compose files
    build and serve it (`Dockerfile`).
 8. **Only Chromium was used**, for the suite and the screenshots.
+
+
+## 9. The 2026-10-19 restyle (frontend only)
+
+A layout and colour change, done in commits after the cut-over, with no change to the API, the backend, a dependency or
+any behaviour above: the palette became navy on a pale page (tokens in `styles.css`, contrast measured in the comment
+above them), and every screen but the start page moved into a shell of a rail, a feed and, where there is one, a side
+panel. What is new, each with the test that pins it (`e2e/tests/`):
+
+| # | What | Where | Test |
+| --- | --- | --- | --- |
+| L1 | The shell: the dev ribbon directly under the top bar (drawn by the shell, each screen saying whether it shows), then the rail and the screen; the top bar carries the wordmark over the rail | `components/nav/AppShell.vue`, `TopBar.vue`, `lib/shell.ts` | T59 to T65, T69 |
+| L2 | The side rail: the report and week, "Overview", the sections with a state each (icon, tooltip and name, never colour alone; "state not known" until the overview's payload says), "n of N sections approved"; full from 1366px, a strip of icons from 768px, none below; going anywhere from it asks first when the analyst form holds unsaved typing | `components/nav/SideRail.vue`, `lib/shell.ts`, `lib/nav.ts` | T59 to T65, T69; `shell.test.ts` |
+| L3 | `PageGrid` and `PageAside`: a content column and a side panel from 1100px, the panel below the content under that (or first, `asideFirst`); the column is a container; only a panel given a `storageKey` folds, remembered in the browser | `components/nav/PageGrid.vue`, `PageAside.vue`, `lib/panel.ts` | T66, T70 to T75; `panel.test.ts` |
+| L4 | **The rule: no warning, notice, error, flag, dev-mode mark or button a person must press lives in a foldable panel.** Only the overview's "Report status" folds; "Inputs and steps", "Review items" and "This run" never do | the four screens below | T66, T70, T71, T72, T73 to T75 |
+| L5 | Overview: a feed of section cards beside "Report status" (the tally and the export bar); the export's dev-mode notice is in the feed | `OverviewScreen.vue`, `SectionRow.vue`, `ExportBar.vue` | T66 to T68, T70 |
+| L6 | Start screen: the form and the Notable panel in the feed, the uploads and the steps in the panel (first in the page's order, never folded, not sticky); the analyst's grids are labelled regions a keyboard can scroll | `StartScreen.vue`, `InputsPanel.vue`, `analyst/GridTable.vue` | T71 |
+| L7 | Review: the draft in the feed, the review items in the panel (never folded, not sticky); the status bar across both, sticky under the top bar; the three counts in one row from 34rem of column; the resolution control keeps its options whole | `ReviewScreen.vue`, `StatusBar.vue`, `ReviewItemCard.vue`, `ResolutionControl.vue` | T72 |
+| L8 | Run view: the steps and the result in the feed, "This run" (section, report, started, finished or stopped) in the panel, none of it to act on; a run the API no longer has has no panel | `pages/RunPage.vue` | T73 to T75 |
+| L9 | Start page: one centred card, outside the shell (no rail); Page not found: a card in the shell's frame | `pages/LandingPage.vue`, `pages/NotFoundPage.vue` | T76, T77 |
+
+**Known gaps (not fixed):** the analyst grids and the bond table scroll sideways inside a narrow column (each is a
+labelled, focusable region, and every column is reachable), but the company column does not stay put while they scroll,
+so a figure being typed can be far from its row's name (each input is named for its row); the scroll position carries
+over from one screen to the next; the dev ribbon's text is cut off at 390px.

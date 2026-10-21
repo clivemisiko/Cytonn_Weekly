@@ -34,7 +34,13 @@ const addLine = () => (lines.value = [...lines.value, { id: `new-${Date.now()}-$
 
 <template>
   <TableFrame :item="item" :count="count" :typed="typedCount > 0">
-    <div class="overflow-x-auto rounded-md border">
+    <!-- Wider than its column on most screens (the Universe of Coverage has ten): a region a keyboard can scroll, named as such. -->
+    <div
+      role="region"
+      tabindex="0"
+      :aria-label="`${item.label}: rows, scrolls sideways on narrow screens`"
+      class="overflow-x-auto rounded-md border focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+    >
       <table class="w-full text-xs">
         <thead class="bg-muted text-left">
           <tr>

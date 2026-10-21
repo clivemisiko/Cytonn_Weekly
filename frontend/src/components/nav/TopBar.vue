@@ -33,8 +33,17 @@ function goBack() {
 </script>
 
 <template>
-  <header class="sticky top-0 z-40 h-(--topbar-h) border-b border-band-rule bg-band text-band-foreground">
-    <nav aria-label="App" class="mx-auto flex h-full w-full max-w-375 items-center gap-1 px-2 sm:px-4">
+  <header class="sticky top-0 z-40 flex h-(--topbar-h) border-b border-band-rule bg-band text-band-foreground">
+    <!-- The wordmark sits over the rail and is as wide as it is (56px from 768px, 224px from 1366px), so the top bar reads
+         as the rail's header. It is text and a dot: the project has no logo. Both widths are written as min-[...px]:
+         because Tailwind sorts those before the named `md:`, which would then beat the 1366px one. -->
+    <p
+      class="flex h-full shrink-0 items-center gap-2 px-3 text-sm font-semibold whitespace-nowrap min-[768px]:w-14 min-[768px]:justify-center min-[768px]:border-r min-[768px]:border-band-rule min-[768px]:px-0 min-[1366px]:w-56 min-[1366px]:justify-start min-[1366px]:px-4"
+    >
+      <span class="size-2.5 shrink-0 rounded-full bg-sky" aria-hidden="true" />
+      <span class="sr-only min-[1366px]:not-sr-only">Cytonn Weekly</span>
+    </p>
+    <nav aria-label="App" class="flex h-full min-w-0 flex-1 items-center gap-1 px-2 sm:px-4">
       <RouterLink v-slot="{ href, navigate }" :to="HOME" custom>
         <a
           :href="href"

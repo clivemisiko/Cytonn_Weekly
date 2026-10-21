@@ -72,9 +72,9 @@ const hint = computed(() => {
 </script>
 
 <template>
-  <form :aria-labelledby="`${id}-title`" class="rounded-lg border bg-card p-4 sm:p-6" @submit.prevent="apply">
+  <form :aria-labelledby="`${id}-title`" class="@container rounded-lg border bg-card p-4 sm:p-6" @submit.prevent="apply">
     <h2 :id="`${id}-title`" class="eyebrow pb-3">Report</h2>
-    <div class="grid grid-cols-1 items-end gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,16rem)_minmax(0,14rem)_auto]">
+    <div class="grid grid-cols-1 items-end gap-4 @min-[30rem]:grid-cols-2 @min-[41rem]:grid-cols-[minmax(0,16rem)_minmax(0,14rem)_auto]">
       <div class="space-y-1">
         <label :for="`${id}-type`" class="text-sm font-semibold">Report type</label>
         <div class="relative">
@@ -86,7 +86,7 @@ const hint = computed(() => {
       </div>
 
       <!-- Its own full-width row: the reports' titles are long, and a native select cannot wrap them. -->
-      <div v-if="type === 'companion'" class="space-y-1 sm:col-span-2 lg:col-span-full lg:row-start-2">
+      <div v-if="type === 'companion'" class="space-y-1 @min-[30rem]:col-span-2 @min-[41rem]:col-span-full @min-[41rem]:row-start-2">
         <label :for="`${id}-kind`" class="text-sm font-semibold">Which report</label>
         <div class="relative">
           <select :id="`${id}-kind`" :value="kind" :disabled="busy" :class="[FIELD, 'appearance-none pr-9']" @change="chooseKind(($event.target as HTMLSelectElement).value)">
@@ -115,7 +115,7 @@ const hint = computed(() => {
         />
       </div>
 
-      <Button type="submit" size="lg" :variant="dirty ? 'default' : 'outline'" :disabled="busy" class="sm:col-span-2 lg:col-span-1 lg:justify-self-start">
+      <Button type="submit" size="lg" :variant="dirty ? 'default' : 'outline'" :disabled="busy" class="@min-[30rem]:col-span-2 @min-[30rem]:justify-self-start @min-[41rem]:col-span-1">
         {{ busy ? "Loading…" : "Show sections" }}
       </Button>
     </div>
