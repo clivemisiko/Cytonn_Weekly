@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "cytonn-weekly"
 version = "0.1.0"
 description = "Automation for drafting, checking and publishing the Cytonn weekly report."
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "playwright==1.49.1",
     "python-docx==1.1.2",
@@ -23,6 +23,9 @@ dependencies = [
     # OCR for the NSE daily price list, which is a scanned image (weekly/nse_price_list.py).  Its
     # models ship inside the wheel: no system binary and nothing downloaded at run time.
     "rapidocr-onnxruntime==1.4.4",
+    # The charts the tool draws from the analysts' workbooks (charts/draw.py): the Figure and Agg canvas only, never
+    # pyplot, with the DejaVu Sans font that ships in the wheel.  3.11.2 needs Python 3.11 or later.
+    "matplotlib==3.11.2",
 ]
 
 [project.optional-dependencies]
