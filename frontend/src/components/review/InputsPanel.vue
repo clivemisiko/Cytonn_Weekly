@@ -97,7 +97,7 @@ function saveNote(key: "bidding_range" | "previous_issue", value: string) {
 </script>
 
 <template>
-  <section aria-labelledby="inputs-title" class="space-y-4 rounded-lg border bg-card p-6">
+  <section aria-labelledby="inputs-title" class="space-y-4 rounded-lg border bg-card p-4">
     <div class="flex flex-wrap items-end justify-between gap-x-6 gap-y-3 border-b pb-4">
       <div class="space-y-1">
         <h2 id="inputs-title" class="text-lg font-semibold">This week’s inputs</h2>

@@ -111,7 +111,7 @@ function picked(event: Event) {
       </p>
       <p v-if="file.note" class="text-xs text-warn-fg">{{ file.note }}</p>
     </template>
-    <ul v-if="entry.per_day" class="grid gap-2 sm:grid-cols-5">
+    <ul v-if="entry.per_day" class="grid grid-cols-2 gap-2 @min-[26rem]:grid-cols-3 @min-[40rem]:grid-cols-5">
       <li
         v-for="d in days"
         :key="d.date"
