@@ -79,6 +79,7 @@ from cytonn_weekly.common.computed import (
     check_figure_record,
     figure_subject,
 )
+from cytonn_weekly.charts.block import CHART_ITEM, CHART_SCOPE, chart_counts, chart_flags, chart_parts
 from cytonn_weekly.common.formatting import format_rows
 from cytonn_weekly.common.links import LINK, find_links
 from cytonn_weekly.common.run_events import CHECK_FINISHED, CHECK_STARTED, Observer, emit
@@ -204,6 +205,12 @@ def check_section(content: dict[str, Any], on_event: Optional[Observer] = None) 
             # A piece with no cited claim at all becomes one flagged item (build_review).
             emit(on_event, CHECK_FINISHED, b.get("headline", ""),
                  counts={"flagged": flagged_claims if claims else 1, "not_auto_verified": len(claims) - flagged_claims})
+        elif b["kind"] == "chart":
+            # The checks ran when the block was made (charts/block.py); its flags are kept on it.
+            emit(on_event, CHECK_STARTED, b["title"])
+            report.flags.extend(chart_flags(b))
+            report.checked += 2 if b["status"] == "drawn" else 0      # the last point and the average
+            emit(on_event, CHECK_FINISHED, b["title"], counts=chart_counts(b))
         elif b["kind"] == "unavailable":
             report.flags.append(Flag(
                 kind=NOT_IMPLEMENTED, scope=UNAVAILABLE_SCOPE, subject=b["id"], field=None,
@@ -250,7 +257,7 @@ def build_review(content: dict[str, Any], report: CheckReport) -> CoordinatorRev
     """
     by_subject: dict[tuple[str, str], list[Flag]] = {}
     for f in report.flags:
-        if f.scope not in (TABLE_SCOPE, CLAIM_SCOPE, UNAVAILABLE_SCOPE, COMPUTED_SCOPE, CARRIED_SCOPE):
+        if f.scope not in (TABLE_SCOPE, CLAIM_SCOPE, UNAVAILABLE_SCOPE, COMPUTED_SCOPE, CARRIED_SCOPE, CHART_SCOPE):
             raise ValueError(f"flag with unrecognised scope {f.scope!r}: {f.message}")
         by_subject.setdefault((f.scope, f.subject), []).append(f)
 
@@ -321,6 +328,13 @@ def build_review(content: dict[str, Any], report: CheckReport) -> CoordinatorRev
                 ))
         elif b["kind"] == "supplied":
             items.append(supplied_item(b))
+        elif b["kind"] == "chart":
+            for part in chart_parts(b):
+                subject = (CHART_SCOPE, f"{b['id']}#{part.key}")
+                used.add(subject)
+                flags = by_subject.get(subject, [])
+                items.append(ReviewItem(kind=CHART_ITEM, ref=part.ref, status=FLAGGED if flags else part.status,
+                                        detail=flags or part.note, context={"text": b["caption"]}))
         elif b["kind"] == "unavailable":
             subject = (UNAVAILABLE_SCOPE, b["id"])
             used.add(subject)

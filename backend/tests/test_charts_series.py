@@ -312,15 +312,18 @@ def test_the_specs_name_a_caption_and_figure_keys_the_equities_section_really_ha
         assert {key for _, key in spec.quoted} <= keys
 
 
-def test_the_chart_package_reads_no_chart_xml_and_adds_no_dependency():
-    roots: set[str] = set()
+def test_the_chart_package_reads_no_chart_xml_and_only_draw_uses_matplotlib_never_pyplot():
+    allowed = set(sys.stdlib_module_names) | {"cytonn_weekly", "openpyxl"}
     for f in Path(charts.__file__).parent.glob("*.py"):
         src = f.read_text(encoding="utf-8")
+        names: set[str] = set()
         for node in ast.walk(ast.parse(src)):
             if isinstance(node, ast.Import):
-                roots |= {a.name.split(".")[0] for a in node.names}
+                names |= {a.name for a in node.names}
             elif isinstance(node, ast.ImportFrom) and node.level == 0:
-                roots.add(node.module.split(".")[0])
+                names.add(node.module)
+        roots = {n.split(".")[0] for n in names}
         assert "xl/charts" not in src and "drawingml" not in src, f.name
-    assert roots <= set(sys.stdlib_module_names) | {"cytonn_weekly", "openpyxl"}
-    assert not roots & {"zipfile", "xml", "lxml", "matplotlib"}
+        assert not roots & {"zipfile", "xml", "lxml"}, f.name
+        assert not any("pyplot" in n for n in names) and "plt." not in src, f.name
+        assert roots <= allowed | ({"matplotlib"} if f.name == "draw.py" else set()), f.name
