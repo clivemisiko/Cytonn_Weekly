@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageGrid from "@/components/nav/PageGrid.vue";
 import Masthead from "@/components/review/Masthead.vue";
 import { shell } from "@/lib/shell";
 
@@ -7,9 +8,11 @@ shell.invalidate(); // the rail knows no section's state here
 
 <template>
   <main id="main" tabindex="-1">
-    <Masthead title="Page not found" />
-    <div class="mx-auto w-full max-w-275 px-4 pt-8 pb-16 sm:px-6">
-      <p class="text-sm">This page could not be found.</p>
-    </div>
+    <Masthead wide title="Page not found" />
+    <PageGrid>
+      <div class="rounded-lg border bg-card p-6">
+        <p class="text-sm">This page could not be found.</p>
+      </div>
+    </PageGrid>
   </main>
 </template>

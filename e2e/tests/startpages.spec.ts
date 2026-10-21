@@ -2,8 +2,9 @@ import { expect, test } from "@playwright/test";
 import { VARIANT } from "./helpers";
 
 /**
- * The pages that are not a report screen: the start page, one centred card with everything it said before. This file has
- * its own run on a freshly restored test backend (`playwright test startpages`).
+ * The two pages that are not a report screen: the start page, one centred card with everything it said before, and the
+ * page for an address the app does not have, a card in the shell's frame. This file has its own run on a freshly
+ * restored test backend (`playwright test startpages`).
  */
 test.skip(!!VARIANT, "runs on the default test backend");
 test.describe.configure({ mode: "serial" });
@@ -38,4 +39,20 @@ test("T76 the start page is one centred card holding what it always said, and no
   expect(narrow.x).toBeGreaterThanOrEqual(0);
   expect(narrow.x + narrow.width).toBeLessThanOrEqual(390);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test("T77 an address the app does not have shows a card in the shell's frame, centred, with the rail and no states it cannot know", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.goto("/no-such-page");
+  await expect(page.getByRole("heading", { name: "Page not found", level: 1 })).toBeVisible();
+  const text = page.getByText("This page could not be found.");
+  await expect(text).toBeVisible();
+  const rail = page.getByRole("navigation", { name: "Report sections" });
+  await expect(rail).toBeVisible();
+  await expect(rail.getByText("Open the overview to list this report’s sections.")).toBeVisible(); // no section state is guessed
+  const card = page.locator("main > div > div", { has: text }).first();
+  const railBox = (await rail.boundingBox())!;
+  const box = (await card.boundingBox())!;
+  const middle = railBox.x + railBox.width + ((await middleOfWindow(page)) * 2 - (railBox.x + railBox.width)) / 2;
+  expect(Math.abs(box.x + box.width / 2 - middle)).toBeLessThan(40);
 });
