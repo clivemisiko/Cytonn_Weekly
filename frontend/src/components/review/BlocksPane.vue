@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { PhChartBar, PhLockSimple } from "@phosphor-icons/vue";
-import { chartSummary } from "@/lib/chart";
 import { SCOPE_LABELS, friendlyDate, friendlyTime, weekRange } from "@/lib/format";
 import type { BlocksSection, ComputedBlock, NotCovered, Review, TableBlock } from "@/lib/types";
 import DataTable from "./DataTable.vue";
+import ChartCard from "./ChartCard.vue";
 import Markdown from "./Markdown.vue";
 import Notice from "./Notice.vue";
 import Numeral from "./Numeral.vue";
@@ -11,7 +11,7 @@ import PartsLine from "./PartsLine.vue";
 import Warnings from "./Warnings.vue";
 
 /** Every block-shaped section (all but the weekly Digital Payments): its blocks in report order, nothing derived here. */
-defineProps<{ review: Review; section: BlocksSection }>();
+defineProps<{ review: Review; section: BlocksSection; onTeamChart: (chartId: string, use: boolean) => Promise<boolean> }>();
 
 const BODY = "max-w-[68ch] text-base leading-7 md:pl-11";
 const PIECE = "space-y-3 border-t px-4 py-6 sm:px-6";
@@ -188,20 +188,9 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
         <Markdown :class="BODY" :text="b.body_md" />
       </article>
 
-      <!-- A chart the tool draws from the analyst workbook. For now only its caption and whether it was drawn; its
-           checks are review items in the panel, never here. The state is said in words, not by colour alone. -->
-      <section v-else-if="b.kind === 'chart'" :class="PIECE" :aria-labelledby="`blk-${b.id}`" data-chart-block>
-        <h3 :id="`blk-${b.id}`" class="flex flex-wrap items-center gap-3 text-base font-semibold">
-          <Numeral>{{ b.numeral }}</Numeral>
-          {{ b.title }}
-          <span class="inline-flex items-center gap-1 rounded-full border border-input px-2 py-0.5 text-xs font-semibold text-muted-foreground">
-            <PhChartBar weight="bold" class="size-3" aria-hidden="true" />
-            {{ chartSummary(b).status }}
-          </span>
-        </h3>
-        <p class="max-w-[68ch] text-sm md:pl-11">{{ chartSummary(b).caption }}</p>
-        <p class="text-xs text-muted-foreground md:pl-11">{{ chartSummary(b).detail }}</p>
-      </section>
+      <!-- A chart the tool draws from the analyst workbook: the picture, its facts and its points. Its checks are review
+           items in the panel beside the draft; its notices are in the card. -->
+      <ChartCard v-else-if="b.kind === 'chart'" :review="review" :block="b" :on-team-chart="onTeamChart" />
 
       <!-- A part of the real report this tool cannot draft yet. Neutral, not a review-state colour: nothing was checked. -->
       <section v-else :class="PIECE" :aria-labelledby="`blk-${b.id}`">

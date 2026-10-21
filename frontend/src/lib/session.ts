@@ -46,6 +46,7 @@ export function useReviewSession(initial: Review) {
 
   const resolve = (index: number, resolution: Resolution, note?: string) => send(() => api.resolveItem(runId, index, resolution, note));
   const acceptClean = () => send(() => api.acceptClean(runId));
+  const setTeamChart = (chartId: string, use: boolean) => send(() => api.setTeamChart(runId, chartId, use));
 
   async function decide(decision: Decision): Promise<boolean> {
     deciding.value = true;
@@ -67,5 +68,5 @@ export function useReviewSession(initial: Review) {
     }
   }
 
-  return { review, saving: computed(() => inFlight.value > 0), saveError, decisionError, deciding, resolve, acceptClean, decide };
+  return { review, saving: computed(() => inFlight.value > 0), saveError, decisionError, deciding, resolve, acceptClean, setTeamChart, decide };
 }

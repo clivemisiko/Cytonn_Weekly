@@ -76,6 +76,7 @@
   --color-ok-on: var(--ok-on);
 
   /* The dev-mode hazard label (ribbon, DEV DRAFT chip): its ink and its edge. */
+  --color-chart-frame: var(--chart-frame);
   --color-dev-ink: var(--dev-ink);
   --color-dev-rule: var(--dev-rule);
 
@@ -158,6 +159,9 @@
   /* The dev-mode hazard stripe is the same in both themes: it is a warning label, not part of the page's palette. */
   --dev-a: #ffcf5c;
   --dev-b: #f3b72f;
+  /* The frame a chart picture sits in: white in both themes, because the picture is drawn for white paper (it is also placed
+     in the Word file) and its pale fill would be lost on the dark card. */
+  --chart-frame: #ffffff;
   --dev-ink: #2a0a07;
   --dev-rule: #b07d0f;
 

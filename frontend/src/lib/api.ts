@@ -2,6 +2,7 @@ import type {
   AnalystForm,
   AnalystRow,
   AppConfig,
+  ChartSeriesFile,
   Decision,
   DismissReason,
   ExportStatus,
@@ -136,6 +137,17 @@ export const resolveItem = (runId: number, index: number, resolution: Resolution
 
 export const acceptClean = (runId: number) =>
   request<Review>(`/api/reviews/${runId}/accept-clean`, { method: "POST" });
+
+/** The picture of a drawn chart, served only while it is the file the review recorded (a changed or missing file is an error). */
+export const chartImageUrl = (runId: number, chartId: string) => `${API_BASE}/api/reviews/${runId}/charts/${encodeURIComponent(chartId)}.png`;
+
+/** The series a drawn chart was drawn from, from the same hash-checked store. */
+export const getChartSeries = (runId: number, chartId: string) =>
+  request<ChartSeriesFile>(`/api/reviews/${runId}/charts/${encodeURIComponent(chartId)}/series`);
+
+/** Set the tool's chart aside for the team's own (use true) or take that back; the whole review comes back. */
+export const setTeamChart = (runId: number, chartId: string, use: boolean) =>
+  request<Review>(`/api/reviews/${runId}/charts/${encodeURIComponent(chartId)}/team-chart`, { method: "PUT", body: JSON.stringify({ use }) });
 
 export const decide = (runId: number, decision: Decision) =>
   request<Review>(`/api/reviews/${runId}/decide`, { method: "POST", body: JSON.stringify({ decision }) });

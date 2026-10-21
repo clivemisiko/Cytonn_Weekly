@@ -234,7 +234,19 @@ export interface SuppliedBlock {
   context?: string | null;
 }
 
-/** A chart the tool draws from the analyst workbook (charts/block.py). Metadata only; the picture is served by its own route. */
+export interface ChartDefect {
+  kind: string;
+  message: string;
+  cells: string[];
+  /** A blocking defect is why the chart was not drawn. */
+  blocking: boolean;
+}
+
+/**
+ * A chart the tool draws from the analyst workbook (charts/block.py). Metadata only: the picture and the series come from their
+ * own routes. `no_workbook` means no workbook was uploaded, so nothing was read: information, with no review item.
+ * `use_team_chart` is true while the coordinator has set the tool's chart aside for the team's own.
+ */
 export interface ChartBlock {
   numeral: string;
   kind: "chart";
@@ -242,12 +254,31 @@ export interface ChartBlock {
   chart_id: string;
   title: string;
   caption: string;
-  status: "drawn" | "not_drawn";
+  status: "drawn" | "not_drawn" | "no_workbook";
+  unit: "multiple" | "pct";
+  use_team_chart: boolean;
+  reason: string | null;
+  unblock: string | null;
   alt: string | null;
+  source: { workbook: string; sheet: string; provenance: string; cells: string | null } | null;
   points: number;
+  window: { years: number; first: string; last: string; points: number } | null;
   newest_date: string | null;
+  last_value: { display: string; value: string; cell: string } | null;
+  average: { display: string; value: string; count: number; first: string; last: string; cells: string; from: string; note: string | null } | null;
+  stated: { cell: string; value: string | null; formula_range: string | null } | null;
   png_sha256: string | null;
-  defects: { kind: string; message: string; cells: string[]; blocking: boolean }[];
+  defects: ChartDefect[];
+}
+
+/** The stored series a chart was drawn from: [date, value, cell, display] per point, oldest first. */
+export interface ChartSeriesFile {
+  chart_id: string;
+  week_ending: string;
+  workbook: string;
+  sheet: string;
+  unit: string;
+  points: [string, string, string, string][];
 }
 
 export type Block = TableBlock | NarrativeBlock | UnavailableBlock | SuppliedBlock | ComputedBlock | CarriedBlock | ChartBlock;
