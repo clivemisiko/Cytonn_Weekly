@@ -41,6 +41,15 @@ test("T72 the review items are the panel beside the draft and never fold, the st
   await expect(table).toBeVisible();
   expect(await table.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
 
+  // In the panel's width the three options of each item (Unresolved, Accept, Fix needed) stay whole: no word is broken and
+  // no option is clipped by the control's frame. Checked at 1366px and again at 1100px, where the panel is at its narrowest.
+  const options = items.getByRole("radio");
+  expect(await options.count()).toBeGreaterThanOrEqual(6);
+  const damaged = async () =>
+    (await options.evaluateAll((all) => all.filter((el) => el.scrollWidth > el.clientWidth || el.scrollHeight > el.clientHeight).length)) +
+    (await items.getByRole("radiogroup").evaluateAll((all) => all.filter((el) => el.scrollWidth > el.clientWidth).length));
+  expect(await damaged()).toBe(0);
+
   // The status bar spans both columns and, once the page has scrolled, is still directly under the top bar.
   const bar = page.locator("div.sticky", { has: page.getByRole("progressbar", { name: "Items resolved" }) });
   const b = (await bar.boundingBox())!;
@@ -49,6 +58,10 @@ test("T72 the review items are the panel beside the draft and never fold, the st
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(500);
   await expect.poll(async () => Math.round((await bar.boundingBox())!.y)).toBe(44);
   await page.evaluate(() => window.scrollTo(0, 0));
+
+  await page.setViewportSize({ width: 1100, height: 768 });
+  await expect.poll(async () => Math.round((await items.boundingBox())!.width)).toBe(320);
+  expect(await damaged()).toBe(0);
 
   // Under 1100px wide the items follow the draft, and the table is still a region a keyboard can scroll.
   await page.setViewportSize({ width: 1024, height: 768 });
