@@ -32,6 +32,7 @@ export const KIND_LABELS: Record<ItemKind, string> = {
   supplied_text: "Your text",
   computed_figure: "Computed figure",
   carried_text: "Carried forward",
+  chart: "Chart",
 };
 
 /** "Quarterly Markets Review, Q3'2026"; the bare type name for an unlabelled weekly report. */

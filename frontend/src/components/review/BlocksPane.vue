@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { PhChartBar, PhLockSimple } from "@phosphor-icons/vue";
+import { chartSummary } from "@/lib/chart";
 import { SCOPE_LABELS, friendlyDate, friendlyTime, weekRange } from "@/lib/format";
 import type { BlocksSection, ComputedBlock, NotCovered, Review, TableBlock } from "@/lib/types";
 import DataTable from "./DataTable.vue";
@@ -186,6 +187,21 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
         </Notice>
         <Markdown :class="BODY" :text="b.body_md" />
       </article>
+
+      <!-- A chart the tool draws from the analyst workbook. For now only its caption and whether it was drawn; its
+           checks are review items in the panel, never here. The state is said in words, not by colour alone. -->
+      <section v-else-if="b.kind === 'chart'" :class="PIECE" :aria-labelledby="`blk-${b.id}`" data-chart-block>
+        <h3 :id="`blk-${b.id}`" class="flex flex-wrap items-center gap-3 text-base font-semibold">
+          <Numeral>{{ b.numeral }}</Numeral>
+          {{ b.title }}
+          <span class="inline-flex items-center gap-1 rounded-full border border-input px-2 py-0.5 text-xs font-semibold text-muted-foreground">
+            <PhChartBar weight="bold" class="size-3" aria-hidden="true" />
+            {{ chartSummary(b).status }}
+          </span>
+        </h3>
+        <p class="max-w-[68ch] text-sm md:pl-11">{{ chartSummary(b).caption }}</p>
+        <p class="text-xs text-muted-foreground md:pl-11">{{ chartSummary(b).detail }}</p>
+      </section>
 
       <!-- A part of the real report this tool cannot draft yet. Neutral, not a review-state colour: nothing was checked. -->
       <section v-else :class="PIECE" :aria-labelledby="`blk-${b.id}`">

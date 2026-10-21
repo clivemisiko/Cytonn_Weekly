@@ -10,7 +10,8 @@ export type ItemKind =
   | "unavailable_part"
   | "supplied_text"
   | "computed_figure"
-  | "carried_text";
+  | "carried_text"
+  | "chart";
 
 // ---- Report types (report_types.py): which report a review belongs to ----
 
@@ -233,7 +234,23 @@ export interface SuppliedBlock {
   context?: string | null;
 }
 
-export type Block = TableBlock | NarrativeBlock | UnavailableBlock | SuppliedBlock | ComputedBlock | CarriedBlock;
+/** A chart the tool draws from the analyst workbook (charts/block.py). Metadata only; the picture is served by its own route. */
+export interface ChartBlock {
+  numeral: string;
+  kind: "chart";
+  id: string;
+  chart_id: string;
+  title: string;
+  caption: string;
+  status: "drawn" | "not_drawn";
+  alt: string | null;
+  points: number;
+  newest_date: string | null;
+  png_sha256: string | null;
+  defects: { kind: string; message: string; cells: string[]; blocking: boolean }[];
+}
+
+export type Block = TableBlock | NarrativeBlock | UnavailableBlock | SuppliedBlock | ComputedBlock | CarriedBlock | ChartBlock;
 
 export interface NotCovered {
   section: string;
