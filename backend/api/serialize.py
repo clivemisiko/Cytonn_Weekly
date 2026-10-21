@@ -119,6 +119,9 @@ _NARRATIVE_FIELDS = ("numeral", "kind", "id", "topic", "headline", "body_md", "c
                      "source_section", "source_run_id", "source_headline")
 _UNAVAILABLE_FIELDS = ("numeral", "kind", "id", "title", "reason", "unblock")
 _SUPPLIED_FIELDS = ("numeral", "kind", "id", "title", "body_md", "supplied_by", "context")
+# A chart drawn from the analyst workbook (charts/block.py): metadata only; its checks reach the screen as review items.
+_CHART_FIELDS = ("numeral", "kind", "id", "chart_id", "title", "caption", "status", "alt", "source", "points", "window",
+                 "newest_date", "last_value", "average", "stated", "png_sha256", "defects")
 
 
 def _flagged_rows(review: CoordinatorReview) -> set[str]:
@@ -151,6 +154,8 @@ def _serialize_blocks(review: CoordinatorReview) -> dict[str, Any]:
             blocks.append({k: b.get(k) for k in _NARRATIVE_FIELDS})
         elif b["kind"] == "supplied":
             blocks.append({k: b.get(k) for k in _SUPPLIED_FIELDS})
+        elif b["kind"] == "chart":
+            blocks.append({k: b.get(k) for k in _CHART_FIELDS})
         else:
             blocks.append({k: b.get(k) for k in _UNAVAILABLE_FIELDS})
     return {
