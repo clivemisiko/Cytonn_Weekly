@@ -32,9 +32,10 @@ test("T73 a finished run: its facts are in the panel beside the steps, the resul
   await expect(panel.getByRole("status")).toHaveCount(0);
   await expect(panel.getByRole("alert")).toHaveCount(0);
 
-  // The three counts sit in one row in the feed's width, and stack in a phone's.
+  // The three counts sit in one row in the feed's width, and stack in a phone's. The result block rises into place for a
+  // moment (a transform), so their rows are read from the layout (offsetTop), which a transform does not move.
   const tiles = page.getByRole("group", { name: "Review items by status" }).locator("> *");
-  const rows = async () => new Set(await Promise.all([0, 1, 2].map(async (i) => Math.round((await tiles.nth(i).boundingBox())!.y)))).size;
+  const rows = async () => new Set(await Promise.all([0, 1, 2].map((i) => tiles.nth(i).evaluate((el) => (el as HTMLElement).offsetTop)))).size;
   expect(await rows()).toBe(1);
 
   // Under 1100px the panel follows the steps; at a phone's width nothing is wider than the window.

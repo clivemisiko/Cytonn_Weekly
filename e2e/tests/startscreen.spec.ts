@@ -35,7 +35,7 @@ test("T71 the start screen's inputs panel is beside the form and never folds, ab
 
   // The analyst's grids are wider than their column: each is a region a keyboard can scroll, and says so.
   const grids = analyst.getByRole("region", { name: /rows, scrolls sideways on narrow screens$/ });
-  expect(await grids.count()).toBeGreaterThan(0);
+  await expect(grids.first()).toBeVisible(); // the form is read from the API, so its first grid appears a moment after the page
   await expect(grids.first()).toHaveAttribute("tabindex", "0");
 
   // Under 1100px wide the panel comes first, as wide as the content, and the five days sit in a row.
