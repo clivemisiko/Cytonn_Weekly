@@ -3,6 +3,7 @@ import { PhCheck, PhCircleNotch, PhMinus } from "@phosphor-icons/vue";
 import { cn } from "cn";
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, useTemplateRef, watch } from "vue";
 import { RouterLink } from "vue-router";
+import PageGrid from "@/components/nav/PageGrid.vue";
 import CountTile from "@/components/review/CountTile.vue";
 import Masthead from "@/components/review/Masthead.vue";
 import Notice from "@/components/review/Notice.vue";
@@ -168,96 +169,113 @@ const status = computed(() => {
 </script>
 
 <template>
-  <main v-if="missing" id="main" tabindex="-1">
-    <Masthead title="Draft run" />
-    <div class="mx-auto w-full max-w-275 px-4 pt-8 pb-16 sm:px-6">
-      <div class="max-w-3xl space-y-6">
+  <main id="main" tabindex="-1">
+    <!-- This run's section and report are in the title block; the steps and what came of the run are the feed, and its
+         facts are the panel beside it. Nothing that has to be seen is in the panel: the status, the notices, the failure
+         and the ways back to the overview are in the feed, as they always were. -->
+    <Masthead wide :title="run && !missing ? `${run.section_title}: draft run` : 'Draft run'">
+      <template v-if="run && !missing && !weekly" #meta><span class="font-mono">{{ run.period }}</span></template>
+      <template v-if="run && !missing" #default>{{ reportName(run.report_title, run.period) }}. Each line below is a step the draft has really taken.</template>
+    </Masthead>
+
+    <!-- Keyed on whether the run is gone: the grid reads which slots it has once, and a run that is gone has no panel. -->
+    <PageGrid :key="missing ? 'gone' : 'run'" aside-title="This run">
+      <div v-if="missing" class="space-y-6">
         <Notice tone="warn" role="status">
           This run is no longer available. If the draft finished, open the section from the overview.
           <RouterLink to="/overview" :class="LINK">Go to the overview</RouterLink>
         </Notice>
       </div>
-    </div>
-  </main>
 
-  <template v-else>
-    <div>
-      <main id="main" tabindex="-1">
-        <Masthead :title="run ? `${run.section_title}: draft run` : 'Draft run'">
-          <template v-if="run && !weekly" #meta><span class="font-mono">{{ run.period }}</span></template>
-          <template v-if="run" #default>{{ reportName(run.report_title, run.period) }}. Each line below is a step the draft has really taken.</template>
-        </Masthead>
+      <div v-else class="space-y-6">
+        <p role="status" class="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
+          <span class="font-semibold">{{ status }}</span>
+          <span v-if="!final && feed === 'poll'" class="text-muted-foreground">Live updates are off; checking every 2 seconds.</span>
+        </p>
 
-        <div class="mx-auto w-full max-w-275 px-4 pt-8 pb-16 sm:px-6">
-          <div class="max-w-3xl space-y-6">
-            <p role="status" class="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
-              <span class="font-semibold">{{ status }}</span>
-              <span v-if="!final && feed === 'poll'" class="text-muted-foreground">Live updates are off; checking every 2 seconds.</span>
-            </p>
+        <Notice v-if="feed === 'lost' && !settled" tone="warn" role="alert">
+          Connection lost. The draft may still finish. Check the overview before starting another.
+          <RouterLink :to="backHref" :class="LINK">Go to the overview</RouterLink>
+        </Notice>
 
-            <Notice v-if="feed === 'lost' && !settled" tone="warn" role="alert">
-              Connection lost. The draft may still finish. Check the overview before starting another.
-              <RouterLink :to="backHref" :class="LINK">Go to the overview</RouterLink>
-            </Notice>
-
-            <section aria-labelledby="steps-title">
-              <h2 id="steps-title" class="eyebrow pb-2">Steps</h2>
-              <!-- Empty until the first event arrives: no placeholder moves while nothing has happened. -->
-              <ol role="log" aria-label="Steps of this draft" class="rounded-lg border bg-card" :class="lines.length === 0 && 'hidden'">
-                <li v-for="line in lines" :key="line.key" class="flex items-start gap-3 border-b px-4 py-3 last:border-b-0" :class="!reduced && 'rise-in'">
-                  <span v-if="line.mark === 'failed'" class="state-flagged" aria-hidden="true"><span class="glyph">!</span></span>
-                  <span v-else-if="line.mark === 'skipped'" :class="[BOX, 'border border-dashed border-input text-muted-foreground']" aria-hidden="true">
-                    <PhMinus weight="bold" class="size-3" />
-                  </span>
-                  <span v-else-if="line.mark === 'done'" :class="[BOX, 'border border-input text-foreground']" aria-hidden="true">
-                    <PhCheck weight="bold" class="size-3" />
-                  </span>
-                  <!-- Working: it spins only while it is the run's latest unfinished step and this screen is still hearing
-                       from the run; never under reduced motion, and not once the connection is lost. -->
-                  <span v-else :class="[BOX, 'text-foreground']" aria-hidden="true">
-                    <PhCircleNotch weight="bold" class="size-4" :class="line.active && !still && 'animate-spin'" />
-                  </span>
-                  <p class="min-w-0 text-sm wrap-break-word" :class="[line.mark === 'skipped' && 'text-muted-foreground', line.mark === 'failed' && 'font-medium']">
-                    <span class="sr-only">{{ MARK_WORD[line.mark] }}: </span>{{ line.text }}
-                  </p>
-                </li>
-              </ol>
-              <p v-if="lines.length === 0" class="text-sm text-muted-foreground">No steps yet.</p>
-            </section>
-
-            <section
-              v-if="final?.kind === 'run_finished'"
-              aria-labelledby="result-title"
-              class="space-y-4 rounded-lg border border-t-[3px] border-t-primary bg-card p-6"
-              :class="!reduced && 'rise-in'"
-            >
-              <h2 id="result-title" class="text-lg font-semibold">Draft ready for review</h2>
-              <Notice v-if="run?.is_dev_draft && run.dev_mode_label" role="alert" class="font-semibold">{{ run.dev_mode_label }}</Notice>
-              <div role="group" aria-label="Review items by status" class="grid grid-cols-1 gap-3 md:grid-cols-3">
-                <CountTile v-for="s in STATUS_ORDER" :key="s" :status="s" :value="final.counts?.[s] ?? 0" />
-              </div>
-              <RouterLink
-                v-if="run?.review_id != null"
-                :to="overviewHref(run.report_type, run.period, run.review_id)"
-                data-slot="button"
-                :class="cn(buttonVariants({ size: 'lg' }))"
-              >
-                Open review
-              </RouterLink>
-              <Button v-else size="lg" disabled>Open review</Button>
-            </section>
-
-            <div v-if="failed && final" class="space-y-3">
-              <Notice role="alert" class="font-medium">The draft stopped.{{ final.detail ? ` ${final.detail}` : "" }}</Notice>
-              <p class="text-sm">
-                <RouterLink :to="backHref" :class="LINK">Back to overview</RouterLink>
+        <section aria-labelledby="steps-title">
+          <h2 id="steps-title" class="eyebrow pb-2">Steps</h2>
+          <!-- Empty until the first event arrives: no placeholder moves while nothing has happened. -->
+          <ol role="log" aria-label="Steps of this draft" class="rounded-lg border bg-card" :class="lines.length === 0 && 'hidden'">
+            <li v-for="line in lines" :key="line.key" class="flex items-start gap-3 border-b px-4 py-3 last:border-b-0" :class="!reduced && 'rise-in'">
+              <span v-if="line.mark === 'failed'" class="state-flagged" aria-hidden="true"><span class="glyph">!</span></span>
+              <span v-else-if="line.mark === 'skipped'" :class="[BOX, 'border border-dashed border-input text-muted-foreground']" aria-hidden="true">
+                <PhMinus weight="bold" class="size-3" />
+              </span>
+              <span v-else-if="line.mark === 'done'" :class="[BOX, 'border border-input text-foreground']" aria-hidden="true">
+                <PhCheck weight="bold" class="size-3" />
+              </span>
+              <!-- Working: it spins only while it is the run's latest unfinished step and this screen is still hearing
+                   from the run; never under reduced motion, and not once the connection is lost. -->
+              <span v-else :class="[BOX, 'text-foreground']" aria-hidden="true">
+                <PhCircleNotch weight="bold" class="size-4" :class="line.active && !still && 'animate-spin'" />
+              </span>
+              <p class="min-w-0 text-sm wrap-break-word" :class="[line.mark === 'skipped' && 'text-muted-foreground', line.mark === 'failed' && 'font-medium']">
+                <span class="sr-only">{{ MARK_WORD[line.mark] }}: </span>{{ line.text }}
               </p>
-            </div>
+            </li>
+          </ol>
+          <p v-if="lines.length === 0" class="text-sm text-muted-foreground">No steps yet.</p>
+        </section>
 
-            <div ref="foot" aria-hidden="true" />
+        <section
+          v-if="final?.kind === 'run_finished'"
+          aria-labelledby="result-title"
+          class="space-y-4 rounded-lg border border-t-[3px] border-t-primary bg-card p-6"
+          :class="!reduced && 'rise-in'"
+        >
+          <h2 id="result-title" class="text-lg font-semibold">Draft ready for review</h2>
+          <Notice v-if="run?.is_dev_draft && run.dev_mode_label" role="alert" class="font-semibold">{{ run.dev_mode_label }}</Notice>
+          <div role="group" aria-label="Review items by status" class="grid grid-cols-1 gap-3 @min-[34rem]:grid-cols-3">
+            <CountTile v-for="s in STATUS_ORDER" :key="s" :status="s" :value="final.counts?.[s] ?? 0" />
           </div>
+          <RouterLink
+            v-if="run?.review_id != null"
+            :to="overviewHref(run.report_type, run.period, run.review_id)"
+            data-slot="button"
+            :class="cn(buttonVariants({ size: 'lg' }))"
+          >
+            Open review
+          </RouterLink>
+          <Button v-else size="lg" disabled>Open review</Button>
+        </section>
+
+        <div v-if="failed && final" class="space-y-3">
+          <Notice role="alert" class="font-medium">The draft stopped.{{ final.detail ? ` ${final.detail}` : "" }}</Notice>
+          <p class="text-sm">
+            <RouterLink :to="backHref" :class="LINK">Back to overview</RouterLink>
+          </p>
         </div>
-      </main>
-    </div>
-  </template>
+
+        <div ref="foot" aria-hidden="true" />
+      </div>
+
+      <template v-if="!missing" #aside>
+        <dl v-if="run" class="space-y-3 text-sm">
+          <div>
+            <dt class="eyebrow">Section</dt>
+            <dd class="font-medium">{{ run.section_title }}</dd>
+          </div>
+          <div>
+            <dt class="eyebrow">Report</dt>
+            <dd class="font-medium">{{ reportName(run.report_title, run.period) }}</dd>
+          </div>
+          <div v-if="events.length > 0">
+            <dt class="eyebrow">Started</dt>
+            <dd class="font-medium">{{ friendlyTime(events[0].at) }}</dd>
+          </div>
+          <div v-if="final">
+            <dt class="eyebrow">{{ failed ? "Stopped" : "Finished" }}</dt>
+            <dd class="font-medium">{{ friendlyTime(final.at) }}</dd>
+          </div>
+        </dl>
+        <p v-else class="text-sm text-muted-foreground">Not read yet.</p>
+      </template>
+    </PageGrid>
+  </main>
 </template>
