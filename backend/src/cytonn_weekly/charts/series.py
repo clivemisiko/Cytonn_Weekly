@@ -332,7 +332,7 @@ def check_quoted(series: ChartSeries, quoted: Mapping[str, Any]) -> list[Flag]:
     """The last plotted point and the average, each against the figure the draft prints for it.
 
     ``quoted`` maps the section's figure keys (``spec.quoted``) to what the draft prints, as
-    text ("7.6x") or a number.  The comparison is the exact-match checker's: both sides to the
+    text ("10.0x") or a number.  The comparison is the exact-match checker's: both sides to the
     display precision, rounded half up.  A figure the draft does not print is a MISSING flag.
     A chart that is not drawn has no plotted point, so it has nothing to compare.
     """

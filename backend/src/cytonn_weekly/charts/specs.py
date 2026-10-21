@@ -26,7 +26,7 @@ class ChartSpec:
     caption: str                    # as listed in the section's CHARTS, so the Word export can place it
     sheet: str                      # verbatim from the workbook (some end in a space)
     header: str                     # the label above the dates; the values are in the next column
-    unit: str                       # "multiple" (11.2x), or "pct": stored as a fraction and formatted as a percentage
+    unit: str                       # "multiple" (10.0x), or "pct": stored as a fraction and formatted as a percentage
     window_years: int               # how many years back from the newest point the picture shows
     newest_not_before_days: int     # freshness: the newest point is dated this many days after the week's Friday or later
     ceiling_days: int               # no point is dated later than this many days after the Friday
@@ -36,7 +36,7 @@ class ChartSpec:
 
     @property
     def scale(self) -> int:
-        """A percentage is stored as a fraction (0.048 shown as 4.8%); the chart works in percentage points."""
+        """A percentage is stored as a fraction (0.05 shown as 5.0%); the chart works in percentage points."""
         return 100 if self.unit == "pct" else 1
 
 

@@ -11,9 +11,9 @@ def book() -> Workbook:
     wb = Xlsx()
     ws = wb.active
     ws.title = "S"
-    ws["A1"] = 0.048
+    ws["A1"] = 0.061
     ws["A1"].number_format = "0.0%"
-    ws["A2"] = 11.2
+    ws["A2"] = 13.6
     ws["A2"].number_format = r"0.0\x;\(0.0\x\)"
     ws["A3"] = 5
     out = io.BytesIO()

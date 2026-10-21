@@ -195,14 +195,16 @@ def test_a_point_dated_after_the_ceiling_is_not_drawn_and_not_removed():
 
 def test_an_average_that_lands_exactly_on_a_half_rounds_up():
     spec = replace(NASI_PE, min_points=2)
-    a = average(read_series(book(weeks=2, edit=put(B8=11.3, B9=11.2)), spec, FRIDAY))
-    assert a.value == Decimal("11.25") and a.display == Decimal("11.3")
-    assert round(11.25, 1) == 11.2           # Python's round() goes the other way: why round_half_up is used
-    y = average(read_series(book(weeks=2, edit=put(D8=0.049, D9=0.048)), replace(NASI_YIELD, min_points=2), FRIDAY))
-    assert (y.value, y.display) == (Decimal("4.85"), Decimal("4.9"))
-    # 0.0485 is not exactly representable as a float; read through float arithmetic it would land below the half
-    one = average(read_series(book(weeks=1, edit=put(D8=0.0485)), replace(NASI_YIELD, min_points=1), FRIDAY))
-    assert (one.value, one.display) == (Decimal("4.85"), Decimal("4.9"))
+    a = average(read_series(book(weeks=2, edit=put(B8=13.7, B9=13.6)), spec, FRIDAY))
+    assert a.value == Decimal("13.65") and a.display == Decimal("13.7")
+    assert round((13.6 + 13.7) / 2, 1) == 13.6     # float arithmetic and round() go the other way: why both are avoided
+    y = average(read_series(book(weeks=2, edit=put(D8=0.064, D9=0.063)), replace(NASI_YIELD, min_points=2), FRIDAY))
+    assert (y.value, y.display) == (Decimal("6.35"), Decimal("6.4"))
+    assert round((0.063 * 100 + 0.064 * 100) / 2, 1) == 6.3
+    # 0.0615 is not exactly representable as a float; read through its binary value it would land below the half
+    one = average(read_series(book(weeks=1, edit=put(D8=0.0615)), replace(NASI_YIELD, min_points=1), FRIDAY))
+    assert (one.value, one.display) == (Decimal("6.15"), Decimal("6.2"))
+    assert round_half_up(Decimal(0.0615) * 100, 1) == Decimal("6.1")
 
 
 def test_the_average_covers_every_point_since_2009_and_not_only_the_window():
@@ -233,12 +235,12 @@ def test_the_workbooks_own_average_is_compared_at_the_display_precision():
     spec = replace(NASI_PE, min_points=2)
 
     def two(**c):
-        return read_series(book(weeks=2, edit=put(B8=11.3, B9=11.2, **c)), spec, FRIDAY)
+        return read_series(book(weeks=2, edit=put(B8=13.7, B9=13.6, **c)), spec, FRIDAY)
 
-    assert compare_average(two(B7=11.3)) == AverageCheck(None, None)         # B7 is the workbook's AVERAGE cell
-    flag = compare_average(two(B7=11.2)).flag                                 # ours prints 11.3: a human call
-    assert flag.kind == SOURCES_DISAGREE and sorted(s["normalized"] for s in flag.sources) == ["11.2", "11.3"]
-    assert two(B7=11.3).stated == Stated("B7", Decimal("11.3"), None)
+    assert compare_average(two(B7=13.7)) == AverageCheck(None, None)         # B7 is the workbook's AVERAGE cell
+    flag = compare_average(two(B7=13.6)).flag                                 # ours prints 13.7: a human call
+    assert flag.kind == SOURCES_DISAGREE and sorted(s["normalized"] for s in flag.sources) == ["13.6", "13.7"]
+    assert two(B7=13.7).stated == Stated("B7", Decimal("13.7"), None)
 
 
 def test_a_formula_with_no_saved_value_is_reported_and_its_range_is_kept():
