@@ -80,17 +80,28 @@ def _known(chart_id: str) -> str:
     return chart_id
 
 
-def read_png(run_id: int, chart_id: str, expected_sha256: Optional[str], root: Optional[Union[Path, str]] = None) -> bytes:
-    """The PNG of one drawn chart of a saved review, after checking it is still the file the review recorded."""
+def read_file(run_id: int, chart_id: str, ext: str, what: str, expected_sha256: Optional[str],
+              root: Optional[Union[Path, str]] = None) -> bytes:
+    """One stored file of a drawn chart of a saved review, after checking it is still the file the review recorded."""
     _known(chart_id)
     if not expected_sha256:
         raise ChartFileMissing(f"run {run_id} has no drawn chart {chart_id!r}")
-    path = root_dir(root) / str(int(run_id)) / f"{chart_id}.png"
+    path = root_dir(root) / str(int(run_id)) / f"{chart_id}.{ext}"
     try:
         data = path.read_bytes()
     except FileNotFoundError:
-        raise ChartFileMissing(f"the image file of chart {chart_id!r} for run {run_id} is missing; draft the section again") from None
+        raise ChartFileMissing(f"the {what} file of chart {chart_id!r} for run {run_id} is missing; draft the section again") from None
     if sha256(data) != expected_sha256:
-        raise ChartFileChanged(f"the image file of chart {chart_id!r} for run {run_id} is not the one this review recorded "
+        raise ChartFileChanged(f"the {what} file of chart {chart_id!r} for run {run_id} is not the one this review recorded "
                                "(its SHA-256 differs); it was changed after the draft and is not served")
     return data
+
+
+def read_png(run_id: int, chart_id: str, expected_sha256: Optional[str], root: Optional[Union[Path, str]] = None) -> bytes:
+    """The picture of one drawn chart (``<chart_id>.png``), checked against the SHA-256 the review recorded."""
+    return read_file(run_id, chart_id, "png", "image", expected_sha256, root)
+
+
+def read_series(run_id: int, chart_id: str, expected_sha256: Optional[str], root: Optional[Union[Path, str]] = None) -> bytes:
+    """The series the picture was drawn from (``<chart_id>.json``), checked against the recorded SHA-256."""
+    return read_file(run_id, chart_id, "json", "series", expected_sha256, root)

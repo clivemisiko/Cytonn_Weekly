@@ -187,7 +187,7 @@ def same_print(by_workbook, by_form):
     b_charts = [x for x in b["blocks"] if x["id"].startswith("chart_")]
     if a_charts or b_charts:
         assert [x["id"] for x in a_charts] == [x["id"] for x in b_charts] == ["chart_nasi_pe", "chart_nasi_yield"]
-        assert {x["kind"] for x in b_charts} == {"unavailable"} and {x["reason"] for x in b_charts} == {eq.eqw.NEED_WORKBOOK_FOR_CHARTS[0]}
+        assert {x["kind"] for x in b_charts} == {"chart"} and {x["reason"] for x in b_charts} == {eq.eqw.NEED_WORKBOOK_FOR_CHARTS[0]}
         a = {**a, "blocks": [x for x in a["blocks"] if x not in a_charts], "items": [i for i in a["items"] if not i[0].startswith(CHART_TITLES)]}
         b = {**b, "blocks": [x for x in b["blocks"] if x not in b_charts], "items": [i for i in b["items"] if not i[0].startswith(CHART_TITLES)]}
     assert [x["id"] for x in a["blocks"]] == [x["id"] for x in b["blocks"]]
@@ -349,8 +349,9 @@ def test_an_empty_form_and_no_workbook_leaves_only_what_truly_needs_them_unavail
     assert "KESONIA" in by["liquidity"]["body_md"] and "eurobonds_issues" not in by and "mmf_table" not in by
     by = blocks(eq.build(tmp_path))
     kinds = {k: b["kind"] for k, b in by.items()}
-    assert [k for k, v in kinds.items() if v == "unavailable"] == ["large_caps", "valuation", "chart_nasi_pe", "chart_nasi_yield",
-                                                              "universe_of_coverage"]
+    assert [k for k, v in kinds.items() if v == "unavailable"] == ["large_caps", "valuation", "universe_of_coverage"]
+    assert [(k, by[k]["status"]) for k, v in kinds.items() if k.startswith("chart_")] == [("chart_nasi_pe", "no_workbook"),
+                                                                                       ("chart_nasi_yield", "no_workbook")]
     assert by["large_caps"]["reason"] == ("The large-cap list has not been typed under \"Weekly analyst inputs\", and the equities "
                                           "workbook for this week is not among this week's inputs.")
     assert by["turnover"]["kind"] == "computed" and "YTD" not in by["turnover"]["body_md"]     # the running total is left out

@@ -205,8 +205,9 @@ def check_section(content: dict[str, Any], on_event: Optional[Observer] = None) 
             # A piece with no cited claim at all becomes one flagged item (build_review).
             emit(on_event, CHECK_FINISHED, b.get("headline", ""),
                  counts={"flagged": flagged_claims if claims else 1, "not_auto_verified": len(claims) - flagged_claims})
-        elif b["kind"] == "chart":
-            # The checks ran when the block was made (charts/block.py); its flags are kept on it.
+        elif b["kind"] == "chart" and b["status"] != "no_workbook":
+            # The checks ran when the block was made (charts/block.py); its flags are kept on it.  A chart nothing was
+            # read for (no workbook) has none: it is information, not a finding.
             emit(on_event, CHECK_STARTED, b["title"])
             report.flags.extend(chart_flags(b))
             report.checked += 2 if b["status"] == "drawn" else 0      # the last point and the average
@@ -334,7 +335,7 @@ def build_review(content: dict[str, Any], report: CheckReport) -> CoordinatorRev
                 used.add(subject)
                 flags = by_subject.get(subject, [])
                 items.append(ReviewItem(kind=CHART_ITEM, ref=part.ref, status=FLAGGED if flags else part.status,
-                                        detail=flags or part.note, context={"text": b["caption"]}))
+                                        detail=flags or part.note, context={"text": b["caption"], "chart": b["id"]}))
         elif b["kind"] == "unavailable":
             subject = (UNAVAILABLE_SCOPE, b["id"])
             used.add(subject)

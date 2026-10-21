@@ -60,6 +60,7 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from cytonn_weekly.charts import store as chart_store
+from cytonn_weekly.charts.block import set_team_chart
 from cytonn_weekly.common.run_events import RUN_STARTED, describe, review_counts
 from cytonn_weekly.digital_payments import review_run, review_store
 from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview, rejected_draft_notes
@@ -169,6 +170,12 @@ class ItemResolution(BaseModel):
 
 class Decision(BaseModel):
     decision: Literal["approved", "rejected"]
+
+
+class TeamChartBody(BaseModel):
+    """``use`` true sets the tool's chart aside for the team's own; false takes that back."""
+
+    use: bool
 
 
 ReportType = Literal["weekly", "quarterly", "half_year", "annual", "companion"]
@@ -570,6 +577,32 @@ def create_app(
         except chart_store.ChartFileError as exc:
             raise HTTPException(exc.status, str(exc))
         return Response(data, media_type="image/png", headers={"Cache-Control": "no-store"})
+
+    @app.get("/api/reviews/{run_id}/charts/{chart_id}/series")
+    def chart_series(run_id: int, chart_id: str) -> Response:
+        """The series a drawn chart was drawn from (JSON), only while it is the file the review recorded: the same checks
+        and answers as the picture (404 unknown chart, no such drawn chart or missing file; 409 for a changed file)."""
+        review = load(run_id)
+        block = next((b for b in review.section.get("blocks", []) if b.get("kind") == "chart" and b.get("chart_id") == chart_id), None)
+        try:
+            data = chart_store.read_series(run_id, chart_id, block and block.get("series_sha256"), charts_root)
+        except chart_store.ChartFileError as exc:
+            raise HTTPException(exc.status, str(exc))
+        return Response(data, media_type="application/json", headers={"Cache-Control": "no-store"})
+
+    @app.put("/api/reviews/{run_id}/charts/{chart_id}/team-chart")
+    def team_chart(run_id: int, chart_id: str, body: TeamChartBody) -> dict:
+        """Set the tool's chart aside for the team's own (``use`` true) or take that back (false).  Every item of the chart is
+        accepted with a note saying so, or cleared; the choice is saved with the review.  409 once the review is decided,
+        404 for a chart the review does not have, 409 for a chart nothing was read for (no workbook)."""
+        def change(review: CoordinatorReview) -> None:
+            try:
+                set_team_chart(review, chart_id, body.use)
+            except KeyError as exc:
+                raise HTTPException(404, str(exc.args[0]))
+            except ValueError as exc:
+                raise HTTPException(409, str(exc))
+        return mutate(run_id, change)
 
     @app.get("/api/reviews/{run_id}/rejected-draft-notes")
     def get_rejected_draft_notes(run_id: int) -> Optional[dict]:

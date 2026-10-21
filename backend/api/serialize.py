@@ -23,6 +23,7 @@ import math
 import re
 from typing import Any
 
+from cytonn_weekly.charts.block import team_chart_chosen
 from cytonn_weekly.digital_payments.coordinator_review import (
     CLEAN, FIX_NEEDED, FLAGGED, NOT_AUTO_VERIFIED, TABLE_ROW, CoordinatorReview,
 )
@@ -120,8 +121,17 @@ _NARRATIVE_FIELDS = ("numeral", "kind", "id", "topic", "headline", "body_md", "c
 _UNAVAILABLE_FIELDS = ("numeral", "kind", "id", "title", "reason", "unblock")
 _SUPPLIED_FIELDS = ("numeral", "kind", "id", "title", "body_md", "supplied_by", "context")
 # A chart drawn from the analyst workbook (charts/block.py): metadata only; its checks reach the screen as review items.
-_CHART_FIELDS = ("numeral", "kind", "id", "chart_id", "title", "caption", "status", "alt", "source", "points", "window",
-                 "newest_date", "last_value", "average", "stated", "png_sha256", "defects")
+_CHART_FIELDS = ("numeral", "kind", "id", "chart_id", "title", "caption", "status", "unit", "reason", "unblock",
+                 "alt", "source", "points", "window", "newest_date", "last_value", "average", "stated", "png_sha256", "defects")
+
+
+def _charts_to_add_by_hand(review: CoordinatorReview) -> list[str]:
+    """The real issue's chart captions for the coordinator to add by hand: all of them except a chart the tool drew and the
+    coordinator has not set aside for the team's own."""
+    sec = review.section
+    drawn = {b["caption"] for b in sec.get("blocks", []) if b.get("kind") == "chart" and b.get("status") == "drawn"
+             and not team_chart_chosen(review, b["chart_id"])}
+    return [c for c in sec.get("chart_notes", []) if c not in drawn]
 
 
 def _flagged_rows(review: CoordinatorReview) -> set[str]:
@@ -155,7 +165,7 @@ def _serialize_blocks(review: CoordinatorReview) -> dict[str, Any]:
         elif b["kind"] == "supplied":
             blocks.append({k: b.get(k) for k in _SUPPLIED_FIELDS})
         elif b["kind"] == "chart":
-            blocks.append({k: b.get(k) for k in _CHART_FIELDS})
+            blocks.append({**{k: b.get(k) for k in _CHART_FIELDS}, "use_team_chart": team_chart_chosen(review, b["chart_id"])})
         else:
             blocks.append({k: b.get(k) for k in _UNAVAILABLE_FIELDS})
     return {
@@ -169,7 +179,7 @@ def _serialize_blocks(review: CoordinatorReview) -> dict[str, Any]:
         "pieces_expected": sec.get("pieces_expected", 0),
         "shortfall": sec.get("shortfall", 0),
         "warnings": list(sec.get("warnings", [])),
-        "chart_notes": list(sec.get("chart_notes", [])),
+        "chart_notes": _charts_to_add_by_hand(review),
         "chart_reference": sec.get("chart_reference"),
         # Executive Summary only: what the composition is, and what each included section holds that it leaves out.
         "summary_note": sec.get("summary_note"),

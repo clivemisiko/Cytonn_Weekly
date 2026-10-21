@@ -297,15 +297,18 @@ def test_missing_inputs_leave_named_unavailable_parts(tmp_path):
     by = blocks(review)
     assert list(by) == ["indices", "large_caps", "banking", "turnover", "foreign", "valuation", "chart_nasi_pe", "chart_nasi_yield",
                         "universe_of_coverage", "outlook"]
-    assert {b["kind"] for b in by.values()} == {"unavailable"}
+    assert {b["kind"] for b in by.values() if not b["id"].startswith("chart_")} == {"unavailable"}
     assert by["large_caps"]["reason"] == "KCB IB's weekly trading report for this week is not among this week's inputs."
     assert by["valuation"]["reason"] == (
         "The market P/E, the historical average P/E, the market dividend yield and the historical average dividend yield have "
         "not been typed under \"Weekly analyst inputs\", and the equities workbook for this week is not among this week's inputs.")
     assert by["universe_of_coverage"]["reason"].startswith("The Universe of Coverage inputs have not been typed")
     assert by["foreign"]["reason"].startswith("No foreign net flow was found for Monday 28 September")
-    assert by["chart_nasi_pe"]["reason"] == by["chart_nasi_yield"]["reason"] == eqw.NEED_WORKBOOK_FOR_CHARTS[0]   # no workbook: no chart
-    assert {i.status for i in review.review_items} == {"flagged"} and len(review.review_items) == 10
+    # No workbook: no chart, said as information in the section and asking nothing of the coordinator (no review item).
+    assert [(by[c]["kind"], by[c]["status"]) for c in ("chart_nasi_pe", "chart_nasi_yield")] == [("chart", "no_workbook")] * 2
+    assert by["chart_nasi_pe"]["reason"] == by["chart_nasi_yield"]["reason"] == eqw.NEED_WORKBOOK_FOR_CHARTS[0]
+    assert {i.status for i in review.review_items} == {"flagged"} and len(review.review_items) == 8
+    assert not [i for i in review.review_items if i.kind == "chart"]
     assert review.section["summary"] == ""
 
 

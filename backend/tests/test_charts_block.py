@@ -4,11 +4,14 @@ import json
 from datetime import timedelta
 from decimal import Decimal
 
+import pytest
+
 from cytonn_weekly.charts.block import (AVERAGE, CHART_ITEM, CHART_SCOPE, DEFECTS, FRESHNESS, NOT_COMPARED, POINT,
-                                        SERIES_DEFECT_FLAG, SOURCE, STALE_FLAG, chart_blocks, chart_counts, chart_parts)
+                                        SERIES_DEFECT_FLAG, SOURCE, STALE_FLAG, TEAM_CHART_NOTE, chart_blocks, chart_counts,
+                                        chart_parts, set_team_chart, team_chart_chosen)
 from cytonn_weekly.charts.store import sha256
 from cytonn_weekly.checkers.digital_payments import MISMATCH, MISSING, SOURCES_DISAGREE
-from cytonn_weekly.common.review import UNAVAILABLE_PART, build_review, check_section
+from cytonn_weekly.common.review import build_review, check_section
 from cytonn_weekly.common.run_events import (CHECK_FINISHED, PART_SKIPPED, PIECE_FINISHED, PIECE_STARTED, SOURCE_FINISHED,
                                              SOURCE_STARTED)
 from cytonn_weekly.digital_payments.coordinator_review import CLEAN, FLAGGED, NOT_AUTO_VERIFIED
@@ -42,19 +45,46 @@ def flag_kinds(item):
 # The block
 # ---------------------------------------------------------------------------
 
-def test_with_no_workbook_each_chart_is_an_unavailable_block():
-    blocks, files = chart_blocks(None, "Equities workbook", FRIDAY, QUOTED, MISSING_BOOK)
-    assert [(b["kind"], b["id"], b["reason"]) for b in blocks] == [
-        ("unavailable", "chart_nasi_pe", MISSING_BOOK[0]), ("unavailable", "chart_nasi_yield", MISSING_BOOK[0])]
-    assert files == {}
-    assert [(i.kind, i.status) for i in review_of(blocks).review_items] == [(UNAVAILABLE_PART, FLAGGED)] * 2
+def test_with_no_workbook_each_chart_is_information_and_makes_no_review_item():
+    events = []
+    blocks, files = chart_blocks(None, "Equities workbook", FRIDAY, QUOTED, MISSING_BOOK,
+                                 lambda kind, label, detail=None, counts=None: events.append((kind, label, detail)))
+    assert [(b["kind"], b["id"], b["status"], b["reason"], b["unblock"]) for b in blocks] == [
+        ("chart", "chart_nasi_pe", "no_workbook", MISSING_BOOK[0], MISSING_BOOK[1]),
+        ("chart", "chart_nasi_yield", "no_workbook", MISSING_BOOK[0], MISSING_BOOK[1])]
+    assert files == {} and [b["png_sha256"] for b in blocks] == [None, None] and chart_parts(blocks[0]) == []
+    assert events == [(PART_SKIPPED, "NASI P/E chart", MISSING_BOOK[0]), (PART_SKIPPED, "NASI dividend yield chart", MISSING_BOOK[0])]
+    assert review_of(blocks).review_items == []                     # nothing for the coordinator to resolve, and nothing flagged
+    assert [chart_counts(b) for b in blocks] == [{CLEAN: 0, FLAGGED: 0, NOT_AUTO_VERIFIED: 0}] * 2
+
+
+def test_no_workbook_does_not_hold_up_approval_but_a_workbook_that_cannot_give_the_chart_does():
+    other = {"kind": "supplied", "id": "company_updates", "title": "Company updates", "body_md": "Invented text.", "supplied_by": "coordinator"}
+    none, _ = chart_blocks(None, "Equities workbook", FRIDAY, QUOTED, MISSING_BOOK)
+    review = review_of([other, *none])
+    assert len(review.review_items) == 1 and not review.is_approvable
+    review.review_items[0].resolve("accept")
+    assert review.is_approvable                                        # the charts asked nothing of the coordinator
+    for name, kw in (("stale", {"newest": day(1)}), ("short", {"weeks": 10}), ("future", {"newest": FRIDAY + timedelta(days=7)}),
+                     ("missing sheet", {"edit": lambda ws: setattr(ws, "title", "NASI PE & Dividend Yield")})):
+        blocks, _ = make(**kw)
+        review = review_of([other, *blocks])
+        review.review_items[0].resolve("accept")
+        assert [b["status"] for b in blocks] == ["not_drawn", "not_drawn"], name
+        flagged = [i for i in review.review_items if i.kind == CHART_ITEM and i.status == FLAGGED]
+        assert flagged and not review.is_approvable, name              # an uploaded workbook that fails still holds the section up
+        for i in flagged:
+            i.resolve("accept")
+        assert review.is_approvable, name
 
 
 def test_a_drawn_block_holds_metadata_and_the_hashes_of_its_files_only():
     blocks, files = make()
     pe, dy = blocks
-    assert set(pe) == {"kind", "id", "chart_id", "title", "caption", "status", "source", "points", "window", "newest_date",
-                       "last_value", "average", "stated", "png_sha256", "series_sha256", "alt", "defects", "checks"}
+    assert set(pe) == {"kind", "id", "chart_id", "title", "caption", "status", "unit", "reason", "unblock",
+                       "source", "points", "window", "newest_date", "last_value", "average", "stated", "png_sha256",
+                       "series_sha256", "alt", "defects", "checks"}
+    assert (pe["unit"], pe["reason"]) == ("multiple", None) and dy["unit"] == "pct"
     assert (pe["status"], pe["points"], pe["newest_date"]) == ("drawn", 60, FRIDAY.isoformat())
     assert pe["source"] == {"workbook": "Equities workbook", "sheet": "NASI-PE & Dividend Yield",
                             "provenance": "from the analyst workbook, not verified", "cells": "B8:B67"}
@@ -65,7 +95,8 @@ def test_a_drawn_block_holds_metadata_and_the_hashes_of_its_files_only():
     assert json.loads(json.dumps(blocks)) == blocks                     # plain data: no bytes, no Decimals, no dates
     stored = json.loads(files["nasi_pe"]["json"])
     newest = stored["points"][-1]
-    assert len(stored["points"]) == 60 and (newest[0], Decimal(newest[1]), newest[2]) == (FRIDAY.isoformat(), Decimal("10"), "B8")
+    assert len(stored["points"]) == 60 and (newest[0], Decimal(newest[1]), newest[2], newest[3]) == (FRIDAY.isoformat(), Decimal("10"), "B8", "10.0x")
+    assert json.loads(files["nasi_yield"]["json"])["points"][-1][3] == "5.0%"
 
 
 def test_the_window_is_five_years_and_the_average_still_covers_everything_since_2009():
@@ -171,3 +202,37 @@ def test_the_run_events_are_the_real_steps_and_the_counts_match_the_items():
         finished = next(c for k, label, _, c in events if k == CHECK_FINISHED and label == b["title"])
         statuses = [i.status for i in items(review, b["title"])]
         assert finished == chart_counts(b) == {s: statuses.count(s) for s in (CLEAN, FLAGGED, NOT_AUTO_VERIFIED)}
+
+
+# ---------------------------------------------------------------------------
+# The team's own chart
+# ---------------------------------------------------------------------------
+
+def test_setting_the_tool_chart_aside_accepts_all_its_items_and_can_be_taken_back():
+    blocks, _ = make(quoted={**QUOTED, "pe": "10.1x"})               # one item is flagged (a mismatch)
+    review = review_of(blocks)
+    pe_items = items(review)
+    assert pe_items[0].status == FLAGGED and not review.is_approvable
+    set_team_chart(review, "nasi_pe", True)
+    assert team_chart_chosen(review, "nasi_pe") and not team_chart_chosen(review, "nasi_yield")
+    assert [(i.resolution, i.resolution_note) for i in pe_items] == [("accept", TEAM_CHART_NOTE)] * 5
+    assert all(i.resolution is None for i in items(review, "NASI dividend yield chart"))      # the other chart is untouched
+    set_team_chart(review, "nasi_pe", False)
+    assert not team_chart_chosen(review, "nasi_pe") and all(i.resolution is None for i in pe_items)
+    set_team_chart(review, "nasi_pe", True)
+    pe_items[2].resolve("accept", "my own note")                  # changing any one item ends the choice
+    assert not team_chart_chosen(review, "nasi_pe")
+
+
+def test_the_team_chart_choice_covers_a_chart_that_was_not_drawn_too_and_refuses_what_it_cannot():
+    blocks, _ = make(newest=day(1))
+    review = review_of(blocks)
+    set_team_chart(review, "nasi_pe", True)
+    assert [i.resolution for i in items(review)] == ["accept", "accept"]
+    with pytest.raises(KeyError):
+        set_team_chart(review, "nope", True)
+    none, _ = chart_blocks(None, "Equities workbook", FRIDAY, QUOTED, MISSING_BOOK)
+    with pytest.raises(ValueError, match="nothing to set aside"):
+        set_team_chart(review_of(none), "nasi_pe", True)
+    # A chart with no items (no workbook) or no such chart is never "chosen": there is nothing it could rest on.
+    assert not team_chart_chosen(review_of(none), "nasi_pe") and not team_chart_chosen(review, "nope")

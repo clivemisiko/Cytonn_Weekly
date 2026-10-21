@@ -6,12 +6,23 @@ PNG and of the series file, drawn or not drawn, and every defect.  The series an
 files (charts/store.py).  The checks are run when the block is made, while the series is in hand,
 and kept on the block as flags, so ``check_section`` and ``build_review`` work from the block alone.
 
+A chart has one of three states.  ``drawn`` and ``not_drawn`` are above.  ``no_workbook`` means no equities
+workbook was uploaded, so nothing was read: it is information for the coordinator, not a finding, and it makes
+no review item, so it never holds up approval (the Word file keeps the placeholder for the chart to be added by
+hand).  A workbook that was uploaded but cannot give the chart is ``not_drawn`` and does hold the section up.
+
 A drawn chart becomes five review items: the last plotted point against the figure the draft
 quotes, the average line against the workbook's own AVERAGE cell and the quoted average, the
 freshness of the newest point, the rows left out of the series, and where the history comes
 from ("from the analyst workbook, not verified").  A chart that is not drawn becomes one flagged
 item for its defects, and one for its freshness when that is what stopped it.  Nothing about a
 chart is ever clean except a freshness or a row check that found nothing.
+
+The coordinator may set the tool's chart aside for the team's own (``set_team_chart``): every item of that
+chart is accepted with a note saying so, and the chart then counts as chosen (``team_chart_chosen``).  The Word
+file keeps its placeholder for it.  The choice lives in the items, because a saved review's draft content is
+written once and never changed while its items are rewritten on every save; so it is saved with the review, and
+can be taken back until the review is decided.  Changing any one of the chart's items afterwards ends the choice.
 """
 
 from __future__ import annotations
@@ -39,6 +50,7 @@ SERIES_DEFECT_FLAG = "series_defect"   # anything else wrong with the series or 
 POINT, AVERAGE, FRESHNESS, DEFECTS, SOURCE = "point", "average", "freshness", "defects", "source"
 PROVENANCE = FIXED_LABELS["analyst_workbook"]      # "from the analyst workbook, not verified"
 NOT_COMPARED = "The chart is not drawn, so its last point and average were not compared with the draft."
+TEAM_CHART_NOTE = "Using the team's own chart: the tool's chart is set aside and the Word file keeps the placeholder."
 _FRESHNESS_DEFECTS = ("stale", "future")
 _STATED_DEFECTS = ("stated_missing", "stated_unreadable")
 
@@ -75,7 +87,7 @@ def series_file(series: ChartSeries, workbook: str) -> bytes:
     return json.dumps({
         "chart_id": series.spec.id, "week_ending": series.week_ending.isoformat(), "workbook": workbook,
         "sheet": series.spec.sheet, "unit": series.spec.unit,
-        "points": [[p.day.isoformat(), str(p.value), p.cell] for p in series.points],
+        "points": [[p.day.isoformat(), str(p.value), p.cell, _fmt(series.spec, p.value)] for p in series.points],
         "defects": [asdict(d) for d in series.defects],
     }, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
@@ -117,7 +129,8 @@ def chart_block(series: ChartSeries, workbook: str, quoted: dict[str, Any], png:
 
     return {
         "kind": "chart", "id": bid, "chart_id": spec.id, "title": spec.title, "caption": spec.caption,
-        "status": "drawn" if drawn else "not_drawn",
+        "status": "drawn" if drawn else "not_drawn", "unit": spec.unit,
+        "reason": None, "unblock": None,
         "source": {"workbook": workbook, "sheet": spec.sheet, "provenance": PROVENANCE,
                    "cells": f"{series.col}{min(rows)}:{series.col}{max(rows)}" if rows else None},
         "points": len(series.points),
@@ -137,23 +150,34 @@ def chart_block(series: ChartSeries, workbook: str, quoted: dict[str, Any], png:
     }
 
 
+def no_workbook_block(spec: ChartSpec, reason: str, unblock: str) -> dict[str, Any]:
+    """A chart nothing was read for because no workbook was uploaded: information, never a review item."""
+    return {
+        "kind": "chart", "id": f"chart_{spec.id}", "chart_id": spec.id, "title": spec.title, "caption": spec.caption,
+        "status": "no_workbook", "unit": spec.unit, "reason": reason, "unblock": unblock,
+        "source": None, "points": 0, "window": None, "newest_date": None, "last_value": None, "average": None,
+        "stated": None, "png_sha256": None, "series_sha256": None, "alt": None, "defects": [],
+        "checks": {POINT: [], AVERAGE: [], FRESHNESS: [], DEFECTS: []},
+    }
+
+
 def chart_blocks(book: Optional[Workbook], workbook: str, week_ending: date, quoted: dict[str, Any],
                  missing: tuple[str, str], on_event: Optional[Observer] = None,
                  specs: Iterable[ChartSpec] = SPECS.values()) -> tuple[list[dict[str, Any]], dict[str, dict[str, bytes]]]:
     """Each chart's block, and the files of the drawn ones ({chart_id: {"png", "json"}}).
 
-    With no workbook (``book`` None) each chart is an ``unavailable`` block saying why
-    (``missing``: reason, what unblocks it).  ``quoted`` maps the section's figure keys to
+    With no workbook (``book`` None) each chart is a ``no_workbook`` block saying why
+    (``missing``: reason, what unblocks it) and is reported as a skipped part.  ``quoted`` maps the section's figure keys to
     what its draft prints.
     """
     from cytonn_weekly.charts.draw import render_png      # matplotlib loads only when a chart is drawn
-    from cytonn_weekly.common.review import unavailable_block   # common.review imports this module
 
     blocks: list[dict[str, Any]] = []
     files: dict[str, dict[str, bytes]] = {}
     for spec in specs:
         if book is None:
-            blocks.append(unavailable_block(f"chart_{spec.id}", spec.title, *missing))
+            blocks.append(no_workbook_block(spec, *missing))
+            emit(on_event, PART_SKIPPED, spec.title, detail=missing[0])
             continue
         emit(on_event, PIECE_STARTED, spec.title)
         series = fetch_source(on_event, f"{workbook}, '{spec.sheet}' ({spec.header})", read_series, book, spec, week_ending)
@@ -176,6 +200,8 @@ def chart_blocks(book: Optional[Workbook], workbook: str, week_ending: date, quo
 def chart_parts(b: dict[str, Any]) -> list[Part]:
     """The chart's review items, in order, each with the status it has when no flag points at it."""
     title, checks = b["title"], b.get("checks") or {}
+    if b["status"] == "no_workbook":
+        return []
     if b["status"] != "drawn":
         parts = [Part(FRESHNESS, f"{title}: newest point", FLAGGED, None)] if checks.get(FRESHNESS) else []
         return parts + [Part(DEFECTS, f"{title}: not drawn", FLAGGED, None)]
@@ -210,3 +236,30 @@ def chart_counts(b: dict[str, Any]) -> dict[str, int]:
     for p in chart_parts(b):
         counts[FLAGGED if f"{b['id']}#{p.key}" in flagged else p.status] += 1
     return counts
+
+
+def _chart_items(review: Any, block: dict[str, Any]) -> list[Any]:
+    return [i for i in review.review_items if i.kind == CHART_ITEM and (i.context or {}).get("chart") == block["id"]]
+
+
+def _chart_block(review: Any, chart_id: str) -> Optional[dict[str, Any]]:
+    return next((b for b in review.section.get("blocks", []) if b.get("kind") == "chart" and b.get("chart_id") == chart_id), None)
+
+
+def team_chart_chosen(review: Any, chart_id: str) -> bool:
+    """True while every item of the chart carries the acceptance ``set_team_chart`` gives it."""
+    block = _chart_block(review, chart_id)
+    items = _chart_items(review, block) if block else []
+    return bool(items) and all(i.resolution == "accept" and i.resolution_note == TEAM_CHART_NOTE for i in items)
+
+
+def set_team_chart(review: Any, chart_id: str, use: bool) -> None:
+    """Set the tool's chart aside for the team's own, or take that back.  Raises KeyError for a chart this review lacks
+    and ValueError for one nothing was read for (no workbook): there is nothing to set aside."""
+    block = _chart_block(review, chart_id)
+    if block is None:
+        raise KeyError(f"this review has no chart {chart_id!r}")
+    if block["status"] == "no_workbook":
+        raise ValueError(f"chart {chart_id!r} was not drawn because no workbook was uploaded; there is nothing to set aside")
+    for item in _chart_items(review, block):
+        item.resolve("accept", TEAM_CHART_NOTE) if use else item.resolve(None)
