@@ -216,14 +216,18 @@ def test_the_average_covers_every_point_since_2009_and_not_only_the_window():
     assert s.drawn and a.count == len(used) and a.first >= AVERAGE_FROM and a.last == FRIDAY
     assert abs(a.value - exact) < Decimal("1e-20") and a.display == round_half_up(exact, 1)
     assert a.cells == f"B8:B{8 + used[-1]}"
-    assert len(windowed(s)) < a.count               # the picture shows 7 years; the average does not stop there
+    shown = windowed(s)                             # the picture shows 5 years; the average does not stop there
+    start = date(FRIDAY.year - 5, FRIDAY.month, FRIDAY.day)
+    assert NASI_PE.window_years == NASI_YIELD.window_years == 5
+    assert shown[0].day >= start > shown[0].day - timedelta(days=7) and shown[-1].day == FRIDAY
+    assert len(shown) < a.count and a.count == len([p for p in s.points if p.day >= AVERAGE_FROM])
 
 
 def test_the_window_counts_years_back_from_the_newest_point_and_survives_29_february():
-    days = [date(2017, 2, 27), date(2017, 2, 28), date(2020, 2, 29), date(2024, 2, 29)]
+    days = [date(2019, 2, 27), date(2019, 2, 28), date(2020, 2, 29), date(2024, 2, 29)]
     pts = tuple(Point(d, Decimal(i), i + 8, f"B{i + 8}") for i, d in enumerate(days))
     s = ChartSeries(NASI_PE, date(2024, 3, 1), "B", pts, (), None)
-    assert [p.day for p in windowed(s)] == days[1:]       # 7 years before 2024-02-29 is 2017-02-28 (2017 has no 29 February)
+    assert [p.day for p in windowed(s)] == days[1:]       # 5 years before 2024-02-29 is 2019-02-28 (2019 has no 29 February)
     assert windowed(ChartSeries(NASI_PE, FRIDAY, "", (), (), None)) == ()
 
 

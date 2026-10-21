@@ -18,6 +18,8 @@ from cytonn_weekly.weekly.equities_workbook import VALUATION_SHEET
 # The "Average = x" the team puts on these charts is the mean of every point from here on, not just
 # the years the picture shows.  It is a named constant so it is one line to change.
 AVERAGE_FROM = date(2009, 1, 1)
+# The window the published NASI charts show: 5 years back from the newest point (Ryan, Cytonn, 2026-10-21).
+NASI_WINDOW_YEARS = 5
 
 
 @dataclass(frozen=True)
@@ -43,14 +45,14 @@ class ChartSpec:
 NASI_PE = ChartSpec(
     id="nasi_pe",
     caption="The charts below indicate the historical P/E and dividend yields of the market (P/E chart)",
-    sheet=VALUATION_SHEET, header="Price to Earnings", unit="multiple", window_years=7,
+    sheet=VALUATION_SHEET, header="Price to Earnings", unit="multiple", window_years=NASI_WINDOW_YEARS,
     newest_not_before_days=0, ceiling_days=0,
     quoted=(("point", "pe"), ("average", "pe_average")),
 )
 NASI_YIELD = ChartSpec(
     id="nasi_yield",
     caption="The charts below indicate the historical P/E and dividend yields of the market (dividend yield chart)",
-    sheet=VALUATION_SHEET, header="Dividend Yield", unit="pct", window_years=7,
+    sheet=VALUATION_SHEET, header="Dividend Yield", unit="pct", window_years=NASI_WINDOW_YEARS,
     newest_not_before_days=0, ceiling_days=0,
     quoted=(("point", "dividend_yield"), ("average", "dividend_yield_average")),
 )
