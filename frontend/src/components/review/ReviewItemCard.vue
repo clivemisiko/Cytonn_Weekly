@@ -77,7 +77,7 @@ const cells = (flag: Flag): [string, string][] => [
 </script>
 
 <template>
-  <li class="surface-state space-y-3 p-4" :class="`state-${item.status}`" :data-status="item.status" :data-index="item.index">
+  <li class="surface-state @container space-y-3 p-4" :class="`state-${item.status}`" :data-status="item.status" :data-index="item.index">
     <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
       <span
         class="inline-flex items-center gap-1 rounded-full border py-0.5 pr-2 pl-0.5 text-xs font-semibold whitespace-nowrap text-(--hue-fg)"
@@ -103,7 +103,7 @@ const cells = (flag: Flag): [string, string][] => [
         <p v-else class="text-sm">
           <strong class="font-semibold text-flag-fg">{{ flag.kind }}</strong><span class="text-muted-foreground"> in </span>{{ flag.message }}
         </p>
-        <dl v-if="flag.drafted !== null || flag.expected !== null" class="grid gap-2 sm:grid-cols-3">
+        <dl v-if="flag.drafted !== null || flag.expected !== null" class="grid gap-2 @min-[34rem]:grid-cols-3">
           <div v-for="[k, v] in cells(flag)" :key="k" class="min-w-0 rounded-sm border bg-card px-3 py-2">
             <dt class="text-xs text-muted-foreground">{{ k }}</dt>
             <dd class="mt-1 font-mono text-sm font-medium [overflow-wrap:anywhere]">{{ v }}</dd>
