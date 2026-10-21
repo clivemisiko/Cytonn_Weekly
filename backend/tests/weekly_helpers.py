@@ -219,8 +219,10 @@ def equities_workbook_bytes(week: Week = WEEK, updated: bool = True) -> bytes:
     ws.append(["Price to Earnings", None, "Dividend Yield"])
     ws.append(["AVERAGE", 10.0, "AVERAGE", 0.05])
     friday = week.ending if updated else week.previous_friday
-    for n in range(30):
+    for n in range(60):   # enough weeks for the charts drawn from this sheet (charts/specs.py), formatted as the real sheet is
         ws.append([dt(friday - timedelta(days=7 * n)), 8.0 + n * 0.01, dt(friday - timedelta(days=7 * n)), 0.06 - n * 0.0001])
+        ws.cell(ws.max_row, 2).number_format = r"0.0\x;\(0.0\x\)"
+        ws.cell(ws.max_row, 4).number_format = "0.0%"
     ws["F26"], ws["F27"] = "PEG", 1.0
 
     ws = wb.create_sheet("Market PE & Dividend Yield")

@@ -42,6 +42,8 @@ from typing import Any, Callable, Optional
 from cytonn_weekly.common.computed import ANALYST, PLAIN, PLAIN_PCT, POINTS, computed_block, evaluate, pct_change
 from cytonn_weekly.common.formatting import MULTIPLE, PCT, PRICE, TEXT, round_half_up
 from cytonn_weekly.common.http import http_get
+from cytonn_weekly.charts.block import chart_blocks
+from cytonn_weekly.charts.store import attach as attach_chart_files
 from cytonn_weekly.common.review import (
     build_review,
     check_section,
@@ -86,6 +88,7 @@ CHART_REFERENCE = "Cytonn Weekly #38.2026"
 CHART_AFTER = {"valuation": list(CHARTS)}   # both charts follow the valuation paragraph in #38.2026
 
 UPLOAD = "Upload it under \"This week's inputs\" on the start screen and draft again."
+NEED_WORKBOOK_FOR_CHARTS = ("The equities workbook for this week is not among this week's inputs; the chart is drawn from its history, which the weekly analyst inputs form does not hold.", f"The equities workbook for the week. {UPLOAD}")
 NEED_KCB_WEEKLY = ("KCB IB's weekly trading report for this week is not among this week's inputs.",
                    f"KCB IB's weekly report for the Friday. {UPLOAD}")
 
@@ -878,8 +881,11 @@ def build_equities_weekly_review(
     issue = try_fetch(on_event, "Previous issue on cytonnreport.com", fetchers.previous_issue, week.ending,
                       inputs.notes.get("previous_issue"), problems=problems)
 
+    valuation = valuation_block(market)
+    quoted = {f["key"]: f["display"] for f in valuation.get("figures", [])}   # what the draft prints beside the charts
+    charts, chart_files = chart_blocks(inputs.equities_book, WB, week.ending, quoted, NEED_WORKBOOK_FOR_CHARTS, on_event)
     blocks: list[dict[str, Any]] = [indices_block(market), large_caps_block(market), banking_block(market),
-                                    turnover_block(market), foreign_block(market), valuation_block(market),
+                                    turnover_block(market), foreign_block(market), valuation, *charts,
                                     universe_block(market, warnings)]
     drafted = (draft or draft_pieces)(BRIEFS, N_HIGHLIGHTS, provider=provider, today=today,
                                       window=(week.ending - timedelta(days=6), week.ending), on_event=on_event)
@@ -896,4 +902,6 @@ def build_equities_weekly_review(
         "summary": compose_summary(blocks),
     }
     report_blocks(on_event, content)
-    return build_review(content, check_section(content, on_event))
+    review = build_review(content, check_section(content, on_event))
+    attach_chart_files(review, chart_files)   # written under the run id once the review is saved
+    return review

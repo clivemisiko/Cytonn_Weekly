@@ -13,6 +13,7 @@ from datetime import date
 
 import pytest
 
+from cytonn_weekly.charts import store as chart_store
 from cytonn_weekly.checkers.digital_payments import SOURCES_DISAGREE
 from cytonn_weekly.equities import weekly as eqw
 from cytonn_weekly.weekly import inputs, nse_price_list, previous_issue
@@ -91,9 +92,16 @@ def items(review, prefix):
 def test_the_section_is_in_the_real_issues_order_with_no_afx_tables(root):
     review = build(root)
     assert [b["id"] for b in review.section["blocks"]] == ["indices", "large_caps", "banking", "turnover", "foreign", "valuation",
-                                                          "universe_of_coverage", "outlook"]
+                                                          "chart_nasi_pe", "chart_nasi_yield", "universe_of_coverage", "outlook"]
     kinds = [b["kind"] for b in review.section["blocks"]]
-    assert kinds == ["computed"] * 6 + ["table", "carried"]   # no index table, no gainers or losers table
+    assert kinds == ["computed"] * 6 + ["chart", "chart", "table", "carried"]   # no index table, no gainers or losers table
+    assert [b["status"] for b in review.section["blocks"] if b["kind"] == "chart"] == ["drawn", "drawn"]
+    files = getattr(review, chart_store._FILES)          # rendered and kept on the review until its first save
+    assert {b["png_sha256"] for b in review.section["blocks"] if b["kind"] == "chart"} == {
+        chart_store.sha256(f["png"]) for f in files.values()} and set(files) == {"nasi_pe", "nasi_yield"}
+    # the charts are checked against what the valuation paragraph prints: the last points agree (8.0x and 6.0%)
+    assert [i.status for i in items(review, "NASI P/E chart: last plotted point")] == ["not_auto_verified"]
+    assert [i.status for i in items(review, "NASI dividend yield chart: last plotted point")] == ["not_auto_verified"]
     assert review.section["chart_notes"] == list(eqw.CHARTS) and review.section["week_ending"] == "2026-10-02"
 
 
@@ -287,7 +295,8 @@ def test_missing_inputs_leave_named_unavailable_parts(tmp_path):
     review = build(tmp_path, fetchers=eqw.Fetchers(usd_rates=down, price_list=down, read_box=down, afx_page=down, bulletin=down,
                                                    previous_issue=down))
     by = blocks(review)
-    assert list(by) == ["indices", "large_caps", "banking", "turnover", "foreign", "valuation", "universe_of_coverage", "outlook"]
+    assert list(by) == ["indices", "large_caps", "banking", "turnover", "foreign", "valuation", "chart_nasi_pe", "chart_nasi_yield",
+                        "universe_of_coverage", "outlook"]
     assert {b["kind"] for b in by.values()} == {"unavailable"}
     assert by["large_caps"]["reason"] == "KCB IB's weekly trading report for this week is not among this week's inputs."
     assert by["valuation"]["reason"] == (
@@ -295,7 +304,8 @@ def test_missing_inputs_leave_named_unavailable_parts(tmp_path):
         "not been typed under \"Weekly analyst inputs\", and the equities workbook for this week is not among this week's inputs.")
     assert by["universe_of_coverage"]["reason"].startswith("The Universe of Coverage inputs have not been typed")
     assert by["foreign"]["reason"].startswith("No foreign net flow was found for Monday 28 September")
-    assert {i.status for i in review.review_items} == {"flagged"} and len(review.review_items) == 8
+    assert by["chart_nasi_pe"]["reason"] == by["chart_nasi_yield"]["reason"] == eqw.NEED_WORKBOOK_FOR_CHARTS[0]   # no workbook: no chart
+    assert {i.status for i in review.review_items} == {"flagged"} and len(review.review_items) == 10
     assert review.section["summary"] == ""
 
 
