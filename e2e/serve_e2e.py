@@ -62,27 +62,23 @@ def clear_database_env() -> None:
 def verify_isolated(db_path: Path, data: Path) -> None:
     """Fail closed: exit non-zero (the message names no URL) unless the database target is the SQLite file in `data`.
 
-    Checked three ways: no database variable is set, the explicit path is a file inside the demo data folder, and an
-    open with no path (what any call that forgot one would do) is SQLite too, never the driver for PostgreSQL.
+    Nothing is opened: db.target() says where connect() would go.  No database variable may be set, the explicit path
+    must be a file inside the demo data folder, and a call that is given no path (the default) must be SQLite inside
+    that folder too, never PostgreSQL and never the real backend/data/app.db.
     """
     from cytonn_weekly import db  # imported here, after the variables are cleared
 
     clear_database_env()  # a .env loaded since (create_app does it unless told not to) would have put them back
     if any(os.environ.get(name) for name in DATABASE_ENV):
         raise SystemExit("E2E: refusing to start: a database variable is still set.")
-    db_path = Path(db_path).resolve()
-    if data.resolve() not in db_path.parents:
+    db_path, folder = Path(db_path).resolve(), data.resolve()
+    if folder not in db_path.parents:
         raise SystemExit("E2E: refusing to start: the database file is not inside the demo data folder.")
-    for target in (db_path, None):
-        conn = db.connect(target)
-        try:
-            if conn.schema is not None:
-                raise SystemExit("E2E: refusing to start: the database target is not SQLite.")
-            opened = Path(conn.execute("PRAGMA database_list").fetchone()[2]).resolve()
-        finally:
-            conn.close()
-        if target is not None and opened != db_path:
-            raise SystemExit("E2E: refusing to start: the database file opened is not the demo one.")
+    if db.target(db_path) != ("sqlite", db_path):
+        raise SystemExit("E2E: refusing to start: the database target is not the demo SQLite file.")
+    kind, default = db.target(None)
+    if kind != "sqlite" or folder not in Path(default).resolve().parents:
+        raise SystemExit("E2E: refusing to start: a call with no database path would not use the demo data folder.")
 
 
 def prepare(data: Path = DATA, pristine: Path = PRISTINE) -> Path:

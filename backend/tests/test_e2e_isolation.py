@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from cytonn_weekly import env
+from cytonn_weekly import db, env
 from cytonn_weekly.paths import REPO_ROOT
 
 URL = "postgresql://x:y@127.0.0.1:1/z?sslmode=require"
@@ -36,6 +36,7 @@ def hostile(tmp_path, monkeypatch):
     env_file.write_text(f"CYTONN_DATABASE_URL={URL}\nCYTONN_DATABASE_SCHEMA=cytonn\n")
     for name in NAMES:
         monkeypatch.setenv(name, URL if name.endswith("URL") else "cytonn")
+    monkeypatch.setattr(db, "_DEFAULT_DB", data / "app.db")  # where a call given no path goes, as with CYTONN_DATA_DIR set
     attempts = []
 
     def refuse(*args, **kwargs):
@@ -61,6 +62,7 @@ def test_the_instance_is_on_sqlite_in_the_demo_folder_and_never_connects(hostile
     serve.verify_isolated(db_path, data)  # clears it again and checks the target
     assert not any(os.environ.get(n) for n in NAMES)
     assert attempts == []
+    assert not (data / "app.db").exists() and not db_path.exists()  # checking the target opens nothing
 
 
 def test_a_database_file_outside_the_demo_folder_is_refused(hostile, tmp_path):
@@ -70,4 +72,15 @@ def test_a_database_file_outside_the_demo_folder_is_refused(hostile, tmp_path):
     with pytest.raises(SystemExit) as stopped:
         serve.verify_isolated(tmp_path / "elsewhere.db", data)
     assert "demo data folder" in str(stopped.value) and "postgresql" not in str(stopped.value).lower()
+    assert attempts == []
+
+
+def test_a_call_with_no_path_that_would_leave_the_demo_folder_is_refused(hostile, tmp_path, monkeypatch):
+    pristine, data, _, attempts = hostile
+    serve = _serve()
+    db_path = serve.prepare(data, pristine)
+    monkeypatch.setattr(db, "_DEFAULT_DB", tmp_path / "elsewhere" / "app.db")  # e.g. the real backend/data/app.db
+    with pytest.raises(SystemExit) as stopped:
+        serve.verify_isolated(db_path, data)
+    assert "no database path" in str(stopped.value)
     assert attempts == []
