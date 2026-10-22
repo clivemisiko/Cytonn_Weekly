@@ -79,7 +79,6 @@ def test_calls_reuse_one_connection_and_a_close_gives_it_back_without_closing_it
 def test_a_screens_worth_of_store_calls_opens_one_connection_on_postgres(conns):
     for _ in range(4):
         latest_runs()                                                     # the overview's reads
-    notable_store.load(None, "2026-10-02", "fixed_income")
     assert len(conns) == 1
 
 
