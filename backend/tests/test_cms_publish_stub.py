@@ -22,6 +22,7 @@ from fastapi.testclient import TestClient
 from api import cms_publish
 from api.cms_publish import BLOCKED_REASON, UNBLOCK, PublishNotAllowed, local_pieces, publish_report
 from api.main import create_app
+from cytonn_weekly import db as database
 from cytonn_weekly.digital_payments import review_store
 from cytonn_weekly.digital_payments.coordinator_review import APPROVED, REJECTED
 from cytonn_weekly.periodic import executive_summary
@@ -82,6 +83,7 @@ def sealed(monkeypatch, tmp_path):
         for name in ("mkdir", "makedirs", "remove", "unlink", "rename", "replace", "rmdir"):
             m.setattr(os, name, refuse(f"os.{name}"))
         m.setattr(sqlite3, "connect", refuse("sqlite3.connect"))
+        m.setattr(database, "connect", refuse("db.connect"))   # every runtime SQL call opens its connection here
         m.setattr(socket.socket, "connect", refuse("socket.connect"))
         m.setattr(socket, "create_connection", refuse("socket.create_connection"))
         m.setattr(socket, "getaddrinfo", refuse("socket.getaddrinfo"))
@@ -89,6 +91,26 @@ def sealed(monkeypatch, tmp_path):
         yield
     assert touched == []
     assert list(tmp_path.iterdir()) == []
+
+
+def test_the_seal_refuses_the_database_helper_and_everything_that_opens_through_it(monkeypatch, tmp_path):
+    # open_db, init_db and the review store reach the database through database.connect, so refusing it refuses all of them.
+    opens = {
+        "connect": lambda p: database.connect(p),
+        "open_db": lambda p: database.open_db(p),
+        "init_db": lambda p: database.init_db(p),
+        "load_latest_review": lambda p: review_store.load_latest_review(db_path=p),
+    }
+    for name, open_it in opens.items():
+        refusals = []
+        with pytest.raises(AssertionError, match=r"\['db\.connect'\]"):   # sealed() fails on exit, listing what was touched
+            with sealed(monkeypatch, tmp_path):
+                try:
+                    open_it(tmp_path / "x.db")
+                except AssertionError as refused:
+                    refusals.append(str(refused))
+        assert refusals == ["the publish stub must not use db.connect"], name
+        assert not (tmp_path / "x.db").exists(), name
 
 
 @pytest.fixture

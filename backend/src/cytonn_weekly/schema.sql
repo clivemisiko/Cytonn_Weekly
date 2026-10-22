@@ -22,9 +22,9 @@ CREATE TABLE IF NOT EXISTS sections (
 );
 
 -- ---------------------------------------------------------------------------
--- Seed: five sections.  INSERT OR IGNORE so re-running is safe.
+-- Seed: five sections.  ON CONFLICT DO NOTHING so re-running is safe.
 -- ---------------------------------------------------------------------------
-INSERT OR IGNORE INTO sections (name, current_analyst, focus_topic_source, in_active_build)
+INSERT INTO sections (name, current_analyst, focus_topic_source, in_active_build)
 VALUES
     ('Equities',          NULL, NULL,       0),
     ('Fixed Income',      NULL, NULL,       0),
@@ -33,7 +33,8 @@ VALUES
     ('Real Estate',       NULL, NULL,       0),
     -- Focus defaults to analyst-supplied sourcing; flip to 'tool' via
     -- update_section_config() once the tool-found path is trusted.
-    ('Focus',             NULL, 'analyst',  0);
+    ('Focus',             NULL, 'analyst',  0)
+ON CONFLICT (name) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
 -- coordinator_reviews: one row per drafted-and-checked section awaiting (or

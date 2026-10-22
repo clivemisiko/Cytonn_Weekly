@@ -18,6 +18,7 @@ from docx import Document
 from fastapi.testclient import TestClient
 
 from api.main import create_app
+from cytonn_weekly import db as db_module
 from cytonn_weekly import notable, sections
 from cytonn_weekly.notable.registry import DetectorContext, run_detectors
 from cytonn_weekly.notable.suggestion import InvalidSuggestion, Suggestion
@@ -366,13 +367,12 @@ def test_the_definitions_of_the_existing_tables_are_exactly_what_they_were(tmp_p
 
 def test_the_new_table_is_added_beside_the_others_and_changes_none_of_them(tmp_path):
     old = tmp_path / "old.db"
-    schema = sections._SCHEMA_SQL.read_text(encoding="utf-8")
+    schema = db_module._SCHEMA_SQL.read_text(encoding="utf-8")
     assert "suggestion_decisions" in schema and "CREATE TABLE IF NOT EXISTS suggestion_decisions" in schema
-    conn = sqlite3.connect(old)
-    conn.row_factory = sqlite3.Row  # as sections._connect opens it
-    conn.executescript(strip_new_table(schema))
-    sections._migrate(conn)  # the existing migration step, which init_db also runs; the only difference left is the new table
-    conn.commit()
+    conn = db_module.connect(old)
+    conn.run_script(strip_new_table(schema))
+    with conn.transaction():
+        db_module._migrate(conn)  # the existing migration step, which init_db also runs; the only difference left is the new table
     conn.close()
     assert "suggestion_decisions" not in {r["name"] for r in rows(old, "SELECT name FROM sqlite_master")}
     before = snapshot(old)

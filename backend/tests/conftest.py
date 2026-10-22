@@ -4,14 +4,14 @@
 exists, to migrate the copy, and checks the original's hash is unchanged.  It never opens
 the real file as a database.)
 
-Code that takes ``db_path=None`` falls back to sections._DEFAULT_DB, and the
+Code that takes ``db_path=None`` falls back to db._DEFAULT_DB, and the
 review API (api/main.py) does unless it is given a path.  Pointing that default at a per-test temp
 file means a test that forgets to pass its own path still cannot touch real data.
 """
 
 import pytest
 
-from cytonn_weekly import sections
+from cytonn_weekly import db
 
 
 @pytest.fixture(autouse=True)
@@ -30,6 +30,7 @@ def fake_anthropic_key(monkeypatch):
 # (docker-compose.yml passes the repo-root .env to it).  The suite assumes none is set:
 # a test that needs one sets it itself.
 _AMBIENT_SETTINGS = (
+    "CYTONN_DATABASE_URL",
     "CYTONN_LLM_PROVIDER",
     "CYTONN_LOCAL_MODEL",
     "CYTONN_OLLAMA_URL",
@@ -67,7 +68,7 @@ def no_real_env_file(tmp_path, monkeypatch):
 
 @pytest.fixture(autouse=True)
 def isolated_default_db(tmp_path, monkeypatch):
-    monkeypatch.setattr(sections, "_DEFAULT_DB", tmp_path / "default_app.db")
+    monkeypatch.setattr(db, "_DEFAULT_DB", tmp_path / "default_app.db")
 
 
 @pytest.fixture(autouse=True)

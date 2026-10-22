@@ -28,7 +28,7 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Callable, Optional, Union
 
-from cytonn_weekly import sections
+from cytonn_weekly import db
 from cytonn_weekly.common.run_events import Observer
 from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview
 from cytonn_weekly.report_types import ANNUAL, COMPANION, HALF_YEAR, QUARTERLY, WEEKLY
@@ -445,8 +445,7 @@ def latest_runs(db_path: Optional[Union[Path, str]] = None, report_type: str = W
 
     The defaults (weekly, no period label) are the reviews saved before report types existed.
     """
-    sections.init_db(db_path)
-    conn = sections._connect(db_path)
+    conn = db.open_db(db_path)
     try:
         rows = conn.execute(
             "SELECT r.section, r.run_id, r.run_date, r.decision, r.decided_at FROM coordinator_reviews r "
