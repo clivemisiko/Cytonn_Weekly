@@ -324,12 +324,67 @@ def test_a_failed_connection_is_told_apart_by_a_fixed_word(monkeypatch, caplog, 
     assert f"connection: {word} (OperationalError" in caplog.text and HOST not in caplog.text and USER not in caplog.text
 
 
-def test_a_driver_error_of_any_kind_is_one_fixed_sentence_for_the_screen():
-    for error in (psycopg.OperationalError(f"{HOST} {USER}"), psycopg.InterfaceError(URL), psycopg.ProgrammingError(PW),
-                  pg_errors.UniqueViolation(f"Key ({USER}) already exists"), pg_errors.InvalidPassword(URL)):
-        assert ev.user_message(error) == "Could not reach the database. Check CYTONN_DATABASE_URL and the network."
-        assert failure_message(error) == ev.user_message(error)
-    assert ev.user_message(KeyError("x")) == "KeyError: 'x'"            # anything else is worded as before
+def with_state(cls, state, text):
+    """A fake driver error carrying a SQLSTATE (the class attribute psycopg's own subclasses set, or an instance one)."""
+    exc = cls(text)
+    exc.sqlstate = state
+    return exc
+
+
+CONNECTION_CLASS = [
+    psycopg.OperationalError(f"{HOST} {USER}"),                                    # no SQLSTATE: a client-side failure
+    psycopg.InterfaceError(URL),
+    database.DatabaseNotAvailable(database.UNREACHABLE),
+    pg_errors.ConnectionException(f"{HOST}"),                                      # 08000
+    pg_errors.AdminShutdown(f"{USER}"),                                            # 57P01
+    pg_errors.CrashShutdown(f"{USER}"),                                            # 57P02
+    pg_errors.CannotConnectNow(f"{USER}"),                                         # 57P03
+    pg_errors.TooManyConnections(f"{HOST}"),                                       # 53300
+    with_state(psycopg.OperationalError, "08006", f"{HOST} {PW}"),
+]
+REJECTED_CLASS = [
+    pg_errors.DeadlockDetected(f"{USER} {PW}"),                                    # OperationalError, 40P01
+    pg_errors.QueryCanceled(f"{HOST}"),                                            # OperationalError, 57014
+    pg_errors.DiskFull(f"{HOST}"),                                                 # OperationalError, 53100
+    pg_errors.UniqueViolation(f"Key ({USER}) already exists"),
+    pg_errors.InvalidPassword(URL),
+    psycopg.ProgrammingError(PW),
+    pg_errors.DataError(f"{HOST}"),
+]
+
+
+@pytest.mark.parametrize("error", CONNECTION_CLASS, ids=lambda e: type(e).__name__ + str(getattr(e, "sqlstate", "")))
+def test_a_connection_class_error_says_could_not_reach_the_database_and_nothing_the_driver_said(error):
+    assert database.is_connection_error(error)
+    assert ev.user_message(error) == "Could not reach the database. Check CYTONN_DATABASE_URL and the network."
+    assert failure_message(error) == ev.user_message(error)
+    for secret in (HOST, USER, PW, URL):
+        assert secret not in ev.user_message(error) and secret not in ev.safe_describe(error)
+
+
+@pytest.mark.parametrize("error", REJECTED_CLASS, ids=lambda e: type(e).__name__ + str(getattr(e, "sqlstate", "")))
+def test_any_other_database_error_says_the_database_rejected_the_request_and_nothing_the_driver_said(error):
+    assert not database.is_connection_error(error)
+    assert ev.user_message(error) == "The database rejected the request. See the server log."
+    assert failure_message(error) == ev.user_message(error)
+    for secret in (HOST, USER, PW, URL):
+        assert secret not in ev.user_message(error) and secret not in ev.safe_describe(error)
+
+
+def test_an_operational_error_is_judged_by_its_sqlstate_only_when_it_has_one():
+    assert database.is_connection_error(psycopg.OperationalError("x"))
+    assert database.is_connection_error(with_state(psycopg.OperationalError, "57P03", "x"))
+    assert not database.is_connection_error(with_state(psycopg.OperationalError, "40P01", "x"))
+
+
+def test_an_error_that_is_not_the_drivers_is_not_a_connection_error_and_is_worded_as_before():
+    assert not database.is_connection_error(KeyError("x")) and not database.is_connection_error(ConnectionError("x"))
+    assert ev.user_message(KeyError("x")) == "KeyError: 'x'"
+
+
+def test_a_setting_problem_keeps_its_own_sentence_which_names_the_setting():
+    exc = database.DatabaseNotAvailable("CYTONN_DATABASE_SCHEMA must be lower-case letters")
+    assert database.is_connection_error(exc) and ev.user_message(exc) == str(exc)
 
 
 def test_a_failure_message_blanks_the_database_url_and_any_url_that_carries_credentials(monkeypatch):

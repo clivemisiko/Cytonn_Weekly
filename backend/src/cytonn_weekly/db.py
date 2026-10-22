@@ -43,6 +43,11 @@ MIN_SQLITE = (3, 39, 0)  # IS NOT DISTINCT FROM; RETURNING needs 3.35 and ON CON
 
 # What a coordinator is told when PostgreSQL cannot be used, whatever the driver said.
 UNREACHABLE = "Could not reach the database. Check CYTONN_DATABASE_URL and the network."
+# What a coordinator is told when the server was reached and refused the request; no detail, the driver's words can name the host.
+REJECTED = "The database rejected the request. See the server log."
+# SQLSTATEs that mean the connection, not the request: class 08 (connection exception), 57P01 to 57P03 (shutdown, crash,
+# cannot connect now) and 53300 (too many connections).  Any other state on an OperationalError (deadlock, cancelled, disk full) is a rejection.
+_CONNECTION_SQLSTATES = ("57P01", "57P02", "57P03", "53300")
 
 # Resolved at import time (cytonn_weekly/paths.py).  The schemas are code, so they sit beside this file and not in the
 # data folder, which a Docker volume replaces.
@@ -95,6 +100,26 @@ def is_postgres_error(exc: BaseException) -> bool:
     """True for any error psycopg raised.  Never imports the driver: if it was never loaded, nothing it raised can exist."""
     psycopg = sys.modules.get("psycopg")
     return psycopg is not None and isinstance(exc, psycopg.Error)
+
+
+def is_connection_error(exc: BaseException) -> bool:
+    """True when the database could not be reached or the connection was lost, False for a request the server refused.
+
+    Never imports the driver.  psycopg's OperationalError with no SQLSTATE is a client-side failure (connect, timeout,
+    closed socket) and counts; with one, only the connection states above count.  InterfaceError (a closed connection)
+    and DatabaseNotAvailable count.  This is the one place that knows driver classes: another driver means one new mapping here.
+    """
+    if isinstance(exc, DatabaseNotAvailable):
+        return True
+    psycopg = sys.modules.get("psycopg")
+    if psycopg is None or not isinstance(exc, psycopg.Error):
+        return False
+    if isinstance(exc, psycopg.InterfaceError):
+        return True
+    if isinstance(exc, psycopg.OperationalError):
+        state = getattr(exc, "sqlstate", None)
+        return state is None or state.startswith("08") or state in _CONNECTION_SQLSTATES
+    return False
 
 
 def _postgres_sql(sql: str) -> str:
