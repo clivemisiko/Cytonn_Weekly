@@ -173,7 +173,8 @@ def test_a_connection_gets_the_url_with_ssl_required_and_a_dict_row_autocommit_c
     database.connect().close()
     conn = made[0]
     assert conn.url == URL + "?sslmode=require"
-    assert conn.kwargs == {"row_factory": dict_row, "autocommit": True, "connect_timeout": database.CONNECT_TIMEOUT_SECONDS}
+    assert conn.kwargs == {"row_factory": dict_row, "autocommit": True, "connect_timeout": database.CONNECT_TIMEOUT_SECONDS,
+                           "keepalives": 1, "keepalives_idle": 30, "keepalives_interval": 10, "keepalives_count": 3}
 
 
 def test_a_user_name_with_a_dot_reaches_the_driver_parsed_as_written():
@@ -187,11 +188,29 @@ def test_a_user_name_with_a_dot_reaches_the_driver_parsed_as_written():
 def test_search_path_is_set_by_a_statement_first_on_every_new_connection_and_not_as_a_startup_option(made):
     for _ in range(3):
         database.connect().close()
+        database.close_all()                                          # a new connection each time
     assert len(made) == 3
     for conn in made:
         assert conn.statements[0] == ('SET search_path TO "cytonn"', None)
         assert "options" not in conn.url and "options" not in conn.kwargs
 
+
+def test_a_statement_timeout_of_30_seconds_is_set_right_after_the_search_path_on_every_new_connection(made):
+    for _ in range(3):
+        database.connect().close()
+        database.close_all()
+    assert len(made) == 3
+    for conn in made:
+        assert [s for s, _ in conn.statements[:2]] == ['SET search_path TO "cytonn"', "SET statement_timeout = '30s'"]
+
+
+def test_libpq_keepalives_are_passed_on_every_new_connection(made):
+    for _ in range(2):
+        database.connect().close()
+        database.close_all()
+    for conn in made:
+        assert {k: v for k, v in conn.kwargs.items() if k.startswith("keepalives")} == {
+            "keepalives": 1, "keepalives_idle": 30, "keepalives_interval": 10, "keepalives_count": 3}
 
 def test_the_schema_comes_from_the_environment_and_is_always_set_on_the_connection(made, monkeypatch):
     monkeypatch.setenv(database.DATABASE_SCHEMA_ENV, "my_schema_2")
@@ -224,20 +243,21 @@ def test_a_failing_search_path_statement_closes_the_connection_and_says_only_the
 def test_the_schema_script_runs_once_per_process_in_one_transaction_after_an_advisory_lock(made):
     for _ in range(3):
         database.open_db().close()
+        database.close_all()
     assert len(made) == 3
     first, later = made[0], made[1:]
     sql = [s for s, _ in first.statements]
-    assert sql[0].startswith("SET search_path") and sql[1].startswith("SELECT pg_advisory_xact_lock(")
-    assert 'CREATE SCHEMA IF NOT EXISTS "cytonn";' in sql[2] and "{schema}" not in sql[2]
+    assert sql[0].startswith("SET search_path") and sql[1].startswith("SET statement_timeout") and sql[2].startswith("SELECT pg_advisory_xact_lock(")
+    assert 'CREATE SCHEMA IF NOT EXISTS "cytonn";' in sql[3] and "{schema}" not in sql[3]
     assert first.transactions == ["begin", "commit"]
-    assert all(len(c.statements) == 1 and c.transactions == [] for c in later)   # the rest only set the search_path
+    assert all(len(c.statements) == 2 and c.transactions == [] for c in later)   # the rest only set the search_path and the timeout
 
 
 def test_a_different_schema_gets_its_own_script(made, monkeypatch):
     database.open_db().close()
     monkeypatch.setenv(database.DATABASE_SCHEMA_ENV, "another")
     database.open_db().close()
-    assert 'CREATE SCHEMA IF NOT EXISTS "another";' in made[1].statements[2][0]
+    assert 'CREATE SCHEMA IF NOT EXISTS "another";' in made[1].statements[3][0]
 
 
 def test_a_failing_schema_script_closes_its_connection_and_is_tried_again_next_time(made, monkeypatch):

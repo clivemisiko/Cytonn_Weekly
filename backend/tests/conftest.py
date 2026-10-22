@@ -73,6 +73,14 @@ def isolated_default_db(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_held_postgres_connection():
+    """The held PostgreSQL connection is process-wide: no test starts with the last one's, or leaves its own."""
+    db.close_all()
+    yield
+    db.close_all()
+
+
+@pytest.fixture(autouse=True)
 def isolated_weekly_inputs(tmp_path, monkeypatch):
     """The weekly inputs (uploaded workbooks and reports) default to a folder under the real data
     directory; no test may read or write there, so the default is a per-test temp folder."""

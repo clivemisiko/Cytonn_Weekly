@@ -954,6 +954,7 @@ def create_app(
             save(review)
             return serialize_review(review)
 
+    app.router.on_shutdown.append(database.close_all)  # the held PostgreSQL connection, if any
     return app
 
 
