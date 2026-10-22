@@ -44,6 +44,8 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable, Iterable, Optional, TypeVar
 
+import httpx
+
 log = logging.getLogger(__name__)
 
 RUN_STARTED = "run_started"
@@ -122,6 +124,26 @@ def describe(exc: BaseException) -> str:
     return " ".join(f"{type(exc).__name__}: {exc}".split())
 
 
+def user_message(exc: BaseException) -> str:
+    """``describe`` for the screen: a connection failure is worded for a coordinator, anything else as ``describe``.
+
+    "ConnectTimeout: _ssl.c:983: The handshake operation timed out" names neither the service nor
+    what to do.  httpx's errors, and the Anthropic SDK's, which wrap them, carry the request, so
+    the host is named (its address only: the key travels in a header).
+    """
+    import anthropic  # imported here: only a failed run needs it
+
+    if not isinstance(exc, (httpx.TransportError, anthropic.APIConnectionError)):
+        return describe(exc)  # a built-in ConnectionError says for itself what it was reaching
+    try:
+        host = exc.request.url.host  # type: ignore[attr-defined]  # httpx raises RuntimeError when none is set
+    except Exception:  # noqa: BLE001
+        host = None
+    slow = isinstance(exc, (httpx.TimeoutException, anthropic.APITimeoutError))
+    return (f"Could not reach {host or 'an outside service'}: it {'did not answer in time' if slow else 'could not be reached'}. "
+            "Check your internet connection (a VPN, proxy or firewall can block it) and try again.")
+
+
 def fetch_source(on_event: Optional[Observer], label: str, fetch: Callable[..., T], *args: Any) -> T:
     """Call ``fetch(*args)``, reporting it as one named source.  Its result and its errors are untouched."""
     if on_event is None:
@@ -130,7 +152,7 @@ def fetch_source(on_event: Optional[Observer], label: str, fetch: Callable[..., 
     try:
         result = fetch(*args)
     except Exception as exc:
-        emit(on_event, SOURCE_FAILED, label, detail=describe(exc))
+        emit(on_event, SOURCE_FAILED, label, detail=user_message(exc))
         raise
     emit(on_event, SOURCE_FINISHED, label)
     return result
