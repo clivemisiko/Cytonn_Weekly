@@ -31,6 +31,7 @@ def fake_anthropic_key(monkeypatch):
 # a test that needs one sets it itself.
 _AMBIENT_SETTINGS = (
     "CYTONN_DATABASE_URL",
+    "CYTONN_DATABASE_SCHEMA",
     "CYTONN_LLM_PROVIDER",
     "CYTONN_LOCAL_MODEL",
     "CYTONN_OLLAMA_URL",
@@ -89,6 +90,7 @@ def isolated_chart_files(tmp_path, monkeypatch):
 
 
 _LOCAL_HOSTS = ("127.0.0.1", "::1", "localhost")
+_ALLOWED_HOSTS: set = set()  # host names a test module has opted into, besides loopback; empty unless one does
 
 
 def _block_network() -> None:
@@ -117,7 +119,7 @@ def _block_network() -> None:
         raise ConnectionRefusedError(f"network access in a test: {address!r}")
 
     def getaddrinfo(host, *args, **kwargs):
-        if host in _LOCAL_HOSTS or host is None:
+        if host in _LOCAL_HOSTS or host is None or host in _ALLOWED_HOSTS:
             return real_getaddrinfo(host, *args, **kwargs)
         raise socket.gaierror(f"network access in a test: {host!r}")
 
@@ -126,3 +128,11 @@ def _block_network() -> None:
 
 
 _block_network()
+
+
+@pytest.fixture(scope="session")
+def network_allowlist():
+    """The set of host names the guard above lets through besides loopback.  Only test_postgres_smoke.py adds one,
+    its own test database's host, for as long as that module runs.  (psycopg looks the host up in Python, which the
+    guard refuses; the connection itself is made by libpq, which the guard cannot see.)"""
+    return _ALLOWED_HOSTS

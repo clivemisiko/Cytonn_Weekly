@@ -26,6 +26,8 @@ dependencies = [
     # The charts the tool draws from the analysts' workbooks (charts/draw.py): the Figure and Agg canvas only, never
     # pyplot, with the DejaVu Sans font that ships in the wheel.  3.11.2 needs Python 3.11 or later.
     "matplotlib==3.11.2",
+    # PostgreSQL on Supabase (db.py).  [binary] bundles libpq, so nothing is installed beside it on Windows or in the image.
+    "psycopg[binary]==3.3.6",
 ]
 
 [project.optional-dependencies]
@@ -35,7 +37,7 @@ test = ["pytest==9.1.1"]  # installed in the Docker image so the suite runs ther
 where = ["src"]
 
 [tool.setuptools.package-data]
-cytonn_weekly = ["schema.sql"]  # the database schema, read by sections.init_db()
+cytonn_weekly = ["schema.sql", "schema_postgres.sql"]  # the database schemas, read by db.open_db()
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

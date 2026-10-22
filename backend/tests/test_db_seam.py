@@ -1,7 +1,8 @@
 """Stage P1, the database seam (cytonn_weekly/db.py): every runtime SQL call goes through one module.
 
-SQLite only.  Nothing here connects to PostgreSQL, imports psycopg or opens backend/data/app.db: conftest points the
-default file at a temp file, and the tests that need a path pass their own.
+SQLite, plus the choice of database.  Nothing here connects to PostgreSQL (where a test reaches for it, psycopg.connect is
+replaced) or opens backend/data/app.db: conftest points the default file at a temp file, and the tests that need a path
+pass their own.  The PostgreSQL path itself is in test_db_postgres.py, and test_postgres_smoke.py runs it for real.
 """
 
 import ast
@@ -260,13 +261,22 @@ def test_an_explicit_path_is_sqlite_even_when_a_database_url_is_set(path, monkey
     lambda: rs.save_review(make_review()),
     lambda: sections.get_section_config("Equities"),
 ])
-def test_no_path_and_a_database_url_selects_postgres_which_waits_for_stage_p2(call, monkeypatch):
+def test_no_path_and_a_database_url_selects_postgres_and_never_falls_back_to_sqlite(call, monkeypatch):
+    import psycopg
+
+    tried = []
+
+    def unreachable(url, **kwargs):
+        tried.append(url)
+        raise psycopg.OperationalError(f"connection to server at localhost failed: {URL}")
+
+    monkeypatch.setattr(psycopg, "connect", unreachable)
     monkeypatch.setenv(database.DATABASE_URL_ENV, URL)
     default = Path(database._DEFAULT_DB)
     with pytest.raises(database.DatabaseNotAvailable) as err:
         call()
-    assert "Stage P2" in str(err.value) and database.DATABASE_URL_ENV in str(err.value)
-    assert "hunter2" not in str(err.value) and "localhost" not in str(err.value)       # the URL is never echoed
+    assert len(tried) == 1 and str(err.value) == database.UNREACHABLE
+    assert "hunter2" not in str(err.value) and "localhost" not in str(err.value)       # the driver's words are never passed on
     assert not default.exists()                                                         # and no SQLite file was made instead
 
 
@@ -277,20 +287,18 @@ def test_a_blank_database_url_is_no_url(blank, monkeypatch):
     assert Path(database._DEFAULT_DB).is_file()
 
 
-def test_the_postgres_refusal_imports_no_driver():
-    # In a fresh interpreter: psycopg is installed here and some pytest plugin imports it, so sys.modules cannot say.
+def test_importing_the_module_and_using_sqlite_load_no_driver(tmp_path):
+    # In a fresh interpreter: psycopg is installed here and yfinance (through peewee) imports it, so sys.modules cannot say.
     code = "\n".join([
         "import sys",
         "from cytonn_weekly import db",
-        "try:",
-        "    db.connect()",
-        "except db.DatabaseNotAvailable:",
-        "    print('refused')",
+        "db.init_db(sys.argv[1])",
         "print('psycopg' in sys.modules, 'sqlite3' in sys.modules)",
     ])
-    env = {**os.environ, database.DATABASE_URL_ENV: URL}
-    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env, cwd=BACKEND_ROOT, check=True).stdout.split()
-    assert out == ["refused", "False", "True"]
+    env = {k: v for k, v in os.environ.items() if k != database.DATABASE_URL_ENV}
+    out = subprocess.run([sys.executable, "-c", code, str(tmp_path / "fresh.db")], capture_output=True, text=True, env=env,
+                         cwd=BACKEND_ROOT, check=True).stdout.split()
+    assert out == ["False", "True"]
 
 
 def test_psycopg_is_not_imported_at_module_level_by_the_connection_module():
