@@ -82,7 +82,7 @@ const lists = computed(() =>
 <template>
   <li class="@container" :aria-labelledby="`sec-${s.slug}`">
     <div class="grid grid-cols-1 gap-x-3 @md:grid-cols-[2.5rem_minmax(0,1fr)]">
-      <span class="hidden size-10 place-items-center rounded-full bg-accent font-mono text-sm font-semibold text-accent-foreground @md:grid" aria-hidden="true">
+      <span class="hidden size-10 place-items-center rounded-full bg-muted font-mono text-sm font-semibold text-foreground @md:grid" aria-hidden="true">
         {{ index + 1 }}
       </span>
 
@@ -133,7 +133,7 @@ const lists = computed(() =>
                 fill="none"
                 stroke-width="4"
                 stroke-linecap="round"
-                class="stroke-primary"
+                class="stroke-foreground"
                 :stroke-dasharray="RING"
                 :stroke-dashoffset="RING * (1 - fraction)"
               />

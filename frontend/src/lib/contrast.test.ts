@@ -42,6 +42,7 @@ export const PAIRS: Pair[] = [
   { what: "ink on page", fg: T("foreground"), bg: T("background"), min: TEXT },
   { what: "body grey (muted text) on card", fg: T("muted-foreground"), bg: T("card"), min: TEXT },
   { what: "muted text on page", fg: T("muted-foreground"), bg: T("background"), min: TEXT },
+  { what: "disabled primary button: its label on its grey fill", fg: T("muted-foreground"), bg: T("muted"), min: TEXT },
   { what: "muted text on the muted fill", fg: T("muted-foreground"), bg: T("muted"), min: TEXT },
   { what: "link on card", fg: T("link"), bg: T("card"), min: TEXT },
   { what: "link on page", fg: T("link"), bg: T("background"), min: TEXT },
