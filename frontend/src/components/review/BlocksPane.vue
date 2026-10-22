@@ -3,6 +3,7 @@ import { PhChartBar, PhLockSimple } from "@phosphor-icons/vue";
 import { SCOPE_LABELS, friendlyDate, friendlyTime, weekRange } from "@/lib/format";
 import type { BlocksSection, ComputedBlock, NotCovered, Review, TableBlock } from "@/lib/types";
 import DataTable from "./DataTable.vue";
+import ChartCard from "./ChartCard.vue";
 import Markdown from "./Markdown.vue";
 import Notice from "./Notice.vue";
 import Numeral from "./Numeral.vue";
@@ -10,7 +11,7 @@ import PartsLine from "./PartsLine.vue";
 import Warnings from "./Warnings.vue";
 
 /** Every block-shaped section (all but the weekly Digital Payments): its blocks in report order, nothing derived here. */
-defineProps<{ review: Review; section: BlocksSection }>();
+defineProps<{ review: Review; section: BlocksSection; onTeamChart: (chartId: string, use: boolean) => Promise<boolean> }>();
 
 const BODY = "max-w-[68ch] text-base leading-7 md:pl-11";
 const PIECE = "space-y-3 border-t px-4 py-6 sm:px-6";
@@ -186,6 +187,10 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
         </Notice>
         <Markdown :class="BODY" :text="b.body_md" />
       </article>
+
+      <!-- A chart the tool draws from the analyst workbook: the picture, its facts and its points. Its checks are review
+           items in the panel beside the draft; its notices are in the card. -->
+      <ChartCard v-else-if="b.kind === 'chart'" :review="review" :block="b" :on-team-chart="onTeamChart" />
 
       <!-- A part of the real report this tool cannot draft yet. Neutral, not a review-state colour: nothing was checked. -->
       <section v-else :class="PIECE" :aria-labelledby="`blk-${b.id}`">

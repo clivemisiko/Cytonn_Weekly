@@ -100,7 +100,12 @@ function subline(c: StatusCounts): string {
         <div role="group" aria-label="Review items by status" class="grid grid-cols-1 gap-3 @min-[34rem]:grid-cols-3">
           <CountTile v-for="s in STATUS_ORDER" :key="s" :status="s" :value="review.counts[s].total" :sub="subline(review.counts[s])" />
         </div>
-        <BlocksPane v-if="isBlocksSection(review.section)" :review="review" :section="review.section" />
+        <BlocksPane
+          v-if="isBlocksSection(review.section)"
+          :review="review"
+          :section="review.section"
+          :on-team-chart="session.setTeamChart"
+        />
         <DraftPane v-else :review="review" :section="review.section" />
         <!-- The analyst's worklist for this week: separate from the review above, which it never changes. -->
         <NotablePanel

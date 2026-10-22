@@ -9,8 +9,9 @@ What it holds, read from Cytonn Weekly #38.2026 (cytonnreport.com issue 891):
 
 * the six sections under the issue's own headings, in its order;
 * every table as a Word table, with its source line and footnotes;
-* each chart the real issue carries as "[Chart to add: <caption>]", where the issue puts it
-  (the tool draws no charts);
+* each chart the real issue carries, where the issue puts it: the tool's own picture (6.0 in wide, with a line under it
+  saying it is from the analyst workbook and not verified) for a chart it drew and the coordinator approved, otherwise
+  "[Chart to add: <caption>]" for the team's own chart (``_chart`` says each case);
 * text carried forward from the previous issue marked as such, and a part the coordinator
   approved as missing named as missing, so neither can pass for finished copy;
 * a final part, "Section summaries for the CMS": each section's summary, which the website
@@ -25,6 +26,7 @@ from __future__ import annotations
 
 import re
 from datetime import date
+from io import BytesIO
 from pathlib import Path
 from typing import Any, Optional, Union
 
@@ -32,9 +34,11 @@ from docx import Document
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import parse_xml
-from docx.shared import Pt, RGBColor
+from docx.shared import Inches, Pt, RGBColor
 
 from cytonn_weekly import paths
+from cytonn_weekly.charts import store as chart_store
+from cytonn_weekly.charts.block import PROVENANCE, team_chart_chosen
 from cytonn_weekly.digital_payments import review_store
 from cytonn_weekly.digital_payments.coordinator_review import APPROVED, CoordinatorReview
 from cytonn_weekly.digital_payments.delivery import DevModeDeliveryBlocked, is_dev_mode_review
@@ -57,6 +61,9 @@ DEV_LABEL = "DEV MODE DRAFT (local model): NOT FOR PUBLICATION OR CIRCULATION"
 WATERMARK = "DEV MODE DRAFT"
 SUMMARIES_HEADING = "Section summaries for the CMS"
 CARRIED_NOTE = "[Carried forward from the previous issue: edit before publishing]"
+CHART_WIDTH = Inches(6.0)
+CHART_NOT_VERIFIED = f"{PROVENANCE[0].upper()}{PROVENANCE[1:]}."   # its own paragraph, so the editor can delete it
+PICTURE_UNVERIFIED = "[Chart not drawn: the stored picture could not be verified]"
 
 # The issue's own section headings (#38.2026).
 HEADINGS = {"company_updates": "Company Updates", "fixed_income": "Fixed Income", "equities": "Equities",
@@ -196,15 +203,58 @@ def _add_table_block(doc, block: dict[str, Any]) -> None:
         _small(doc, f"{r.get(block['key_field'])}: {r['error']}", color=_RED, italic=True)
 
 
-def _charts(doc, captions: list[str]) -> None:
-    for caption in captions:
-        p = doc.add_paragraph()
-        r = p.add_run(f"[Chart to add: {caption}]")
-        r.italic, r.font.color.rgb = True, _INK
+def _placeholder(doc, caption: str) -> None:
+    r = doc.add_paragraph().add_run(f"[Chart to add: {caption}]")
+    r.italic, r.font.color.rgb = True, _INK
 
 
-def _add_blocks(doc, section: dict[str, Any]) -> None:
+def _red_line(doc, text: str) -> None:
+    r = doc.add_paragraph().add_run(text)
+    r.italic, r.font.color.rgb = True, _RED
+
+
+def _chart(doc, caption: str, chart: Optional[dict[str, Any]], review: CoordinatorReview,
+           charts_root: Optional[Union[Path, str]]) -> None:
+    """One chart's place in the file.  ``chart`` is the section's chart block for this caption, if the tool has one.
+
+    * The tool's chart was drawn, is still the one in use and its stored picture verifies (the same SHA-256 check as the
+      review screen's route): the picture, 6.0 in wide, with the caption as its alt text and, in its own paragraph, the
+      line saying where its history comes from.
+    * The coordinator chose the team's own chart, or no workbook was uploaded: the placeholder and nothing else.
+    * A workbook was uploaded but the chart was not drawn (the coordinator accepted it as missing): the placeholder and,
+      in red, why.
+    * The picture is drawn but its file is changed or missing now: the placeholder and a red line, never a picture
+      that cannot be verified.
+    * No chart block for the caption (every chart outside this feature): the placeholder, as before.
+    """
+    if chart is None or chart["status"] == "no_workbook" or team_chart_chosen(review, chart["chart_id"]):
+        return _placeholder(doc, caption)
+    if chart["status"] != "drawn":
+        _placeholder(doc, caption)
+        why = next((d["message"] for d in chart.get("defects", []) if d.get("blocking")), "the chart could not be drawn")
+        return _red_line(doc, f"[Chart not drawn: {why}]")
+    try:
+        png = chart_store.read_png(review.run_id, chart["chart_id"], chart.get("png_sha256"), charts_root)
+    except chart_store.ChartFileError:
+        _placeholder(doc, caption)
+        return _red_line(doc, PICTURE_UNVERIFIED)
+    para = doc.add_paragraph()
+    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    para.paragraph_format.keep_with_next = True      # the line below stays on the picture's page
+    shape = para.add_run().add_picture(BytesIO(png), width=CHART_WIDTH)
+    shape._inline.docPr.set("descr", caption)
+    _small(doc, CHART_NOT_VERIFIED)
+
+
+def _add_blocks(doc, review: CoordinatorReview, charts_root: Optional[Union[Path, str]] = None) -> None:
+    section = review.section
     chart_after: dict[str, list[str]] = section.get("chart_after") or {}
+    charts = {b["caption"]: b for b in section.get("blocks", []) if b.get("kind") == "chart"}
+
+    def place(captions: list[str]) -> None:
+        for caption in captions:
+            _chart(doc, caption, charts.get(caption), review, charts_root)
+
     placed: set[str] = set()
     for block in section.get("blocks", []):
         kind = block["kind"]
@@ -234,10 +284,12 @@ def _add_blocks(doc, section: dict[str, Any]) -> None:
             p = doc.add_paragraph()
             r = p.add_run(f"[Not included: {block['title']}. {block['reason']}]")
             r.italic, r.font.color.rgb = True, _RED
+        # A chart block prints nothing where it stands: its place is where its caption is listed (chart_after).
         captions = chart_after.get(block["id"]) or []
-        _charts(doc, captions)
+        place(captions)
         placed.update(captions)
-    _charts(doc, [c for c in section.get("chart_notes") or [] if c not in placed])
+    notes = section.get("chart_notes") or []
+    place([c for c in notes if c not in placed] + [c for c in charts if c not in placed and c not in notes])
 
 
 def _add_digital_payments(doc, section: dict[str, Any]) -> None:
@@ -291,8 +343,11 @@ def report_title(period: str) -> str:
     return f"Cytonn Weekly: {period}" if period else "Cytonn Weekly"
 
 
-def build_weekly_document(reviews: list[tuple[SectionSpec, CoordinatorReview]], period: str):
-    """The python-docx Document of an approved week (the caller has already required every section approved)."""
+def build_weekly_document(reviews: list[tuple[SectionSpec, CoordinatorReview]], period: str,
+                          charts_root: Optional[Union[Path, str]] = None):
+    """The python-docx Document of an approved week (the caller has already required every section approved).
+
+    ``charts_root`` is where the reviews' chart files are kept (default: under the data directory)."""
     doc = Document()
     _style_document(doc)
     heading1 = doc.styles["Heading 1"]
@@ -316,7 +371,7 @@ def build_weekly_document(reviews: list[tuple[SectionSpec, CoordinatorReview]], 
         doc.add_heading(HEADINGS.get(spec.slug, spec.title), level=1)
         section = review.section
         if "blocks" in section:
-            _add_blocks(doc, section)
+            _add_blocks(doc, review, charts_root)
         else:
             _add_digital_payments(doc, section)
 
@@ -354,11 +409,11 @@ def export_dir(root: Optional[Union[Path, str]] = None) -> Path:
 
 
 def write_weekly_report(db_path: Optional[Union[Path, str]], period: str, out_dir: Optional[Union[Path, str]] = None,
-                        today: Optional[date] = None) -> Path:
+                        today: Optional[date] = None, charts_root: Optional[Union[Path, str]] = None) -> Path:
     """Write the week's approved report and return its path.  ExportNotAllowed unless every section is approved."""
     reviews = require_all_approved(weekly_reviews(db_path, period, today))
     folder = export_dir(out_dir)
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / file_name(period)
-    build_weekly_document(reviews, period).save(str(path))
+    build_weekly_document(reviews, period, charts_root).save(str(path))
     return path

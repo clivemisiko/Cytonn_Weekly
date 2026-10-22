@@ -13,6 +13,7 @@ from docx import Document
 from fastapi.testclient import TestClient
 
 from api.main import create_app
+from cytonn_weekly.charts import store as chart_store
 from cytonn_weekly.digital_payments import review_store
 from cytonn_weekly.digital_payments.delivery import DevModeDeliveryBlocked
 from cytonn_weekly.equities import weekly as eq_weekly
@@ -45,6 +46,7 @@ def _save(db, slug, review, approve=True):
     if approve:
         _approve(review)
     review_store.save_review(review, section=slug, db_path=db)
+    chart_store.persist(review)   # a drawn chart's files, under the run id the save just gave it (a no-op for the rest)
     return review
 
 
@@ -142,10 +144,11 @@ def test_computed_paragraphs_tables_charts_and_marked_text_are_all_in_the_file(w
     assert "increasing the most by 75.6 bps to 7.6% from 6.9% recorded the previous week" in body
     assert "the Kenya Shilling depreciated against the US Dollar by 10.8 bps, to close the week at Kshs 129.8" in body
     assert "is at 58.3% of its pro-rated net domestic borrowing target" in body and "ahead of its" not in body
-    # charts are placeholders, where the issue puts them
+    # charts the tool does not draw are placeholders, where the issue puts them; the two it drew are pictures (test_weekly_export_charts.py)
     tbills = text.index("Money Markets, T-Bills Primary Auction")
     charts = [t for t in text if t.startswith("[Chart to add: ")]
-    assert len(charts) == 6 + 2 and text[tbills + 3].startswith("[Chart to add: The chart below shows the yield growth rate")
+    assert len(charts) == 6 and text[tbills + 3].startswith("[Chart to add: The chart below shows the yield growth rate")
+    assert len(doc.inline_shapes) == 2 and not [t for t in text if t.startswith("[Chart not drawn")]
     assert sum(t == "[Carried forward from the previous issue: edit before publishing]" for t in text) == 3
     assert any(t.startswith("[Not included: T-Bonds: recommended bidding range") for t in text)
     assert "Source: Business Daily" in text and "Source: Central Bank of Kenya (CBK) Weekly Highlights" in text
@@ -184,6 +187,49 @@ def test_a_dev_mode_week_is_watermarked_and_never_sendable(week, tmp_path):
         export.refuse_to_send(reviews)
 
 
+def test_the_pictures_are_read_from_the_charts_folder_the_app_was_given(week, tmp_path):
+    import shutil
+
+    elsewhere = tmp_path / "elsewhere"
+    shutil.move(str(chart_store.root_dir()), str(elsewhere))      # the files now live only under the folder the app is told about
+    path = export.write_weekly_report(week, PERIOD, tmp_path / "out", charts_root=elsewhere)
+    assert len(Document(str(path)).inline_shapes) == 2
+    client = TestClient(create_app(db_path=week, load_dotenv=False, export_root=tmp_path / "exports", charts_root=elsewhere))
+    served = client.post("/api/export/weekly", params={"period": "2026-10-02"})
+    assert served.status_code == 200 and len(Document(io.BytesIO(served.content)).inline_shapes) == 2
+    # From the default folder, which is empty now, the same week has no pictures, and the file says so in red.
+    doc = Document(str(export.write_weekly_report(week, PERIOD, tmp_path / "out2")))
+    assert len(doc.inline_shapes) == 0 and [p.text for p in doc.paragraphs].count(export.PICTURE_UNVERIFIED) == 2
+
+
+def test_a_chart_item_marked_fix_needed_stops_the_approval_and_so_the_export(tmp_path, built):
+    db = tmp_path / "app.db"
+    fi, eq = built
+    _save(db, "company_updates", company_updates.build_company_updates_weekly_review("Investment Updates:\n\nRates held.", WEEK.ending))
+    _save(db, "fixed_income", _copy(fi))
+    _save(db, "real_estate", sh.real_estate_review())
+    _save(db, "digital_payments", make_review())
+    _save(db, "focus", sh.focus_review(topic="SSA Eurobonds"))
+    equities = _copy(eq)
+    chart_item = next(i for i in equities.review_items if i.kind == "chart")
+    for item in equities.review_items:
+        item.resolve("fix_needed" if item is chart_item else "accept")
+    with pytest.raises(ValueError, match="cannot approve: 0 item.s. unresolved, 1 marked fix_needed"):
+        equities.decide("approved")                      # one chart item needing a fix is enough to hold the section
+    equities.report_type, equities.period = "weekly", PERIOD
+    equities.section.setdefault("section", "equities")
+    review_store.save_review(equities, section="equities", db_path=db)          # undecided: still in review
+    assert export.export_status(db, PERIOD)["ready"] is False
+    equities.decide("rejected")                          # rejecting is always allowed
+    review_store.save_review(equities, section="equities", db_path=db)
+    with pytest.raises(export.ExportNotAllowed, match=r"Not yet: Equities \(rejected\)\.$"):
+        export.write_weekly_report(db, PERIOD, tmp_path / "out")
+    client = TestClient(create_app(db_path=db, load_dotenv=False, export_root=tmp_path / "exports"))
+    refused = client.post("/api/export/weekly", params={"period": "2026-10-02"})
+    assert refused.status_code == 409 and "Equities (rejected)" in refused.json()["detail"]
+    assert not (tmp_path / "exports").exists() and not (tmp_path / "out").exists()      # nothing is written
+
+
 def test_a_normal_week_may_be_sent(week):
     export.refuse_to_send(export.require_all_approved(export.weekly_reviews(week, PERIOD)))   # does not raise
 
@@ -207,6 +253,7 @@ def test_the_api_reports_readiness_and_returns_the_file(week, tmp_path):
     assert 'filename="Cytonn-Weekly-2026-10-02.docx"' in r.headers["content-disposition"]
     _, text = _text(r.content)
     assert text[0] == "Cytonn Weekly: week ending 2nd October 2026"
+    assert len(Document(io.BytesIO(r.content)).inline_shapes) == 2        # the Equities charts, read through the route's own check
     assert (tmp_path / "exports" / "Cytonn-Weekly-2026-10-02.docx").is_file()
     refused = client.post("/api/export/weekly", params={"period": "2026-09-25"})
     assert refused.status_code == 409 and refused.json()["detail"].startswith("The weekly report can be exported only when every section is approved.")

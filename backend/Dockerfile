@@ -1,5 +1,5 @@
 # The review API (FastAPI). Build context: backend/.
-# 3.12 is the version the project is developed on (pyproject asks for >=3.10).
+# 3.12 is the version the project is developed on (pyproject asks for >=3.11, which matplotlib 3.11.2 needs).
 FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 \

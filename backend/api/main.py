@@ -56,9 +56,11 @@ from typing import Any, Callable, Literal, Mapping, Optional, Sequence, Union
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
+from cytonn_weekly.charts import store as chart_store
+from cytonn_weekly.charts.block import set_team_chart
 from cytonn_weekly.common.run_events import RUN_STARTED, describe, review_counts
 from cytonn_weekly.digital_payments import review_run, review_store
 from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview, rejected_draft_notes
@@ -170,6 +172,12 @@ class Decision(BaseModel):
     decision: Literal["approved", "rejected"]
 
 
+class TeamChartBody(BaseModel):
+    """``use`` true sets the tool's chart aside for the team's own; false takes that back."""
+
+    use: bool
+
+
 ReportType = Literal["weekly", "quarterly", "half_year", "annual", "companion"]
 
 
@@ -253,6 +261,7 @@ def create_app(
     export_root: Optional[Union[Path, str]] = None,
     fetch_usd_rates: Callable[[], dict] = cbk_rates.fetch_usd_rates,
     notable_registry: Optional[Mapping[str, Sequence[Detector]]] = None,
+    charts_root: Optional[Union[Path, str]] = None,
 ) -> FastAPI:
     """Build the app.  ``db_path`` defaults to data/app.db; tests pass a temp file.
 
@@ -263,7 +272,8 @@ def create_app(
     ``inputs_root`` is where the weekly inputs are kept (default: under the data directory;
     tests pass a temp folder) and ``fetch_bulletin`` how the CBK Weekly Bulletin is fetched
     (tests pass a fake, so none reaches CBK).  ``export_root`` is where exported weekly reports
-    are written (default: under the data directory).
+    are written (default: under the data directory).  ``charts_root`` is where each saved review's chart files are
+    kept, ``<run_id>/<chart_id>.png`` and ``.json`` (default: under the data directory; charts/store.py).
 
     ``notable_registry`` is where the "Notable this week" detectors come from (section slug -> detectors).  Left out it is
     the real registry, which is empty: the real app shows no suggestion.  Only a caller that passes one, as the end-to-end
@@ -300,12 +310,15 @@ def create_app(
             raise HTTPException(404, f"no saved review with run_id {run_id}")
 
     def save(review: CoordinatorReview) -> None:
+        new = review.run_id is None
         try:
             review_store.save_review(review, section=section_slug(review), db_path=db_path)
         except review_store.ReviewAlreadyDecided as exc:
             raise HTTPException(409, str(exc))
         except LookupError as exc:
             raise HTTPException(404, str(exc))
+        if new:
+            chart_store.persist(review, charts_root)   # a new review's chart files, under the run id it was just given
 
     def mutate(run_id: int, change) -> dict:
         """Load, refuse if already decided, apply ``change(review)``, save, return the review."""
@@ -431,6 +444,7 @@ def create_app(
         try:
             with write_lock:
                 review_store.save_review(review, section=section_slug(review), db_path=db_path)
+                chart_store.persist(review, charts_root)
             dev = is_dev_draft(review)
             run.finish(review.run_id, review_counts(review), dev, DEV_MODE_LABEL if dev else None)
         except Exception as exc:  # noqa: BLE001 - the run must end, and say why
@@ -548,6 +562,47 @@ def create_app(
     @app.get("/api/reviews/{run_id}")
     def get_review(run_id: int) -> dict:
         return serialize_review(load(run_id))
+
+    @app.get("/api/reviews/{run_id}/charts/{chart_id}.png")
+    def chart_png(run_id: int, chart_id: str) -> Response:
+        """A drawn chart's picture, only while it is the file the review recorded (its SHA-256 is checked on every read).
+
+        ``chart_id`` must be a known chart (charts/specs.py), so no other path is ever read.  404 for an unknown
+        chart, a review without that drawn chart, or a missing file; 409 when the file has changed since the draft.
+        """
+        review = load(run_id)
+        block = next((b for b in review.section.get("blocks", []) if b.get("kind") == "chart" and b.get("chart_id") == chart_id), None)
+        try:
+            data = chart_store.read_png(run_id, chart_id, block and block.get("png_sha256"), charts_root)
+        except chart_store.ChartFileError as exc:
+            raise HTTPException(exc.status, str(exc))
+        return Response(data, media_type="image/png", headers={"Cache-Control": "no-store"})
+
+    @app.get("/api/reviews/{run_id}/charts/{chart_id}/series")
+    def chart_series(run_id: int, chart_id: str) -> Response:
+        """The series a drawn chart was drawn from (JSON), only while it is the file the review recorded: the same checks
+        and answers as the picture (404 unknown chart, no such drawn chart or missing file; 409 for a changed file)."""
+        review = load(run_id)
+        block = next((b for b in review.section.get("blocks", []) if b.get("kind") == "chart" and b.get("chart_id") == chart_id), None)
+        try:
+            data = chart_store.read_series(run_id, chart_id, block and block.get("series_sha256"), charts_root)
+        except chart_store.ChartFileError as exc:
+            raise HTTPException(exc.status, str(exc))
+        return Response(data, media_type="application/json", headers={"Cache-Control": "no-store"})
+
+    @app.put("/api/reviews/{run_id}/charts/{chart_id}/team-chart")
+    def team_chart(run_id: int, chart_id: str, body: TeamChartBody) -> dict:
+        """Set the tool's chart aside for the team's own (``use`` true) or take that back (false).  Every item of the chart is
+        accepted with a note saying so, or cleared; the choice is saved with the review.  409 once the review is decided,
+        404 for a chart the review does not have, 409 for a chart nothing was read for (no workbook)."""
+        def change(review: CoordinatorReview) -> None:
+            try:
+                set_team_chart(review, chart_id, body.use)
+            except KeyError as exc:
+                raise HTTPException(404, str(exc.args[0]))
+            except ValueError as exc:
+                raise HTTPException(409, str(exc))
+        return mutate(run_id, change)
 
     @app.get("/api/reviews/{run_id}/rejected-draft-notes")
     def get_rejected_draft_notes(run_id: int) -> Optional[dict]:
@@ -766,7 +821,7 @@ def create_app(
         """
         normalized = weekly_period(period)
         try:
-            path = weekly_export.write_weekly_report(db_path, normalized, export_root)
+            path = weekly_export.write_weekly_report(db_path, normalized, export_root, charts_root=charts_root)
         except weekly_export.ExportNotAllowed as exc:
             raise HTTPException(409, str(exc))
         return FileResponse(path, filename=path.name,

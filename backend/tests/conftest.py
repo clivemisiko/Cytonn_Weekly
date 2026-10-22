@@ -79,6 +79,14 @@ def isolated_weekly_inputs(tmp_path, monkeypatch):
     monkeypatch.setattr(inputs, "_DEFAULT_ROOT", tmp_path / "inputs" / "weekly")
 
 
+@pytest.fixture(autouse=True)
+def isolated_chart_files(tmp_path, monkeypatch):
+    """Chart files default to a folder under the real data directory; every test gets its own."""
+    from cytonn_weekly.charts import store
+
+    monkeypatch.setattr(store, "_DEFAULT_ROOT", tmp_path / "charts")
+
+
 _LOCAL_HOSTS = ("127.0.0.1", "::1", "localhost")
 
 

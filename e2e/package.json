@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "playwright test app && playwright test more && playwright test buttons && playwright test notes && playwright test links && playwright test draftagain && playwright test notable && playwright test rail && playwright test overview && playwright test startscreen && playwright test reviewscreen && playwright test runview && playwright test startpages",
+    "test": "playwright test app && playwright test more && playwright test buttons && playwright test notes && playwright test links && playwright test draftagain && playwright test notable && playwright test rail && playwright test overview && playwright test startscreen && playwright test reviewscreen && playwright test runview && playwright test startpages && playwright test chartcard",
     "test:variants": "cross-env E2E_VARIANT=no-key playwright test variants && cross-env E2E_VARIANT=stale playwright test variants"
   },
   "devDependencies": {

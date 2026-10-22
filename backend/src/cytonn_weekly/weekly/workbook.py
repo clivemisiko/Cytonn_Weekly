@@ -151,6 +151,14 @@ class Workbook:
                 self._sheets[name] = Sheet(name, [tuple(r) for r in self._values[name].iter_rows(values_only=True)])
         return self._sheets[name]
 
+    def number_format(self, cell: Cell) -> str:
+        """The cell's number format code as Excel stored it ("0.0%"); "General" for an empty cell or one off the sheet."""
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            for row in self._values[cell.sheet].iter_rows(min_row=cell.row, max_row=cell.row, min_col=cell.col, max_col=cell.col):
+                return row[0].number_format or "General"
+        return "General"
+
     def formula(self, cell: Cell) -> Optional[str]:
         """The cell's formula text ("=AVERAGE(B8:B938)"), or None if it holds a typed value."""
         if self._formulas is None:
