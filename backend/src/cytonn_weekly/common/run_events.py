@@ -39,12 +39,17 @@ Kinds, and what each one means:
 from __future__ import annotations
 
 import logging
+import os
+import re
 import threading
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable, Iterable, Optional, TypeVar
+from urllib.parse import urlsplit
 
 import httpx
+
+from cytonn_weekly import db as database
 
 log = logging.getLogger(__name__)
 
@@ -124,17 +129,54 @@ def describe(exc: BaseException) -> str:
     return " ".join(f"{type(exc).__name__}: {exc}".split())
 
 
+_SECRET_NAME = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|DATABASE_URL", re.I)
+_URL_WITH_CREDENTIALS = re.compile(r"[a-z][a-z0-9+.\-]*://[^\s/?#]*@\S*", re.I)  # scheme://user:password@host... in a message
+# A configured value is judged more broadly than a message: a raw / in its password would end the pattern above early.
+_CONFIGURED_URL_WITH_CREDENTIALS = re.compile(r"[a-z][a-z0-9+.\-]*://\S*@", re.I)
+MIN_SECRET_CHARS = 8    # a shorter value is not removed from a message: it would mangle ordinary words
+MIN_PASSWORD_CHARS = 4  # the password inside a URL is removed on its own, at this length or more
+
+
+def redact(text: str) -> str:
+    """``text`` with every configured secret removed: the value of any variable named like a key, token, secret,
+    password or database URL; any variable whose value is a URL carrying credentials, and that URL's password on its
+    own; and any URL in the text that carries credentials, whether or not it is configured."""
+    for name, value in os.environ.items():
+        if len(value) < MIN_SECRET_CHARS:
+            continue
+        has_credentials = _CONFIGURED_URL_WITH_CREDENTIALS.match(value) is not None
+        if has_credentials or _SECRET_NAME.search(name):
+            text = text.replace(value, "[redacted]")
+        if has_credentials:
+            try:
+                password = urlsplit(value).password or ""
+            except ValueError:
+                password = ""
+            if len(password) >= MIN_PASSWORD_CHARS:
+                text = text.replace(password, "[redacted]")
+    return _URL_WITH_CREDENTIALS.sub("[redacted]", text)
+
+
+def safe_describe(exc: BaseException) -> str:
+    """``describe`` for a log line: a database driver error is named by its class alone (its message can name the host
+    and the user); anything else keeps its message with the secrets removed."""
+    return type(exc).__name__ if database.is_postgres_error(exc) else redact(describe(exc))
+
+
 def user_message(exc: BaseException) -> str:
     """``describe`` for the screen: a connection failure is worded for a coordinator, anything else as ``describe``.
 
     "ConnectTimeout: _ssl.c:983: The handshake operation timed out" names neither the service nor
     what to do.  httpx's errors, and the Anthropic SDK's, which wrap them, carry the request, so
-    the host is named (its address only: the key travels in a header).
+    the host is named (its address only: the key travels in a header).  A database driver error is
+    one fixed sentence: its own words can name the host and the user.
     """
+    if database.is_postgres_error(exc):
+        return database.UNREACHABLE
     import anthropic  # imported here: only a failed run needs it
 
     if not isinstance(exc, (httpx.TransportError, anthropic.APIConnectionError)):
-        return describe(exc)  # a built-in ConnectionError says for itself what it was reaching
+        return redact(describe(exc))  # a built-in ConnectionError says for itself what it was reaching
     try:
         host = exc.request.url.host  # type: ignore[attr-defined]  # httpx raises RuntimeError when none is set
     except Exception:  # noqa: BLE001

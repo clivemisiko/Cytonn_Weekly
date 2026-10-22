@@ -45,7 +45,6 @@ CoordinatorReview.decide() decides whether it is allowed.
 
 import logging
 import os
-import re
 import threading
 import time
 from dataclasses import replace
@@ -61,13 +60,14 @@ from pydantic import BaseModel, Field
 
 from cytonn_weekly.charts import store as chart_store
 from cytonn_weekly.charts.block import set_team_chart
-from cytonn_weekly.common.run_events import RUN_STARTED, describe, review_counts, user_message
+from cytonn_weekly.common.run_events import RUN_STARTED, redact, review_counts, safe_describe, user_message
 from cytonn_weekly.digital_payments import review_run, review_store
 from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview, rejected_draft_notes
 from cytonn_weekly.digital_payments.provider_factory import ENV_VAR as PROVIDER_ENV_VAR
 from cytonn_weekly.digital_payments.providers.local_provider import EXA_KEY_ENV_VAR, EXA_KEY_MISSING, SearchKeyError
 from cytonn_weekly.env import key_override_warnings, load_env
 from cytonn_weekly.focus.review_run import clean_topic
+from cytonn_weekly import db as database
 from cytonn_weekly import notable
 from cytonn_weekly.notable import store as notable_store
 from cytonn_weekly.notable.registry import Detector, DetectorContext, run_detectors
@@ -113,8 +113,6 @@ DEFAULT_WEB_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
 DISCARDED_AS_STUCK = (
     "This draft ran so long it was treated as stuck and a newer draft replaced it; its result was discarded."
 )
-_SECRET_NAME = re.compile(r"KEY|TOKEN|SECRET|PASSWORD", re.I)
-
 
 def configured_provider() -> str:
     return (os.environ.get(PROVIDER_ENV_VAR) or "anthropic").strip().lower()
@@ -130,10 +128,7 @@ def failure_message(exc: BaseException) -> str:
     before it is recorded.
     """
     text = " ".join(str(exc).split()) if isinstance(exc, (ValueError, SearchKeyError)) else user_message(exc)
-    for name, value in os.environ.items():
-        if _SECRET_NAME.search(name) and len(value) >= 8:
-            text = text.replace(value, "[redacted]")
-    return text[:600]
+    return redact(text)[:600]
 
 
 def provider_problem() -> Optional[str]:
@@ -435,7 +430,7 @@ def create_app(
             run.fail(failure_message(exc))
             if not isinstance(exc, Exception):
                 raise
-            log.warning("run %s (%s) failed: %s", run.run_id, spec.slug, describe(exc))
+            log.warning("run %s (%s) failed: %s", run.run_id, spec.slug, safe_describe(exc))
             return
         if claim is not None and not draft_slot.release(claim):
             log.warning("draft of %s finished after it was replaced as stuck; its result was discarded", spec.slug)
@@ -448,7 +443,9 @@ def create_app(
             dev = is_dev_draft(review)
             run.finish(review.run_id, review_counts(review), dev, DEV_MODE_LABEL if dev else None)
         except Exception as exc:  # noqa: BLE001 - the run must end, and say why
-            log.exception("run %s (%s) could not save its review", run.run_id, spec.slug)
+            # no traceback for a database error: its message can name the host and the user
+            log.warning("run %s (%s) could not save its review: %s", run.run_id, spec.slug, safe_describe(exc),
+                        exc_info=not database.is_postgres_error(exc))
             run.fail(failure_message(exc))
 
     # -- reads ------------------------------------------------------------
