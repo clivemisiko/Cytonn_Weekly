@@ -12,7 +12,9 @@ PostgreSQL: SSL is always required (``_postgres_url``).  The tables live in thei
 (default ``cytonn``), never in ``public``, which Supabase exposes through its web API.  The schema is chosen with a SET
 statement as the first thing a new connection does, not a startup option in the URL, because the Supabase pooler may
 refuse options (so use the pooler's session mode, port 5432: a SET does not outlive a transaction in transaction mode).
-Nothing the driver says is ever passed on: its messages can name the host and the user.
+On PostgreSQL one connection is kept for the process and lent to one caller at a time (``_held``, behind ``_held_lock``):
+opening one costs about 1.5 s against Supabase and a round trip about 0.2 s.  ``Db.close()`` gives it back; it does not
+close it.  SQLite is unchanged: each call opens and closes its own.  Nothing the driver says is ever passed on: its messages can name the host and the user.
 
 SQL is written once, with ``?`` placeholders, and only in forms SQLite (3.39 or newer) and PostgreSQL both accept:
 RETURNING for an inserted row's id, IS NOT DISTINCT FROM for a comparison that may be NULL, ON CONFLICT for an upsert.
@@ -21,12 +23,14 @@ Each database has its own schema file (schema.sql, schema_postgres.sql); the mig
 
 from __future__ import annotations
 
+import atexit
 import logging
 import os
 import re
 import sqlite3
 import sys
 import threading
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator, Optional
@@ -43,6 +47,11 @@ MIN_SQLITE = (3, 39, 0)  # IS NOT DISTINCT FROM; RETURNING needs 3.35 and ON CON
 
 # What a coordinator is told when PostgreSQL cannot be used, whatever the driver said.
 UNREACHABLE = "Could not reach the database. Check CYTONN_DATABASE_URL and the network."
+# What a coordinator is told when the server was reached and refused the request; no detail, the driver's words can name the host.
+REJECTED = "The database rejected the request. See the server log."
+# SQLSTATEs that mean the connection, not the request: class 08 (connection exception), 57P01 to 57P03 (shutdown, crash,
+# cannot connect now) and 53300 (too many connections).  Any other state on an OperationalError (deadlock, cancelled, disk full) is a rejection.
+_CONNECTION_SQLSTATES = ("57P01", "57P02", "57P03", "53300")
 
 # Resolved at import time (cytonn_weekly/paths.py).  The schemas are code, so they sit beside this file and not in the
 # data folder, which a Docker volume replaces.
@@ -50,6 +59,10 @@ _DEFAULT_DB = DATA_DIR / "app.db"
 _SCHEMA_SQL = Path(__file__).parent / "schema.sql"
 _POSTGRES_SCHEMA_SQL = Path(__file__).parent / "schema_postgres.sql"
 
+IDLE_CHECK_SECONDS = 30    # a held connection idle longer than this is tested with SELECT 1 before it is used again
+LOCK_TIMEOUT_SECONDS = 60  # how long a call waits for the held connection before it gives up as unreachable
+STATEMENT_TIMEOUT = "30s"  # set on every new connection: a statement stuck on a dead socket ends instead of freezing the app
+KEEPALIVES = {"keepalives": 1, "keepalives_idle": 30, "keepalives_interval": 10, "keepalives_count": 3}  # libpq: a dead peer is noticed in about a minute
 CONNECT_TIMEOUT_SECONDS = 10  # else an unreachable host holds a request for the operating system's own limit
 _SSL_MODES = ("require", "verify-ca", "verify-full")  # sslmode values that encrypt; anything weaker is refused
 _SCHEMA_NAME = re.compile(r"[a-z_][a-z0-9_]{0,62}")
@@ -97,6 +110,26 @@ def is_postgres_error(exc: BaseException) -> bool:
     return psycopg is not None and isinstance(exc, psycopg.Error)
 
 
+def is_connection_error(exc: BaseException) -> bool:
+    """True when the database could not be reached or the connection was lost, False for a request the server refused.
+
+    Never imports the driver.  psycopg's OperationalError with no SQLSTATE is a client-side failure (connect, timeout,
+    closed socket) and counts; with one, only the connection states above count.  InterfaceError (a closed connection)
+    and DatabaseNotAvailable count.  This is the one place that knows driver classes: another driver means one new mapping here.
+    """
+    if isinstance(exc, DatabaseNotAvailable):
+        return True
+    psycopg = sys.modules.get("psycopg")
+    if psycopg is None or not isinstance(exc, psycopg.Error):
+        return False
+    if isinstance(exc, psycopg.InterfaceError):
+        return True
+    if isinstance(exc, psycopg.OperationalError):
+        state = getattr(exc, "sqlstate", None)
+        return state is None or state.startswith("08") or state in _CONNECTION_SQLSTATES
+    return False
+
+
 def _postgres_sql(sql: str) -> str:
     """The SQL as psycopg wants it: ``?`` becomes ``%s`` (not inside a quoted string) and a literal ``%`` becomes ``%%``.
 
@@ -106,15 +139,33 @@ def _postgres_sql(sql: str) -> str:
 
 
 class Db:
-    """One open connection.  Callers write SQL with ``?`` and never see the driver.  ``schema`` is the PostgreSQL schema, None for SQLite."""
+    """One open connection.  Callers write SQL with ``?`` and never see the driver.  ``schema`` is the PostgreSQL schema, None for SQLite.
 
-    def __init__(self, conn, schema: Optional[str] = None) -> None:
+    On PostgreSQL the connection is the process's held one, and this object holds ``_held_lock`` until ``close()``.
+    """
+
+    def __init__(self, conn, schema: Optional[str] = None, held: bool = False, url: str = "") -> None:
         self._conn = conn
         self.schema = schema
+        self._held, self._url = held, url
+        self._depth = 0  # transaction blocks open on this object: a statement inside one is never replayed
 
     def _run(self, sql: str, params=()):
         # The only place SQL text reaches the driver.  SQLite takes ``?`` as written; psycopg takes ``%s``.
-        return self._conn.execute(sql if self.schema is None else _postgres_sql(sql), params)
+        if self.schema is None:
+            return self._conn.execute(sql, params)
+        text = _postgres_sql(sql)
+        try:
+            return self._conn.execute(text, params)
+        except Exception as exc:
+            if not is_connection_error(exc):
+                raise
+            _drop_held(self._conn)  # the connection is gone: the next call opens a new one
+            if self._depth or sql.lstrip()[:6].upper() != "SELECT":
+                raise  # a write, or a read inside a transaction, is never replayed: it may have been applied
+            log.warning("lost the PostgreSQL connection during a read (%s); reconnecting once", type(exc).__name__)
+            self._conn = _held_connection(self._url, self.schema)
+            return self._conn.execute(text, params)
 
     def execute(self, sql: str, params=()):
         """Run one statement; the cursor gives fetchone(), fetchall(), iteration and rowcount."""
@@ -129,8 +180,20 @@ class Db:
     def transaction(self) -> Iterator["Db"]:
         """Commit when the block ends, roll back if it raises; the connection stays open.  (A PostgreSQL connection is in
         autocommit mode, so a statement outside a block commits by itself and a block is a real BEGIN to COMMIT.)"""
-        with (self._conn if self.schema is None else self._conn.transaction()):
-            yield self
+        if self.schema is None:
+            with self._conn:
+                yield self
+            return
+        self._depth += 1
+        try:
+            with self._conn.transaction():
+                yield self
+        except Exception as exc:
+            if is_connection_error(exc):
+                _drop_held(self._conn)
+            raise
+        finally:
+            self._depth -= 1
 
     def run_script(self, script: str) -> None:
         """Run a script of statements with no parameters (a schema)."""
@@ -140,7 +203,20 @@ class Db:
             self._conn.execute(script)  # with no parameters the server takes several statements in one call
 
     def close(self) -> None:
-        self._conn.close()
+        """SQLite: close the connection.  PostgreSQL: give the held connection back (it stays open).  A second call does nothing."""
+        if not self._held:
+            self._conn.close()
+        elif self._conn is not None:
+            self._conn = None
+            if _held is not None:
+                _held["used"] = time.monotonic()
+            _held_lock.release()
+
+    def discard(self) -> None:
+        """Close the connection for good, even the held one: a schema run failed part-way and its state is unknown."""
+        if self._held and self._conn is not None:
+            _drop_held(self._conn)
+        self.close()
 
 
 def schema_name() -> str:
@@ -190,16 +266,23 @@ def _why(exc: BaseException) -> str:
     return "other"
 
 
-def _connect_postgres(url: str) -> Db:
+_held_lock = threading.RLock()  # who is using the held connection; reentrant, so a store call made inside another shares it
+_held: Optional[dict] = None    # {"key": (url, schema), "conn": the open connection, "used": when it was last given back}
+_exit_hook_set = False
+
+
+def _open_postgres(url: str, schema: str):
+    """A new connection with its settings applied.  Every failure is one fixed sentence; the driver's words are never passed on."""
     import psycopg  # here and not at the top: a SQLite-only run never loads the driver
     from psycopg.rows import dict_row
 
-    schema, url = schema_name(), _postgres_url(url)
+    url = _postgres_url(url)
     failed = None
     try:
-        conn = psycopg.connect(url, row_factory=dict_row, autocommit=True, connect_timeout=CONNECT_TIMEOUT_SECONDS)
+        conn = psycopg.connect(url, row_factory=dict_row, autocommit=True, connect_timeout=CONNECT_TIMEOUT_SECONDS, **KEEPALIVES)
         try:
-            conn.execute(f'SET search_path TO "{schema}"')  # a statement, not a startup option: the pooler may refuse options
+            conn.execute(f'SET search_path TO "{schema}"')  # statements, not startup options: the pooler may refuse options
+            conn.execute(f"SET statement_timeout = '{STATEMENT_TIMEOUT}'")
         except BaseException:
             conn.close()
             raise
@@ -208,7 +291,70 @@ def _connect_postgres(url: str) -> Db:
     if failed:  # raised out here, not inside the except, so the driver's error is not attached to ours
         log.warning("could not open the PostgreSQL connection: %s (%s, SQLSTATE %s)", *failed)
         raise DatabaseNotAvailable(UNREACHABLE)
-    return Db(conn, schema)
+    return conn
+
+
+def _drop_held(conn) -> None:
+    """Close the held connection if ``conn`` is it.  Called with ``_held_lock`` held."""
+    global _held
+    if _held is not None and _held["conn"] is conn:
+        _held = None
+        try:
+            conn.close()
+        except Exception:  # noqa: BLE001 - it is being thrown away
+            pass
+
+
+def _alive(conn) -> bool:
+    try:
+        conn.execute("SELECT 1")
+        return True
+    except Exception:  # noqa: BLE001 - any failure means it cannot be used
+        return False
+
+
+def _held_connection(url: str, schema: str):
+    """The process's connection: the held one if it is open and (after a long idle) answers, else a new one.  Needs ``_held_lock``."""
+    global _held, _exit_hook_set
+    key = (url, schema)
+    if _held is not None and _held["key"] != key:
+        _drop_held(_held["conn"])  # another database was asked for (tests, a changed setting)
+    if _held is not None:
+        conn = _held["conn"]
+        idle = time.monotonic() - _held["used"] > IDLE_CHECK_SECONDS
+        if getattr(conn, "closed", False) or getattr(conn, "broken", False) or (idle and not _alive(conn)):
+            _drop_held(conn)
+    if _held is None:
+        _held = {"key": key, "conn": _open_postgres(url, schema), "used": time.monotonic()}
+        if not _exit_hook_set:
+            _exit_hook_set = True
+            atexit.register(close_all)
+    return _held["conn"]
+
+
+def _connect_postgres(url: str) -> Db:
+    # ponytail: one connection per process, one caller at a time (all database work is serialised); a pool
+    # (psycopg_pool) is the upgrade if more than one coordinator ever works at once.
+    schema = schema_name()
+    _postgres_url(url)  # refused here, before the lock, if it is not usable
+    if not _held_lock.acquire(timeout=LOCK_TIMEOUT_SECONDS):
+        log.warning("could not open the PostgreSQL connection: lock wait (the held connection was busy for %s s)", LOCK_TIMEOUT_SECONDS)
+        raise DatabaseNotAvailable(UNREACHABLE)
+    try:
+        return Db(_held_connection(url, schema), schema, held=True, url=url)
+    except BaseException:
+        _held_lock.release()
+        raise
+
+
+def close_all() -> None:
+    """Close the held PostgreSQL connection, if any (at exit, at shutdown, between tests).  Waits up to 5 s for a caller using it."""
+    if _held_lock.acquire(timeout=5):
+        try:
+            if _held is not None:
+                _drop_held(_held["conn"])
+        finally:
+            _held_lock.release()
 
 
 def connect(db_path: Optional[Path | str] = None) -> Db:
@@ -254,7 +400,7 @@ def open_db(db_path: Optional[Path | str] = None) -> Db:
             with conn.transaction():
                 _migrate(conn)
     except BaseException:
-        conn.close()
+        conn.discard()
         raise
     return conn
 

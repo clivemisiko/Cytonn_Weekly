@@ -169,10 +169,12 @@ def user_message(exc: BaseException) -> str:
     "ConnectTimeout: _ssl.c:983: The handshake operation timed out" names neither the service nor
     what to do.  httpx's errors, and the Anthropic SDK's, which wrap them, carry the request, so
     the host is named (its address only: the key travels in a header).  A database driver error is
-    one fixed sentence: its own words can name the host and the user.
+    one of two fixed sentences, by class: its own words can name the host and the user.
     """
+    if isinstance(exc, database.DatabaseNotAvailable):
+        return str(exc)  # fixed text or the name of a setting, never the driver's words (it is UNREACHABLE for a connection failure)
     if database.is_postgres_error(exc):
-        return database.UNREACHABLE
+        return database.UNREACHABLE if database.is_connection_error(exc) else database.REJECTED
     import anthropic  # imported here: only a failed run needs it
 
     if not isinstance(exc, (httpx.TransportError, anthropic.APIConnectionError)):

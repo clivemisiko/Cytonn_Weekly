@@ -173,7 +173,8 @@ def test_a_connection_gets_the_url_with_ssl_required_and_a_dict_row_autocommit_c
     database.connect().close()
     conn = made[0]
     assert conn.url == URL + "?sslmode=require"
-    assert conn.kwargs == {"row_factory": dict_row, "autocommit": True, "connect_timeout": database.CONNECT_TIMEOUT_SECONDS}
+    assert conn.kwargs == {"row_factory": dict_row, "autocommit": True, "connect_timeout": database.CONNECT_TIMEOUT_SECONDS,
+                           "keepalives": 1, "keepalives_idle": 30, "keepalives_interval": 10, "keepalives_count": 3}
 
 
 def test_a_user_name_with_a_dot_reaches_the_driver_parsed_as_written():
@@ -187,11 +188,29 @@ def test_a_user_name_with_a_dot_reaches_the_driver_parsed_as_written():
 def test_search_path_is_set_by_a_statement_first_on_every_new_connection_and_not_as_a_startup_option(made):
     for _ in range(3):
         database.connect().close()
+        database.close_all()                                          # a new connection each time
     assert len(made) == 3
     for conn in made:
         assert conn.statements[0] == ('SET search_path TO "cytonn"', None)
         assert "options" not in conn.url and "options" not in conn.kwargs
 
+
+def test_a_statement_timeout_of_30_seconds_is_set_right_after_the_search_path_on_every_new_connection(made):
+    for _ in range(3):
+        database.connect().close()
+        database.close_all()
+    assert len(made) == 3
+    for conn in made:
+        assert [s for s, _ in conn.statements[:2]] == ['SET search_path TO "cytonn"', "SET statement_timeout = '30s'"]
+
+
+def test_libpq_keepalives_are_passed_on_every_new_connection(made):
+    for _ in range(2):
+        database.connect().close()
+        database.close_all()
+    for conn in made:
+        assert {k: v for k, v in conn.kwargs.items() if k.startswith("keepalives")} == {
+            "keepalives": 1, "keepalives_idle": 30, "keepalives_interval": 10, "keepalives_count": 3}
 
 def test_the_schema_comes_from_the_environment_and_is_always_set_on_the_connection(made, monkeypatch):
     monkeypatch.setenv(database.DATABASE_SCHEMA_ENV, "my_schema_2")
@@ -224,20 +243,21 @@ def test_a_failing_search_path_statement_closes_the_connection_and_says_only_the
 def test_the_schema_script_runs_once_per_process_in_one_transaction_after_an_advisory_lock(made):
     for _ in range(3):
         database.open_db().close()
+        database.close_all()
     assert len(made) == 3
     first, later = made[0], made[1:]
     sql = [s for s, _ in first.statements]
-    assert sql[0].startswith("SET search_path") and sql[1].startswith("SELECT pg_advisory_xact_lock(")
-    assert 'CREATE SCHEMA IF NOT EXISTS "cytonn";' in sql[2] and "{schema}" not in sql[2]
+    assert sql[0].startswith("SET search_path") and sql[1].startswith("SET statement_timeout") and sql[2].startswith("SELECT pg_advisory_xact_lock(")
+    assert 'CREATE SCHEMA IF NOT EXISTS "cytonn";' in sql[3] and "{schema}" not in sql[3]
     assert first.transactions == ["begin", "commit"]
-    assert all(len(c.statements) == 1 and c.transactions == [] for c in later)   # the rest only set the search_path
+    assert all(len(c.statements) == 2 and c.transactions == [] for c in later)   # the rest only set the search_path and the timeout
 
 
 def test_a_different_schema_gets_its_own_script(made, monkeypatch):
     database.open_db().close()
     monkeypatch.setenv(database.DATABASE_SCHEMA_ENV, "another")
     database.open_db().close()
-    assert 'CREATE SCHEMA IF NOT EXISTS "another";' in made[1].statements[2][0]
+    assert 'CREATE SCHEMA IF NOT EXISTS "another";' in made[1].statements[3][0]
 
 
 def test_a_failing_schema_script_closes_its_connection_and_is_tried_again_next_time(made, monkeypatch):
@@ -324,12 +344,67 @@ def test_a_failed_connection_is_told_apart_by_a_fixed_word(monkeypatch, caplog, 
     assert f"connection: {word} (OperationalError" in caplog.text and HOST not in caplog.text and USER not in caplog.text
 
 
-def test_a_driver_error_of_any_kind_is_one_fixed_sentence_for_the_screen():
-    for error in (psycopg.OperationalError(f"{HOST} {USER}"), psycopg.InterfaceError(URL), psycopg.ProgrammingError(PW),
-                  pg_errors.UniqueViolation(f"Key ({USER}) already exists"), pg_errors.InvalidPassword(URL)):
-        assert ev.user_message(error) == "Could not reach the database. Check CYTONN_DATABASE_URL and the network."
-        assert failure_message(error) == ev.user_message(error)
-    assert ev.user_message(KeyError("x")) == "KeyError: 'x'"            # anything else is worded as before
+def with_state(cls, state, text):
+    """A fake driver error carrying a SQLSTATE (the class attribute psycopg's own subclasses set, or an instance one)."""
+    exc = cls(text)
+    exc.sqlstate = state
+    return exc
+
+
+CONNECTION_CLASS = [
+    psycopg.OperationalError(f"{HOST} {USER}"),                                    # no SQLSTATE: a client-side failure
+    psycopg.InterfaceError(URL),
+    database.DatabaseNotAvailable(database.UNREACHABLE),
+    pg_errors.ConnectionException(f"{HOST}"),                                      # 08000
+    pg_errors.AdminShutdown(f"{USER}"),                                            # 57P01
+    pg_errors.CrashShutdown(f"{USER}"),                                            # 57P02
+    pg_errors.CannotConnectNow(f"{USER}"),                                         # 57P03
+    pg_errors.TooManyConnections(f"{HOST}"),                                       # 53300
+    with_state(psycopg.OperationalError, "08006", f"{HOST} {PW}"),
+]
+REJECTED_CLASS = [
+    pg_errors.DeadlockDetected(f"{USER} {PW}"),                                    # OperationalError, 40P01
+    pg_errors.QueryCanceled(f"{HOST}"),                                            # OperationalError, 57014
+    pg_errors.DiskFull(f"{HOST}"),                                                 # OperationalError, 53100
+    pg_errors.UniqueViolation(f"Key ({USER}) already exists"),
+    pg_errors.InvalidPassword(URL),
+    psycopg.ProgrammingError(PW),
+    pg_errors.DataError(f"{HOST}"),
+]
+
+
+@pytest.mark.parametrize("error", CONNECTION_CLASS, ids=lambda e: type(e).__name__ + str(getattr(e, "sqlstate", "")))
+def test_a_connection_class_error_says_could_not_reach_the_database_and_nothing_the_driver_said(error):
+    assert database.is_connection_error(error)
+    assert ev.user_message(error) == "Could not reach the database. Check CYTONN_DATABASE_URL and the network."
+    assert failure_message(error) == ev.user_message(error)
+    for secret in (HOST, USER, PW, URL):
+        assert secret not in ev.user_message(error) and secret not in ev.safe_describe(error)
+
+
+@pytest.mark.parametrize("error", REJECTED_CLASS, ids=lambda e: type(e).__name__ + str(getattr(e, "sqlstate", "")))
+def test_any_other_database_error_says_the_database_rejected_the_request_and_nothing_the_driver_said(error):
+    assert not database.is_connection_error(error)
+    assert ev.user_message(error) == "The database rejected the request. See the server log."
+    assert failure_message(error) == ev.user_message(error)
+    for secret in (HOST, USER, PW, URL):
+        assert secret not in ev.user_message(error) and secret not in ev.safe_describe(error)
+
+
+def test_an_operational_error_is_judged_by_its_sqlstate_only_when_it_has_one():
+    assert database.is_connection_error(psycopg.OperationalError("x"))
+    assert database.is_connection_error(with_state(psycopg.OperationalError, "57P03", "x"))
+    assert not database.is_connection_error(with_state(psycopg.OperationalError, "40P01", "x"))
+
+
+def test_an_error_that_is_not_the_drivers_is_not_a_connection_error_and_is_worded_as_before():
+    assert not database.is_connection_error(KeyError("x")) and not database.is_connection_error(ConnectionError("x"))
+    assert ev.user_message(KeyError("x")) == "KeyError: 'x'"
+
+
+def test_a_setting_problem_keeps_its_own_sentence_which_names_the_setting():
+    exc = database.DatabaseNotAvailable("CYTONN_DATABASE_SCHEMA must be lower-case letters")
+    assert database.is_connection_error(exc) and ev.user_message(exc) == str(exc)
 
 
 def test_a_failure_message_blanks_the_database_url_and_any_url_that_carries_credentials(monkeypatch):
