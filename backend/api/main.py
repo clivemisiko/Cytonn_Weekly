@@ -61,7 +61,7 @@ from pydantic import BaseModel, Field
 
 from cytonn_weekly.charts import store as chart_store
 from cytonn_weekly.charts.block import set_team_chart
-from cytonn_weekly.common.run_events import RUN_STARTED, describe, review_counts
+from cytonn_weekly.common.run_events import RUN_STARTED, describe, review_counts, user_message
 from cytonn_weekly.digital_payments import review_run, review_store
 from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview, rejected_draft_notes
 from cytonn_weekly.digital_payments.provider_factory import ENV_VAR as PROVIDER_ENV_VAR
@@ -129,7 +129,7 @@ def failure_message(exc: BaseException) -> str:
     by its type.  Any configured secret that an error message happens to quote is removed
     before it is recorded.
     """
-    text = " ".join(str(exc).split()) if isinstance(exc, (ValueError, SearchKeyError)) else describe(exc)
+    text = " ".join(str(exc).split()) if isinstance(exc, (ValueError, SearchKeyError)) else user_message(exc)
     for name, value in os.environ.items():
         if _SECRET_NAME.search(name) and len(value) >= 8:
             text = text.replace(value, "[redacted]")
@@ -730,7 +730,7 @@ def create_app(
         except LookupError as exc:
             raise HTTPException(404, f"{exc}. Upload the bulletin once CBK has published it.")
         except Exception as exc:  # noqa: BLE001 - shown to the coordinator, not swallowed
-            raise HTTPException(502, f"The bulletin could not be fetched from CBK: {describe(exc)}")
+            raise HTTPException(502, f"The bulletin could not be fetched from CBK: {user_message(exc)}")
         try:
             weekly_inputs.store(week, weekly_inputs.CBK_BULLETIN, data, url.rsplit("/", 1)[-1], root, fetched_from=url)
         except weekly_inputs.InputError as exc:
