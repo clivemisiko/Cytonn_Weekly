@@ -34,7 +34,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator, Optional
-from urllib.parse import parse_qsl, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, unquote, urlsplit, urlunsplit
 
 from cytonn_weekly.paths import DATA_DIR
 
@@ -147,7 +147,7 @@ class Db:
     def __init__(self, conn, schema: Optional[str] = None, held: bool = False, url: str = "") -> None:
         self._conn = conn
         self.schema = schema
-        self._held, self._url = held, url
+        self._held, self._url = held, _SecretUrl(url)
         self._depth = 0  # transaction blocks open on this object: a statement inside one is never replayed
 
     def _run(self, sql: str, params=()):
@@ -230,9 +230,27 @@ def schema_name() -> str:
     return name
 
 
+class _SecretUrl(str):
+    """A connection URL whose repr is ``'***'``.  pytest and tracebacks print a function's arguments with repr(), so a URL passed
+    around as this never shows its password there.  ``__str__`` and ``__eq__`` are the str's own: libpq and string work see the real value."""
+
+    def __repr__(self) -> str:
+        return "'***'"
+
+
+def _redact(text: str, url: str) -> str:
+    """``text`` with the URL, its user and its password (as written and percent-decoded) replaced by ``***``, longest first."""
+    parts = urlsplit(url)
+    secrets = {url, url.split("?")[0], parts.username, parts.password, unquote(parts.username or ""), unquote(parts.password or "")}
+    for secret in sorted(filter(None, secrets), key=len, reverse=True):
+        text = text.replace(secret, "***")
+    return text
+
+
 def _postgres_url(url: str) -> str:
     """The URL with SSL required: as written when it asks for require or stronger, ``sslmode=require`` added when it says
     nothing, refused when it asks for less.  Everything else, the user and the password included, is left as written."""
+    url = _SecretUrl(url)
     try:
         parts = urlsplit(url)
         query = parse_qsl(parts.query, keep_blank_values=True)
@@ -253,7 +271,7 @@ def _postgres_url(url: str) -> str:
         )
     if modes:
         return url
-    return urlunsplit(parts._replace(query=f"{parts.query}&sslmode=require" if parts.query else "sslmode=require"))
+    return _SecretUrl(urlunsplit(parts._replace(query=f"{parts.query}&sslmode=require" if parts.query else "sslmode=require")))
 
 
 def _why(exc: BaseException) -> str:
@@ -276,7 +294,7 @@ def _open_postgres(url: str, schema: str):
     import psycopg  # here and not at the top: a SQLite-only run never loads the driver
     from psycopg.rows import dict_row
 
-    url = _postgres_url(url)
+    url = _postgres_url(url)  # a _SecretUrl, so a traceback's argument list does not print it
     failed = None
     try:
         conn = psycopg.connect(url, row_factory=dict_row, autocommit=True, connect_timeout=CONNECT_TIMEOUT_SECONDS, **KEEPALIVES)
@@ -287,9 +305,12 @@ def _open_postgres(url: str, schema: str):
             conn.close()
             raise
     except Exception as exc:  # noqa: BLE001 - whatever the driver says can name the host and user: keep a fixed tag, its class and SQLSTATE only
-        failed = (_why(exc), type(exc).__name__, getattr(exc, "sqlstate", None))
+        if is_postgres_error(exc):
+            failed = "%s (%s, SQLSTATE %s)" % (_why(exc), type(exc).__name__, getattr(exc, "sqlstate", None))
+        else:  # a bug in our own code or a mismatched install: the class and message, with the URL, user and password taken out
+            failed = "unexpected %s: %s" % (type(exc).__name__, _redact(str(exc), url))
     if failed:  # raised out here, not inside the except, so the driver's error is not attached to ours
-        log.warning("could not open the PostgreSQL connection: %s (%s, SQLSTATE %s)", *failed)
+        log.warning("could not open the PostgreSQL connection: %s", failed)
         raise DatabaseNotAvailable(UNREACHABLE)
     return conn
 
@@ -316,6 +337,7 @@ def _alive(conn) -> bool:
 def _held_connection(url: str, schema: str):
     """The process's connection: the held one if it is open and (after a long idle) answers, else a new one.  Needs ``_held_lock``."""
     global _held, _exit_hook_set
+    url = _SecretUrl(url)
     key = (url, schema)
     if _held is not None and _held["key"] != key:
         _drop_held(_held["conn"])  # another database was asked for (tests, a changed setting)
@@ -336,7 +358,7 @@ def _connect_postgres(url: str) -> Db:
     # ponytail: one connection per process, one caller at a time (all database work is serialised); a pool
     # (psycopg_pool) is the upgrade if more than one coordinator ever works at once.
     schema = schema_name()
-    _postgres_url(url)  # refused here, before the lock, if it is not usable
+    url = _postgres_url(url)  # refused here, before the lock, if it is not usable
     if not _held_lock.acquire(timeout=LOCK_TIMEOUT_SECONDS):
         log.warning("could not open the PostgreSQL connection: lock wait (the held connection was busy for %s s)", LOCK_TIMEOUT_SECONDS)
         raise DatabaseNotAvailable(UNREACHABLE)
@@ -359,7 +381,7 @@ def close_all() -> None:
 
 def connect(db_path: Optional[Path | str] = None) -> Db:
     """Open the database, without touching its schema."""
-    url = os.environ.get(DATABASE_URL_ENV, "").strip()
+    url = _SecretUrl(os.environ.get(DATABASE_URL_ENV, "").strip())
     if db_path is None and url:
         return _connect_postgres(url)
     check_sqlite_version()
