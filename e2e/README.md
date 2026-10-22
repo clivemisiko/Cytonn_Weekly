@@ -14,6 +14,17 @@ weekly Real Estate draft is made to fail so there is a stopped run to look at. N
 The weekly Fixed Income and Equities drafts, and the suggested running total in T20, still read CBK's and
 cytonnreport.com's public pages, as the demo instance does, so T12, T13 and T20 need the network.
 
+**The database.** The instance runs on its own SQLite file, `e2e.db` in the demo data folder, and can never reach
+PostgreSQL: `serve_e2e.py` removes `CYTONN_DATABASE_URL`, `CYTONN_TEST_DATABASE_URL` and `CYTONN_DATABASE_SCHEMA` from its
+process, gives `create_app` the SQLite path (and no `.env`), and exits non-zero before it serves anything unless that is the
+target (`backend/tests/test_e2e_isolation.py`). Between the PostgreSQL go-live on 2026-10-22 and this fix it was not so: a `.env`
+with `CYTONN_DATABASE_URL` sent the demo and the suite to the real database. As a second lock, run the suite with a dead
+address in the process environment, which beats `.env`:
+
+```sh
+CYTONN_DATABASE_URL="postgresql://x:y@127.0.0.1:1/z?sslmode=require" npm exec --no-install -- playwright test app
+```
+
 Set up once (both folders are under `backend/data/`, which git ignores):
 
 ```sh

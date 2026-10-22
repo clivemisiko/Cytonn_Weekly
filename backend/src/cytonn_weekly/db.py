@@ -379,13 +379,20 @@ def close_all() -> None:
             _held_lock.release()
 
 
+def target(db_path: Optional[Path | str] = None) -> tuple[str, Optional[Path]]:
+    """Where ``connect(db_path)`` would go, without opening anything: ("postgres", None) or ("sqlite", the file)."""
+    if db_path is None and os.environ.get(DATABASE_URL_ENV, "").strip():
+        return "postgres", None
+    return "sqlite", Path(db_path) if db_path is not None else _DEFAULT_DB
+
+
 def connect(db_path: Optional[Path | str] = None) -> Db:
     """Open the database, without touching its schema."""
-    url = _SecretUrl(os.environ.get(DATABASE_URL_ENV, "").strip())
-    if db_path is None and url:
-        return _connect_postgres(url)
+    kind, path = target(db_path)
+    if kind == "postgres":
+        return _connect_postgres(_SecretUrl(os.environ.get(DATABASE_URL_ENV, "").strip()))
     check_sqlite_version()
-    conn = sqlite3.connect(str(db_path) if db_path is not None else str(_DEFAULT_DB))
+    conn = sqlite3.connect(str(path))
     conn.row_factory = sqlite3.Row
     return Db(conn)
 
