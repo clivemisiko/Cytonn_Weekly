@@ -70,13 +70,31 @@ describe("format", () => {
   it("formats dates, times, durations and Python values", () => {
     expect(friendlyDate("2026-10-02")).toBe("2 Oct 2026");
     expect(friendlyDate("not a date")).toBe("not a date");
-    expect(friendlyTime("2026-10-01T13:24:13+00:00")).toBe("1 Oct 2026, 13:24 UTC");
+    expect(friendlyTime("2026-10-01T13:24:13+00:00")).toBe("1 Oct 2026, 16:24 EAT");
     expect(elapsed(75)).toBe("1:15");
     expect(elapsed(3675)).toBe("1:01:15");
     expect(pyRepr(null)).toBe("None");
     expect(pyRepr("a")).toBe("'a'");
     expect(plural(1, "report section")).toBe("1 report section");
     expect(plural(6, "report section")).toBe("6 report sections");
+  });
+
+  it("shows stored UTC times in East Africa Time, whatever the process timezone", () => {
+    // Intl is given the zone explicitly, so the process TZ cannot matter; the loop proves it for three zones.
+    const original = process.env.TZ;
+    try {
+      for (const tz of ["UTC", "Africa/Nairobi", "America/Los_Angeles"]) {
+        process.env.TZ = tz;
+        expect(friendlyTime("2026-10-23T23:30:00+00:00")).toBe("24 Oct 2026, 02:30 EAT");
+        expect(friendlyTime("2026-10-23T23:30:00")).toBe("24 Oct 2026, 02:30 EAT"); // no offset: read as UTC
+        expect(friendlyTime("2026-10-23T23:30:00.123Z")).toBe("24 Oct 2026, 02:30 EAT");
+        expect(friendlyTime("2026-10-23T23:30:00-03:00")).toBe("24 Oct 2026, 05:30 EAT");
+        expect(friendlyDate("2026-10-23")).toBe("23 Oct 2026"); // a calendar date keeps its own day
+      }
+    } finally {
+      if (original === undefined) delete process.env.TZ;
+      else process.env.TZ = original;
+    }
   });
 
   it("counts a topic as the API does", () => {

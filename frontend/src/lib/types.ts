@@ -539,7 +539,7 @@ export interface RunEvent {
   detail: string | null;
   /** check_finished and run_finished only: review items per status. */
   counts: Record<Status, number> | null;
-  /** UTC, ISO 8601. */
+  /** UTC, ISO 8601 (shown to the user as EAT by friendlyTime). */
   at: string;
 }
 
