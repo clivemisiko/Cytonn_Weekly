@@ -1,41 +1,75 @@
 """The one place a database is opened.
 
 Every runtime SQL call goes through here (sections.py, digital_payments/review_store.py, notable/store.py and
-report_sections.py); no other file imports sqlite3 or opens a connection.  This module owns the connection, rows by
-column name, the transaction, the schema run, the placeholder style and the id of an inserted row.
+report_sections.py); no other file imports sqlite3 or psycopg or opens a connection.  This module owns the connection,
+rows by column name, the transaction, the schema run, the placeholder style and the id of an inserted row.
 
 Which database: an explicit ``db_path`` is a SQLite file (tests, scripts and ``create_app(db_path=...)``).  With no
-``db_path`` and CYTONN_DATABASE_URL set, PostgreSQL is selected and, until Stage P2, refused with DatabaseNotAvailable;
-psycopg is imported lazily, when P2 connects, never when this module is imported.  With neither, ``data/app.db``.
+``db_path`` and CYTONN_DATABASE_URL set, it is PostgreSQL (Supabase); psycopg is imported lazily, when that connection
+is made, never when this module is imported.  With neither, ``data/app.db``.
+
+PostgreSQL: SSL is always required (``_postgres_url``).  The tables live in their own schema, CYTONN_DATABASE_SCHEMA
+(default ``cytonn``), never in ``public``, which Supabase exposes through its web API.  The schema is chosen with a SET
+statement as the first thing a new connection does, not a startup option in the URL, because the Supabase pooler may
+refuse options (so use the pooler's session mode, port 5432: a SET does not outlive a transaction in transaction mode).
+Nothing the driver says is ever passed on: its messages can name the host and the user.
 
 SQL is written once, with ``?`` placeholders, and only in forms SQLite (3.39 or newer) and PostgreSQL both accept:
 RETURNING for an inserted row's id, IS NOT DISTINCT FROM for a comparison that may be NULL, ON CONFLICT for an upsert.
-The schema (schema.sql) and the migration below are SQLite's; PostgreSQL gets its own schema in P2.
+Each database has its own schema file (schema.sql, schema_postgres.sql); the migration below is SQLite's.
 """
 
 from __future__ import annotations
 
+import logging
 import os
+import re
 import sqlite3
+import sys
+import threading
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator, Optional
+from urllib.parse import parse_qsl, urlsplit, urlunsplit
 
 from cytonn_weekly.paths import DATA_DIR
 
+log = logging.getLogger(__name__)
+
 DATABASE_URL_ENV = "CYTONN_DATABASE_URL"
+DATABASE_SCHEMA_ENV = "CYTONN_DATABASE_SCHEMA"
+DEFAULT_SCHEMA = "cytonn"
 MIN_SQLITE = (3, 39, 0)  # IS NOT DISTINCT FROM; RETURNING needs 3.35 and ON CONFLICT 3.24
 
-# Resolved at import time (cytonn_weekly/paths.py).  The schema is code, so it sits beside this file and not in the
+# What a coordinator is told when PostgreSQL cannot be used, whatever the driver said.
+UNREACHABLE = "Could not reach the database. Check CYTONN_DATABASE_URL and the network."
+
+# Resolved at import time (cytonn_weekly/paths.py).  The schemas are code, so they sit beside this file and not in the
 # data folder, which a Docker volume replaces.
 _DEFAULT_DB = DATA_DIR / "app.db"
 _SCHEMA_SQL = Path(__file__).parent / "schema.sql"
+_POSTGRES_SCHEMA_SQL = Path(__file__).parent / "schema_postgres.sql"
 
-Row = sqlite3.Row  # a row read by column name: row["run_id"], dict(row), row.keys()
+CONNECT_TIMEOUT_SECONDS = 10  # else an unreachable host holds a request for the operating system's own limit
+_SSL_MODES = ("require", "verify-ca", "verify-full")  # sslmode values that encrypt; anything weaker is refused
+_SCHEMA_NAME = re.compile(r"[a-z_][a-z0-9_]{0,62}")
+_RESERVED_SCHEMAS = ("public", "information_schema")
+_SCHEMA_LOCK = 7_368_301  # an arbitrary advisory-lock number: two processes starting together do not both create the tables
+_CONNECT_CAUSES = (  # (the word logged, phrases the driver or the system uses for it)
+    ("authentication", ("authentication failed", "no pg_hba", "tenant or user not found")),
+    ("name lookup", ("translate host name", "name or service not known", "getaddrinfo", "gaierror", "network access in a test",
+                     "no such host", "temporary failure in name resolution")),
+    ("timeout", ("timeout expired", "timed out")),
+    ("refused", ("connection refused", "actively refused")),
+    ("ssl", ("ssl", "tls", "certificate")),
+)
+_PLACEHOLDER = re.compile(r"""('[^']*'|"[^"]*")|\?""")  # a quoted string or identifier, else a ?
+
+Row = sqlite3.Row  # a row read by column name: row["run_id"], dict(row), row.keys() (a plain dict on PostgreSQL)
 
 
 class DatabaseNotAvailable(RuntimeError):
-    """CYTONN_DATABASE_URL selects PostgreSQL, which cannot be used yet."""
+    """The PostgreSQL database cannot be used.  Its message is fixed text or names a setting, never the URL or the driver's words."""
 
 
 class SQLiteTooOld(RuntimeError):
@@ -57,60 +91,168 @@ def check_sqlite_version(found: Optional[tuple] = None) -> None:
 check_sqlite_version()  # at import, so the app and every script refuse to start on a SQLite too old for the SQL
 
 
+def is_postgres_error(exc: BaseException) -> bool:
+    """True for any error psycopg raised.  Never imports the driver: if it was never loaded, nothing it raised can exist."""
+    psycopg = sys.modules.get("psycopg")
+    return psycopg is not None and isinstance(exc, psycopg.Error)
+
+
+def _postgres_sql(sql: str) -> str:
+    """The SQL as psycopg wants it: ``?`` becomes ``%s`` (not inside a quoted string) and a literal ``%`` becomes ``%%``.
+
+    ponytail: a ``?`` in a ``--`` comment is converted too; none of this app's SQL has one.
+    """
+    return _PLACEHOLDER.sub(lambda m: m.group(0) if m.group(1) else "%s", sql.replace("%", "%%"))
+
+
 class Db:
-    """One open connection.  Callers write SQL with ``?`` and never see the driver."""
+    """One open connection.  Callers write SQL with ``?`` and never see the driver.  ``schema`` is the PostgreSQL schema, None for SQLite."""
 
-    def __init__(self, conn: sqlite3.Connection) -> None:
+    def __init__(self, conn, schema: Optional[str] = None) -> None:
         self._conn = conn
+        self.schema = schema
 
-    def _run(self, sql: str, params=()) -> sqlite3.Cursor:
-        # The only place SQL text reaches the driver.  SQLite takes ``?`` as written; P2 turns it into ``%s`` here.
-        return self._conn.execute(sql, params)
+    def _run(self, sql: str, params=()):
+        # The only place SQL text reaches the driver.  SQLite takes ``?`` as written; psycopg takes ``%s``.
+        return self._conn.execute(sql if self.schema is None else _postgres_sql(sql), params)
 
-    def execute(self, sql: str, params=()) -> sqlite3.Cursor:
+    def execute(self, sql: str, params=()):
         """Run one statement; the cursor gives fetchone(), fetchall(), iteration and rowcount."""
         return self._run(sql, params)
 
     def insert(self, sql: str, params, id_column: str) -> int:
         """Run an INSERT and return the new row's ``id_column``, read back with RETURNING."""
         rows = self._run(f"{sql} RETURNING {id_column}", params).fetchall()  # every row read, so the statement is done before the transaction ends
-        return rows[0][0]
+        return rows[0][id_column]
 
     @contextmanager
     def transaction(self) -> Iterator["Db"]:
-        """Commit when the block ends, roll back if it raises; the connection stays open."""
-        with self._conn:
+        """Commit when the block ends, roll back if it raises; the connection stays open.  (A PostgreSQL connection is in
+        autocommit mode, so a statement outside a block commits by itself and a block is a real BEGIN to COMMIT.)"""
+        with (self._conn if self.schema is None else self._conn.transaction()):
             yield self
 
     def run_script(self, script: str) -> None:
-        """Run a script of statements (the SQLite schema)."""
-        self._conn.executescript(script)
+        """Run a script of statements with no parameters (a schema)."""
+        if self.schema is None:
+            self._conn.executescript(script)
+        else:
+            self._conn.execute(script)  # with no parameters the server takes several statements in one call
 
     def close(self) -> None:
         self._conn.close()
 
 
+def schema_name() -> str:
+    """The PostgreSQL schema the tables live in: CYTONN_DATABASE_SCHEMA, else ``cytonn``; refused unless it is a plain name."""
+    name = os.environ.get(DATABASE_SCHEMA_ENV, "").strip() or DEFAULT_SCHEMA
+    if not _SCHEMA_NAME.fullmatch(name) or name in _RESERVED_SCHEMAS or name.startswith("pg_"):
+        raise DatabaseNotAvailable(
+            f"{DATABASE_SCHEMA_ENV} must be lower-case letters, digits and underscores (at most 63, not starting "
+            "with a digit or pg_) and not public or information_schema, which Supabase exposes through its web API."
+        )
+    return name
+
+
+def _postgres_url(url: str) -> str:
+    """The URL with SSL required: as written when it asks for require or stronger, ``sslmode=require`` added when it says
+    nothing, refused when it asks for less.  Everything else, the user and the password included, is left as written."""
+    try:
+        parts = urlsplit(url)
+        query = parse_qsl(parts.query, keep_blank_values=True)
+    except ValueError:
+        parts = None
+    if parts is None or parts.scheme not in ("postgresql", "postgres") or not parts.hostname:
+        raise DatabaseNotAvailable(
+            f"{DATABASE_URL_ENV} is not a valid postgresql:// URL (a password with special characters must be percent-encoded)."
+        )
+    if parts.netloc.count("@") > 1:  # libpq ends the user info at the first @, Python at the last: the rest would be sent on as a host name
+        raise DatabaseNotAvailable(
+            f"{DATABASE_URL_ENV} has more than one @ before the host. Percent-encode the password: an @ in it is %40 and an & is %26."
+        )
+    modes = [v for k, v in query if k == "sslmode"]
+    if any(m not in _SSL_MODES for m in modes):
+        raise DatabaseNotAvailable(
+            f"{DATABASE_URL_ENV} sets an sslmode weaker than require; use require, verify-ca or verify-full, or leave it out."
+        )
+    if modes:
+        return url
+    return urlunsplit(parts._replace(query=f"{parts.query}&sslmode=require" if parts.query else "sslmode=require"))
+
+
+def _why(exc: BaseException) -> str:
+    """Which of a few causes a failed connection looks like, as one of these fixed words.  The log gets the word and never
+    the driver's text (which names the host and the user); a SQLSTATE is rarely present on a failed connect."""
+    text = str(exc).lower()
+    for word, clues in _CONNECT_CAUSES:
+        if any(c in text for c in clues):
+            return word
+    return "other"
+
+
+def _connect_postgres(url: str) -> Db:
+    import psycopg  # here and not at the top: a SQLite-only run never loads the driver
+    from psycopg.rows import dict_row
+
+    schema, url = schema_name(), _postgres_url(url)
+    failed = None
+    try:
+        conn = psycopg.connect(url, row_factory=dict_row, autocommit=True, connect_timeout=CONNECT_TIMEOUT_SECONDS)
+        try:
+            conn.execute(f'SET search_path TO "{schema}"')  # a statement, not a startup option: the pooler may refuse options
+        except BaseException:
+            conn.close()
+            raise
+    except Exception as exc:  # noqa: BLE001 - whatever the driver says can name the host and user: keep a fixed tag, its class and SQLSTATE only
+        failed = (_why(exc), type(exc).__name__, getattr(exc, "sqlstate", None))
+    if failed:  # raised out here, not inside the except, so the driver's error is not attached to ours
+        log.warning("could not open the PostgreSQL connection: %s (%s, SQLSTATE %s)", *failed)
+        raise DatabaseNotAvailable(UNREACHABLE)
+    return Db(conn, schema)
+
+
 def connect(db_path: Optional[Path | str] = None) -> Db:
     """Open the database, without touching its schema."""
-    if db_path is None and os.environ.get(DATABASE_URL_ENV, "").strip():
-        # The URL is not echoed: it may hold a password.
-        raise DatabaseNotAvailable(
-            f"{DATABASE_URL_ENV} is set, which selects PostgreSQL, but PostgreSQL is not available until Stage P2. "
-            f"Unset {DATABASE_URL_ENV} to use the SQLite file, or pass an explicit db_path."
-        )
+    url = os.environ.get(DATABASE_URL_ENV, "").strip()
+    if db_path is None and url:
+        return _connect_postgres(url)
     check_sqlite_version()
     conn = sqlite3.connect(str(db_path) if db_path is not None else str(_DEFAULT_DB))
     conn.row_factory = sqlite3.Row
     return Db(conn)
 
 
+_schema_applied: set[int] = set()  # a hash of (URL, schema) per database this process has set up; not the URL itself
+_schema_lock = threading.Lock()
+
+
+def _apply_postgres_schema(conn: Db) -> None:
+    """Create the schema, its tables and the five section rows, once per process and database.
+
+    Every store call opens the database, and the script's ALTER TABLE ... ENABLE ROW LEVEL SECURITY takes a lock on each
+    table, so running it each time would queue every request behind it.  All or nothing: DDL is transactional here.
+    ponytail: a schema dropped under a running process is not recreated until restart.
+    """
+    key = hash((os.environ.get(DATABASE_URL_ENV), conn.schema))
+    with _schema_lock:
+        if key in _schema_applied:
+            return
+        with conn.transaction():
+            conn.execute(f"SELECT pg_advisory_xact_lock({_SCHEMA_LOCK})")
+            conn.run_script(_POSTGRES_SCHEMA_SQL.read_text(encoding="utf-8").replace("{schema}", f'"{conn.schema}"'))
+        _schema_applied.add(key)
+
+
 def open_db(db_path: Optional[Path | str] = None) -> Db:
     """Open the database with its schema applied.  Idempotent: safe on a database that already has it."""
     conn = connect(db_path)
     try:
-        conn.run_script(_SCHEMA_SQL.read_text(encoding="utf-8"))
-        with conn.transaction():
-            _migrate(conn)
+        if conn.schema is not None:
+            _apply_postgres_schema(conn)
+        else:
+            conn.run_script(_SCHEMA_SQL.read_text(encoding="utf-8"))
+            with conn.transaction():
+                _migrate(conn)
     except BaseException:
         conn.close()
         raise
@@ -120,7 +262,7 @@ def open_db(db_path: Optional[Path | str] = None) -> Db:
 def init_db(db_path: Optional[Path | str] = None) -> None:
     """Create the tables and seed the sections if not already present.  Safe to call on every startup.
 
-    ``db_path`` is the SQLite file; None means ``data/app.db`` relative to backend/.
+    ``db_path`` is the SQLite file; None means CYTONN_DATABASE_URL's PostgreSQL if set, else ``data/app.db`` relative to backend/.
     """
     open_db(db_path).close()
 
