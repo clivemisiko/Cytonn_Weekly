@@ -39,10 +39,10 @@ const groupOpen = ref(true);
 const MARKS: Record<RailState | "unknown", { label: string; icon: typeof PhCircle; tone: string }> = {
   approved: { label: "Approved", icon: PhCheckCircle, tone: "text-ok-fg" },
   rejected: { label: "Rejected", icon: PhWarningCircle, tone: "text-flag-fg" },
-  in_review: { label: "In review", icon: PhCircleHalf, tone: "text-primary" },
+  in_review: { label: "In review", icon: PhCircleHalf, tone: "text-link" },
   not_drafted: { label: "Not drafted", icon: PhCircle, tone: "text-muted-foreground" },
   unavailable: { label: "Not available yet", icon: PhLockSimple, tone: "text-muted-foreground" },
-  drafting: { label: "Being drafted", icon: PhCircleNotch, tone: "text-primary" },
+  drafting: { label: "Being drafted", icon: PhCircleNotch, tone: "text-link" },
   unknown: { label: "State not known", icon: PhCircleDashed, tone: "text-muted-foreground" },
 };
 const markOf = (s: RailSection) => MARKS[s.state ?? "unknown"];
@@ -183,7 +183,7 @@ const ITEM =
             :aria-valuenow="shell.approved.value"
             class="h-1.5 overflow-hidden rounded-full bg-border"
           >
-            <div class="h-full rounded-full bg-primary" :style="{ width: `${shell.total.value ? (shell.approved.value / shell.total.value) * 100 : 0}%` }" />
+            <div class="h-full rounded-full bg-link" :style="{ width: `${shell.total.value ? (shell.approved.value / shell.total.value) * 100 : 0}%` }" />
           </div>
           <p v-if="shell.report.value?.type === 'weekly'" class="text-xs text-muted-foreground">
             {{

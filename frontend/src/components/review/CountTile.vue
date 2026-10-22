@@ -13,10 +13,10 @@ defineProps<{ status: Status; value: number; sub?: string }>();
       <span class="eyebrow text-(--hue-fg)">{{ STATUS_META[status].label }}</span>
     </div>
     <div v-if="sub !== undefined" class="flex items-baseline gap-3">
-      <span class="font-mono text-2xl leading-none font-semibold tracking-tight">{{ value }}</span>
+      <span class="text-2xl leading-none font-semibold tracking-tight">{{ value }}</span>
       <span class="relative min-h-5 text-sm font-medium"><span class="block">{{ sub }}</span></span>
     </div>
-    <span v-else class="font-mono text-2xl leading-none font-semibold tracking-tight">{{ value }}</span>
+    <span v-else class="text-2xl leading-none font-semibold tracking-tight">{{ value }}</span>
     <p class="text-xs text-muted-foreground">{{ STATUS_META[status].hint }}</p>
   </div>
 </template>

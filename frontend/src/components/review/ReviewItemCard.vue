@@ -106,12 +106,12 @@ const cells = (flag: Flag): [string, string][] => [
         <dl v-if="flag.drafted !== null || flag.expected !== null" class="grid gap-2 @min-[34rem]:grid-cols-3">
           <div v-for="[k, v] in cells(flag)" :key="k" class="min-w-0 rounded-sm border bg-card px-3 py-2">
             <dt class="text-xs text-muted-foreground">{{ k }}</dt>
-            <dd class="mt-1 font-mono text-sm font-medium [overflow-wrap:anywhere]">{{ v }}</dd>
+            <dd class="mt-1 text-sm font-medium [overflow-wrap:anywhere]">{{ v }}</dd>
           </div>
         </dl>
         <ul v-if="flag.sources.length > 0" class="space-y-1 text-xs text-muted-foreground">
           <li v-for="s in flag.sources" :key="s.source">
-            {{ s.source }}: <span class="font-mono">{{ String(s.value) }}</span> (normalized <span class="font-mono">{{ String(s.normalized) }}</span
+            {{ s.source }}: <span>{{ String(s.value) }}</span> (normalized <span>{{ String(s.normalized) }}</span
             >)
           </li>
         </ul>
@@ -128,7 +128,7 @@ const cells = (flag: Flag): [string, string][] => [
         <p class="eyebrow">Worked out from</p>
         <ul class="space-y-1 text-xs">
           <li v-for="[name, input] in inputs.slice(0, 12)" :key="name" class="[overflow-wrap:anywhere]">
-            <span class="font-mono font-medium">{{ String(input.value) }}</span>{{ " " }}<span class="text-muted-foreground">
+            <span class="font-medium">{{ String(input.value) }}</span>{{ " " }}<span class="text-muted-foreground">
               {{ input.origin === "ocr" ? "read by OCR from " : "" }}{{ input.source }}{{ input.second ? `; also ${String(input.second.value)} in ${input.second.source}` : "" }}
             </span>
           </li>

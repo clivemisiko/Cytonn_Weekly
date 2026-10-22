@@ -64,7 +64,7 @@ type Row = Record<string, unknown> & { flagged: boolean };
       <dl class="max-w-md divide-y rounded-md border text-sm">
         <div v-for="s in section.outlook.stats" :key="s.key" class="flex items-baseline justify-between gap-6 px-3 py-2">
           <dt class="font-mono text-xs text-muted-foreground">{{ s.key }}</dt>
-          <dd class="text-right font-mono font-medium">{{ s.value }}</dd>
+          <dd class="text-right font-medium">{{ s.value }}</dd>
         </div>
       </dl>
       <Warnings :items="section.outlook.warnings" />

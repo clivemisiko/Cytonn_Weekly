@@ -51,7 +51,7 @@ const id = `analyst-${props.item.key}`;
         </thead>
         <tbody>
           <tr v-for="(row, n) in rows" :key="n" class="border-t">
-            <td v-for="c in item.columns" :key="c.key" class="px-2 py-1" :class="c.kind !== 'text' && 'text-right font-mono tabular-nums'">{{ row[c.key] ?? "" }}</td>
+            <td v-for="c in item.columns" :key="c.key" class="px-2 py-1" :class="c.kind !== 'text' && 'text-right tabular-nums'">{{ row[c.key] ?? "" }}</td>
           </tr>
         </tbody>
       </table>

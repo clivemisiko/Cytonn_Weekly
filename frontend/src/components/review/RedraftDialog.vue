@@ -15,7 +15,7 @@ const emit = defineEmits<{ confirm: []; cancel: [] }>();
     <DialogPortal>
       <DialogOverlay
         data-slot="dialog-overlay"
-        class="fixed inset-0 isolate z-50 bg-band/70 duration-150 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0"
+        class="fixed inset-0 isolate z-50 bg-scrim/70 duration-150 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0"
       />
       <DialogContent
         data-slot="dialog-content"

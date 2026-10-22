@@ -191,7 +191,7 @@ const lists = computed(() => [
                 Resuming it does not re-run the draft.
               </p>
               <div class="h-2 overflow-hidden rounded-full bg-border" aria-hidden="true">
-                <div class="h-full rounded-full bg-primary" :style="{ width: `${items.length ? (resolved / items.length) * 100 : 0}%` }" />
+                <div class="h-full rounded-full bg-link" :style="{ width: `${items.length ? (resolved / items.length) * 100 : 0}%` }" />
               </div>
             </template>
             <p v-else class="text-sm">
