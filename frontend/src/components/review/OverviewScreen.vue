@@ -99,7 +99,7 @@ const flagged = computed(() =>
       <CollapsibleRoot v-model:open="groupOpen" class="space-y-4">
         <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           <h2 class="text-base font-semibold">
-            <CollapsibleTrigger class="flex items-center gap-2 rounded-md py-1 text-left outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring">
+            <CollapsibleTrigger class="flex items-center gap-2 rounded-md py-1 text-left outline-none hover:text-link focus-visible:ring-2 focus-visible:ring-ring">
               <PhCaretDown weight="bold" class="size-4 shrink-0 text-muted-foreground transition-transform duration-200" :class="!groupOpen && '-rotate-90'" aria-hidden="true" />
               {{ groupLabel }} · {{ approved }} of {{ overview.sections.length }} approved
             </CollapsibleTrigger>

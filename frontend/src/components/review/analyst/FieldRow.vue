@@ -62,7 +62,7 @@ const commit = () => {
         :inputmode="item.kind === 'number' ? 'decimal' : undefined"
         autocomplete="off"
         :placeholder="fromBook ? `${fromBook} (workbook)` : undefined"
-        :class="[FIELD, 'w-44 font-mono tabular-nums']"
+        :class="[FIELD, 'w-44 tabular-nums']"
         @blur="commit"
         @keydown.enter="($event.currentTarget as HTMLInputElement).blur()"
       />

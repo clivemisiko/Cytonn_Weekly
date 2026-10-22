@@ -191,7 +191,7 @@ const lists = computed(() => [
                 Resuming it does not re-run the draft.
               </p>
               <div class="h-2 overflow-hidden rounded-full bg-border" aria-hidden="true">
-                <div class="h-full rounded-full bg-primary" :style="{ width: `${items.length ? (resolved / items.length) * 100 : 0}%` }" />
+                <div class="h-full rounded-full bg-foreground" :style="{ width: `${items.length ? (resolved / items.length) * 100 : 0}%` }" />
               </div>
             </template>
             <p v-else class="text-sm">
@@ -354,7 +354,7 @@ const lists = computed(() => [
               >
                 <span
                   class="relative z-10 grid size-6 shrink-0 place-items-center rounded-sm border font-mono text-xs font-semibold"
-                  :class="i === section.steps.length - 1 ? 'border-primary bg-primary text-primary-foreground' : 'border-input bg-card'"
+                  :class="i === section.steps.length - 1 ? 'border-foreground bg-foreground text-background' : 'border-input bg-card'"
                 >
                   {{ i + 1 }}
                 </span>

@@ -10,7 +10,7 @@ import type { Drafting, SectionSummary } from "@/lib/types";
 const CHIP: Record<SectionState, { label: string; className: string; glyph?: string; stateClass?: string }> = {
   approved: { label: "Approved", className: "border-ok/40 bg-ok/10 text-ok-fg", glyph: "✓", stateClass: "state-clean" },
   rejected: { label: "Rejected", className: "border-flag/40 bg-flag/10 text-flag-fg", glyph: "!", stateClass: "state-flagged" },
-  in_review: { label: "In review", className: "border-primary/40 bg-primary/10 text-foreground" },
+  in_review: { label: "In review", className: "border-input bg-muted text-foreground" },
   not_drafted: { label: "Not drafted this week", className: "border-input text-muted-foreground" },
   unavailable: { label: "Not available yet", className: "border-input bg-muted text-muted-foreground" },
 };
@@ -82,7 +82,7 @@ const lists = computed(() =>
 <template>
   <li class="@container" :aria-labelledby="`sec-${s.slug}`">
     <div class="grid grid-cols-1 gap-x-3 @md:grid-cols-[2.5rem_minmax(0,1fr)]">
-      <span class="hidden size-10 place-items-center rounded-full bg-accent font-mono text-sm font-semibold text-accent-foreground @md:grid" aria-hidden="true">
+      <span class="hidden size-10 place-items-center rounded-full bg-muted font-mono text-sm font-semibold text-foreground @md:grid" aria-hidden="true">
         {{ index + 1 }}
       </span>
 
@@ -99,7 +99,7 @@ const lists = computed(() =>
               <!-- Small chip on the drafting section's own card. -->
               <span
                 v-if="drafting"
-                :class="[CHIP_BASE, drafting.stale ? 'border-warn/40 bg-warn/10 text-warn-fg' : 'border-primary/40 bg-primary/10 text-foreground']"
+                :class="[CHIP_BASE, drafting.stale ? 'border-warn/40 bg-warn/10 text-warn-fg' : 'border-input bg-muted text-foreground']"
               >
                 <PhCircleNotch weight="bold" class="size-3" :class="!drafting.stale && 'animate-spin motion-reduce:animate-none'" aria-hidden="true" />
                 {{ drafting.stale ? "Looks stuck" : "Drafting now" }}
@@ -133,7 +133,7 @@ const lists = computed(() =>
                 fill="none"
                 stroke-width="4"
                 stroke-linecap="round"
-                class="stroke-primary"
+                class="stroke-foreground"
                 :stroke-dasharray="RING"
                 :stroke-dashoffset="RING * (1 - fraction)"
               />

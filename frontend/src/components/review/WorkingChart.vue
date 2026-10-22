@@ -57,7 +57,7 @@ const summary = computed(() => {
         stroke-linecap="round"
       />
       <circle v-for="d in g.dots.slice(0, -1)" :key="d.date" :cx="d.x" :cy="d.y" r="3" class="fill-card stroke-foreground" stroke-width="1.5" />
-      <circle data-part="latest-dot" :cx="g.latest.x" :cy="g.latest.y" r="5" class="fill-primary stroke-primary" stroke-width="1.5" />
+      <circle data-part="latest-dot" :cx="g.latest.x" :cy="g.latest.y" r="5" class="fill-foreground stroke-background" stroke-width="1.5" />
 
       <text
         v-for="s in g.scale"

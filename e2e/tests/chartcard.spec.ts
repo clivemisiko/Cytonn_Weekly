@@ -259,7 +259,7 @@ test("T84 at 390px the card has nothing to scroll sideways and its buttons are r
   expect(await region.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
 
   await page.emulateMedia({ colorScheme: "dark" });
-  await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).backgroundColor)).not.toBe("rgb(246, 248, 251)");
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).backgroundColor)).not.toBe("rgb(243, 243, 243)");
   const frame = await img.evaluate((el) => getComputedStyle(el.parentElement!).backgroundColor);
   expect(frame).toBe("rgb(255, 255, 255)");
 });

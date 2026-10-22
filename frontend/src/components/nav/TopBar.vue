@@ -40,7 +40,7 @@ function goBack() {
     <p
       class="flex h-full shrink-0 items-center gap-2 px-3 text-sm font-semibold whitespace-nowrap min-[768px]:w-14 min-[768px]:justify-center min-[768px]:border-r min-[768px]:border-band-rule min-[768px]:px-0 min-[1366px]:w-56 min-[1366px]:justify-start min-[1366px]:px-4"
     >
-      <span class="size-2.5 shrink-0 rounded-full bg-sky" aria-hidden="true" />
+      <span class="size-2.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
       <span class="sr-only min-[1366px]:not-sr-only">Cytonn Weekly</span>
     </p>
     <nav aria-label="App" class="flex h-full min-w-0 flex-1 items-center gap-1 px-2 sm:px-4">

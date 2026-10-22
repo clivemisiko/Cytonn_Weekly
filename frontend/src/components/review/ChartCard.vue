@@ -132,7 +132,7 @@ async function chooseTeamChart() {
     <dl v-if="facts.length > 0" class="grid gap-2 @min-[34rem]:grid-cols-2 md:pl-11" aria-label="What the chart rests on">
       <div v-for="f in facts" :key="f.label" class="min-w-0 rounded-sm border bg-card px-3 py-2">
         <dt class="text-xs text-muted-foreground">{{ f.label }}</dt>
-        <dd class="mt-1 font-mono text-sm font-medium [overflow-wrap:anywhere]">{{ f.value }}</dd>
+        <dd class="mt-1 text-sm font-medium [overflow-wrap:anywhere]">{{ f.value }}</dd>
       </div>
     </dl>
     <p v-if="provenanceLine(block)" class="text-xs text-muted-foreground md:pl-11">{{ provenanceLine(block) }}</p>
@@ -194,7 +194,7 @@ async function chooseTeamChart() {
           <tbody>
             <tr v-for="p in points" :key="p.date" class="border-b last:border-b-0">
               <td class="px-3 py-1 whitespace-nowrap">{{ friendlyDate(p.date) }}</td>
-              <td class="px-3 py-1 text-right font-mono">{{ p.value }}</td>
+              <td class="px-3 py-1 text-right">{{ p.value }}</td>
               <td class="px-3 py-1 font-mono text-muted-foreground">{{ p.cell }}</td>
             </tr>
           </tbody>

@@ -68,7 +68,7 @@ function confirmDismiss() {
 
     <p :id="`${uid}-headline`" class="text-sm font-medium [overflow-wrap:anywhere]">{{ headlineOf(s) }}</p>
     <p v-if="isEdited(s)" class="text-xs text-muted-foreground [overflow-wrap:anywhere]">Original: {{ s.headline }}</p>
-    <p v-if="figures" class="font-mono text-xs text-muted-foreground [overflow-wrap:anywhere]">{{ figures }}</p>
+    <p v-if="figures" class="text-xs text-muted-foreground [overflow-wrap:anywhere]">{{ figures }}</p>
     <p v-if="mode === 'dismissed'" class="text-xs text-muted-foreground">
       {{ s.decision?.dismiss_reason ? `Reason: ${reasonLabel(s.decision.dismiss_reason)}` : "No reason given." }}
     </p>
@@ -119,7 +119,7 @@ function confirmDismiss() {
           <tbody>
             <tr v-for="p in s.working.points" :key="p.date" class="border-b last:border-b-0">
               <td class="py-1 pr-3 whitespace-nowrap">{{ friendlyDate(p.date) }}</td>
-              <td class="py-1 text-right font-mono">{{ p.display }}</td>
+              <td class="py-1 text-right">{{ p.display }}</td>
             </tr>
           </tbody>
         </table>

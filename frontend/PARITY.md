@@ -18,7 +18,7 @@ the behaviour on the Next app; `none` means no automated test, with the reason i
 | R3 | `/overview` | Phase machine: booting, unreachable, overview, start, review. Report mirrored in the address bar (`?report=&period=&kind=`), absent means weekly; a report the API rejects (422) falls back to weekly | `app/overview/page.tsx`, `components/review/review-app.tsx` | verified by T03, T04 | T03, T04 |
 | R4 | `/overview?review=<id>` | Opens that saved review directly; if it cannot be read, the overview | `review-app.tsx` (`reviewFromUrl`, `boot`) | verified by T09 | T09 |
 | R5 | `/runs/:runId` | The draft run view (its facts in a panel beside the steps since 2026-10-19) | `app/runs/[runId]/page.tsx`, `components/run/run-view.tsx` | verified by T09, T11, T12, T15 | T09, T11, T12, T15 |
-| R6 | every page | Root layout: `<html lang="en">`, title "Cytonn Weekly review", description, theme-color metas (#0a2b29 light, #0e2421 dark), the two fonts, skip link, top bar | `app/layout.tsx` | verified by T16 | T16 |
+| R6 | every page | Root layout: `<html lang="en">`, title "Cytonn Weekly review", description, theme-color metas (#ffffff light, #000000 dark since 2026-10-22; #0a2b29 and #0e2421 in the Next app), the two faces (Arial, with JetBrains Mono for ids since 2026-10-22; Plus Jakarta Sans and JetBrains Mono before), skip link, top bar | `app/layout.tsx` | verified by T16 | T16 |
 
 ## 2. Components
 
@@ -256,7 +256,7 @@ review's "Decision recorded on …" line has a leading space in the Vue app's te
    animation. Not ported: the resolution control's fill sliding between options (it switches at once), the cross-fade
    of the resolution chip, of the scorecard's sub-line and of the status bar's message when they change, and the exit
    animations of the error notices. Reduced motion is honoured by the same CSS rule as before.
-2. **Font loading.** The two faces come from `@fontsource-variable` packages; `next/font` also adjusts the fallback
+2. **Font loading.** (Until 2026-10-22; text is now Arial, a system face, and only JetBrains Mono is loaded.) The two faces came from `@fontsource-variable` packages; `next/font` also adjusts the fallback
    font's metrics to avoid a shift while the web font loads, which this does not. Text can shift slightly on a cold
    load.
 3. **The Unreachable screen names `VITE_API_TARGET`** where the Next app named its own build-time setting, and the
@@ -279,7 +279,7 @@ review's "Decision recorded on …" line has a leading space in the Vue app's te
 ## 9. The 2026-10-19 restyle (frontend only)
 
 A layout and colour change, done in commits after the cut-over, with no change to the API, the backend, a dependency or
-any behaviour above: the palette became navy on a pale page (tokens in `styles.css`, contrast measured in the comment
+any behaviour above: the palette became navy on a pale page (and on 2026-10-22 green, white and black, with Arial; `src/lib/contrast.test.ts` asserts the contrast) (tokens in `styles.css`, contrast measured in the comment
 above them), and every screen but the start page moved into a shell of a rail, a feed and, where there is one, a side
 panel. What is new, each with the test that pins it (`e2e/tests/`):
 

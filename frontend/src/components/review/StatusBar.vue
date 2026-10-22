@@ -51,7 +51,7 @@ const fraction = computed(() => (progress.value.total ? progress.value.resolved 
             :aria-valuenow="progress.resolved"
             class="h-2 overflow-hidden rounded-full bg-border"
           >
-            <div class="h-full origin-left rounded-full bg-primary transition-transform duration-[240ms] ease-(--ease-out)" :style="{ transform: `scaleX(${fraction})` }" />
+            <div class="h-full origin-left rounded-full bg-foreground transition-transform duration-[240ms] ease-(--ease-out)" :style="{ transform: `scaleX(${fraction})` }" />
           </div>
         </div>
         <div class="relative min-h-6 basis-full text-sm font-medium sm:flex-1 sm:basis-0" aria-live="polite">

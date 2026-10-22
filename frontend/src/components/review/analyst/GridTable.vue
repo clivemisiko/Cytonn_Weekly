@@ -78,7 +78,7 @@ const addLine = () => (lines.value = [...lines.value, { id: `new-${Date.now()}-$
                 :class="
                   cn(
                     FIELD,
-                    'h-8 px-2 font-mono text-sm tabular-nums md:text-xs',
+                    'h-8 px-2 text-sm tabular-nums md:text-xs',
                     c.kind === 'date' ? 'w-36' : 'w-24',
                     isCarried(item, line, c.key) && 'border-dashed bg-muted',
                   )

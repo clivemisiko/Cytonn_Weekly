@@ -1,8 +1,7 @@
-/* The design tokens and base styles of the whole app (a pale workbench: navy for where you are and what you can do,
+/* The design tokens and base styles of the whole app (a pale workbench: green for what you can do,
    white cards for what needs a decision, colour spent only on state). */
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "@fontsource-variable/plus-jakarta-sans";
 @import "@fontsource-variable/jetbrains-mono";
 
 /* The two state variants the dialog uses. */
@@ -22,20 +21,21 @@
 }
 
 /* ---------------------------------------------------------------------------
-   Identity: a pale workbench. A cool pale page, white cards with hairline borders, navy ink and navy primary,
-   pale blue for selected states. Built from `ant` (data-dense enterprise discipline: the type scale, the
-   spacing scale, explicit states) and `stitch` (clean, high-contrast ink).
+   Identity: Cytonn's own look, green, white and black. A pale grey page, near-white cards with hairline borders,
+   black ink, a white top bar. Built from `ant` (data-dense enterprise discipline: the type scale, the spacing
+   scale, explicit states) and `stitch` (clean, high-contrast ink).
 
-   Light blue (--sky) is a decorative accent on navy surfaces and, in the dark theme, the primary colour. On a
-   light surface it is never text, a focus ring, a control edge or a progress fill (1.9:1 on white).
+   Brand green #49B315 is for actions only (primary buttons with black text, selection, a thin accent). It is 2.71:1
+   on white, so it is never text, a focus ring, a control edge or a progress fill on a light surface; there the darker
+   green #2C7409 is used (--link, --ring).
 
-   The review states stay the only state colours: flagged (red), not auto-verified (amber), clean (green).
-   Figures are never coloured red or green.
+   The review states are the only state colours: flagged (red), not auto-verified (amber), clean (teal, #006B5B, a
+   different hue from the brand green on purpose). Brand green is never a review state. Figures are never coloured.
    --------------------------------------------------------------------------- */
 @theme inline {
-  --font-sans: var(--font-jakarta);
+  --font-sans: var(--font-arial);
   --font-mono: var(--font-jetbrains);
-  --font-heading: var(--font-jakarta);
+  --font-heading: var(--font-arial);
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -57,9 +57,9 @@
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
   --color-link: var(--link);
-  --color-sky: var(--sky);
 
-  /* The top bar and the dialog overlay: the one dark surface in the light theme. */
+  /* The top bar (white in the light theme, black in the dark one) and the dialog overlay's scrim. */
+  --color-scrim: var(--scrim);
   --color-band: var(--band);
   --color-band-foreground: var(--band-foreground);
   --color-band-muted: var(--band-muted);
@@ -111,50 +111,54 @@
 :root {
   color-scheme: light dark;
 
-  /* The two faces come from @fontsource (imported at the top). */
-  --font-jakarta: "Plus Jakarta Sans Variable", ui-sans-serif, system-ui, sans-serif;
+  /* Arial is the app's face (a system font: nothing to download). JetBrains Mono, from @fontsource, is kept for run ids,
+     dates, file names and the dev ribbon only. */
+  --font-arial: Arial, Helvetica, sans-serif;
   --font-jetbrains: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  /* Navy #013660, light blue #6FC3FF and pale blue #E6F1FB are the brand's; the rest is derived from those hues.
-     Contrast (WCAG), measured: ink on card 16.7, navy on page 11.6, white on navy 12.4, muted text on card 5.5 and on
-     the muted fill 4.9, link on card 6.7 and on pale blue 5.8; dark: ink on card 15.2, light blue on card 9.1,
-     muted text on card 7.8. A control's edge is at least 3:1 against every surface it sits on: light 3.7 on a card, about
-     3.4 on the page and 3.3 on the muted fill, dark 3.9 to 4.7. The hairline (--border) is decorative only. */
-  --background: light-dark(#f6f8fb, #07131f);
-  --foreground: light-dark(#0b1f33, #e6f1fb);
-  --card: light-dark(#ffffff, #0c1b2b);
-  --card-foreground: light-dark(#0b1f33, #e6f1fb);
-  --popover: light-dark(#ffffff, #112538);
-  --popover-foreground: light-dark(#0b1f33, #e6f1fb);
-  --primary: light-dark(#013660, #6fc3ff);
-  --primary-hover: light-dark(#0a4a82, #8fd1ff);
-  --primary-foreground: light-dark(#ffffff, #013660);
-  --secondary: light-dark(#eef2f7, #12263a);
-  --secondary-foreground: light-dark(#0b1f33, #e6f1fb);
-  --muted: light-dark(#eef2f7, #12263a);
-  --muted-foreground: light-dark(#5b6b7a, #9fb0c2);
-  --accent: light-dark(#e6f1fb, #12304d); /* the selected state: a pale blue pill */
-  --accent-foreground: light-dark(#013660, #e6f1fb);
+  /* Cytonn's colours: brand green #49B315, black #000000, white, page grey #F3F3F3, card #FEFEFE, border #E6E6E6,
+     teal #006B5B, body grey #44474E. The dark neutrals #0E0E0E, #161616, #EAEAEA, #A8ABB3, #2A2A2A, #8A8A8A, the
+     tints #E8F4E0 and #12240A and the muted fill #EDEDED are derived, not Cytonn's.
+     Contrast (WCAG), measured; src/lib/contrast.test.ts asserts every pair below from the tokens themselves:
+     ink on card 20.8, body grey on card 9.2, link on card 5.8 and on the green tint 5.1, black on brand green 7.7,
+     white on teal 6.5; dark: ink on card 15.0, muted text on card 7.9, brand green on card 6.7. A control's edge is at
+     least 3:1 against every surface it sits on: light 4.5 on a card, 4.1 on the page, 3.9 on the muted fill; dark
+     5.2 on a card. The hairline (--border) is decorative only. */
+  --background: light-dark(#f3f3f3, #0e0e0e);
+  --foreground: light-dark(#000000, #eaeaea);
+  --card: light-dark(#fefefe, #161616);
+  --card-foreground: light-dark(#000000, #eaeaea);
+  --popover: light-dark(#fefefe, #161616);
+  --popover-foreground: light-dark(#000000, #eaeaea);
+  --primary: #49b315; /* a fill, with black text; never text or an edge on a light surface */
+  --primary-hover: #5cc72a;
+  --primary-foreground: #000000;
+  --secondary: light-dark(#ededed, #2a2a2a);
+  --secondary-foreground: light-dark(#000000, #eaeaea);
+  --muted: light-dark(#ededed, #2a2a2a);
+  --muted-foreground: light-dark(#44474e, #a8abb3);
+  --accent: light-dark(#e8f4e0, #12240a); /* the selected state: a pale green tint */
+  --accent-foreground: light-dark(#2c7409, #49b315);
   --destructive: light-dark(#b42318, #f27f73);
-  --border: light-dark(#d9e1ea, #1e3248);
-  --input: light-dark(#7a8794, #6b829a); /* 3:1 against every surface a control sits on: its edge must be findable */
-  --ring: light-dark(#0b5cad, #6fc3ff);
-  --link: light-dark(#0b5cad, #6fc3ff);
-  --sky: #6fc3ff; /* decorative on navy surfaces only (see the identity note at the top) */
+  --border: light-dark(#e6e6e6, #2a2a2a);
+  --input: light-dark(#767676, #8a8a8a); /* 3:1 against every surface a control sits on: its edge must be findable */
+  --ring: light-dark(#2c7409, #49b315);
+  --link: light-dark(#2c7409, #49b315);
 
-  --band: light-dark(#013660, #0c1b2b);
-  --band-foreground: light-dark(#ffffff, #e6f1fb);
-  --band-muted: light-dark(#a9cbea, #9fb0c2);
-  --band-rule: light-dark(#0f4a80, #1e3248);
+  --band: light-dark(#ffffff, #000000);
+  --band-foreground: light-dark(#000000, #eaeaea);
+  --band-muted: light-dark(#44474e, #a8abb3);
+  --band-rule: light-dark(#e6e6e6, #2a2a2a);
+  --scrim: #000000; /* the dialog overlay, used at 70% */
 
   --flag: light-dark(#b42318, #f27f73);
   --flag-fg: light-dark(#9a1b12, #f6a59c);
   --flag-on: light-dark(#fff6f4, #2a0906);
   --warn: light-dark(#b26a00, #e8b04f);
   --warn-fg: light-dark(#7a4700, #efc57f);
-  --ok: light-dark(#1b7a4b, #5fc795);
-  --ok-fg: light-dark(#14633c, #8bdbb4);
-  --ok-on: light-dark(#f3fbf6, #04160d);
+  --ok: light-dark(#006b5b, #3fbfa8);
+  --ok-fg: light-dark(#006b5b, #3fbfa8);
+  --ok-on: light-dark(#ffffff, #000000);
 
   /* The dev-mode hazard stripe is the same in both themes: it is a warning label, not part of the page's palette. */
   --dev-a: #ffcf5c;
@@ -193,20 +197,11 @@
   body {
     @apply bg-background text-foreground text-sm;
     text-rendering: optimizeLegibility;
-    /* Plus Jakarta Sans' space is 0.17em (Arial's is 0.278em): without this, words in running text crowd together. */
-    word-spacing: 0.1em;
-  }
-  /* The UA stylesheet resets word-spacing on form controls, so they would opt out of the correction above. */
-  button, input, select, textarea {
-    word-spacing: inherit;
   }
   @media (width >= 64rem) {
     html {
       scroll-padding-top: calc(9rem + var(--topbar-h));
     }
-  }
-  .font-mono {
-    word-spacing: 0;
   }
   h1, h2, h3, h4 {
     text-wrap: balance;

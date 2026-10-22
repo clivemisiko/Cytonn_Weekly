@@ -53,7 +53,7 @@ defineProps<{
             :translate="c.numeric ? undefined : 'no'"
             class="px-3 py-2 whitespace-nowrap"
             :class="[
-              c.numeric ? 'text-right font-mono' : 'text-left',
+              c.numeric ? 'text-right' : 'text-left',
               i === 0 && 'font-medium',
               c.key === 'ticker' && 'font-mono text-muted-foreground',
               i === 0 && row.flagged && 'shadow-[inset_6px_0_0_var(--flag)]',
