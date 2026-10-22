@@ -82,6 +82,8 @@ docker compose run --rm --no-deps -v "./backend/data:/from:ro" api cp /from/app.
 
 It starts a one-off `api` container with `backend/data` mounted read-only at `/from` and copies the file into the volume as the app's own user, so the app can write to it. It overwrites any `app.db` already in the volume.
 
+Chart pictures and series are files under `<data dir>/charts/<run_id>/`, not rows in `app.db`, so that folder must be copied along with `app.db`; a database moved without it leaves existing reviews with no pictures and the Word export marks them "could not be verified".
+
 **Stop both apps first**: the native API (uvicorn) and the Docker one (`docker compose down`). A database copied while either is writing to it can be incomplete.
 
 **After the copy the native app and the Docker app have SEPARATE databases.** A review saved in one is not in the other, and nothing syncs them. `backend/data/app.db` is left as it is.
