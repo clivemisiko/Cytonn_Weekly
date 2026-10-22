@@ -5,24 +5,18 @@ Nothing else is read or written here.  A decision never reaches coordinator_revi
 
 from __future__ import annotations
 
-import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Union
 
-from cytonn_weekly import sections
+from cytonn_weekly import db
 
 _COLUMNS = "decision, edited_headline, dismiss_reason, decided_at"
 
 
-def _open(db_path: Optional[Union[Path, str]]) -> sqlite3.Connection:
-    sections.init_db(db_path)  # idempotent: creates the table on first use
-    return sections._connect(db_path)
-
-
 def load(db_path: Optional[Union[Path, str]], week_ending: str, section: str) -> dict[str, dict]:
     """The saved decisions for one section and week, by suggestion id."""
-    conn = _open(db_path)
+    conn = db.open_db(db_path)  # idempotent: creates the table on first use
     try:
         cur = conn.execute(f"SELECT suggestion_id, {_COLUMNS} FROM suggestion_decisions WHERE week_ending = ? AND section = ?",
                            (week_ending, section))
@@ -35,9 +29,9 @@ def save(db_path: Optional[Union[Path, str]], week_ending: str, section: str, su
          edited_headline: Optional[str], dismiss_reason: Optional[str]) -> None:
     """Keep the decision, replacing an earlier one on the same suggestion."""
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    conn = _open(db_path)
+    conn = db.open_db(db_path)
     try:
-        with conn:
+        with conn.transaction():
             conn.execute(
                 "INSERT INTO suggestion_decisions (week_ending, section, suggestion_id, decision, edited_headline, dismiss_reason, decided_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?) "
@@ -51,9 +45,9 @@ def save(db_path: Optional[Union[Path, str]], week_ending: str, section: str, su
 
 def delete(db_path: Optional[Union[Path, str]], week_ending: str, section: str, suggestion_id: str) -> bool:
     """Remove the decision (restore the suggestion).  False when there was none."""
-    conn = _open(db_path)
+    conn = db.open_db(db_path)
     try:
-        with conn:
+        with conn.transaction():
             cur = conn.execute("DELETE FROM suggestion_decisions WHERE week_ending = ? AND section = ? AND suggestion_id = ?",
                                (week_ending, section, suggestion_id))
         return cur.rowcount > 0

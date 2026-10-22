@@ -15,79 +15,13 @@ Typical usage
 
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 from typing import Optional
 
-from cytonn_weekly.paths import DATA_DIR
+from cytonn_weekly import db
+from cytonn_weekly.db import init_db  # noqa: F401  (re-exported: callers and tests say sections.init_db)
 
-# Resolved at import time (cytonn_weekly/paths.py).  The schema is code, so it sits beside
-# this file and not in the data folder, which a Docker volume replaces.
-_DEFAULT_DB = DATA_DIR / "app.db"
-_SCHEMA_SQL = Path(__file__).parent / "schema.sql"
-
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-def _connect(db_path: Optional[Path | str] = None) -> sqlite3.Connection:
-    path = str(db_path) if db_path is not None else str(_DEFAULT_DB)
-    conn = sqlite3.connect(path)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
-
-def init_db(db_path: Optional[Path | str] = None) -> None:
-    """Create the sections table and seed it if not already present.
-
-    Safe to call on every startup — uses CREATE TABLE IF NOT EXISTS and
-    INSERT OR IGNORE, so repeated calls are idempotent.
-
-    Parameters
-    ----------
-    db_path:
-        Path to the SQLite database file.  Defaults to ``data/app.db``
-        relative to backend/.  Pass ``":memory:"`` in tests.
-    """
-    schema = _SCHEMA_SQL.read_text(encoding="utf-8")
-    conn = _connect(db_path)
-    try:
-        conn.executescript(schema)
-        _migrate(conn)
-        conn.commit()
-    finally:
-        conn.close()
-
-
-# Columns coordinator_reviews gained after its first release, in the order they were added,
-# each with the exact ADD COLUMN clause.  SQLite's ADD COLUMN fills existing rows with the
-# default, so every review saved before report types existed reads back as a weekly review
-# with no period: exactly what it was.
-_ADDED_REVIEW_COLUMNS = (
-    ("report_type", "report_type TEXT NOT NULL DEFAULT 'weekly' "
-                    "CHECK (report_type IN ('weekly', 'quarterly', 'half_year', 'annual', 'companion'))"),
-    ("period", "period TEXT NOT NULL DEFAULT ''"),
-)
-
-
-def _migrate(conn: sqlite3.Connection) -> None:
-    """Bring an existing database up to schema.sql.  Idempotent; changes no existing value.
-
-    CREATE TABLE IF NOT EXISTS leaves a table from an older schema as it was, so columns
-    added since are added here, then the index that needs them.
-    """
-    have = {r["name"] for r in conn.execute("PRAGMA table_info(coordinator_reviews)")}
-    for name, clause in _ADDED_REVIEW_COLUMNS:
-        if name not in have:
-            conn.execute(f"ALTER TABLE coordinator_reviews ADD COLUMN {clause}")
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_coordinator_reviews_report "
-        "ON coordinator_reviews (report_type, period, section, run_id)"
-    )
+# The database itself (opening it, the schema, the migration, the default file) is cytonn_weekly/db.py.
 
 
 def get_section_config(
@@ -115,7 +49,7 @@ def get_section_config(
     KeyError
         If *name* is not a known section.
     """
-    conn = _connect(db_path)
+    conn = db.connect(db_path)
     try:
         row = conn.execute(
             "SELECT name, current_analyst, focus_topic_source, in_active_build "
@@ -180,13 +114,13 @@ def update_section_config(
     set_clause = ", ".join(f"{col} = ?" for col in updates)
     values = list(updates.values()) + [name]
 
-    conn = _connect(db_path)
+    conn = db.connect(db_path)
     try:
-        cursor = conn.execute(
-            f"UPDATE sections SET {set_clause} WHERE name = ?",
-            values,
-        )
-        conn.commit()
+        with conn.transaction():
+            cursor = conn.execute(
+                f"UPDATE sections SET {set_clause} WHERE name = ?",
+                values,
+            )
     finally:
         conn.close()
 

@@ -156,13 +156,13 @@ def test_flagged_table_row_is_marked_in_the_serialized_table(client, db):
 
 
 def test_conftest_guard_covers_new_sections(monkeypatch):
-    """An app built with no db_path falls back to sections._DEFAULT_DB, which conftest points at a temp file."""
+    """An app built with no db_path falls back to db._DEFAULT_DB, which conftest points at a temp file."""
     from pathlib import Path
 
-    from cytonn_weekly import sections
+    from cytonn_weekly import db
 
     monkeypatch.setattr(eq_weekly, "build_equities_weekly_review", lambda: sh.equities_review())
     real_db = Path(__file__).parents[1] / "data" / "app.db"
-    assert Path(sections._DEFAULT_DB) != real_db
+    assert Path(db._DEFAULT_DB) != real_db
     run_id = TestClient(create_app(load_dotenv=False)).post("/api/sections/equities/draft").json()["run_id"]
-    assert review_store.load_review(run_id, db_path=sections._DEFAULT_DB).section["section"] == "equities"
+    assert review_store.load_review(run_id, db_path=db._DEFAULT_DB).section["section"] == "equities"
