@@ -84,3 +84,54 @@ def test_a_call_with_no_path_that_would_leave_the_demo_folder_is_refused(hostile
         serve.verify_isolated(db_path, data)
     assert "no database path" in str(stopped.value)
     assert attempts == []
+
+
+def test_main_gives_create_app_the_demo_sqlite_file_and_no_dotenv(hostile, monkeypatch):
+    """main() runs for real up to the server: create_app and uvicorn.run are the only things replaced."""
+    import uvicorn
+
+    import api.main
+    from cytonn_weekly import paths
+    from cytonn_weekly.digital_payments import review_run as digital_payments
+    from cytonn_weekly.equities import weekly as equities
+    from cytonn_weekly.narrative import drafter
+    from cytonn_weekly.real_estate import review_run as real_estate
+    from tests import periodic_helpers
+
+    pristine, data, _, attempts = hostile
+    serve = _serve()
+    monkeypatch.setattr(serve, "REAL", data.parent.parent)  # main() refuses a folder that is not <real>/demo-e2e/<name>
+    monkeypatch.setattr(serve, "DATA", data)
+    monkeypatch.setattr(serve, "PRISTINE", pristine)
+    monkeypatch.setattr(serve, "VARIANT", "")
+    monkeypatch.setattr(paths, "DATA_DIR", data)
+    monkeypatch.syspath_prepend(str(REPO_ROOT / "e2e"))  # chart_demo and notable_demo sit beside serve_e2e.py
+    for name in ("CYTONN_DATA_DIR", "CYTONN_WEB_ORIGINS", "CYTONN_LLM_PROVIDER", "ANTHROPIC_API_KEY", "EXA_API_KEY"):
+        monkeypatch.setenv(name, "x")  # main() sets these; this makes the test put them back
+    # main() replaces builders for the whole process; put each one back afterwards
+    for module, attribute in [(drafter, "get_narrative_provider"), (real_estate, "build_real_estate_review"),
+                              (digital_payments, "build_digital_payments_review"), (equities, "build_equities_weekly_review")]:
+        monkeypatch.setattr(module, attribute, getattr(module, attribute))
+    for slug in periodic_helpers.BUILDERS:
+        module = __import__(f"cytonn_weekly.periodic.{slug}", fromlist=["_"])
+        monkeypatch.setattr(module, f"build_{slug}_review", getattr(module, f"build_{slug}_review"))
+
+    made, served = [], []
+    sentinel = object()
+
+    def fake_create_app(*args, **kwargs):
+        made.append((args, kwargs))
+        return sentinel
+
+    monkeypatch.setattr(api.main, "create_app", fake_create_app)
+    monkeypatch.setattr(uvicorn, "run", lambda app, **kwargs: served.append(app))
+
+    serve.main()
+
+    assert len(made) == 1
+    args, kwargs = made[0]
+    given = args[0] if args else kwargs.get("db_path")
+    assert given is not None and Path(given) == data / "e2e.db"
+    assert kwargs.get("load_dotenv") is False
+    assert served == [sentinel]
+    assert attempts == []

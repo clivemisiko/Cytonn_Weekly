@@ -96,7 +96,7 @@ def main() -> None:
         raise SystemExit(f"refusing to run the tests on {DATA}: the data folder must be backend/data/demo-e2e/<name>")
     if VARIANT not in ("", "no-key", "stale"):
         raise SystemExit(f"unknown E2E_VARIANT {VARIANT!r}")
-    DB_PATH = prepare()
+    DB_PATH = prepare(DATA, PRISTINE)  # explicit, so a test can point main() at a scratch folder
 
     os.environ["CYTONN_DATA_DIR"] = str(DATA)
     os.environ["CYTONN_WEB_ORIGINS"] = os.environ.get("E2E_WEB_ORIGINS", "http://127.0.0.1:5183")
