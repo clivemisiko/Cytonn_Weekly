@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as api from "./api";
-import { dialogProblem, dismiss, firstActionable, needsScroll, PLACEMENT, placementOf, raise, TARGETS } from "./attention";
+import { canShow, dialogProblem, dismiss, firstActionable, HIGHLIGHT, highlight, needsScroll, PLACEMENT, placementOf, raise, TARGETS } from "./attention";
 
 // The backend's own table (backend/api/problems.py): the frontend's placements must cover exactly its codes and targets.
 const python = readFileSync(new URL("../../../backend/api/problems.py", import.meta.url), "utf-8");
@@ -101,5 +101,62 @@ describe("the API tells the store about failed writes only", () => {
     });
     vi.stubGlobal("fetch", answer(409, body));
     await expect(api.removeInput("2026-10-02", "x.pdf")).rejects.toMatchObject({ status: 409 });
+  });
+});
+
+describe("the highlight on a problem the page went to", () => {
+  /** An element as far as highlight() touches it: its attributes, and a reflow that is counted. */
+  const fakeElement = () => {
+    const attrs = new Map<string, string>();
+    const log: string[] = [];
+    return {
+      attrs,
+      log,
+      removeAttribute: (n: string) => (log.push(`remove ${n}`), attrs.delete(n)),
+      setAttribute: (n: string, v: string) => (log.push(`set ${n}`), attrs.set(n, v)),
+      get offsetWidth() {
+        log.push("reflow");
+        return 0;
+      },
+    };
+  };
+
+  it("marks the element with the attribute the stylesheet draws the outline from", () => {
+    const el = fakeElement();
+    highlight(el as unknown as HTMLElement);
+    expect(el.attrs.has(HIGHLIGHT)).toBe(true);
+    expect(HIGHLIGHT).toBe("data-attention-on");
+  });
+
+  it("takes the mark off and reflows before setting it again, so a second visit pulses again", () => {
+    const el = fakeElement();
+    highlight(el as unknown as HTMLElement);
+    highlight(el as unknown as HTMLElement);
+    expect(el.log).toEqual([`remove ${HIGHLIGHT}`, "reflow", `set ${HIGHLIGHT}`, `remove ${HIGHLIGHT}`, "reflow", `set ${HIGHLIGHT}`]);
+    expect(el.attrs.size).toBe(1);
+  });
+});
+
+describe("whether Show me is offered", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const page = (found: { rects: number } | null) =>
+    vi.stubGlobal("document", { querySelector: () => (found ? { getClientRects: () => ({ length: found.rects }) } : null) });
+
+  it("is offered when the target is on the page and has a box (the export error in the feed)", () => {
+    page({ rects: 1 });
+    expect(canShow(problem("export_not_ready", "export-bar"))).toBe(true);
+  });
+
+  it("is not offered when the target has no box (a folded panel) or is not on the page", () => {
+    page({ rects: 0 });
+    expect(canShow(problem("export_not_ready", "export-bar"))).toBe(false);
+    page(null);
+    expect(canShow(problem("export_not_ready", "export-bar"))).toBe(false);
+  });
+
+  it("is not offered for a problem with no target, or no problem", () => {
+    page({ rects: 1 });
+    expect(canShow(problem("draft_failed", null))).toBe(false);
+    expect(canShow(null)).toBe(false);
   });
 });

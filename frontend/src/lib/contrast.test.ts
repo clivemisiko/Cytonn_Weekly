@@ -63,6 +63,10 @@ export const PAIRS: Pair[] = [
   { what: "control edge on the muted fill", fg: T("input"), bg: T("muted"), min: EDGE },
   { what: "focus ring on card", fg: T("ring"), bg: T("card"), min: EDGE },
   { what: "focus ring on page", fg: T("ring"), bg: T("background"), min: EDGE },
+  { what: "problem outline on card", fg: T("attention"), bg: T("card"), min: EDGE },
+  { what: "problem outline on page", fg: T("attention"), bg: T("background"), min: EDGE },
+  { what: "problem outline on the muted fill", fg: T("attention"), bg: T("muted"), min: EDGE },
+  { what: "problem outline on the flag tint", fg: T("attention"), bg: tint("flag"), min: EDGE },
 ];
 
 describe("colour contrast of the tokens in styles.css (WCAG)", () => {

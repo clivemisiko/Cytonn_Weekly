@@ -34,6 +34,17 @@ watch(dialogProblem, async (problem, before) => {
   showable.value = canShow(problem);
 });
 
+// First focus: "Show me" when it is offered, else "Close". Whether it is offered is known only once the page has drawn the
+// problem's sentence, a frame after the dialog opens.
+const footer = ref<HTMLElement | null>(null);
+async function onOpenAutoFocus(event: Event) {
+  event.preventDefault();
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  showable.value = canShow(dialogProblem.value);
+  await nextTick();
+  footer.value?.querySelector<HTMLElement>(showable.value ? "[data-show-me]" : "[data-close]")?.focus();
+}
+
 function showMe() {
   showing = true;
   dismiss();
@@ -66,18 +77,19 @@ const open = (next: boolean) => {
       />
       <AlertDialogContent
         class="fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 overscroll-contain rounded-lg border border-t-[3px] border-border border-t-flag bg-popover p-6 text-sm text-popover-foreground shadow-lg duration-150 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 sm:max-w-md"
+        @open-auto-focus="onOpenAutoFocus"
         @close-auto-focus="onCloseAutoFocus"
       >
         <div class="flex flex-col gap-2">
           <AlertDialogTitle class="font-heading text-lg leading-snug font-semibold">{{ dialogProblem?.headline }}</AlertDialogTitle>
           <AlertDialogDescription class="text-sm text-muted-foreground">The details are shown on the page.</AlertDialogDescription>
         </div>
-        <div class="-mx-6 -mb-6 flex flex-col-reverse gap-2 rounded-b-lg border-t bg-muted px-6 py-4 sm:flex-row sm:justify-end">
+        <div ref="footer" class="-mx-6 -mb-6 flex flex-col-reverse gap-2 rounded-b-lg border-t bg-muted px-6 py-4 sm:flex-row sm:justify-end">
           <AlertDialogCancel as-child>
-            <Button variant="outline">Close</Button>
+            <Button variant="outline" data-close>Close</Button>
           </AlertDialogCancel>
           <AlertDialogAction v-if="showable" as-child>
-            <Button @click="showMe">Show me</Button>
+            <Button data-show-me @click="showMe">Show me</Button>
           </AlertDialogAction>
         </div>
       </AlertDialogContent>

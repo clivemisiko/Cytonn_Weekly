@@ -156,6 +156,9 @@
   --flag: light-dark(#b42318, #f27f73);
   --flag-fg: light-dark(#9a1b12, #f6a59c);
   --flag-on: light-dark(#fff6f4, #2a0906);
+  /* The outline on a problem the page has gone to: 5.53 light and 5.51 dark at its lowest (the flag tint, the muted fill),
+     so at least 3:1 against every surface it sits on. */
+  --attention: light-dark(#b42318, #f27f73);
   --warn: light-dark(#b26a00, #e8b04f);
   --warn-fg: light-dark(#7a4700, #efc57f);
   --ok: light-dark(#006b5b, #3fbfa8);
@@ -288,6 +291,18 @@
     border-style: dashed;
   }
 
+  /* A problem the page has gone to (lib/attention.ts sets data-attention-on): a 2px outline beside its icon and text, so
+     colour is never the only sign. It goes with the notice. One soft pulse as it lands, none under reduced motion. */
+  [data-problem][data-attention-on] {
+    outline: 2px solid var(--attention);
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    [data-problem][data-attention-on] {
+      animation: attention-pulse 900ms ease-out 1;
+    }
+  }
+
   .hatch-dev {
     background: repeating-linear-gradient(-45deg, var(--dev-a) 0 14px, var(--dev-b) 14px 28px);
   }
@@ -315,6 +330,11 @@
     animation-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* The pulse a problem gets as the page lands on it: from a stronger tint back to its own background. */
+@keyframes attention-pulse {
+  0% { background-color: color-mix(in srgb, var(--attention) 22%, var(--card)); }
 }
 
 /* The landing page's "ready" dot: a slow ring that fades out from a solid dot. Ink, not a state colour. */

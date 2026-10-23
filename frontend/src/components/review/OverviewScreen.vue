@@ -59,6 +59,8 @@ const groupOpen = ref(true);
 // What the export bar in the panel last read. Whether the export would carry the dev-mode watermark is shown in the feed,
 // beside the dev-mode notice, because the panel can be folded and a warning must not fold away with it.
 const exportStatus = ref<ExportStatus | null>(null);
+// The export's error, in the feed so it is seen with the Report status panel folded; "Show me" goes here.
+const exportError = ref<string | null>(null);
 const groupLabel = computed(() => {
   const period = props.overview.report.period;
   return period.startsWith("Week ending ") ? `Week ending ${friendlyDate(period.slice(12))}` : period || "This week";
@@ -90,6 +92,9 @@ const flagged = computed(() =>
       <Notice v-if="exportStatus?.is_dev_draft" role="alert" class="font-semibold">
         {{ exportStatus.dev_mode_label }} The export carries a DEV MODE watermark on every page and must not be sent or published ({{ exportStatus.dev_sections.join(", ") }}).
       </Notice>
+      <div v-if="exportError" data-attention="export-bar">
+        <Notice role="alert" data-problem class="font-medium">{{ exportError }}</Notice>
+      </div>
       <DraftingBanner v-if="drafting" :drafting="drafting" />
       <Notice v-if="overview.report.type === 'companion'" tone="info">
         Companion research reports ride inside a weekly issue as its Focus of the Week. Every section below is Cytonn’s own
@@ -139,6 +144,7 @@ const flagged = computed(() =>
         :period="overview.report.period"
         :refresh-key="overview.sections.map((s) => `${s.latest?.run_id ?? ''}:${s.latest?.decision ?? ''}`).join('|')"
         @status="(status) => (exportStatus = status)"
+        @error="(message) => (exportError = message)"
       />
     </template>
   </PageGrid>
