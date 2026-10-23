@@ -93,8 +93,8 @@ def test_the_fiscal_years_start_is_a_date_in_the_year_before_the_week(root):
     save(root, {"fiscal_year_start": "6 July 2026"})
     data = analyst.Analyst(inputs.WeeklyInputs(WEEK, root)).borrowing()
     assert data["fy_start"].day == date(2026, 7, 6) and data["fy_start_typed"] is True
-    assert "2026-10-04 is not within the year before 2026-10-03" in refused(root, {"fiscal_year_start": "2026-10-04"})
-    assert "2025-07-01 is not within the year before 2026-10-03" in refused(root, {"fiscal_year_start": "2025-07-01"})
+    assert "4 Oct 2026 is not within the year before 3 Oct 2026" in refused(root, {"fiscal_year_start": "2026-10-04"})
+    assert "1 Jul 2025 is not within the year before 3 Oct 2026" in refused(root, {"fiscal_year_start": "2025-07-01"})
     save(root, {"fiscal_year_start": ""})
     data = analyst.Analyst(inputs.WeeklyInputs(WEEK, root)).borrowing()
     assert data["fy_start"].day == date(2026, 7, 1) and data["fy_start_typed"] is False

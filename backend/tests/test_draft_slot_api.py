@@ -133,7 +133,7 @@ def test_a_running_draft_is_shown_on_the_overview_and_named_in_the_refusal(app, 
         # the slot is global: another section is refused too, and told which draft holds it
         r = client.post("/api/sections/real_estate/draft")
         assert r.status_code == 409
-        assert "already running: Equities, for 3 min" in r.json()["detail"]
+        assert "Another draft is running: Equities (3 min so far)" in r.json()["detail"]
     finally:
         release.set()
         t.join(timeout=10)

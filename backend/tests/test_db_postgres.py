@@ -412,14 +412,14 @@ def test_a_failure_message_blanks_the_database_url_and_any_url_that_carries_cred
     monkeypatch.setenv("SOME_OTHER_DSN", "postgresql://svc:Other-fake-secret@elsewhere.example/db")   # not named like a secret
     said = failure_message(RuntimeError(f"bad: {URL} and postgresql://svc:Other-fake-secret@elsewhere.example/db "
                                         f"and a lone {PW} and Other-fake-secret"))
-    assert said == "RuntimeError: bad: [redacted] and [redacted] and a lone [redacted] and [redacted]"
+    assert said == "An unexpected error occurred (bad: [redacted] and [redacted] and a lone [redacted] and [redacted]). Try again; if it happens again, report it with the section name."
     assert "fake" not in said
 
 
 def test_a_configured_url_is_blanked_whole_even_when_its_password_would_end_the_url_pattern_early(monkeypatch):
     odd = "postgresql://svc:pa/ss-fake-secret@elsewhere.example/db"                 # a raw / in the password
     monkeypatch.setenv("SOME_OTHER_DSN", odd)                                       # and not named like a secret
-    assert failure_message(RuntimeError(f"tried {odd} twice")) == "RuntimeError: tried [redacted] twice"
+    assert failure_message(RuntimeError(f"tried {odd} twice")) == "An unexpected error occurred (tried [redacted] twice). Try again; if it happens again, report it with the section name."
 
 
 def test_a_message_the_pipeline_wrote_itself_is_redacted_too(monkeypatch):
@@ -431,18 +431,18 @@ def test_a_message_the_pipeline_wrote_itself_is_redacted_too(monkeypatch):
 
 def test_a_url_with_credentials_that_is_not_configured_anywhere_is_still_removed_from_the_text():
     said = failure_message(RuntimeError(f"cannot use {URL}?sslmode=require. Next."))
-    assert PW not in said and HOST not in said and said == "RuntimeError: cannot use [redacted] Next."
+    assert PW not in said and HOST not in said and said == "An unexpected error occurred (cannot use [redacted] Next.). Try again; if it happens again, report it with the section name."
 
 
 def test_the_database_url_is_blanked_by_its_name_even_when_it_is_not_a_url(monkeypatch):
     monkeypatch.setenv("CYTONN_TEST_DATABASE_URL", "not-a-url but a secret")
-    assert failure_message(RuntimeError("saw not-a-url but a secret here")) == "RuntimeError: saw [redacted] here"
+    assert failure_message(RuntimeError("saw not-a-url but a secret here")) == "An unexpected error occurred (saw [redacted] here). Try again; if it happens again, report it with the section name."
 
 
 def test_ordinary_text_and_short_values_are_left_alone(monkeypatch):
     monkeypatch.setenv("SOME_PASSWORD", "short")
     assert failure_message(RuntimeError("a short answer, see http://example.com/page")) == \
-        "RuntimeError: a short answer, see http://example.com/page"
+        "An unexpected error occurred (a short answer, see http://example.com/page). Try again; if it happens again, report it with the section name."
 
 
 def test_the_log_line_of_a_failed_run_is_redacted(tmp_path, monkeypatch, caplog):
