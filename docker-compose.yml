@@ -4,20 +4,28 @@
 # app is reachable from this machine and nowhere else. Never publish them on 0.0.0.0 or
 # put them behind anything that another machine can reach, until a sign-in exists.
 #
-# Secrets and the provider switches come from the repo-root .env only (env_file). Nothing
-# secret is written in this file.
+# The same ports as a native run (8000 and 5173), so bookmarks do not change: run either the
+# Docker copy or the native one, never both at once.
 #
-#   docker compose up --build        start both
-#   docker compose down              stop both (the cytonn_data volume is kept)
+# Secrets, the database URL and the provider switches come from the repo-root .env only, at run
+# time (env_file). Nothing secret is written here or built into an image. Never run
+# `docker compose config` without --quiet or --no-env-resolution: it prints what .env holds.
+#
+#   docker compose up -d --build     start both
+#   docker compose down              stop both
 
 services:
   api:
     build:
       context: ./backend
+      target: runtime
     env_file:
       - ./.env
     environment:
       CYTONN_DATA_DIR: /app/data
+      # The data folder below is the real backend/data, so the app must never fall back to
+      # SQLite there: without CYTONN_DATABASE_URL in .env it refuses to start (db.py).
+      CYTONN_REQUIRE_POSTGRES: "1"
       # The local development model (Ollama) runs on the host. Inside the container
       # "localhost" is the container itself, so the host is reached by this name.
       CYTONN_OLLAMA_URL: http://host.docker.internal:11434
@@ -30,7 +38,8 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - cytonn_data:/app/data
+      # The same files the native app uses (inputs, charts, exports, the search cache), not a copy.
+      - ./backend/data:/app/data
     ports:
       - "127.0.0.1:8000:8000"
     restart: unless-stopped
@@ -38,19 +47,10 @@ services:
   web:
     build:
       context: ./frontend
-      target: runner
-    environment:
-      # The web server proxies /api to the API, so this is the service name, and the
-      # browser only ever talks to port 3000.
-      VITE_API_TARGET: http://api:8000
+      target: web
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:5173:8080"
     depends_on:
       api:
         condition: service_healthy
     restart: unless-stopped
-
-volumes:
-  # A Docker named volume, not a bind mount: SQLite on a bind mount under Windows and
-  # OneDrive is unreliable. The database here is separate from backend/data/app.db.
-  cytonn_data:
