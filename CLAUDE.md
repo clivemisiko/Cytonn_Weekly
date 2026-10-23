@@ -85,39 +85,26 @@ cd frontend && npm run lint && npm run typecheck && npm test        # lint, type
 cd backend && uvicorn api.main:app --port 8000                      # run the API; then: cd frontend && npm run dev (http://127.0.0.1:5173)
 ```
 
-With Docker (Docker Desktop must be running), from the repo root:
+With Docker (Docker Desktop must be running), from the repo root, in PowerShell (rebuilt 2026-10-23; see README "Run with Docker"):
 
-```sh
-docker compose up --build                                           # run both: http://127.0.0.1:3000 and http://127.0.0.1:8000
-docker compose run --rm api pytest                                  # tests, in the api image
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build   # run with source mounted and reload
-docker compose down                                                 # stop (the volume is kept)
+```powershell
+docker compose up -d --build        # http://127.0.0.1:5173 (web) and http://127.0.0.1:8000 (api), the native addresses
+docker compose ps
+docker compose logs --tail 50 api
+docker compose down
 ```
 
-- **Services and ports:** `api` (uvicorn `api.main:app`, image built from `backend/`, user UID 10001) on `127.0.0.1:8000`; `web` (the built Vue app served by `vite preview`, image built from `frontend/`, user `node`) on `127.0.0.1:3000`, started once `api` is healthy. The browser only talks to port 3000: the web server proxies `/api` to `VITE_API_TARGET`, which compose sets to the service name (`http://api:8000`), so the API needs no CORS entry for it. In Docker the web app is on port 3000; run natively (`npm run dev`) it is on 5173. **The new image has not been built or run** (Docker Desktop was not running at the cut-over, 2026-10-13).
+- **One copy at a time.** Docker publishes the native ports (8000, 5173), so the native API and `npm run dev` must be stopped first, and the reverse.
+- **Services and ports:** `api` (target `runtime` of `backend/Dockerfile`: Python 3.12-slim, `libgl1` and `libglib2.0-0` for the OCR, `pip install -e .` with no test extra, user UID 10001 with a home folder for matplotlib's cache) on `127.0.0.1:8000`; `web` (target `web` of `frontend/Dockerfile`: the app built with `npm run build`, served by `nginxinc/nginx-unprivileged` on 8080, published as `127.0.0.1:5173`), started once `api` is healthy. `frontend/nginx.conf`: SPA fallback to `index.html`, `/api/` proxied to `api:8000` resolved per request through Docker's DNS (`127.0.0.11`, so nginx follows an api restart) with HTTP/1.1, buffering off and a one-hour read timeout (the run view's event stream), `client_max_body_size 32m` (uploads are refused by the API itself at 30 MB), immutable caching for `/assets/`.
 - **The ports stay on 127.0.0.1 until a sign-in exists.** The app has no authentication, so it is never published on 0.0.0.0 or made reachable from another machine.
-- **Volume:** the named volume `cytonn_data` is mounted at `/app/data` (`CYTONN_DATA_DIR=/app/data`) and holds the Docker app's `app.db`, `exa_cache/` and `summaries/`. It is a named volume, not a bind mount, because SQLite on a bind mount under Windows and OneDrive is unreliable. `backend/.dockerignore` excludes `data/` and `.env`, so the real database, the cache and the secrets are never in an image. Secrets and the provider switches reach the `api` container from the repo-root `.env` through `env_file` only.
+- **Data:** `./backend/data` is bind-mounted at `/app/data` (`CYTONN_DATA_DIR=/app/data`): the same inputs, charts, exports and search cache as a native run. There is no named volume. Whether the container user can write to the Windows (OneDrive) folder through the mount is not yet proven (step 2).
+- **Database:** the same Supabase database as a native run, from `.env` through `env_file` at run time only (never an image, a build argument or a layer). Compose sets `CYTONN_REQUIRE_POSTGRES=1`, so without `CYTONN_DATABASE_URL` `db.target()` raises and `create_app()` refuses to start: the Docker app never creates or opens a SQLite `app.db` in the real data folder (`backend/tests/test_require_postgres.py`; conftest clears the marker like the other settings).
+- **Startup logs:** `key_override_warnings()` compares the environment with a `.env` file; the container has no `.env` file (its variables come from `env_file`), so it logs nothing, and no key fragment reaches `docker logs`.
 - **Ollama:** the local model runs in Ollama on the host. Inside the container "localhost" is the container itself, so the compose file sets `CYTONN_OLLAMA_URL=http://host.docker.internal:11434` (the local provider reads it; unset, it is `http://localhost:11434` as before). On this machine the model runs on the processor only, and running the app in Docker Desktop does not change that.
 - **Dev mode is unchanged in Docker:** a draft made with `CYTONN_LLM_PROVIDER=local` is still marked as a development draft (`drafted_by: "local:<model>"`, the DEV MODE ribbon, the NOT FOR CIRCULATION banner, delivery refused).
-- **Dev override** (`docker-compose.dev.yml`): mounts `backend/src`, `backend/api` and `backend/scripts` read-only and runs uvicorn with `--reload`; builds the `dev` stage of `frontend/Dockerfile` (Vite's dev server) with `frontend/src`, `public`, `index.html` and the config files mounted. Both poll for changes, because file events do not cross the Windows mount (`VITE_USE_POLLING`, read in `vite.config.ts`).
-- **Tests in the container:** the `api` container carries the repo-root `.env` (through `env_file`), so `backend/tests/conftest.py` removes the provider switch, the search key, the Ollama address, the CORS and the mail settings from every test's environment (`no_ambient_settings`); a test that needs one sets it itself. The suite gives the same count in the container as natively.
-- **`docker compose config` prints the values in `.env`** (it expands `env_file`), secrets included. Use `docker compose config --no-env-resolution` when the output will be shown to anyone.
-
-### Moving the existing database into Docker
-
-The Docker app keeps its database in the `cytonn_data` volume, which starts empty. To start it from the reviews already saved natively, copy `backend/data/app.db` into the volume once, from the repo root:
-
-```sh
-docker compose run --rm --no-deps -v "./backend/data:/from:ro" api cp /from/app.db /app/data/app.db
-```
-
-It starts a one-off `api` container with `backend/data` mounted read-only at `/from` and copies the file into the volume as the app's own user, so the app can write to it. It overwrites any `app.db` already in the volume.
-
-Chart pictures and series are files under `<data dir>/charts/<run_id>/`, not rows in `app.db`, so that folder must be copied along with `app.db`; a database moved without it leaves existing reviews with no pictures and the Word export marks them "could not be verified".
-
-**Stop both apps first**: the native API (uvicorn) and the Docker one (`docker compose down`). A database copied while either is writing to it can be incomplete.
-
-**After the copy the native app and the Docker app have SEPARATE databases.** A review saved in one is not in the other, and nothing syncs them. `backend/data/app.db` is left as it is.
+- **Dev override** (`docker-compose.dev.yml`, updated 2026-10-23, not yet run): mounts `backend/src`, `backend/api` and `backend/scripts` read-only and runs uvicorn with `--reload`; builds the `dev` stage of `frontend/Dockerfile` (Vite's dev server on 8080, proxying `/api` to `VITE_API_TARGET=http://api:8000`) with `frontend/src`, `public`, `index.html` and the config files mounted. Both poll for changes, because file events do not cross the Windows mount (`VITE_USE_POLLING`, read in `vite.config.ts`).
+- **Tests** are not in the runtime image: `docker build --target test -t cytonn-api-test backend`, then `docker run --rm --network none cytonn-api-test` (no `.env`, no data folder, no network; the PostgreSQL smoke tests are deselected).
+- **Never run `docker compose config` without `--quiet` or `--no-env-resolution`:** it expands `env_file` and prints the database URL with its password.
 
 ### Local model speed settings (development only)
 
