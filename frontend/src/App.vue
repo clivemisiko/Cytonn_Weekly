@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { RouterView } from "vue-router";
+import AttentionDialog from "@/components/AttentionDialog.vue";
 import AppShell from "@/components/nav/AppShell.vue";
 import TopBar from "@/components/nav/TopBar.vue";
 import { HOME } from "@/lib/nav";
@@ -21,4 +22,6 @@ import { HOME } from "@/lib/nav";
     </AppShell>
     <component :is="Component" v-else :key="route.path" />
   </RouterView>
+  <!-- The one dialog for an action that failed as a whole (lib/attention.ts); portalled to the body. -->
+  <AttentionDialog />
 </template>
