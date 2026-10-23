@@ -73,7 +73,7 @@ export const TABLE_COLUMNS: { key: string; label: string; numeric: boolean }[] =
 
 const DATE_FMT = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 const TIME_FMT = new Intl.DateTimeFormat("en-GB", {
-  day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "UTC",
+  day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Africa/Nairobi",
 });
 
 /** "2026-09-24" -> "24 Sep 2026" (the date is a calendar date, so it is read as UTC and never shifted). */
@@ -82,10 +82,17 @@ export function friendlyDate(iso: string): string {
   return Number.isNaN(d.getTime()) ? iso : DATE_FMT.format(d);
 }
 
-/** "2026-10-01T13:24:13+00:00" -> "1 Oct 2026, 13:24 UTC"; anything unparseable is shown as stored. */
+/** A stored time-of-day stamp as a Date. One with no offset ("2026-10-01T13:24:13") is UTC, as the backend reads it, never the browser's local time. */
+function parseStamp(stamp: string): Date {
+  const hasTime = /T\d{2}:\d{2}/.test(stamp);
+  const hasOffset = /(Z|[+-]\d{2}(:?\d{2})?)$/i.test(stamp.slice(10));
+  return new Date(hasTime && !hasOffset ? `${stamp}Z` : stamp);
+}
+
+/** "2026-10-01T13:24:13+00:00" -> "1 Oct 2026, 16:24 EAT" (stored in UTC, shown in Nairobi time); anything unparseable is shown as stored. */
 export function friendlyTime(stamp: string): string {
-  const d = new Date(stamp);
-  return Number.isNaN(d.getTime()) ? stamp : `${TIME_FMT.format(d).replace(" at ", ", ")} UTC`;
+  const d = parseStamp(stamp);
+  return Number.isNaN(d.getTime()) ? stamp : `${TIME_FMT.format(d).replace(" at ", ", ")} EAT`;
 }
 
 export function weekRange(start: string, end: string): string {

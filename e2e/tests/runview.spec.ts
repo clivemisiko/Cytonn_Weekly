@@ -25,7 +25,7 @@ test("T73 a finished run: its facts are in the panel beside the steps, the resul
   expect((await panel.boundingBox())!.x).toBeGreaterThan(feed.x + feed.width); // beside the steps, on their right
 
   // Everything to act on or to read is in the feed, none of it in the panel.
-  await expect(page.getByText(/^Finished .* UTC\.$/)).toBeVisible();
+  await expect(page.getByText(/^Finished .* EAT\.$/)).toBeVisible();
   await expect(page.getByRole("link", { name: "Open review" })).toBeVisible();
   await expect(panel.getByRole("link")).toHaveCount(0);
   await expect(panel.getByRole("button")).toHaveCount(0);
@@ -55,7 +55,7 @@ test("T74 a stopped run: the failure and the way back are in the feed, and the p
   await expect(alert).toContainText("the Ibuka summary could not be fetched (a deliberate failure for the tests)");
   await expect(panel.locator("dt")).toHaveText(["Section", "Report", "Started", "Stopped"]);
   const side = (await panel.boundingBox())!;
-  for (const where of [alert, page.getByRole("link", { name: "Back to overview" }), page.getByText(/^Stopped .* UTC\.$/)]) {
+  for (const where of [alert, page.getByRole("link", { name: "Back to overview" }), page.getByText(/^Stopped .* EAT\.$/)]) {
     await expect(where).toBeVisible();
     const box = (await where.boundingBox())!;
     expect(box.x + box.width).toBeLessThan(side.x); // in the feed, left of the panel

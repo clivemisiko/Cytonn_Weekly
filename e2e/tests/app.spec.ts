@@ -271,7 +271,7 @@ test("T09 Company Updates: run to done, open the review, Approve is gated, the d
   await expect(page).toHaveURL(/\/runs\/[^/]+$/);
   await expect(page.getByRole("heading", { name: "Company Updates: draft run", level: 1 })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Draft ready for review", level: 2 })).toBeVisible();
-  await expect(page.getByText(/^Finished .* UTC\.$/)).toBeVisible();
+  await expect(page.getByText(/^Finished .* EAT\.$/)).toBeVisible();
   const steps = page.getByRole("log", { name: "Steps of this draft" });
   await expect(steps.getByRole("listitem")).toHaveText(["Done: Starting the draft.", "Done: Draft ready for review."]);
   await expect(page.getByRole("group", { name: "Review items by status" })).toContainText("Not auto-verified1");
@@ -347,7 +347,7 @@ test("T11 a stopped run shows the error text and the way back", async ({ page })
   await expect(page.getByRole("heading", { name: "Real Estate: draft run", level: 1 })).toBeVisible();
   const alert = page.getByRole("alert").filter({ hasText: "The draft stopped." });
   await expect(alert).toContainText("the Ibuka summary could not be fetched (a deliberate failure for the tests)");
-  await expect(page.getByText(/^Stopped .* UTC\.$/)).toBeVisible();
+  await expect(page.getByText(/^Stopped .* EAT\.$/)).toBeVisible();
   await expect(page.getByRole("log", { name: "Steps of this draft" }).getByRole("listitem").last()).toContainText("Failed: The draft stopped.");
   await expect(page.getByRole("heading", { name: "Draft ready for review" })).toHaveCount(0);
   await page.getByRole("link", { name: "Back to overview" }).click();
@@ -367,7 +367,7 @@ test("T12 Fixed Income: run view steps to done, review lists the three statuses,
   await expect(page.getByRole("status").filter({ hasText: "DEV MODE DRAFT (local model)" })).toBeVisible();
   const steps = page.getByRole("log", { name: "Steps of this draft" });
   await expect(steps.getByRole("listitem").first()).toHaveText("Done: Starting the draft.");
-  await expect(page.getByText(/^(Running\. Started|Finished) .* UTC\.$/)).toBeVisible();
+  await expect(page.getByText(/^(Running\. Started|Finished) .* EAT\.$/)).toBeVisible();
   await expect(page.getByRole("heading", { name: "Draft ready for review", level: 2 })).toBeVisible({ timeout: RUN_TIMEOUT });
   await expect(steps.getByRole("listitem").last()).toHaveText("Done: Draft ready for review.");
   expect(await steps.getByRole("listitem").count()).toBeGreaterThan(5);

@@ -229,7 +229,7 @@ test("T23 rejecting a section is final: the dialog, the locked review, the overv
 
   await expect(page.getByText("Rejected and locked")).toBeVisible();
   await expect(page.getByText("Decision recorded: rejected.")).toBeVisible();
-  await expect(page.getByText(/Decision recorded on .* UTC\. Every value below is frozen as drafted; nothing on\s+this screen can be changed\./)).toBeVisible();
+  await expect(page.getByText(/Decision recorded on .* EAT\. Every value below is frozen as drafted; nothing on\s+this screen can be changed\./)).toBeVisible();
   await expect(page.getByRole("button", { name: "Approve", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Reject", exact: true })).toHaveCount(0);
   await expect(page.getByRole("radio", { name: "Accept", exact: true })).toBeDisabled();
@@ -281,7 +281,7 @@ test("T24 a draft holding the one draft slot: the overview and the other section
 
   // The run view of the held draft: running, nothing invented.
   await page.goto(`/runs/${run}`);
-  await expect(page.getByText(/^Running\. Started .* UTC\.$/)).toBeVisible();
+  await expect(page.getByText(/^Running\. Started .* EAT\.$/)).toBeVisible();
   await expect(page.getByRole("log", { name: "Steps of this draft" }).getByRole("listitem")).toHaveText(["Done: Starting the draft."]);
 
   // Let it end: the waiting screen unlocks by itself on its next poll.
