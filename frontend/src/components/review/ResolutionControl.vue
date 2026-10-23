@@ -14,7 +14,8 @@ const SELECTED_TEXT: Record<Option, string> = { none: "text-foreground", accept:
 /**
  * Unresolved | Accept | Fix needed, as one segmented control (a radio group, so it keeps arrow-key
  * navigation and a single tab stop). Selection is shown by fill AND weight, never colour alone. Each option keeps its natural
- * width and never wraps (about 254px in all, which fits the narrowest card: 263px): the review items sit in a column that allows a word to break anywhere.
+ * width and never wraps: about 265px in a row at the 16px body. The review items sit in a column that allows a word to break
+ * anywhere, so in a card narrower than 17rem (the card is a container) the options stack instead of being cut.
  */
 const props = defineProps<{ label: string; value: Resolution; disabled: boolean }>();
 const emit = defineEmits<{ change: [next: Resolution] }>();
@@ -26,7 +27,7 @@ const current = computed(() => resolutionKey(props.value));
     :model-value="current"
     :disabled="disabled"
     :aria-label="`Resolution for ${label}`"
-    class="relative inline-flex w-fit overflow-hidden rounded-md border border-input bg-card"
+    class="relative inline-flex w-fit flex-col overflow-hidden rounded-md border border-input bg-card @min-[17rem]:flex-row"
     :class="disabled && 'border-border bg-muted' /* locked: a muted frame, not a fade, so the recorded choice keeps its full contrast */"
     @update:model-value="(v) => emit('change', v === 'none' ? null : (v as Resolution))"
   >
@@ -34,7 +35,7 @@ const current = computed(() => resolutionKey(props.value));
       v-for="opt in OPTIONS"
       :key="opt"
       :value="opt"
-      class="relative h-8 shrink-0 px-2 text-sm whitespace-nowrap transition-[color,background-color,transform] duration-150 ease-out outline-none not-first:border-l not-first:border-border focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset disabled:cursor-not-allowed"
+      class="relative h-8 shrink-0 px-2 text-sm whitespace-nowrap transition-[color,background-color,transform] duration-150 ease-out outline-none not-first:border-t not-first:border-border @min-[17rem]:not-first:border-t-0 @min-[17rem]:not-first:border-l focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset disabled:cursor-not-allowed"
       :class="
         current === opt
           ? ['font-semibold', SELECTED_TEXT[opt]]
