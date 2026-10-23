@@ -83,8 +83,8 @@ function editing(): boolean {
 }
 
 /**
- * Go to a problem's place: after two frames (so the component has drawn the error), scroll it into view only if it is
- * out of view (at once under reduced motion), then focus its first `[data-problem]`, else the target itself. Focus is
+ * Go to a problem's place: after two frames (so the component has drawn the error), scroll its first `[data-problem]`
+ * (else the target itself) into view only if it is out of view (at once under reduced motion), then focus it. Focus is
  * never moved out of a field the person is typing in (a failed save on blur is noticed when they look up).
  * Returns false when the target is not on the page.
  */
@@ -94,13 +94,14 @@ export async function goTo(target: string | null, { force = false } = {}): Promi
   await frame();
   const el = targetOf(target);
   if (!el || el.getClientRects().length === 0) return false;
+  // The problem itself is what must be seen (a tall panel can be half in view with its error out of it).
+  const focusable = el.querySelector<HTMLElement>("[data-problem]") ?? el;
   const inset = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
-  if (needsScroll(el.getBoundingClientRect(), window.innerHeight, inset)) {
+  if (needsScroll(focusable.getBoundingClientRect(), window.innerHeight, inset)) {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    el.scrollIntoView({ block: "center", behavior: reduced ? "auto" : "smooth" });
+    focusable.scrollIntoView({ block: "center", behavior: reduced ? "auto" : "smooth" });
   }
   if (!force && editing()) return true;
-  const focusable = el.querySelector<HTMLElement>("[data-problem]") ?? el;
   if (!focusable.hasAttribute("tabindex")) focusable.setAttribute("tabindex", "-1");
   focusable.focus({ preventScroll: true });
   return true;

@@ -20,7 +20,8 @@ import { canShow, dialogProblem, dismiss, goTo } from "@/lib/attention";
  * replaces the first; dialogs never stack. Mounted once, in App.vue, and portalled to the body (never in the rail).
  */
 const showable = ref(false);
-// Where focus goes back on Close: what had it when the dialog opened, if it is still there and usable.
+// Where focus goes back on Close: what had it when the dialog opened, if it is still there and usable. A button that
+// disables itself while it works (Draft) has already lost focus to the page body by then; focus then goes to the problem.
 let returnTo: HTMLElement | null = null;
 let showing = false;
 // The dialog's problem is cleared as it closes; its target is kept for the focus that follows.
@@ -44,7 +45,7 @@ function onCloseAutoFocus(event: Event) {
   if (showing) {
     showing = false;
     void goTo(target, { force: true });
-  } else if (returnTo?.isConnected && !(returnTo as HTMLButtonElement).disabled) {
+  } else if (returnTo && returnTo !== document.body && returnTo.isConnected && !(returnTo as HTMLButtonElement).disabled) {
     returnTo.focus();
   } else {
     void goTo(target, { force: true });
