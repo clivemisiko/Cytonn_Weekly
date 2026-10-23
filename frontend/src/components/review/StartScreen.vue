@@ -203,7 +203,7 @@ const lists = computed(() => [
             </Button>
           </div>
 
-          <div class="space-y-3">
+          <div data-attention="start-draft" class="space-y-3">
             <p class="text-sm">
               {{
                 saved
@@ -317,7 +317,7 @@ const lists = computed(() => [
             </p>
 
             <div v-if="error" class="rise-in space-y-2">
-              <Notice role="alert" class="font-medium">{{ error.message }}</Notice>
+              <Notice role="alert" data-problem class="font-medium">{{ error.message }}</Notice>
               <Button v-if="error.lostConnection" variant="outline" @click="recheck">Check for a saved draft</Button>
             </div>
 

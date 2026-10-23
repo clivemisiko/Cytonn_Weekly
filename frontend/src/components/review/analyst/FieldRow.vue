@@ -77,7 +77,7 @@ const commit = () => {
         Used when empty: <span class="font-mono">{{ friendlyDate(item.default) }}</span>
       </span>
     </div>
-    <p v-if="error" :id="`${id}-error`" role="alert" class="max-w-[72ch] text-xs font-medium whitespace-pre-line text-flag-fg">{{ error }}</p>
+    <p v-if="error" :id="`${id}-error`" role="alert" data-problem class="max-w-[72ch] text-xs font-medium whitespace-pre-line text-flag-fg">{{ error }}</p>
     <div :id="`${id}-hint`" class="space-y-1">
       <p v-if="item.help" class="text-xs text-muted-foreground">{{ item.help }}</p>
       <SourceLine :source="item.source" :used-in="item.used_in" :expected="range(item.min, item.max, item.unit)" />

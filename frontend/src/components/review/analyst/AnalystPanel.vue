@@ -100,7 +100,7 @@ const hasBook = computed(() => form.value?.workbooks[props.section] ?? false);
 </script>
 
 <template>
-  <section aria-labelledby="analyst-title" class="space-y-4 rounded-lg border bg-card p-6">
+  <section data-attention="analyst-form" aria-labelledby="analyst-title" class="space-y-4 rounded-lg border bg-card p-6">
     <div class="space-y-1 border-b pb-4">
       <h2 id="analyst-title" class="text-lg font-semibold">Weekly analyst inputs</h2>
       <p class="max-w-[72ch] text-sm text-muted-foreground">
@@ -138,7 +138,7 @@ const hasBook = computed(() => form.value?.workbooks[props.section] ?? false);
       {{ waiting.map((w) => w.label).join("; ") }}.
     </Notice>
 
-    <Notice v-if="error" role="alert" class="font-medium whitespace-pre-line">{{ error }}</Notice>
+    <Notice v-if="error" role="alert" data-problem class="font-medium whitespace-pre-line">{{ error }}</Notice>
 
     <p v-if="form === null && !error" class="text-sm text-muted-foreground" aria-busy="true">Reading the form…</p>
     <!-- An item is keyed on what the API holds for it: one whose save was refused keeps what was typed, one that was

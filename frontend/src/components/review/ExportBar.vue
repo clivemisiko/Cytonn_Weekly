@@ -68,7 +68,7 @@ const iconOf = (state: string) => (state === "approved" ? PhCheck : state === "r
 </script>
 
 <template>
-  <section v-if="status !== null || error" aria-labelledby="export-title" class="space-y-3 rounded-lg border bg-card p-4">
+  <section v-if="status !== null || error" data-attention="export-bar" aria-labelledby="export-title" class="space-y-3 rounded-lg border bg-card p-4">
     <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
       <div class="min-w-0 space-y-1">
         <h2 id="export-title" class="text-base font-semibold">Export weekly report</h2>
@@ -102,6 +102,6 @@ const iconOf = (state: string) => (state === "approved" ? PhCheck : state === "r
         {{ s.title }}: {{ STATE_LABEL[s.state] ?? s.state }}
       </li>
     </ul>
-    <Notice v-if="error" role="alert" class="font-medium">{{ error }}</Notice>
+    <Notice v-if="error" role="alert" data-problem class="font-medium">{{ error }}</Notice>
   </section>
 </template>
