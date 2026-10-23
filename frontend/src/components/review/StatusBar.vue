@@ -26,6 +26,7 @@ const fraction = computed(() => (progress.value.total ? progress.value.resolved 
 
 <template>
   <div
+    data-attention="review-status-bar"
     class="sticky z-30 border-b bg-background/95 px-4 py-3 backdrop-blur supports-backdrop-filter:bg-background/85 sm:px-6"
     :class="hasDevRibbon ? 'top-[calc(var(--topbar-h)+1.75rem)]' : 'top-(--topbar-h)'"
   >
@@ -80,10 +81,10 @@ const fraction = computed(() => (progress.value.total ? progress.value.resolved 
         </div>
       </div>
       <div v-if="decisionError" role="alert" class="rise-in overflow-hidden">
-        <Notice class="mt-3 font-medium">{{ decisionError }}</Notice>
+        <Notice data-problem class="mt-3 font-medium">{{ decisionError }}</Notice>
       </div>
       <div v-if="saveError" role="alert" class="rise-in overflow-hidden">
-        <Notice class="mt-3 font-medium">NOT SAVED: {{ saveError }} Your last change did not reach the server, so the screen now shows what the server holds. Make the change again.</Notice>
+        <Notice data-problem class="mt-3 font-medium">NOT SAVED: {{ saveError }} Your last change did not reach the server, so the screen now shows what the server holds. Make the change again.</Notice>
       </div>
     </div>
   </div>

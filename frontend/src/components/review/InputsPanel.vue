@@ -100,7 +100,7 @@ function saveNote(key: "bidding_range" | "previous_issue", value: string) {
 </script>
 
 <template>
-  <section aria-labelledby="inputs-title" class="space-y-4 rounded-lg border bg-card p-4">
+  <section data-attention="inputs-panel" aria-labelledby="inputs-title" class="space-y-4 rounded-lg border bg-card p-4">
     <div class="flex flex-wrap items-end justify-between gap-x-6 gap-y-3 border-b pb-4">
       <div class="space-y-1">
         <h2 id="inputs-title" class="text-lg font-semibold">This week’s inputs</h2>
@@ -109,7 +109,7 @@ function saveNote(key: "bidding_range" | "previous_issue", value: string) {
           unavailable in the draft; no figure is ever filled in.
         </p>
       </div>
-      <div class="space-y-1">
+      <div data-attention="week-picker" class="space-y-1">
         <label for="week-ending" class="eyebrow block">Week ending (a Friday)</label>
         <div class="flex flex-wrap gap-2">
           <input
@@ -127,8 +127,8 @@ function saveNote(key: "bidding_range" | "previous_issue", value: string) {
       </div>
     </div>
 
-    <Notice v-if="error" role="alert" class="font-medium">{{ error }}</Notice>
-    <Notice v-if="refusedFiles.length" role="alert" class="font-medium">
+    <Notice v-if="error" role="alert" data-problem class="font-medium">{{ error }}</Notice>
+    <Notice v-if="refusedFiles.length" role="alert" data-problem class="font-medium">
       <p>{{ refusedFiles.length === 1 ? "This file was not added:" : `These ${refusedFiles.length} files were not added:` }}</p>
       <ul class="mt-1 list-disc space-y-1 pl-5">
         <li v-for="line in refusedFiles" :key="line">{{ line }}</li>

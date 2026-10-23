@@ -52,6 +52,7 @@ the behaviour on the Next app; `none` means no automated test, with the reason i
 | C26 | AppShell, SideRail (since 2026-10-19; not in the Next app) | none | `components/nav/AppShell.vue`, `SideRail.vue`, `lib/shell.ts` | verified by T59 to T65, T69 |
 | C27 | PageGrid, PageAside (since 2026-10-19; not in the Next app) | none | `components/nav/PageGrid.vue`, `PageAside.vue`, `lib/panel.ts` | verified by T66, T70 to T75 |
 | C28 | NotFoundPage (a card in the shell's frame) | Next's own 404 | `pages/NotFoundPage.vue` | verified by T77 |
+| C29 | AttentionDialog and the attention store (since 2026-10-23; not in the Next app) | none | `components/AttentionDialog.vue`, `lib/attention.ts` | verified by T87 to T93 and `attention.test.ts` |
 
 ## 3. Backend calls
 
