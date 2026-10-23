@@ -295,6 +295,8 @@ def create_app(
         for line in key_override_warnings():
             log.warning(line)
 
+    database.target(db_path)  # refuses to start when CYTONN_REQUIRE_POSTGRES=1 and there is no PostgreSQL URL (db.py)
+
     app = FastAPI(title="Cytonn Weekly: coordinator review")
     app.add_exception_handler(ProblemError, problem_handler)
     origins = [o.strip() for o in os.environ.get(CORS_ENV_VAR, DEFAULT_WEB_ORIGINS).split(",") if o.strip()]
