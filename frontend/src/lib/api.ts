@@ -62,6 +62,26 @@ export class ApiError extends Error {
   }
 }
 
+// Told about a failed write that named its problems (main.ts installs the attention store here). Never called for a read,
+// so polling and page loads never open a dialog or move the page; the error is thrown to its caller either way.
+let onFailure: ((problems: ApiProblem[]) => void) | null = null;
+
+/** Install what is told about a failed write's problems (lib/attention.ts `raise`, from main.ts). */
+export function setFailureHandler(handler: ((problems: ApiProblem[]) => void) | null): void {
+  onFailure = handler;
+}
+
+function failed(message: string, status: number, problems: ApiProblem[], write: boolean): ApiError {
+  if (write && problems.length > 0) {
+    try {
+      onFailure?.(problems);
+    } catch {
+      /* the screen's own handling of the error goes on regardless */
+    }
+  }
+  return new ApiError(message, status, problems);
+}
+
 function detailText(body: unknown, fallback: string): string {
   const detail = (body as { detail?: unknown } | null)?.detail;
   if (typeof detail === "string") return detail;
@@ -98,7 +118,8 @@ async function request<T>(path: string, init: RequestInit = {}, timeoutMs = READ
     } catch {
       /* not JSON: keep the status text */
     }
-    throw new ApiError(detailText(body, `${res.status} ${res.statusText}`), res.status, parseProblems(body));
+    const write = (init.method ?? "GET").toUpperCase() !== "GET";
+    throw failed(detailText(body, `${res.status} ${res.statusText}`), res.status, parseProblems(body), write);
   }
   return (await res.json()) as T;
 }
@@ -255,7 +276,7 @@ export const exportWeekly = async (period: string): Promise<{ blob: Blob; name: 
     } catch {
       /* not JSON: keep the status text */
     }
-    throw new ApiError(detailText(body, `${res.status} ${res.statusText}`), res.status, parseProblems(body));
+    throw failed(detailText(body, `${res.status} ${res.statusText}`), res.status, parseProblems(body), true);
   }
   const named = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "");
   return { blob: await res.blob(), name: named ? named[1] : "Cytonn-Weekly.docx" };

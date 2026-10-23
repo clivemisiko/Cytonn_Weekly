@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import * as api from "./api";
 import { dialogProblem, dismiss, firstActionable, needsScroll, PLACEMENT, placementOf, raise, TARGETS } from "./attention";
 
 // The backend's own table (backend/api/problems.py): the frontend's placements must cover exactly its codes and targets.
@@ -63,5 +64,42 @@ describe("raise", () => {
     raise([]);
     raise([problem("run_unknown", null)]);
     expect(dialogProblem.value).toBeNull();
+  });
+});
+
+describe("the API tells the store about failed writes only", () => {
+  const answer = (status: number, body: unknown) =>
+    vi.fn(async () => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } }));
+  const body = { detail: "Another draft is running.", problems: [problem("draft_busy")] };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    api.setFailureHandler(null);
+  });
+
+  it("calls the handler for a failed write that names problems, and still throws", async () => {
+    const told: unknown[] = [];
+    api.setFailureHandler((problems) => told.push(problems));
+    vi.stubGlobal("fetch", answer(409, body));
+    await expect(api.removeInput("2026-10-02", "x.pdf")).rejects.toMatchObject({ status: 409, message: "Another draft is running." });
+    expect(told).toEqual([body.problems]);
+  });
+
+  it("never calls it for a read, or for a write whose error names none", async () => {
+    const told: unknown[] = [];
+    api.setFailureHandler((problems) => told.push(problems));
+    vi.stubGlobal("fetch", answer(409, body));
+    await expect(api.getInputs("2026-10-02")).rejects.toBeInstanceOf(api.ApiError);
+    vi.stubGlobal("fetch", answer(422, { detail: "plain" }));
+    await expect(api.removeInput("2026-10-02", "x.pdf")).rejects.toBeInstanceOf(api.ApiError);
+    expect(told).toEqual([]);
+  });
+
+  it("goes on when the handler itself throws", async () => {
+    api.setFailureHandler(() => {
+      throw new Error("broken handler");
+    });
+    vi.stubGlobal("fetch", answer(409, body));
+    await expect(api.removeInput("2026-10-02", "x.pdf")).rejects.toMatchObject({ status: 409 });
   });
 });
