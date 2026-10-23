@@ -117,8 +117,8 @@ def require_all_approved(reviews: list[tuple[SectionSpec, Optional[CoordinatorRe
     missing = [f"{HEADINGS.get(spec.slug, spec.title)} ({wording[_state(review)]})" for spec, review in reviews
                if _state(review) != APPROVED]
     if missing:
-        raise ExportNotAllowed("The weekly report can be exported only when every section is approved. Not yet: "
-                               + "; ".join(missing) + ".")
+        raise ExportNotAllowed("The weekly report cannot be exported yet, because every section must be approved first. "
+                               "Not approved yet: " + "; ".join(missing) + ". Approve those sections, then export again.")
     return [(spec, review) for spec, review in reviews if review is not None]
 
 

@@ -31,9 +31,15 @@ def latest_friday(today: date) -> date:
     return today - timedelta(days=(today.weekday() - FRIDAY) % 7)
 
 
+def day_text(d: date) -> str:
+    """A date as the screen writes it ("15 Oct 2026"; frontend/src/lib/format.ts friendlyDate)."""
+    return f"{d.day} {d:%b %Y}"
+
+
 def require_friday(day: date) -> date:
     if day.weekday() != FRIDAY:
-        raise NotAFriday(f"{day.isoformat()} is a {day.strftime('%A')}; a weekly report's week ends on a Friday")
+        raise NotAFriday(f"{day_text(day)} is a {day.strftime('%A')}. A weekly report's week ends on a Friday, "
+                         "so choose a Friday.")
     return day
 
 

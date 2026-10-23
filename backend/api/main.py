@@ -60,7 +60,7 @@ from pydantic import BaseModel, Field
 
 from cytonn_weekly.charts import store as chart_store
 from cytonn_weekly.charts.block import set_team_chart
-from cytonn_weekly.common.run_events import RUN_STARTED, redact, review_counts, safe_describe, user_message
+from cytonn_weekly.common.run_events import RUN_STARTED, describe, redact, review_counts, safe_describe, user_message
 from cytonn_weekly.digital_payments import review_run, review_store
 from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview, rejected_draft_notes
 from cytonn_weekly.digital_payments.provider_factory import ENV_VAR as PROVIDER_ENV_VAR
@@ -111,7 +111,8 @@ DEFAULT_WEB_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
 
 
 DISCARDED_AS_STUCK = (
-    "This draft ran so long it was treated as stuck and a newer draft replaced it; its result was discarded."
+    "This draft ran so long that it was treated as stuck, and a newer draft replaced it. Its result was not saved. "
+    "Open the section to see the newer draft."
 )
 
 def configured_provider() -> str:
@@ -127,7 +128,14 @@ def failure_message(exc: BaseException) -> str:
     by its type.  Any configured secret that an error message happens to quote is removed
     before it is recorded.
     """
-    text = " ".join(str(exc).split()) if isinstance(exc, (ValueError, SearchKeyError)) else user_message(exc)
+    if isinstance(exc, (ValueError, SearchKeyError)):
+        text = " ".join(str(exc).split())
+    else:
+        text = user_message(exc)
+        if text == redact(describe(exc)):   # not a connection or database failure: drop the class name, keep the redacted words
+            detail = text.removeprefix(f"{type(exc).__name__}:").strip() or "no detail"
+            return (f"An unexpected error occurred ({detail}). Try again; if it happens again, report it with the "
+                    "section name.")[:600]
     return redact(text)[:600]
 
 
@@ -302,7 +310,7 @@ def create_app(
         try:
             return review_store.load_review(run_id, db_path=db_path)
         except KeyError:
-            raise HTTPException(404, f"no saved review with run_id {run_id}")
+            raise HTTPException(404, f"There is no saved review number {run_id}. Go back to the overview and open the section again.")
 
     def save(review: CoordinatorReview) -> None:
         new = review.run_id is None
@@ -320,7 +328,8 @@ def create_app(
         with write_lock:
             review = load(run_id)
             if review.decision is not None:
-                raise HTTPException(409, f"run {run_id} was already {review.decision}; it cannot be changed")
+                raise HTTPException(409, f"This section was already {review.decision} (review {run_id}), so it cannot be changed. "
+                                         "Reload the page to see the decision.")
             change(review)
             save(review)
             return serialize_review(review)
@@ -393,17 +402,17 @@ def create_app(
         if spec is None:
             raise HTTPException(404, f"no section {slug!r} in the {TYPES[report_type].title}")
         if not spec.available or spec.build is None:
-            raise HTTPException(409, f"{spec.title} cannot be drafted yet: {spec.reason}")
+            raise HTTPException(409, f"{spec.title} cannot be drafted yet. {spec.reason}")
         topic = body.topic or None
         if spec.needs_topic and not (topic and topic.strip()):
-            raise HTTPException(422, f"{spec.title} needs a topic to draft")
+            raise HTTPException(422, f"Type a topic for {spec.title} first, then start the draft.")
         if topic and topic.strip():
             try:
                 topic = clean_topic(topic)  # whitespace-normalized; over focus.review_run.MAX_TOPIC_CHARS is refused
             except ValueError as exc:
                 raise HTTPException(422, str(exc))
         if spec.needs_text and not (body.text and body.text.strip()):
-            raise HTTPException(422, f"{spec.title} needs your text to draft")
+            raise HTTPException(422, f"Paste the text for {spec.title} first, then start the draft.")
         ctx = DraftContext(report_type=report_type, period=period, topic=topic, text=body.text, db_path=db_path,
                            week_ending=week_ending_of(period) if report_type == WEEKLY else None, inputs_root=root)
         return spec, ctx, report_type, period
@@ -411,7 +420,8 @@ def create_app(
     def find_run(run_id: str) -> Run:
         run = runs.get(run_id)
         if run is None:
-            raise HTTPException(404, f"no run {run_id!r}; runs are kept in memory and are lost when the API restarts")
+            raise HTTPException(404, "This draft run is no longer known: the tool was restarted, and runs are not kept "
+                                     "across a restart. Any draft that finished is saved; go back to the overview to find it.")
         return run
 
     def work_run(run: Run, spec: SectionSpec, ctx: DraftContext, claim: Optional[Claim]) -> None:
@@ -610,7 +620,7 @@ def create_app(
         try:
             previous = review_store.load_previous_review(run_id, db_path=db_path)
         except KeyError:
-            raise HTTPException(404, f"no saved review with run_id {run_id}")
+            raise HTTPException(404, f"There is no saved review number {run_id}. Go back to the overview and open the section again.")
         return rejected_draft_notes(previous)
 
     # -- this week's inputs -------------------------------------------------
@@ -623,7 +633,7 @@ def create_app(
         except NotAFriday as exc:
             raise HTTPException(422, str(exc))
         except ValueError:
-            raise HTTPException(422, f"{week_ending!r} is not a date; write the week as 2026-10-02")
+            raise HTTPException(422, f"'{week_ending}' is not a date. Choose the Friday the week ends on.")
 
     def slot_of(slug: str) -> weekly_inputs.Slot:
         slot = weekly_inputs.BY_SLUG.get(slug)
@@ -708,10 +718,12 @@ def create_app(
         week, spec = week_of(week_ending), slot_of(slot)
         declared = request.headers.get("content-length")
         if declared and declared.isdigit() and int(declared) > weekly_inputs.MAX_BYTES:
-            raise HTTPException(413, f"{spec.title}: the file is over the {weekly_inputs.MAX_BYTES // 1_048_576} MB limit")
+            raise HTTPException(413, f"{spec.title}: the file is over the {weekly_inputs.MAX_BYTES // 1_048_576} MB limit. "
+                                     "Upload a smaller copy of the file.")
         data = await request.body()
         if len(data) > weekly_inputs.MAX_BYTES:
-            raise HTTPException(413, f"{spec.title}: the file is over the {weekly_inputs.MAX_BYTES // 1_048_576} MB limit")
+            raise HTTPException(413, f"{spec.title}: the file is over the {weekly_inputs.MAX_BYTES // 1_048_576} MB limit. "
+                                     "Upload a smaller copy of the file.")
         try:
             await run_in_threadpool(weekly_inputs.store, week, slot, data, filename, root)
         except weekly_inputs.InputError as exc:
@@ -725,13 +737,15 @@ def create_app(
         try:
             data, url = fetch_bulletin(week.ending)
         except LookupError as exc:
-            raise HTTPException(404, f"{exc}. Upload the bulletin once CBK has published it.")
+            raise HTTPException(404, f"{exc}. CBK may not have published it yet: try again later, or upload the PDF yourself.")
         except Exception as exc:  # noqa: BLE001 - shown to the coordinator, not swallowed
-            raise HTTPException(502, f"The bulletin could not be fetched from CBK: {user_message(exc)}")
+            raise HTTPException(502, f"The bulletin could not be fetched from CBK. {failure_message(exc)} You can also upload "
+                                     "the PDF yourself.")
         try:
             weekly_inputs.store(week, weekly_inputs.CBK_BULLETIN, data, url.rsplit("/", 1)[-1], root, fetched_from=url)
         except weekly_inputs.InputError as exc:
-            raise HTTPException(502, f"CBK's file could not be read as the bulletin: {exc}")
+            raise HTTPException(502, f"CBK's file was downloaded but could not be read as the Weekly Bulletin ({exc}). Upload "
+                                     "the bulletin yourself.")
         return weekly_inputs.status(week, root)
 
     # -- Notable this week: suggestions for the analyst, and the analyst's decisions on them ---------------
@@ -845,7 +859,7 @@ def create_app(
             try:
                 return review_run.build_digital_payments_review()
             except Exception as exc:  # noqa: BLE001 - shown to the coordinator, not swallowed
-                raise HTTPException(502, f"The draft run failed: {type(exc).__name__}: {exc}")
+                raise HTTPException(502, f"The draft stopped. {failure_message(exc)}")
 
         return run_draft("digital_payments", build)
 
@@ -867,7 +881,7 @@ def create_app(
             except ValueError as exc:  # e.g. an unusable Focus topic, or missing Company Updates text
                 raise HTTPException(422, str(exc))
             except Exception as exc:  # noqa: BLE001 - shown to the coordinator, not swallowed
-                raise HTTPException(502, f"The draft run failed: {type(exc).__name__}: {exc}")
+                raise HTTPException(502, f"The draft stopped. {failure_message(exc)}")
 
         if not uses_provider(spec):
             return run_quick(build)
@@ -890,16 +904,16 @@ def create_app(
         if body.provider is not None and body.provider.strip().lower() != configured_provider():
             raise HTTPException(
                 409,
-                f"This screen expected the {body.provider.strip().lower()} drafting provider, but the API is configured "
-                f"for {configured_provider()}. Reload the page to see what a draft will use, then start it again.",
+                "The tool's drafting mode changed after this page was opened. Reload the page to see what a draft "
+                "will use, then start it again.",
             )
         try:
             run = runs.start(report_type, period, spec.slug, spec.title, TYPES[report_type].title)
         except RunAlreadyRunning:
             raise HTTPException(
                 409,
-                f"A draft of {spec.title}{f' for {period}' if period else ''} is already running. "
-                "It is saved when it finishes, and the overview shows it until then.",
+                f"{spec.title}{f' for {period}' if period else ''} is already being drafted. It is saved when it "
+                "finishes, and the overview shows it until then. Wait for it, then open it from the overview.",
             )
         claim: Optional[Claim] = None
         if uses_provider(spec):

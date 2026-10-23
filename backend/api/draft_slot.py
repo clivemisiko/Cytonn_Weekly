@@ -110,6 +110,6 @@ def busy_message(exc: DraftBusy) -> str:
     minutes = exc.elapsed_seconds // 60
     since = "under a minute" if minutes < 1 else f"{minutes} min"
     return (
-        f"A draft is already running: {exc.holder.title}, for {since}. Only one draft runs at a time, across "
-        "every section; it is saved when it finishes, and the overview shows it until then."
+        f"Another draft is running: {exc.holder.title} ({since} so far). Only one draft runs at a time, across "
+        "every section. Wait for it to finish (the overview shows it until then), then start this one."
     )
