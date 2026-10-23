@@ -31,7 +31,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest==9.1.1"]  # installed in the Docker image so the suite runs there
+test = ["pytest==9.1.1", "pytest-xdist==3.8.0"]  # installed in the Docker image so the suite runs there; xdist is for -n and is optional (see CLAUDE.md)
 
 [tool.setuptools.packages.find]
 where = ["src"]
