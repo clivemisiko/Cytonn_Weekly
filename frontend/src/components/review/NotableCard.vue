@@ -105,7 +105,7 @@ function confirmDismiss() {
         <dd>{{ s.working.window }}</dd>
       </dl>
       <WorkingChart :working="s.working" />
-      <div class="overflow-x-auto">
+      <div class="overflow-x-auto rounded-sm focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none" role="region" tabindex="0" aria-label="Points the rule was applied to, scrolls sideways when narrow">
         <table class="w-full border-collapse text-xs">
           <caption class="sr-only">
             Points the rule was applied to
