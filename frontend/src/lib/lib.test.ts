@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { canonical, isCarried, linesOf, originLabel, range, rowsOf, tableOrigin } from "./analyst";
+import { ApiError, parseProblems } from "./api";
 import { draftAgainOff, stateOf, when } from "./drafting";
 import { elapsed, friendlyDate, friendlyTime, plural, pyRepr } from "./format";
 import { renderMarkdown } from "./markdown";
@@ -266,5 +267,32 @@ describe("theme script", () => {
     expect(THEME_SCRIPT).toContain('localStorage.getItem("cytonn-theme")');
     expect(THEME_SCRIPT.startsWith("try{")).toBe(true);
     expect(THEME_SCRIPT).toContain('t==="light"||t==="dark"');
+  });
+});
+
+describe("parseProblems", () => {
+  const ok = { code: "upload_refused", headline: "A file was not added", target: "inputs-panel" };
+
+  it("reads a well formed list, and a missing target as null", () => {
+    expect(parseProblems({ detail: "x", problems: [ok, { code: "run_unknown", headline: "Gone" }] })).toEqual([ok, { code: "run_unknown", headline: "Gone", target: null }]);
+  });
+
+  it("is empty when the body has no problems, or no body", () => {
+    expect(parseProblems({ detail: "x" })).toEqual([]);
+    expect(parseProblems(null)).toEqual([]);
+    expect(parseProblems("text")).toEqual([]);
+  });
+
+  it("ignores a malformed list whole", () => {
+    expect(parseProblems({ problems: "nope" })).toEqual([]);
+    expect(parseProblems({ problems: [ok, { headline: "no code" }] })).toEqual([]);
+    expect(parseProblems({ problems: [ok, { code: "c", headline: 3 }] })).toEqual([]);
+    expect(parseProblems({ problems: [{ ...ok, target: 7 }] })).toEqual([]);
+    expect(parseProblems({ problems: [null] })).toEqual([]);
+  });
+
+  it("rides on an ApiError, empty by default", () => {
+    expect(new ApiError("m", 409, [ok]).problems).toEqual([ok]);
+    expect(new ApiError("m", null).problems).toEqual([]);
   });
 });

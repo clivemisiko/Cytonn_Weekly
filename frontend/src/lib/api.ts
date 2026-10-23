@@ -25,11 +25,37 @@ const READ_TIMEOUT_MS = 30_000;
 /** An upload is read and checked by the API before it answers (a workbook takes a few seconds). */
 const UPLOAD_TIMEOUT_MS = 180_000;
 
-/** `status` is null when no HTTP response arrived (network down, API not running, timeout). */
+/** One problem the API names beside an error's sentence: a stable code, a short headline, and the part of the screen it belongs to (or null). */
+export interface ApiProblem {
+  code: string;
+  headline: string;
+  target: string | null;
+}
+
+/**
+ * The `problems` an error body carries, or [] when it has none. Anything that is not a list of well-formed problems is
+ * ignored whole (an entry missing its code or headline, or with a target that is neither text nor null, makes the list [])
+ * so a client never acts on half of one.
+ */
+export function parseProblems(body: unknown): ApiProblem[] {
+  const list = (body as { problems?: unknown } | null)?.problems;
+  if (!Array.isArray(list)) return [];
+  const out: ApiProblem[] = [];
+  for (const entry of list) {
+    const p = entry as Partial<ApiProblem> | null;
+    if (!p || typeof p.code !== "string" || typeof p.headline !== "string") return [];
+    if (p.target !== null && p.target !== undefined && typeof p.target !== "string") return [];
+    out.push({ code: p.code, headline: p.headline, target: p.target ?? null });
+  }
+  return out;
+}
+
+/** `status` is null when no HTTP response arrived (network down, API not running, timeout). `problems` is empty unless the API named some. */
 export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number | null,
+    readonly problems: ApiProblem[] = [],
   ) {
     super(message);
     this.name = "ApiError";
@@ -72,7 +98,7 @@ async function request<T>(path: string, init: RequestInit = {}, timeoutMs = READ
     } catch {
       /* not JSON: keep the status text */
     }
-    throw new ApiError(detailText(body, `${res.status} ${res.statusText}`), res.status);
+    throw new ApiError(detailText(body, `${res.status} ${res.statusText}`), res.status, parseProblems(body));
   }
   return (await res.json()) as T;
 }
@@ -229,7 +255,7 @@ export const exportWeekly = async (period: string): Promise<{ blob: Blob; name: 
     } catch {
       /* not JSON: keep the status text */
     }
-    throw new ApiError(detailText(body, `${res.status} ${res.statusText}`), res.status);
+    throw new ApiError(detailText(body, `${res.status} ${res.statusText}`), res.status, parseProblems(body));
   }
   const named = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "");
   return { blob: await res.blob(), name: named ? named[1] : "Cytonn-Weekly.docx" };
