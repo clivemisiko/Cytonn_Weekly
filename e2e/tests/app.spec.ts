@@ -177,7 +177,7 @@ test("T07 inputs panel: what was received, an upload refused with its reason, a 
   await expect(panel.getByRole("alert").filter({ hasText: "not-a-pdf.pdf: NSE yield curve: this is not a PDF file" })).toBeVisible();
 
   await panel.getByLabel("Week ending (a Friday)").fill("2026-10-08");
-  await expect(panel.getByRole("alert").filter({ hasText: "8 Oct 2026 is a Thursday; a weekly report’s week ends on a Friday." })).toBeVisible();
+  await expect(panel.getByRole("alert").filter({ hasText: "8 Oct 2026 is a Thursday. A weekly report's week ends on a Friday, so choose a Friday." })).toBeVisible();
   await expect(panel.getByRole("button", { name: "Show this week" })).toBeDisabled();
 });
 

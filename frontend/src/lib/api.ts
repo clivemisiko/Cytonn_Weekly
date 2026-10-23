@@ -59,9 +59,9 @@ async function request<T>(path: string, init: RequestInit = {}, timeoutMs = READ
     });
   } catch (err) {
     if ((err as Error).name === "AbortError") {
-      throw new ApiError(`The request timed out after ${Math.round(timeoutMs / 1000)} seconds.`, null);
+      throw new ApiError(`The server did not answer within ${Math.round(timeoutMs / 1000)} seconds. A change you made may or may not have been saved: reload the page to check, then try again.`, null);
     }
-    throw new ApiError(`Could not reach the review API at ${API_NAME}. Is it running?`, null);
+    throw new ApiError(`Could not reach the report tool's server (${API_NAME}). Check that it is running, then try again.`, null);
   } finally {
     clearTimeout(timer);
   }
@@ -220,7 +220,7 @@ export const exportWeekly = async (period: string): Promise<{ blob: Blob; name: 
   try {
     res = await fetch(`${API_BASE}${exportPath(period)}`, { method: "POST", cache: "no-store" });
   } catch {
-    throw new ApiError(`Could not reach the review API at ${API_NAME}. Is it running?`, null);
+    throw new ApiError(`Could not reach the report tool's server (${API_NAME}). Check that it is running, then try again.`, null);
   }
   if (!res.ok) {
     let body: unknown = null;

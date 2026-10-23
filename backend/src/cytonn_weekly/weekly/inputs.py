@@ -30,7 +30,7 @@ from typing import Any, Callable, Optional
 
 from cytonn_weekly import paths
 from cytonn_weekly.weekly import cbk_bulletin, equities_workbook, fi_workbook, kcb, nse_yield_curve
-from cytonn_weekly.weekly.week import Week
+from cytonn_weekly.weekly.week import Week, day_text
 from cytonn_weekly.weekly.workbook import Workbook, WorkbookError
 
 MAX_BYTES = 30 * 1024 * 1024
@@ -124,14 +124,15 @@ def _write_manifest(week: Week, root: Optional[Path], manifest: dict[str, Any]) 
 
 def _check_bytes(slot: Slot, data: bytes) -> None:
     if not data:
-        raise InputError(f"{slot.title}: the file is empty")
+        raise InputError(f"{slot.title}: the file is empty. Check you picked the right file and upload it again.")
     if len(data) > MAX_BYTES:
-        raise InputError(f"{slot.title}: the file is {len(data) / 1_048_576:.1f} MB; the limit is "
-                         f"{MAX_BYTES // 1_048_576} MB")
+        raise InputError(f"{slot.title}: the file is {len(data) / 1_048_576:.1f} MB and the limit is "
+                         f"{MAX_BYTES // 1_048_576} MB. Upload a smaller copy of the file.")
     if slot.kind == "pdf" and not data.startswith(PDF_MAGIC):
-        raise InputError(f"{slot.title}: this is not a PDF file")
+        raise InputError(f"{slot.title}: this is not a PDF file. Download the document again as a PDF and upload that.")
     if slot.kind == "xlsx" and not data.startswith(XLSX_MAGIC):
-        raise InputError(f"{slot.title}: this is not an Excel workbook (.xlsx); an older .xls file must be saved as .xlsx")
+        raise InputError(f"{slot.title}: this is not an Excel workbook (.xlsx). If it is an older .xls file, open it in Excel, "
+                         "save it as .xlsx and upload that.")
 
 
 def equities_workbook_date(book: Workbook) -> Optional[date]:
@@ -174,11 +175,15 @@ def identify(slot: Slot, data: bytes, week: Week) -> dict[str, Any]:
             wanted = kcb.DAILY if slot.slug == KCB_DAILY else kcb.WEEKLY
             if report.kind != wanted:
                 raise InputError(f"{slot.title}: this is KCB's {report.kind} report, dated "
-                                 f"{report.report_date.isoformat()}, not a {wanted} one")
+                                 f"{day_text(report.report_date)}, not a {wanted} one. Upload it under KCB's "
+                                 f"{report.kind} report instead.")
             if slot.slug == KCB_DAILY:
                 if report.report_date not in week.trading_days:
-                    raise InputError(f"{slot.title}: this report is dated {report.report_date.isoformat()}, which is "
-                                     f"not in the week {week.monday.isoformat()} to {week.ending.isoformat()}")
+                    raise InputError(f"{slot.title}: the report itself prints the date {day_text(report.report_date)}. This week "
+                                     f"needs reports for {day_text(week.monday)} to {day_text(week.ending)}. The date is "
+                                     "read from inside the report, not from the file name, so renaming the file does "
+                                     "not change it. Upload the reports for those days, or choose the week this "
+                                     "report belongs to.")
                 return _found(report.report_date, True, f"kcb_daily_{report.report_date.isoformat()}.pdf",
                               "; ".join(report.problems))
             return _found(report.report_date, report.report_date == week.ending, "kcb_weekly.pdf",
@@ -196,7 +201,8 @@ def identify(slot: Slot, data: bytes, week: Week) -> dict[str, Any]:
             nse_yield_curve.YieldCurveParseError) as exc:
         raise InputError(f"{slot.title}: {exc}")
     except Exception as exc:  # noqa: BLE001 - a file the parser chokes on is refused, never half-read
-        raise InputError(f"{slot.title}: the file could not be read ({type(exc).__name__}: {exc})")
+        raise InputError(f"{slot.title}: the file could not be read as this document. Check it opens normally, then upload it "
+                         "again. If it still fails, report it with the file name.")
     raise InputError(f"unknown input {slot.slug!r}")
 
 
@@ -264,7 +270,8 @@ def write_notes(week: Week, notes: dict[str, Optional[str]], root: Optional[Path
             raise InputError(f"unknown note {key!r}")
         text = " ".join((value or "").split())
         if len(text) > MAX_NOTE:
-            raise InputError(f"{key.replace('_', ' ')} is {len(text)} characters; the limit is {MAX_NOTE}")
+            raise InputError(f"{key.replace('_', ' ').capitalize()}: {len(text)} characters typed and the limit is {MAX_NOTE}. "
+                             f"Shorten it by {len(text) - MAX_NOTE}.")
         if text:
             kept[key] = text
         else:

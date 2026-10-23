@@ -218,7 +218,7 @@ def test_a_source_that_fails_outright_fails_the_run_as_the_pipeline_does(client,
     run = run_to_end(client, section="equities")
     assert kinds(run) == ["run_started", "source_started", "source_failed", "run_failed"]
     assert run["events"][2]["detail"] == "RuntimeError: afx listing page did not parse"
-    assert run["events"][3]["detail"] == "RuntimeError: afx listing page did not parse"
+    assert run["events"][3]["detail"] == "An unexpected error occurred (afx listing page did not parse). Try again; if it happens again, report it with the section name."
     assert "Traceback" not in json.dumps(run) and 'File "' not in json.dumps(run)
     assert run["status"] == "failed" and run["review_id"] is None and run["is_dev_draft"] is None
     assert review_store.load_latest_review("equities", db_path=db) is None
@@ -328,7 +328,7 @@ def test_a_refused_search_key_ends_the_run_with_a_plain_message_and_no_key(clien
 def test_a_failure_message_carries_no_traceback_and_no_secret(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-0123456789abcdef")
     message = failure_message(RuntimeError("401 for key sk-test-0123456789abcdef\n  at line 3"))
-    assert message == "RuntimeError: 401 for key [redacted] at line 3"
+    assert message == "An unexpected error occurred (401 for key [redacted] at line 3). Try again; if it happens again, report it with the section name."
     # a ValueError is the pipeline talking to the coordinator: its message stands alone, as the draft route shows it
     assert failure_message(ValueError("the topic is 900 characters")) == "the topic is 900 characters"
     assert failure_message(executive_summary.SectionsNotApproved(["Equities (not drafted)"])).startswith(
@@ -351,7 +351,7 @@ def test_a_connection_failure_is_worded_for_the_coordinator():
     # an error that carries no request (httpx raises when asked for it) still gets a plain message
     assert failure_message(httpx.ConnectTimeout(handshake)).startswith("Could not reach an outside service:")
     # anything that is not a connection failure is named by its type, as before
-    assert failure_message(KeyError("x")) == "KeyError: 'x'"
+    assert failure_message(KeyError("x")) == "An unexpected error occurred ('x'). Try again; if it happens again, report it with the section name."
 
 
 # ---------------------------------------------------------------------------
@@ -402,7 +402,7 @@ def test_a_run_is_refused_for_the_reasons_a_draft_is(client, monkeypatch):
 def test_provider_is_only_a_check_of_what_the_screen_showed(client, monkeypatch):
     """It never selects the provider: a mismatch is refused, a match (or none given) runs on the configured one."""
     r = client.post("/api/runs", json={**WEEKLY_DP, "provider": "local"})
-    assert r.status_code == 409 and "configured for anthropic" in r.json()["detail"]
+    assert r.status_code == 409 and "The tool's drafting mode changed after this page was opened" in r.json()["detail"]
     assert client.get("/api/sections").json()["drafting"] is None
     assert run_to_end(client, **WEEKLY_DP, provider="anthropic")["status"] == "finished"
     monkeypatch.setenv("CYTONN_LLM_PROVIDER", "local")
@@ -419,10 +419,10 @@ def test_a_second_run_of_the_same_section_is_refused_while_the_first_is_running(
         assert provider.entered.wait(timeout=10)
         r = client.post("/api/runs", json=WEEKLY_DP)
         assert r.status_code == 409
-        assert r.json()["detail"].startswith("A draft of Digital Payments is already running.")
+        assert r.json()["detail"].startswith("Digital Payments is already being drafted.")
         # another section is refused too, by the one draft slot, which names the draft that holds it
         other = client.post("/api/runs", json={"section": "equities"})
-        assert other.status_code == 409 and "already running: Digital Payments" in other.json()["detail"]
+        assert other.status_code == 409 and "Another draft is running: Digital Payments" in other.json()["detail"]
         # ... and the refused run left nothing behind: only the first is on the overview
         assert client.get("/api/sections").json()["drafting"]["slug"] == "digital_payments"
         # the same section of another report is a different run, but it too waits for the slot
@@ -460,7 +460,7 @@ def test_a_run_that_hung_and_was_replaced_fails_and_saves_nothing(app, client, d
 def test_an_unknown_run_is_not_found(client):
     assert client.get("/api/runs/0123456789abcdef0123456789abcdef").status_code == 404
     assert client.get("/api/runs/0123456789abcdef0123456789abcdef/events").status_code == 404
-    assert "lost when the API restarts" in client.get("/api/runs/nope").json()["detail"]
+    assert "runs are not kept across a restart" in client.get("/api/runs/nope").json()["detail"]
 
 
 def test_runs_are_in_memory_only_so_a_restart_forgets_them(app, client, db, clock):

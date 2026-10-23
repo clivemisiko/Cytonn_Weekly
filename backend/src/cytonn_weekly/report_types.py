@@ -103,7 +103,8 @@ def normalize_period(report_type: str, period: Optional[str]) -> str:
         except ValueError:
             raise PeriodError(f"{raw!r} is not a date; write the week as Week ending 2026-10-02")
         if day.weekday() != 4:
-            raise PeriodError(f"{day.isoformat()} is a {day.strftime('%A')}; a weekly report's week ends on a Friday")
+            raise PeriodError(f"{day.day} {day:%b %Y} is a {day.strftime('%A')}. A weekly report's week ends on a Friday, "
+                                 "so choose a Friday.")
         return f"{WEEK_ENDING_PREFIX}{day.isoformat()}"
     if report_type in (WEEKLY, COMPANION):
         m = _WEEKLY_RE.match(raw)

@@ -51,7 +51,7 @@ test("T29 start from last week’s form, when the week before holds only values 
   try {
     const refused = await request.post(`${API}/api/inputs/weekly/2026-10-23/analyst/carry?section=fixed_income`);
     expect(refused.status()).toBe(409);
-    expect((await refused.json()).detail).toContain("No analyst inputs are saved for the week ending 2026-10-16");
+    expect((await refused.json()).detail).toContain("No analyst inputs are saved for the week ending 16 Oct 2026");
     await openStart(page, "Fixed Income", "Week ending 2026-10-23");
     const panel = analystPanel(page);
     await expect(panel.getByRole("button", { name: "Start from last week’s form" })).toBeDisabled();
@@ -79,7 +79,7 @@ test("T30 a carried weekly table waits for its own Confirm; carrying again says 
 
     // Everything last week held is now held here: a second carry is refused, in the API's words, under the button.
     await panel.getByRole("button", { name: "Start from last week’s form" }).click();
-    await expect(panel.getByRole("alert")).toContainText("Nothing to carry from the week ending 2026-10-09: every item it holds is already typed for this week");
+    await expect(panel.getByRole("alert")).toContainText("Nothing to carry from the week ending 9 Oct 2026: every item it holds is already typed for this week");
   } finally {
     await putTable(request, WEEK, "fixed_income", "mmf", null);
     dropForm("2026-10-16");
@@ -151,7 +151,7 @@ test("T34 Show this week switches the week; Fetch from CBK for a week CBK has no
   await expect(next.getByText("Week ending 16 Oct 2026: Monday 12 Oct 2026 to Friday.")).toBeVisible();
   const bulletin = next.locator("li", { hasText: "CBK Weekly Bulletin" }).first();
   await bulletin.getByRole("button", { name: "Fetch from CBK" }).click();
-  await expect(next.getByRole("alert")).toContainText("E2E: no bulletin is saved for 2026-10-16. Upload the bulletin once CBK has published it.");
+  await expect(next.getByRole("alert")).toContainText("E2E: no bulletin is saved for 2026-10-16. CBK may not have published it yet: try again later, or upload the PDF yourself.");
   await expect(bulletin).toContainText("Not received");
 });
 

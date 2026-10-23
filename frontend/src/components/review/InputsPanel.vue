@@ -34,11 +34,13 @@ const emit = defineEmits<{
 const status = ref<WeeklyInputs | null>(null);
 const busy = ref(false);
 const error = ref<string | null>(null);
+// Files an upload refused, one line each (shown in the same box as `error`).
+const refusedFiles = ref<string[]>([]);
 const picked = ref(props.week);
 const bidding = ref("");
 const previous = ref("");
 const notFriday = computed(() =>
-  picked.value && weekdayOf(picked.value) !== "Friday" ? `${friendlyDate(picked.value)} is a ${weekdayOf(picked.value)}; a weekly report’s week ends on a Friday.` : null,
+  picked.value && weekdayOf(picked.value) !== "Friday" ? `${friendlyDate(picked.value)} is a ${weekdayOf(picked.value)}. A weekly report's week ends on a Friday, so choose a Friday.` : null,
 );
 const locked = computed(() => busy.value || !!props.disabled);
 let live = true;
@@ -61,6 +63,7 @@ onMounted(() => {
 async function act(work: () => Promise<WeeklyInputs>) {
   busy.value = true;
   error.value = null;
+  refusedFiles.value = [];
   try {
     show(await work());
     emit("change");
@@ -83,7 +86,7 @@ const upload = (slot: string, files: File[]) =>
         refused.push(`${file.name}: ${(err as Error).message}`);
       }
     }
-    if (refused.length) setTimeout(() => (error.value = refused.join(" ")), 0);
+    if (refused.length) setTimeout(() => (refusedFiles.value = refused), 0);
     return last ?? (await api.getInputs(props.week));
   });
 
@@ -125,6 +128,12 @@ function saveNote(key: "bidding_range" | "previous_issue", value: string) {
     </div>
 
     <Notice v-if="error" role="alert" class="font-medium">{{ error }}</Notice>
+    <Notice v-if="refusedFiles.length" role="alert" class="font-medium">
+      <p>{{ refusedFiles.length === 1 ? "This file was not added:" : `These ${refusedFiles.length} files were not added:` }}</p>
+      <ul class="mt-1 list-disc space-y-1 pl-5">
+        <li v-for="line in refusedFiles" :key="line">{{ line }}</li>
+      </ul>
+    </Notice>
 
     <p v-if="status === null && !error" class="text-sm text-muted-foreground" aria-busy="true">
       Reading what has been received for the week ending <span class="font-mono">{{ friendlyDate(week) }}</span>…

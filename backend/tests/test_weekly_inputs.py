@@ -58,7 +58,7 @@ def test_a_weekly_period_can_name_its_week_ending_friday():
     assert week_ending_of("Week ending 2026-10-02") == date(2026, 10, 2)
     assert week_ending_of("Weekly #38.2026") is None and week_ending_of("") is None
     assert normalize_period("weekly", "#38.2026") == "Weekly #38.2026" and normalize_period("weekly", "") == ""  # as before
-    with pytest.raises(PeriodError, match="is a Saturday; a weekly report's week ends on a Friday"):
+    with pytest.raises(PeriodError, match="is a Saturday. A weekly report's week ends on a Friday"):
         normalize_period("weekly", "2026-10-03")
     with pytest.raises(PeriodError):   # only the weekly report takes a week
         normalize_period("companion", "2026-10-02")
@@ -506,7 +506,7 @@ def test_valuation_large_caps_and_the_universe_are_read_for_the_week(eq_book):
 
 def test_a_workbook_not_yet_updated_for_the_week_says_so():
     stale = equities_workbook.open_equities_workbook(wh.equities_workbook_bytes(updated=False))
-    with pytest.raises(WorkbookError, match="'NASI-PE & Dividend Yield' has no row for 2026-10-02: workbook not yet updated for this week"):
+    with pytest.raises(WorkbookError, match="has no row for 2 Oct 2026 on sheet 'NASI-PE & Dividend Yield'. The workbook is not yet updated for this week"):
         equities_workbook.read_valuation(stale, WEEK)
     with pytest.raises(WorkbookError, match=r"no 'Price as at 02/10/2026' column: workbook not yet updated for this week"):
         equities_workbook.read_universe(stale, WEEK)
@@ -514,7 +514,7 @@ def test_a_workbook_not_yet_updated_for_the_week_says_so():
     stale_fi = fi_workbook.open_fi_workbook(wh.fi_workbook_bytes(updated=False))
     with pytest.raises(WorkbookError, match="is for value date 2026-09-28 .* workbook not yet updated for this week"):
         fi_workbook.read_tbills(stale_fi, WEEK)
-    with pytest.raises(WorkbookError, match="is as published on 2026-09-25, not 2026-10-02: workbook not yet updated"):
+    with pytest.raises(WorkbookError, match="is dated 25 Sep 2026; this week needs 2 Oct 2026. The workbook is not yet updated"):
         fi_workbook.read_mmf_table(stale_fi, WEEK)
 
 
@@ -608,9 +608,9 @@ def test_an_upload_of_the_wrong_kind_or_size_is_refused_and_nothing_is_stored(tm
 def test_an_upload_that_is_the_wrong_document_is_refused_with_the_reason(tmp_path, text_pdfs):
     with pytest.raises(inputs.InputError, match="is not the equities workbook"):
         inputs.store(WEEK, "equities_workbook", wh.fi_workbook_bytes(), "x.xlsx", tmp_path)
-    with pytest.raises(inputs.InputError, match="this is KCB's weekly report, dated 2026-10-02, not a daily one"):
+    with pytest.raises(inputs.InputError, match="this is KCB's weekly report, dated 2 Oct 2026, not a daily one"):
         inputs.store(WEEK, "kcb_daily", wh.fake_pdf(wh.kcb_weekly_text()), "x.pdf", tmp_path)
-    with pytest.raises(inputs.InputError, match="dated 2026-10-05, which is not in the week 2026-09-28 to 2026-10-02"):
+    with pytest.raises(inputs.InputError, match="prints the date 5 Oct 2026. This week needs reports for 28 Sep 2026 to 2 Oct 2026"):
         inputs.store(WEEK, "kcb_daily", wh.fake_pdf(wh.kcb_daily_text(date(2026, 10, 5))), "x.pdf", tmp_path)
     with pytest.raises(inputs.InputError, match="not a CBK Weekly Bulletin"):
         inputs.store(WEEK, "cbk_bulletin", (wh.FIXTURES / "nse_yield_curve_07-10-2026.pdf").read_bytes(), "x.pdf", tmp_path)
@@ -700,9 +700,9 @@ def test_the_api_refuses_what_the_store_refuses_in_its_words(client, text_pdfs):
     assert client.get("/api/inputs/weekly/not-a-date").status_code == 422
     assert client.put("/api/inputs/weekly/2026-10-02/nope", content=b"%PDF").status_code == 404
     r = client.put("/api/inputs/weekly/2026-10-02/kcb_weekly", content=b"PK\x03\x04")
-    assert r.status_code == 422 and r.json()["detail"] == "KCB IB weekly trading report: this is not a PDF file"
+    assert r.status_code == 422 and r.json()["detail"] == "KCB IB weekly trading report: this is not a PDF file. Download the document again as a PDF and upload that."
     r = client.put("/api/inputs/weekly/2026-10-02/kcb_daily", content=wh.fake_pdf(wh.kcb_daily_text(date(2026, 10, 9))))
-    assert r.status_code == 422 and "not in the week 2026-09-28 to 2026-10-02" in r.json()["detail"]
+    assert r.status_code == 422 and "This week needs reports for 28 Sep 2026 to 2 Oct 2026" in r.json()["detail"]
     big = client.put("/api/inputs/weekly/2026-10-02/cbk_bulletin", content=b"%PDF" + b"x" * inputs.MAX_BYTES)
     assert big.status_code == 413 and "over the 30 MB limit" in big.json()["detail"]
 
@@ -713,7 +713,7 @@ def test_the_bulletin_is_fetched_from_cbk_when_asked_and_notes_are_saved(client)
     slot = next(s for s in r.json()["slots"] if s["slug"] == "cbk_bulletin")
     assert slot["file"]["matches"] is True and slot["file"]["fetched_from"].startswith("https://www.centralbank.go.ke/")
     missing = client.post("/api/inputs/weekly/2026-10-09/cbk_bulletin/fetch")
-    assert missing.status_code == 404 and "Upload the bulletin once CBK has published it" in missing.json()["detail"]
+    assert missing.status_code == 404 and "try again later, or upload the PDF yourself" in missing.json()["detail"]
     notes = client.put("/api/inputs/weekly/2026-10-02/notes", json={"bidding_range": "12.4%-12.8%"}).json()["notes"]
     assert notes == {"bidding_range": "12.4%-12.8%"}
     assert client.put("/api/inputs/weekly/2026-10-02/notes", json={"bidding_range": ""}).json()["notes"] == {}

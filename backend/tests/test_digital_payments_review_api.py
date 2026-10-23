@@ -510,7 +510,7 @@ def test_draft_failure_is_shown_not_swallowed_and_saves_nothing(client, db, monk
 
     monkeypatch.setattr(review_run, "build_digital_payments_review", boom)
     r = client.post("/api/reviews/draft")
-    assert r.status_code == 502 and "RuntimeError: no API key" in r.json()["detail"]
+    assert r.status_code == 502 and "An unexpected error occurred (no API key)" in r.json()["detail"]
     assert rs.load_latest_review(db_path=db) is None
     # and the failure does not wedge the next attempt
     fake_pipeline(monkeypatch)
@@ -535,7 +535,7 @@ def test_a_second_draft_while_one_is_running_is_409_and_spends_nothing(db, monke
     try:
         assert entered.wait(timeout=10)
         second = TestClient(app).post("/api/reviews/draft")
-        assert second.status_code == 409 and "already running" in second.json()["detail"]
+        assert second.status_code == 409 and "Another draft is running" in second.json()["detail"]
         assert len(calls) == 1  # the pipeline, and so the API spend, was not started again
     finally:
         release.set()

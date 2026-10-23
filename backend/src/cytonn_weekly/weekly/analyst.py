@@ -63,7 +63,7 @@ from typing import Any, Callable, Optional
 
 from cytonn_weekly.weekly import equities_workbook, fi_workbook
 from cytonn_weekly.weekly.inputs import InputError, WeeklyInputs, week_dir
-from cytonn_weekly.weekly.week import Week, ordinal
+from cytonn_weekly.weekly.week import Week, day_text, ordinal
 from cytonn_weekly.weekly.workbook import Cell, WorkbookError
 
 FORM = "Weekly analyst inputs"
@@ -643,16 +643,19 @@ def _check_table(table: Table, rows: list[dict[str, str]], week: Week, errors: l
 
 def _check_field(spec: Field, value: Any, week: Week) -> None:
     if spec.key == "mmf_published" and not week.monday <= date.fromisoformat(value) <= week.ending:
-        raise InputError(f"{spec.label}: {value} is not in the week {week.monday.isoformat()} to {week.ending.isoformat()}")
+        raise InputError(f"{spec.label}: {day_text(date.fromisoformat(value))} is outside this week, "
+                         f"{day_text(week.monday)} to {day_text(week.ending)}. Type a date in this week.")
     if spec.key == "fiscal_year_start":
         day, settles = date.fromisoformat(value), week.value_date_window[0]
         if not settles - timedelta(days=366) < day <= settles:
-            raise InputError(f"{spec.label}: {value} is not within the year before {settles.isoformat()}, when this week's "
-                             "auction settles")
+            raise InputError(f"{spec.label}: {day_text(day)} is not within the year before {day_text(settles)}, when this "
+                             "week's auction settles. Type the first day of the current fiscal year, or leave it empty "
+                             "for 1 July.")
     if spec.key == "universe_month_end":
         day, month_start = date.fromisoformat(value), week.ending.replace(day=1)
         if not month_start - timedelta(days=31) <= day < month_start:
-            raise InputError(f"{spec.label}: {value} is not in the month before {week.ending.strftime('%B %Y')}")
+            raise InputError(f"{spec.label}: {day_text(day)} is not in the month before {week.ending.strftime('%B %Y')}. "
+                             "Type the last trading day of the previous month.")
 
 
 def clean_field(spec: Field, raw: Any, week: Week) -> Any:
@@ -661,9 +664,9 @@ def clean_field(spec: Field, raw: Any, week: Week) -> Any:
         lines = raw if isinstance(raw, list) else str(raw or "").replace(",", "\n").splitlines()
         names = [" ".join(str(n).split()) for n in lines if str(n).strip()]
         if len(names) > 60 or any(len(n) > MAX_NAME for n in names):
-            raise InputError(f"{spec.label}: at most 60 names of up to {MAX_NAME} characters")
+            raise InputError(f"{spec.label}: type at most 60 names, each up to {MAX_NAME} characters.")
         if len({_key(n) for n in names}) != len(names):
-            raise InputError(f"{spec.label}: a name appears twice")
+            raise InputError(f"{spec.label}: a name appears twice. Remove the repeat.")
         return names or None
     text = "" if raw is None else str(raw).strip()
     if not text:
@@ -811,7 +814,8 @@ def carry_forward(week: Week, root: Optional[Path] = None) -> dict[str, Any]:
     stamp = last_week.ending.isoformat()
     last = usable_form(read_form(last_week, root))
     if not last["fields"] and not last["tables"]:
-        raise InputError(f"No analyst inputs are saved for the week ending {stamp}, so there is nothing to start from.")
+        raise InputError(f"No analyst inputs are saved for the week ending {day_text(last_week.ending)}, so there is nothing to start from. "
+                         "Type this week's values directly.")
     form = read_form(week, root)
     carried: list[str] = []
 
@@ -853,8 +857,8 @@ def carry_forward(week: Week, root: Optional[Path] = None) -> dict[str, Any]:
         if rows and not problems:
             take("tables", key, rows, key in WEEKLY_TABLES)
     if not carried:
-        raise InputError(f"Nothing to carry from the week ending {stamp}: every item it holds is already typed for this week, "
-                         "or is no longer valid for it.")
+        raise InputError(f"Nothing to carry from the week ending {day_text(last_week.ending)}: every item it holds is already typed for this week, "
+                         "or is no longer valid for it. Type this week's values directly.")
     _write(week, root, form)
     return {"form": form, "carried": carried, "unconfirmed": [k for k in carried if k in form["unconfirmed"]]}
 
@@ -874,7 +878,7 @@ def suggest(week: Week, key: str, value: str, note: str, root: Optional[Path] = 
         raise InputError(f"no suggestion is worked out for {key!r}")
     form = read_form(week, root)
     if key in form["fields"] and key not in form["unconfirmed"]:
-        raise InputError(f"{FIELDS[key].label} is already typed for this week; clear it to have a suggestion worked out.")
+        raise InputError(f"{FIELDS[key].label} is already typed for this week. Clear it first to have a suggestion worked out.")
     value = clean_field(FIELDS[key], value, week)
     form["fields"][key] = value
     form["carried"][key] = {"from": SUGGESTED, "value": value, "note": note}

@@ -315,7 +315,7 @@ def test_missing_inputs_leave_named_unavailable_parts(tmp_path):
 def test_a_workbook_not_updated_for_the_week_says_so_in_each_part(tmp_path, text_pdfs):
     inputs.store(WEEK, "equities_workbook", wh.equities_workbook_bytes(updated=False), "Equities.xlsx", tmp_path)
     by = blocks(build(tmp_path))
-    assert "has no row for 2026-10-02: workbook not yet updated for this week" in by["valuation"]["reason"]
+    assert "has no row for 2 Oct 2026 on sheet 'NASI-PE & Dividend Yield'. The workbook is not yet updated for this week" in by["valuation"]["reason"]
     assert "no 'Price as at 02/10/2026' column: workbook not yet updated for this week" in by["universe_of_coverage"]["reason"]
 
 

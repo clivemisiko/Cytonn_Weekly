@@ -94,7 +94,7 @@ def test_blank_and_missing_topics_are_refused_as_before(client, seen):
         clean_topic("   ")
     for body in ({"topic": "   "}, {"topic": ""}, {}):
         r = client.post("/api/sections/focus/draft", json=body)
-        assert r.status_code == 422 and r.json()["detail"] == "Focus of the Week needs a topic to draft"
+        assert r.status_code == 422 and r.json()["detail"] == "Type a topic for Focus of the Week first, then start the draft."
     assert seen == []
 
 

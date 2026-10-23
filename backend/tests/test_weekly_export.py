@@ -114,9 +114,9 @@ def test_the_export_is_refused_until_every_section_is_approved(tmp_path, built):
     with pytest.raises(export.ExportNotAllowed) as refused:
         export.write_weekly_report(db, PERIOD, tmp_path / "out")
     assert str(refused.value) == (
-        "The weekly report can be exported only when every section is approved. Not yet: Fixed Income (still in review); "
-        "Equities (not drafted); Real Estate (rejected); Digital Payments Weekly Highlights (not drafted); Focus of the Week "
-        "(not drafted).")
+        "The weekly report cannot be exported yet, because every section must be approved first. Not approved yet: "
+        "Fixed Income (still in review); Equities (not drafted); Real Estate (rejected); Digital Payments Weekly Highlights "
+        "(not drafted); Focus of the Week (not drafted). Approve those sections, then export again.")
     assert not (tmp_path / "out").exists()   # nothing is written
 
 
@@ -222,7 +222,7 @@ def test_a_chart_item_marked_fix_needed_stops_the_approval_and_so_the_export(tmp
     assert export.export_status(db, PERIOD)["ready"] is False
     equities.decide("rejected")                          # rejecting is always allowed
     review_store.save_review(equities, section="equities", db_path=db)
-    with pytest.raises(export.ExportNotAllowed, match=r"Not yet: Equities \(rejected\)\.$"):
+    with pytest.raises(export.ExportNotAllowed, match=r"Not approved yet: Equities \(rejected\)\. Approve those sections, then export again\.$"):
         export.write_weekly_report(db, PERIOD, tmp_path / "out")
     client = TestClient(create_app(db_path=db, load_dotenv=False, export_root=tmp_path / "exports"))
     refused = client.post("/api/export/weekly", params={"period": "2026-10-02"})
@@ -256,7 +256,7 @@ def test_the_api_reports_readiness_and_returns_the_file(week, tmp_path):
     assert len(Document(io.BytesIO(r.content)).inline_shapes) == 2        # the Equities charts, read through the route's own check
     assert (tmp_path / "exports" / "Cytonn-Weekly-2026-10-02.docx").is_file()
     refused = client.post("/api/export/weekly", params={"period": "2026-09-25"})
-    assert refused.status_code == 409 and refused.json()["detail"].startswith("The weekly report can be exported only when every section is approved.")
+    assert refused.status_code == 409 and refused.json()["detail"].startswith("The weekly report cannot be exported yet")
     assert client.get("/api/export/weekly", params={"period": "2026-10-03"}).status_code == 422
 
 

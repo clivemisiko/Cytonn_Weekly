@@ -111,7 +111,7 @@ def test_a_value_outside_its_range_or_not_a_number_is_refused_and_nothing_is_sto
     assert refused(tmp_path, {"pe": "seven"}) == "Market P/E: 'seven' is not a number"
     assert "is outside the expected range, 1 to 60x" in refused(tmp_path, {"pe": "760"})
     assert refused(tmp_path, {"nope": "1"}) == "unknown field 'nope'"
-    assert "is not in the week 2026-09-28 to 2026-10-02" in refused(tmp_path, {"mmf_published": "2026-10-09"})
+    assert "9 Oct 2026 is outside this week, 28 Sep 2026 to 2 Oct 2026" in refused(tmp_path, {"mmf_published": "2026-10-09"})
     assert "is not in the month before October 2026" in refused(tmp_path, {"universe_month_end": "2026-10-01"})
     # one bad value refuses the whole save, with every reason
     message = refused(tmp_path, {"placements": "9.0", "pe": "x", "dividend_yield": "0.058"})
@@ -567,8 +567,8 @@ def test_last_weeks_form_starts_this_weeks_and_every_carried_value_says_where_it
     assert {u["label"] for u in analyst.status(NEXT, last_week, "equities")["unconfirmed"]} == {
         "Market P/E", "Historical average P/E", "Market dividend yield", "Historical average dividend yield",
         "Foreign net position, previous weeks"}
-    assert "Nothing to carry from the week ending 2026-10-02" in refused_carry(NEXT, last_week)   # a second time: all is held
-    assert "No analyst inputs are saved for the week ending 2026-10-09" in refused_carry(Week(date(2026, 10, 16)), tmp_root(last_week))
+    assert "Nothing to carry from the week ending 2 Oct 2026" in refused_carry(NEXT, last_week)   # a second time: all is held
+    assert "No analyst inputs are saved for the week ending 9 Oct 2026" in refused_carry(Week(date(2026, 10, 16)), tmp_root(last_week))
 
 
 def tmp_root(root):
@@ -693,7 +693,7 @@ def test_a_suggestion_is_only_a_prefill_through_the_api_until_it_is_confirmed(tm
     assert client.post("/api/inputs/weekly/2026-10-02/analyst/suggest/pe").status_code == 404
     # the carry route: nothing saved for the week before 25 September
     r = client.post("/api/inputs/weekly/2026-09-25/analyst/carry")
-    assert r.status_code == 409 and "No analyst inputs are saved for the week ending 2026-09-18" in r.json()["detail"]
+    assert r.status_code == 409 and "No analyst inputs are saved for the week ending 18 Sep 2026" in r.json()["detail"]
     r = client.post("/api/inputs/weekly/2026-10-09/analyst/carry?section=equities")
     assert r.status_code == 409 and "Nothing to carry" in r.json()["detail"]      # a running total is never carried
     assert client.put("/api/inputs/weekly/2026-10-02/analyst", json={"confirm": ["pe"]}).status_code == 422
@@ -739,7 +739,7 @@ def test_every_refusal_of_a_suggestion_says_what_is_missing_and_what_to_do(tmp_p
     save_week(root, WEEK, fields={"turnover_ytd": "3050"})
     r = suggest("turnover_ytd")
     assert r.status_code == 409 and r.json()["detail"] == (
-        "Year-to-date equities turnover is already typed for this week; clear it to have a suggestion worked out.")
+        "Year-to-date equities turnover is already typed for this week. Clear it first to have a suggestion worked out.")
     assert analyst.read_form(WEEK, root)["fields"] == {"turnover_ytd": "3050"} and analyst.read_form(WEEK, root)["unconfirmed"] == []
 
 
@@ -749,7 +749,7 @@ def test_the_carry_button_is_offered_only_when_last_week_holds_something_confirm
     assert analyst.status(now, tmp_path)["can_carry"] is False
     analyst.suggest(before, "turnover_ytd", "3035.6", "seeded", tmp_path)        # held, but never confirmed
     assert analyst.status(now, tmp_path)["can_carry"] is False
-    assert "No analyst inputs are saved for the week ending 2026-09-25" in refused_carry(now, tmp_path)
+    assert "No analyst inputs are saved for the week ending 25 Sep 2026" in refused_carry(now, tmp_path)
     save_week(tmp_path, before, fields={"large_caps": "Safaricom"})
     assert analyst.status(now, tmp_path)["can_carry"] is True
     assert analyst.carry_forward(now, tmp_path)["carried"] == ["large_caps"]

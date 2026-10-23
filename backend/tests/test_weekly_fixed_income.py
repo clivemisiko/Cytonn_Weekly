@@ -569,7 +569,7 @@ def test_a_workbook_for_last_week_leaves_its_parts_unavailable_with_the_reason(t
     inputs.store(WEEK, "cbk_bulletin", BULLETIN, "b.pdf", tmp_path)
     inputs.store(WEEK, "fi_workbook", wh.fi_workbook_bytes(updated=False), "FI.xlsx", tmp_path)
     by = blocks(build(tmp_path))
-    assert by["money_market"]["kind"] == "unavailable" and "workbook not yet updated for this week" in by["money_market"]["reason"]
+    assert by["money_market"]["kind"] == "unavailable" and "The workbook is not yet updated for this week" in by["money_market"]["reason"]
     assert by["borrowing"]["kind"] == "unavailable" and "workbook not yet updated for this week" in by["borrowing"]["reason"]
     assert by["tbills"]["kind"] == "computed"   # the bulletin still gives the auction
 

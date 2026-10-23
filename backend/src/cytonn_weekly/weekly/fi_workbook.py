@@ -131,9 +131,10 @@ def read_mmf_table(book: Workbook, week: Week) -> dict[str, Any]:
     except ValueError:
         published = None
     if published != week.ending:
-        shown = published.isoformat() if published else f"an unreadable date ({title.value!r})"
-        raise WorkbookError(f"'{MMF_SHEET}' fund table ({title.ref}) is as published on {shown}, not "
-                            f"{week.ending.isoformat()}: workbook not yet updated for this week")
+        shown = f"dated {published.day} {published:%b %Y}" if published else f"has a date that cannot be read ({title.value!r})"
+        raise WorkbookError(f"The money market fund table in the fixed income workbook is {shown}; this week needs "
+                            f"{week.ending.day} {week.ending:%b %Y}. The workbook is not yet updated for this week: "
+                            f"update it and upload it again (sheet '{MMF_SHEET}', cell {title.ref}).")
     head = title.row + 1
     rank = sheet.find("rank", rows=range(head, head + 2), what="'Rank' header of the fund table")
     fund = sheet.find("fund manager", rows=range(rank.row, rank.row + 1), what="'Fund Manager' header")

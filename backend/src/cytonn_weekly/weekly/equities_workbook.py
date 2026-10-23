@@ -49,7 +49,8 @@ PEG_GROWTH = 8
 
 
 def not_updated(sheet: str, day: date) -> WorkbookError:
-    return WorkbookError(f"'{sheet}' has no row for {day.isoformat()}: workbook not yet updated for this week")
+    return WorkbookError(f"The equities workbook has no row for {day.day} {day:%b %Y} on sheet '{sheet}'. The workbook "
+                         "is not yet updated for this week: update it and upload it again.")
 
 
 def open_equities_workbook(source, name: str = SOURCE_NAME) -> Workbook:
