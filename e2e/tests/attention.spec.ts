@@ -1,10 +1,10 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { DRAFT, VARIANT, openStart, release } from "./helpers";
+import { DRAFT, VARIANT, openStart, overviewUrl, release } from "./helpers";
 
 /**
- * T87 to T93: what the page does when an action fails with a named problem (frontend/src/lib/attention.ts). A whole
+ * T87 to T98: what the page does when an action fails with a named problem (frontend/src/lib/attention.ts). A whole
  * action that failed opens one alert dialog (the headline, "The details are shown on the page.", Show me and Close)
  * and the full sentence stays on the page once; an inline problem opens no dialog and the page goes to it. Failures
  * the test instance cannot produce are stood in for with page.route, in the API's own shape (detail and problems).
@@ -140,4 +140,86 @@ test("T93 screenshots of the dialog (light, dark, 390px) and of an inline proble
   await expect(refusal).toBeInViewport({ ratio: 1 });
   await page.waitForTimeout(600); // screenshots only: let the smooth scroll settle
   await page.screenshot({ path: join(dir!, "inline-after-goto.png") });
+});
+
+/** The outline drawn on a problem the page went to (styles.css, [data-problem][data-attention-on]). */
+const outline = (loc: ReturnType<Page["locator"]>) =>
+  loc.evaluate((el) => ({ style: getComputedStyle(el).outlineStyle, width: getComputedStyle(el).outlineWidth }));
+
+async function refuseUpload(page: Page) {
+  await openStart(page, "Fixed Income");
+  const panel = page.locator('[data-attention="inputs-panel"]');
+  await panel.locator('input[type="file"]').nth(5).setInputFiles({ name: "not-a-pdf.pdf", mimeType: "application/pdf", buffer: Buffer.from("hello") });
+  return panel.locator("[data-problem]").filter({ hasText: "not-a-pdf.pdf" });
+}
+
+test("T94 an inline problem the page goes to carries the highlight: the attribute and a 2px outline, with its icon and text", async ({ page }) => {
+  const refusal = await refuseUpload(page);
+  await expect(refusal).toBeFocused();
+  await expect(refusal).toHaveAttribute("data-attention-on", "");
+  expect(await outline(refusal)).toEqual({ style: "solid", width: "2px" });
+  await expect(refusal.locator("svg")).toHaveCount(1); // the notice's own icon: colour is not the only sign
+});
+
+test("T95 a dialog problem: first focus is on Show me, and Show me highlights the notice it goes to", async ({ page }) => {
+  await failingDraft(page, modeChanged);
+  const open = dialog(page, "The drafting mode changed");
+  await expect(open.getByRole("button", { name: "Show me" })).toBeFocused();
+  await page.keyboard.press("Enter");
+  const problem = page.locator('[data-attention="start-draft"] [data-problem]');
+  await expect(problem).toBeFocused();
+  await expect(problem).toHaveAttribute("data-attention-on", "");
+  expect(await outline(problem)).toEqual({ style: "solid", width: "2px" });
+});
+
+test("T96 when Show me is not offered, first focus is on Close", async ({ page }) => {
+  // A target this page does not have (the export bar is on the overview), so there is nowhere to show.
+  await failingDraft(page, { detail: MODE, problems: [{ code: "draft_mode_changed", headline: "The drafting mode changed", target: "export-bar" }] });
+  const open = dialog(page, "The drafting mode changed");
+  await expect(open).toBeVisible();
+  await expect(open.getByRole("button", { name: "Show me" })).toHaveCount(0);
+  await expect(open.getByRole("button", { name: "Close" })).toBeFocused();
+});
+
+test("T97 under reduced motion the highlight is the outline alone, with no pulse; with motion it pulses once", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const refusal = await refuseUpload(page);
+  await expect(refusal).toHaveAttribute("data-attention-on", "");
+  expect(await refusal.evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
+  expect(await outline(refusal)).toEqual({ style: "solid", width: "2px" });
+
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  expect(await refusal.evaluate((el) => getComputedStyle(el).animationName)).toBe("attention-pulse");
+  expect(await refusal.evaluate((el) => getComputedStyle(el).animationIterationCount)).toBe("1");
+});
+
+test("T98 an export the API refuses: the error is in the feed, Show me goes to it, and it stays in view with the panel folded", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  const NOT_READY = "The weekly report cannot be exported yet: Fixed Income (still in review).";
+  const sections = ["Company Updates", "Fixed Income", "Equities", "Real Estate", "Digital Payments", "Focus of the Week"];
+  // The export is stood in for as T14 does: the status says ready, so the button can be pressed, and the file is refused.
+  await page.route(/\/api\/export\/weekly/, (route) =>
+    route.request().method() === "GET"
+      ? route.fulfill({
+          json: { period: "Week ending 2026-10-09", ready: true, is_dev_draft: false, dev_mode_label: "", dev_sections: [], sections: sections.map((title) => ({ slug: title, title, state: "approved", run_id: 1 })) },
+        })
+      : route.fulfill({ status: 409, json: { detail: NOT_READY, problems: [{ code: "export_not_ready", headline: "The report cannot be exported yet", target: "export-bar" }] } }),
+  );
+  await page.goto(overviewUrl());
+  const panel = page.getByRole("complementary", { name: "Report status" });
+  await panel.getByRole("button", { name: "Export weekly report" }).click();
+  const open = dialog(page, "The report cannot be exported yet");
+  await expect(open.getByRole("button", { name: "Show me" })).toBeFocused();
+  await open.getByRole("button", { name: "Show me" }).click();
+  const notice = page.locator('[data-attention="export-bar"] [data-problem]');
+  await expect(notice).toBeFocused();
+  await expect(notice).toHaveText(NOT_READY);
+  await expect(notice).toHaveAttribute("data-attention-on", "");
+  await expect(panel.getByText(NOT_READY)).toHaveCount(0); // in the feed, not in the foldable panel
+  await expect(page.getByText(NOT_READY, { exact: true })).toHaveCount(1);
+
+  await panel.getByRole("button", { name: "Hide Report status" }).click();
+  await expect(notice).toBeVisible();
+  await expect(notice).toBeInViewport();
+  await panel.getByRole("button", { name: "Show Report status" }).click(); // leave the fold open for the tests after this one
 });
