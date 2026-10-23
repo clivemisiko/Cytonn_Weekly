@@ -105,7 +105,7 @@ function confirmDismiss() {
         <dd>{{ s.working.window }}</dd>
       </dl>
       <WorkingChart :working="s.working" />
-      <div class="overflow-x-auto">
+      <div class="overflow-x-auto rounded-sm focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none" role="region" tabindex="0" aria-label="Points the rule was applied to, scrolls sideways when narrow">
         <table class="w-full border-collapse text-xs">
           <caption class="sr-only">
             Points the rule was applied to
@@ -149,7 +149,7 @@ function confirmDismiss() {
       <select
         :id="`${uid}-reason`"
         v-model="reason"
-        class="flex h-10 w-full max-w-xs rounded-md border border-input bg-card px-3 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 md:text-sm"
+        class="flex h-10 w-full max-w-xs rounded-md border border-input bg-card px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40"
       >
         <option value="">No reason</option>
         <option v-for="r in DISMISS_REASONS" :key="r.value" :value="r.value">{{ r.label }}</option>

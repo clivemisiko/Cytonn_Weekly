@@ -14,6 +14,8 @@ const CHIP_STYLE = {
 
 /** One review item: its status, what the checker found, and the coordinator's resolution and note. */
 const props = defineProps<{
+  /** The group shows this item's explanation once, under its header, so the card leaves it out. */
+  sharedDetail?: string | null;
   item: ReviewItem;
   locked: boolean;
   onResolve: (index: number, resolution: Resolution, note?: string) => Promise<boolean>;
@@ -77,7 +79,7 @@ const cells = (flag: Flag): [string, string][] => [
 </script>
 
 <template>
-  <li class="surface-state @container space-y-3 p-4" :class="`state-${item.status}`" :data-status="item.status" :data-index="item.index">
+  <li class="surface-state @container space-y-3 p-3" :class="`state-${item.status}`" :data-status="item.status" :data-index="item.index">
     <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
       <span
         class="inline-flex items-center gap-1 rounded-full border py-0.5 pr-2 pl-0.5 text-xs font-semibold whitespace-nowrap text-(--hue-fg)"
@@ -136,7 +138,7 @@ const cells = (flag: Flag): [string, string][] => [
         </ul>
         <p v-if="ctx.note" class="text-xs text-muted-foreground">{{ ctx.note }}</p>
       </div>
-      <p v-if="item.status === 'not_auto_verified' && typeof item.detail === 'string'" class="text-xs whitespace-pre-line text-muted-foreground [overflow-wrap:anywhere]">{{ item.detail }}</p>
+      <p v-if="item.status === 'not_auto_verified' && typeof item.detail === 'string' && item.detail !== sharedDetail" class="text-xs whitespace-pre-line text-muted-foreground [overflow-wrap:anywhere]">{{ item.detail }}</p>
     </div>
 
     <div class="flex flex-wrap items-center gap-2">
@@ -150,7 +152,7 @@ const cells = (flag: Flag): [string, string][] => [
         :aria-label="`Note for ${item.ref}`"
         placeholder="Add a note (optional)…"
         maxlength="2000"
-        class="min-w-48 flex-1 resize-none text-sm md:text-sm"
+        class="min-w-48 flex-1 resize-none text-sm"
         :class="locked && 'bg-muted text-muted-foreground'"
         @input="dirty = true"
         @blur="commitNote"

@@ -5,7 +5,7 @@ import Button from "@/components/ui/Button.vue";
 import type { CompanionKind, ReportChoice, ReportType, ReportTypeInfo } from "@/lib/types";
 
 const FIELD =
-  "flex h-10 w-full rounded-md border border-input bg-card px-3 text-base transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-60 aria-invalid:border-flag aria-invalid:ring-3 aria-invalid:ring-flag/20 md:text-sm";
+  "flex h-10 w-full rounded-md border border-input bg-card px-3 text-sm transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-60 aria-invalid:border-flag aria-invalid:ring-3 aria-invalid:ring-flag/20";
 const CARET = "pointer-events-none absolute top-1/2 right-3 size-3.5 -translate-y-1/2 text-muted-foreground";
 
 /**

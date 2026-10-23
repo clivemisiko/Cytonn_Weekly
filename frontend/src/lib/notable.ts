@@ -69,8 +69,8 @@ export const figureLine = (figures: Suggestion["figures"]): string => figures.ma
 
 type WorkingPoint = Suggestion["working"]["points"][number];
 
-/** JetBrains Mono at 12px advances 0.6em, so a label is its length times this wide. */
-export const CHAR_W = 7.2;
+/** JetBrains Mono at 14px (text-xs) advances 0.6em, so a label is its length times this wide. */
+export const CHAR_W = 8.4;
 export const CHART_H = 150;
 const TOP = 24; // above the highest point: its dot, and a label above it
 const FOOT = 50; // below the lowest point: a label below it, then the dates

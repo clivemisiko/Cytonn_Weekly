@@ -296,6 +296,8 @@ panel. What is new, each with the test that pins it (`e2e/tests/`):
 | L8 | Run view: the steps and the result in the feed, "This run" (section, report, started, finished or stopped) in the panel, none of it to act on; a run the API no longer has has no panel | `pages/RunPage.vue` | T73 to T75 |
 | L9 | Start page: one centred card, outside the shell (no rail); Page not found: a card in the shell's frame | `pages/LandingPage.vue`, `pages/NotFoundPage.vue` | T76, T77 |
 
+**Type scale (2026-10-23):** 14px floor (`text-xs`), 16px body, review items, table cells, buttons and inputs (`text-sm`), 17px narrative on 28px (`text-base`), headings 20/24/32 unchanged; the chrome follows the tokens. A not-auto-verified explanation shared by two or more items is shown once under its group header, and each of those cards keeps its chip. The resolution control stacks in a card narrower than 17rem. Screenshots: `screenshots/font-stage-1-2026-10-23/` to `font-stage-5-2026-10-23/`.
+
 **Known gaps (not fixed):** the analyst grids and the bond table scroll sideways inside a narrow column (each is a
 labelled, focusable region, and every column is reachable), but the company column does not stay put while they scroll,
 so a figure being typed can be far from its row's name (each input is named for its row); the scroll position carries
