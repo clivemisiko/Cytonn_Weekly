@@ -35,7 +35,7 @@ export type ButtonProps = VariantProps<typeof buttonVariants>;
 
 /** The field look shared by text inputs outside the Textarea component (inputs-panel.tsx's FIELD). */
 export const FIELD =
-  "flex h-10 rounded-md border border-input bg-card px-3 text-base transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-60 aria-invalid:border-flag md:text-sm";
+  "flex h-10 rounded-md border border-input bg-card px-3 text-sm transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-60 aria-invalid:border-flag";
 
 /** The inline text link (run-view.tsx's LINK). */
 export const LINK =

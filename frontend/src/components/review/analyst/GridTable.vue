@@ -61,7 +61,7 @@ const addLine = () => (lines.value = [...lines.value, { id: `new-${Date.now()}-$
                 :value="line.typed[name.key] ?? ''"
                 :disabled="disabled"
                 placeholder="Company"
-                :class="cn(FIELD, 'h-8 w-40 px-2 text-sm md:text-xs')"
+                :class="cn(FIELD, 'h-8 w-40 px-2 text-sm')"
                 @input="setCell(line.id, name.key, typedValue($event))"
               />
             </th>
@@ -78,7 +78,7 @@ const addLine = () => (lines.value = [...lines.value, { id: `new-${Date.now()}-$
                 :class="
                   cn(
                     FIELD,
-                    'h-8 px-2 text-sm tabular-nums md:text-xs',
+                    'h-8 px-2 text-sm tabular-nums',
                     c.kind === 'date' ? 'w-36' : 'w-24',
                     isCarried(item, line, c.key) && 'border-dashed bg-muted',
                   )

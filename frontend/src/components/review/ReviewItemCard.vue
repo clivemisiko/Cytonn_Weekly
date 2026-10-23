@@ -150,7 +150,7 @@ const cells = (flag: Flag): [string, string][] => [
         :aria-label="`Note for ${item.ref}`"
         placeholder="Add a note (optional)…"
         maxlength="2000"
-        class="min-w-48 flex-1 resize-none text-sm md:text-sm"
+        class="min-w-48 flex-1 resize-none text-sm"
         :class="locked && 'bg-muted text-muted-foreground'"
         @input="dirty = true"
         @blur="commitNote"

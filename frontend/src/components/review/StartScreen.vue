@@ -264,7 +264,7 @@ const lists = computed(() => [
                 placeholder="e.g. Sub-Saharan Africa Eurobonds performance…"
                 :aria-invalid="topicOver || undefined"
                 aria-describedby="focus-topic-hint focus-topic-count"
-                class="flex h-10 w-full rounded-md border border-input bg-card px-3 text-base transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-60 aria-invalid:border-flag md:text-sm"
+                class="flex h-10 w-full rounded-md border border-input bg-card px-3 text-sm transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-60 aria-invalid:border-flag"
                 @input="error = null"
                 @keydown.enter="topicEnter"
               />
