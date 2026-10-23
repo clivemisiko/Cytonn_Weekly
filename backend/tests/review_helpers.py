@@ -50,14 +50,15 @@ class LocalFakeProvider(FakeProvider):
 def make_review(provider=None, tamper=False):
     """The real pipeline pieces on fake edges.  ``tamper`` plants a wrong price (MA) and drops AXP."""
     provider = provider or FakeProvider()
+    rows = [dict(r) for r in ROWS]   # a copy: a test that edits a review's rows (a summary test does) must not edit the shared ROWS
     draft = draft_highlights(provider=provider, today=TODAY)
-    outlook = draft_outlook(draft, ROWS, provider=provider)
-    section = compose_section(draft, ROWS, outlook)
-    drafted = format_table_rows(ROWS)
+    outlook = draft_outlook(draft, rows, provider=provider)
+    section = compose_section(draft, rows, outlook)
+    drafted = format_table_rows(rows)
     if tamper:
         drafted = [r for r in drafted if r["ticker"] != "AXP"]
         next(r for r in drafted if r["ticker"] == "MA")["current_price"] = "101.0"
     report = check_digital_payments(
-        ROWS, drafted_rows=drafted, drafted_outlook_stats=outlook["stats"], highlights=draft["highlights"],
+        rows, drafted_rows=drafted, drafted_outlook_stats=outlook["stats"], highlights=draft["highlights"],
     )
     return cr.build_coordinator_review(section, report)
