@@ -83,7 +83,7 @@ const fraction = computed(() => (progress.value.total ? progress.value.resolved 
         <Notice class="mt-3 font-medium">{{ decisionError }}</Notice>
       </div>
       <div v-if="saveError" role="alert" class="rise-in overflow-hidden">
-        <Notice class="mt-3 font-medium">NOT SAVED: {{ saveError }}. The last change did not reach the server; the screen shows what the server holds.</Notice>
+        <Notice class="mt-3 font-medium">NOT SAVED: {{ saveError }} Your last change did not reach the server, so the screen now shows what the server holds. Make the change again.</Notice>
       </div>
     </div>
   </div>
