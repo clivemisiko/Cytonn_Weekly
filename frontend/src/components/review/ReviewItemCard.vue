@@ -1,17 +1,14 @@
 <script setup lang="ts">
-import { PhArrowSquareOut } from "@phosphor-icons/vue";
+import { PhArrowSquareOut, PhCaretDown } from "@phosphor-icons/vue";
+import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "reka-ui";
 import { computed, ref, watch } from "vue";
 import Textarea from "@/components/ui/Textarea.vue";
-import { KIND_LABELS, RESOLUTION_CHIPS, STATUS_META, pyRepr, resolutionKey } from "@/lib/format";
+import { KIND_LABELS, pyRepr, resolutionKey } from "@/lib/format";
 import type { Flag, Resolution, Review, ReviewItem } from "@/lib/types";
 import FixFromFile from "./FixFromFile.vue";
 import ResolutionControl from "./ResolutionControl.vue";
-
-const CHIP_STYLE = {
-  none: "border-border text-muted-foreground",
-  accept: "border-ok/40 bg-ok/10 text-ok-fg",
-  fix_needed: "border-flag/40 bg-flag/10 text-flag-fg",
-} as const;
+import SeverityPill from "./SeverityPill.vue";
+import TextWithIds from "./TextWithIds.vue";
 
 /** One review item: its status, what the checker found, and the coordinator's resolution and note. */
 const props = defineProps<{
@@ -24,7 +21,9 @@ const props = defineProps<{
   onResolve: (index: number, resolution: Resolution, note?: string) => Promise<boolean>;
 }>();
 
-const meta = computed(() => STATUS_META[props.item.status]);
+// Collapsed: the evidence (what the checker found, the quote, the working) is hidden; the title, pill, a one-line summary and
+// the resolution controls stay, so triage needs no expansion.  ItemsPane's Expand all / Collapse all drive this.
+const open = defineModel<boolean>("open", { default: false });
 const serverNote = computed(() => props.item.resolution_note ?? "");
 
 // What the control shows while its write is in flight, so a click answers at once.  Writes are
@@ -73,6 +72,10 @@ const ctx = computed(() => props.item.context);
 const hasDetail = computed(() => props.item.status === "flagged" || props.item.status === "not_auto_verified" || Object.keys(ctx.value).length > 0);
 const safeUrl = computed(() => (ctx.value.url && /^https?:\/\//.test(ctx.value.url) ? ctx.value.url : null));
 const flags = computed<Flag[]>(() => (props.item.status === "flagged" && Array.isArray(props.item.detail) ? props.item.detail : []));
+const summary = computed(() => {
+  const first = flags.value[0]?.message ?? (typeof props.item.detail === "string" ? props.item.detail : "") ?? "";
+  return (first || ctx.value.text || "").trim();
+});
 const inputs = computed(() => Object.entries(ctx.value.inputs ?? {}));
 const cells = (flag: Flag): [string, string][] => [
   ["Drafted", pyRepr(flag.drafted)],
@@ -84,30 +87,37 @@ const cells = (flag: Flag): [string, string][] => [
 <template>
   <li class="surface-state @container space-y-3 p-3" :class="`state-${item.status}`" :data-status="item.status" :data-index="item.index">
     <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-      <span
-        class="inline-flex items-center gap-1 rounded-full border py-0.5 pr-2 pl-0.5 text-xs font-semibold whitespace-nowrap text-(--hue-fg)"
-        :class="item.status === 'not_auto_verified' && 'border-dashed'"
-        :style="{ borderColor: 'color-mix(in srgb, var(--hue) 55%, transparent)', background: 'color-mix(in srgb, var(--hue) 10%, transparent)' }"
-      >
-        <span class="glyph size-4 text-xs" aria-hidden="true">{{ meta.glyph }}</span>
-        {{ meta.label }}
-      </span>
+      <SeverityPill :kind="item.status" />
       <span class="text-sm font-semibold">{{ item.ref }}</span>
       <span class="text-xs text-muted-foreground">{{ KIND_LABELS[item.kind] ?? item.kind }}</span>
-      <span class="relative ml-auto">
-        <span class="block rounded-sm border px-2 py-0.5 text-xs font-medium" :class="CHIP_STYLE[chipKey]">{{ RESOLUTION_CHIPS[chipKey] }}</span>
-      </span>
+      <span class="ml-auto"><SeverityPill :kind="chipKey" /></span>
     </div>
 
-    <div v-if="hasDetail" class="space-y-3">
+    <CollapsibleRoot v-if="hasDetail" v-model:open="open">
+      <CollapsibleTrigger class="flex w-full items-center gap-2 rounded-sm text-left text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+        <span class="min-w-0 flex-1 truncate">{{ summary || "Show the evidence" }}</span>
+        <span class="shrink-0 font-medium">{{ open ? "Hide" : "Show" }} details</span>
+        <PhCaretDown weight="bold" aria-hidden="true" class="size-4 shrink-0 transition-transform duration-200" :class="open && 'rotate-180'" />
+      </CollapsibleTrigger>
+      <CollapsibleContent class="collapsible overflow-hidden">
+    <div class="space-y-3 pt-3">
       <div v-for="(flag, i) in flags" :key="i" class="space-y-2">
         <!-- A web link in supplied text: the message names it in plain text (never a link to click); a possible one is softer. -->
         <p v-if="flag.kind === 'link' || flag.kind === 'possible_link'" class="text-sm font-medium [overflow-wrap:anywhere]" :class="flag.kind === 'link' ? 'text-flag-fg' : 'text-warn-fg'">
           {{ flag.message }}
         </p>
-        <p v-else class="text-sm">
-          <strong class="font-semibold text-flag-fg">{{ flag.kind }}</strong><span class="text-muted-foreground"> in </span>{{ flag.message }}
-        </p>
+        <dl v-else class="grid gap-x-3 gap-y-1 text-sm @min-[28rem]:grid-cols-[6rem_1fr]">
+          <dt class="eyebrow">Issue</dt>
+          <dd class="font-semibold text-flag-fg">{{ flag.kind }}</dd>
+          <dt class="eyebrow">Row</dt>
+          <dd class="min-w-0"><TextWithIds :text="flag.subject" /></dd>
+          <template v-if="flag.field">
+            <dt class="eyebrow">Field</dt>
+            <dd class="min-w-0"><TextWithIds :text="flag.field" /></dd>
+          </template>
+          <dt class="eyebrow">Reason</dt>
+          <dd class="min-w-0"><TextWithIds :text="flag.message" /></dd>
+        </dl>
         <dl v-if="flag.drafted !== null || flag.expected !== null" class="grid gap-2 @min-[34rem]:grid-cols-3">
           <div v-for="[k, v] in cells(flag)" :key="k" class="min-w-0 rounded-sm border bg-card px-3 py-2">
             <dt class="text-xs text-muted-foreground">{{ k }}</dt>
@@ -116,7 +126,7 @@ const cells = (flag: Flag): [string, string][] => [
         </dl>
         <ul v-if="flag.sources.length > 0" class="space-y-1 text-xs text-muted-foreground">
           <li v-for="s in flag.sources" :key="s.source">
-            {{ s.source }}: <span>{{ String(s.value) }}</span> (normalized <span>{{ String(s.normalized) }}</span
+            <TextWithIds :text="s.source" />: <span>{{ String(s.value) }}</span> (normalized <span>{{ String(s.normalized) }}</span
             >)
           </li>
         </ul>
@@ -141,8 +151,10 @@ const cells = (flag: Flag): [string, string][] => [
         </ul>
         <p v-if="ctx.note" class="text-xs text-muted-foreground">{{ ctx.note }}</p>
       </div>
-      <p v-if="item.status === 'not_auto_verified' && typeof item.detail === 'string' && item.detail !== sharedDetail" class="text-xs whitespace-pre-line text-muted-foreground [overflow-wrap:anywhere]">{{ item.detail }}</p>
+      <p v-if="item.status === 'not_auto_verified' && typeof item.detail === 'string' && item.detail !== sharedDetail" class="text-xs whitespace-pre-line text-muted-foreground [overflow-wrap:anywhere]"><TextWithIds :text="item.detail" /></p>
     </div>
+      </CollapsibleContent>
+    </CollapsibleRoot>
 
     <div class="flex flex-wrap items-center gap-2">
       <ResolutionControl :label="item.ref" :value="shown" :disabled="locked" @change="(next) => send(next)" />

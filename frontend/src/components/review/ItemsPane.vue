@@ -16,6 +16,12 @@ const props = defineProps<{
 }>();
 
 const open = reactive<Record<Status, boolean>>({ flagged: true, not_auto_verified: true, clean: false });
+// Which cards show their evidence.  Collapsed by default; Expand all / Collapse all act on every item with something to show.
+const expanded = reactive<Record<number, boolean>>({});
+const setAll = (on: boolean) => {
+  for (const i of props.review.review_items) expanded[i.index] = on;
+  for (const k of Object.keys(open) as Status[]) if (on) open[k] = true;
+};
 const itemsOf = (status: Status) => props.review.review_items.filter((i) => i.status === status);
 
 // The explanation two or more not-auto-verified items share (the claims' "Not yet automatically checked..." note) is shown
@@ -31,7 +37,13 @@ const shared = computed(() => {
 
 <template>
   <section aria-labelledby="items-title" class="min-w-0 space-y-6 [overflow-wrap:anywhere]">
-    <h2 id="items-title" class="text-lg font-semibold">Review items</h2>
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <h2 id="items-title" class="text-lg font-semibold">Review items</h2>
+      <div class="flex gap-2">
+        <Button size="sm" variant="outline" @click="setAll(true)">Expand all</Button>
+        <Button size="sm" variant="outline" @click="setAll(false)">Collapse all</Button>
+      </div>
+    </div>
     <section v-for="status in STATUS_ORDER" :key="status" :class="`state-${status}`" :aria-labelledby="`group-${status}-title`">
       <CollapsibleRoot v-model:open="open[status]">
         <h3 :id="`group-${status}-title`" class="text-base font-semibold">
@@ -64,7 +76,7 @@ const shared = computed(() => {
           </p>
           <p v-if="itemsOf(status).length === 0" class="pt-3 text-sm text-muted-foreground">None.</p>
           <ul v-else class="space-y-3 pt-3">
-            <ReviewItemCard v-for="item in itemsOf(status)" :key="item.index" :item="item" :review="review" :locked="locked" :on-resolve="onResolve" :shared-detail="status === 'not_auto_verified' ? shared?.text : null" />
+            <ReviewItemCard v-for="item in itemsOf(status)" :key="item.index" :item="item" :review="review" :locked="locked" :on-resolve="onResolve" v-model:open="expanded[item.index]" :shared-detail="status === 'not_auto_verified' ? shared?.text : null" />
           </ul>
         </CollapsibleContent>
       </CollapsibleRoot>
