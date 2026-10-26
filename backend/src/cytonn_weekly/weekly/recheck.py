@@ -216,6 +216,11 @@ def recheck(old: CoordinatorReview, slot: str, data: bytes, filename: str, root:
     content = {**old.section, "blocks": numbered(blocks)}
     content["warnings"] = [w for w in old.section.get("warnings", []) if not w.startswith(_WARNING_PREFIX)] + \
         [w for w in rebuilt.section.get("warnings", []) if w.startswith(_WARNING_PREFIX)]
+    if slot == wi.CBK_BULLETIN:   # the refused-table notes belong to the bulletin that was just replaced
+        stale = {n["text"] for n in old.section.get("notices", [])}
+        fresh = rebuilt.section.get("notices", [])
+        content["notices"] = fresh
+        content["warnings"] = [w for w in content["warnings"] if w not in stale] + [n["text"] for n in fresh]
     content["summary"] = _module(section).compose_summary(blocks)
     new = build_review(content, check_section(content))
     new.report_type, new.period = old.report_type, old.period

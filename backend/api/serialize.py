@@ -179,6 +179,7 @@ def _serialize_blocks(review: CoordinatorReview) -> dict[str, Any]:
         "pieces_expected": sec.get("pieces_expected", 0),
         "shortfall": sec.get("shortfall", 0),
         "warnings": list(sec.get("warnings", [])),
+        "notices": list(sec.get("notices", [])),
         "chart_notes": _charts_to_add_by_hand(review),
         "chart_reference": sec.get("chart_reference"),
         # Executive Summary only: what the composition is, and what each included section holds that it leaves out.

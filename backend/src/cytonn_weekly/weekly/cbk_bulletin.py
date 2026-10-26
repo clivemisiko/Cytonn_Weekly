@@ -107,6 +107,9 @@ class Bulletin:
     problems: list[str] = field(default_factory=list)
     sha256: str = ""                                                       # of the PDF, so a refused table can be inspected later
     unavailable: dict[str, str] = field(default_factory=dict)              # a name in TABLES -> why it was left out, whole
+    # The same refusals as fields, for the screen: {source, issue_date, sha256, location, reason, text}; ``text`` is the
+    # sentence in ``unavailable`` so a screen showing the fields can leave that sentence out.
+    notices: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def last_day(self) -> Optional[date]:
@@ -372,6 +375,8 @@ def parse_bulletin(pdf_bytes: bytes) -> Bulletin:
                 out.unavailable[name] = (f"{SOURCE_NAME} {dated} (sha256 {sha}): {name} could not be read and is left "
                                          f"out: {reason}")
                 out.problems.append(out.unavailable[name])
+                out.notices.append({"source": SOURCE_NAME, "issue_date": issue.isoformat() if issue else None, "sha256": sha,
+                                    "location": name, "reason": reason, "text": out.unavailable[name]})
     return out
 
 

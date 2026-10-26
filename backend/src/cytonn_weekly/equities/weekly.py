@@ -842,6 +842,7 @@ def build_equities_weekly_review(
     fetchers = fetchers or Fetchers()
     problems: list[str] = []
     warnings: list[str] = []
+    notices: list[dict[str, Any]] = []   # the bulletin's refused tables as fields; their sentences are in ``warnings`` too
 
     bulletin = inputs.bulletin
     if bulletin is None:
@@ -853,6 +854,7 @@ def build_equities_weekly_review(
                 problems.append(f"CBK Weekly Bulletin: {cbk_bulletin.refused(exc, fetched[0], week.ending)}")
     if bulletin is not None:   # the two tables this section reads: one left out is said here, never passed over
         warnings += [why for table, why in bulletin.unavailable.items() if table in ("Table 1", "Table 6")]
+        notices += [n for n in bulletin.notices if n["location"] in ("Table 1", "Table 6")]
     typed_indices = None
     if inputs.equities_book is not None:
         try:
@@ -898,6 +900,7 @@ def build_equities_weekly_review(
         "blocks": numbered(blocks), "pieces_found": len(drafted["pieces"]), "pieces_expected": N_HIGHLIGHTS,
         "shortfall": drafted["shortfall"],
         "warnings": list(drafted["warnings"]) + warnings + inputs.analyst.difference_lines() + problems,
+        "notices": notices,
         "chart_notes": list(CHARTS), "chart_reference": CHART_REFERENCE, "chart_after": CHART_AFTER,
         "summary": compose_summary(blocks),
     }

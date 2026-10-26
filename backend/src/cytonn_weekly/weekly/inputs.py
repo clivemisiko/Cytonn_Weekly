@@ -191,7 +191,7 @@ def identify(slot: Slot, data: bytes, week: Week) -> dict[str, Any]:
         if slot.slug == CBK_BULLETIN:
             bulletin = cbk_bulletin.parse_bulletin(data)
             return _found(bulletin.issue_date, bulletin.issue_date == week.ending, "cbk_bulletin.pdf",
-                          "; ".join(bulletin.problems))
+                          "; ".join(bulletin.problems), bulletin.notices)
         if slot.slug == NSE_YIELD_CURVE:
             curve = nse_yield_curve.parse_yield_curve(data)
             return _found(curve.curve_date, week.monday <= curve.curve_date <= week.ending, "nse_yield_curve.pdf", "")
@@ -206,9 +206,10 @@ def identify(slot: Slot, data: bytes, week: Week) -> dict[str, Any]:
     raise InputError(f"unknown input {slot.slug!r}")
 
 
-def _found(read: Optional[date], matches: bool, stored_name: str, note: str) -> dict[str, Any]:
+def _found(read: Optional[date], matches: bool, stored_name: str, note: str,
+           notices: Optional[list[dict[str, Any]]] = None) -> dict[str, Any]:
     return {"read_date": read.isoformat() if read else None, "matches": bool(matches), "stored_name": stored_name,
-            "note": note}
+            "note": note, "notices": notices or []}
 
 
 # ---------------------------------------------------------------------------
@@ -230,7 +231,7 @@ def store(week: Week, slug: str, data: bytes, filename: str = "", root: Optional
     (folder / found["stored_name"]).write_bytes(data)
     entry = {
         "slot": slug, "stored_name": found["stored_name"], "read_date": found["read_date"], "matches": found["matches"],
-        "note": found["note"], "size": len(data), "sha256": hashlib.sha256(data).hexdigest(),
+        "note": found["note"], "notices": found["notices"], "size": len(data), "sha256": hashlib.sha256(data).hexdigest(),
         "original_name": _SAFE_NAME.sub("_", filename or "")[:160], "received_at": _now(),
         "fetched_from": fetched_from,
     }
@@ -283,7 +284,7 @@ def write_notes(week: Week, notes: dict[str, Optional[str]], root: Optional[Path
 
 
 def _file_view(entry: dict[str, Any]) -> dict[str, Any]:
-    return {k: entry.get(k) for k in ("stored_name", "read_date", "matches", "note", "size", "original_name",
+    return {k: entry.get(k) for k in ("stored_name", "read_date", "matches", "note", "notices", "size", "original_name",
                                       "received_at", "fetched_from")}
 
 
