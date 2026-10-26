@@ -13,7 +13,7 @@ const problem = (code: string, target: string | null = "start-draft") => ({ code
 
 describe("attention placements", () => {
   it("cover exactly the backend's problem codes", () => {
-    expect(backendCodes.length).toBe(26);
+    expect(backendCodes.length).toBe(30);
     expect(Object.keys(PLACEMENT).sort()).toEqual([...backendCodes].sort());
   });
 
