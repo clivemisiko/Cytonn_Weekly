@@ -7,6 +7,7 @@ import ExtractionNotices from "./ExtractionNotices.vue";
 import ChartCard from "./ChartCard.vue";
 import Markdown from "./Markdown.vue";
 import Notice from "./Notice.vue";
+import NoticeStack from "./NoticeStack.vue";
 import Numeral from "./Numeral.vue";
 import PartsLine from "./PartsLine.vue";
 import Warnings from "./Warnings.vue";
@@ -63,7 +64,7 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
           Only {{ section.pieces_found }} of {{ section.pieces_expected }} drafted pieces were found {{ review.period ? `for ${review.period}` : "this week" }}.
         </Notice>
         <ExtractionNotices :notices="section.notices ?? []" />
-        <Notice v-for="(w, i) in otherWarnings(section)" :key="`${i}-${w}`" tone="warn">{{ w }}</Notice>
+        <NoticeStack :items="otherWarnings(section)" />
       </div>
 
       <!-- Executive Summary only: for each section it includes, what that section's approved review holds that the

@@ -83,7 +83,7 @@ function subline(c: StatusCounts): string {
 
     <!-- The draft is the content; the review items are the panel beside it. The panel is never folded (it is the work and it
          holds the flags) and, being as tall as the section, it is left in the flow. -->
-    <PageGrid aside-title="Review items" hide-title wide-body :sticky="false">
+    <PageGrid aside-title="Review items" hide-title wide-body style="--bar-extra: 5.5rem">
       <div class="space-y-6">
         <RecheckResult v-if="recheck" :result="recheck" @redraft="emit('redraft', review.section_slug)" />
         <RejectedDraftNotes :run-id="review.run_id" />

@@ -5,6 +5,7 @@ import type { HighlightItem, Review, Section, StockTableItem } from "@/lib/types
 import DataTable from "./DataTable.vue";
 import Markdown from "./Markdown.vue";
 import Notice from "./Notice.vue";
+import NoticeStack from "./NoticeStack.vue";
 import Numeral from "./Numeral.vue";
 import PartsLine from "./PartsLine.vue";
 import Warnings from "./Warnings.vue";
@@ -25,7 +26,7 @@ type Row = Record<string, unknown> & { flagged: boolean };
         <Notice v-if="section.shortfall > 0" tone="warn" role="status" class="font-semibold">
           Only {{ section.highlights_found }} of {{ section.highlights_expected }} highlights were found this week.
         </Notice>
-        <Notice v-for="(w, i) in section.warnings" :key="`${i}-${w}`" tone="warn">{{ w }}</Notice>
+        <NoticeStack :items="section.warnings" />
       </div>
     </div>
 

@@ -22,7 +22,7 @@ const emit = defineEmits<{ toggle: [] }>();
       // Stacked, a rule sets the panel off from the content: below it when it comes first, above it when it comes after.
       first ? 'max-[1099px]:border-b max-[1099px]:pb-6' : 'max-[1099px]:border-t max-[1099px]:pt-6',
       sticky &&
-        'min-[1100px]:sticky min-[1100px]:top-[calc(var(--topbar-h)+var(--ribbon-h,0rem)+1.5rem)] min-[1100px]:max-h-[calc(100dvh-var(--topbar-h)-var(--ribbon-h,0rem)-3rem)] min-[1100px]:overflow-x-hidden min-[1100px]:overflow-y-auto',
+        'min-[1100px]:sticky min-[1100px]:top-[calc(var(--topbar-h)+var(--ribbon-h,0rem)+var(--bar-extra,0rem)+1.5rem)] min-[1100px]:max-h-[calc(100dvh-var(--topbar-h)-var(--ribbon-h,0rem)-var(--bar-extra,0rem)-3rem)] min-[1100px]:overflow-x-hidden min-[1100px]:overflow-y-auto',
       open ? 'min-[1100px]:pl-6' : 'min-[1100px]:pl-2',
     ]"
   >
