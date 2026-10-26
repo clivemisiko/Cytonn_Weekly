@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { renderMarkdown } from "@/lib/markdown";
 
-/** Drafted markdown, rendered safely (lib/markdown.ts): no raw HTML, only safe links. */
 defineProps<{ text: string }>();
 </script>
 

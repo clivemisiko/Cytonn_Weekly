@@ -1,4 +1,3 @@
-// The same number as MAX_TOPIC_CHARS in backend/src/cytonn_weekly/focus/review_run.py, which is the limit the API enforces.
 export const MAX_TOPIC = 500;
 
 /**

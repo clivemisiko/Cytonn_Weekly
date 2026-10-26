@@ -2,7 +2,6 @@
 import { PhCheck, PhQuestion, PhWarning } from "@phosphor-icons/vue";
 import { CHIP } from "@/components/ui/button";
 
-/** Received and this week's, received but dated another week, or not received: by shape as well as colour. */
 defineProps<{ tone: "ok" | "warn" | "none" }>();
 </script>
 

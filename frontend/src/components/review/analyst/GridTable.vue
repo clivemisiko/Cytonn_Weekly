@@ -9,7 +9,6 @@ import type { AnalystRow, AnalystTable } from "@/lib/types";
 import ConfirmBox from "./ConfirmBox.vue";
 import TableFrame from "./TableFrame.vue";
 
-/** A grid typed cell by cell: the Universe of Coverage's inputs, the Eurobond issues. Empty cells show the workbook's value. */
 const props = defineProps<{ item: AnalystTable; disabled: boolean }>();
 const emit = defineEmits<{ save: [rows: AnalystRow[] | null]; dirty: [dirty: boolean]; confirm: [] }>();
 

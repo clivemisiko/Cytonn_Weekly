@@ -12,7 +12,6 @@ import Numeral from "./Numeral.vue";
 import PartsLine from "./PartsLine.vue";
 import Warnings from "./Warnings.vue";
 
-/** Every block-shaped section (all but the weekly Digital Payments): its blocks in report order, nothing derived here. */
 defineProps<{ review: Review; section: BlocksSection; onTeamChart: (chartId: string, use: boolean) => Promise<boolean> }>();
 
 const BODY = "max-w-[68ch] text-base leading-7 md:pl-11";

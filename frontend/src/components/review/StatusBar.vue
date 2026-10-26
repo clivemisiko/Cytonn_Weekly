@@ -6,10 +6,6 @@ import type { Decision, Review } from "@/lib/types";
 import DecisionControls from "./DecisionControls.vue";
 import Notice from "./Notice.vue";
 
-/**
- * Sticky under the masthead for the whole review: how many items are left, whether the section can be approved,
- * and the decision itself, so the coordinator never has to scroll to the end of a long section to find either.
- */
 const props = defineProps<{
   review: Review;
   saving: boolean;

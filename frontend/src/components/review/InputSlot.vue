@@ -8,7 +8,6 @@ import type { InputSlot as InputSlotInfo } from "@/lib/types";
 import ExtractionNotices from "./ExtractionNotices.vue";
 import ToneChip from "./ToneChip.vue";
 
-/** One input of the week: what was received for it, the date read from the file itself, and its upload control. */
 const props = defineProps<{ entry: InputSlotInfo; week: string; busy: boolean }>();
 const emit = defineEmits<{ upload: [slot: string, files: File[]]; remove: [storedName: string]; fetch: [] }>();
 

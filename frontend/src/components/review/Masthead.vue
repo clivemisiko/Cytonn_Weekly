@@ -1,11 +1,4 @@
 <script setup lang="ts">
-/**
- * The title block of a screen: the report's name above the screen's title, a quiet line under it, and facts about the
- * screen on the right. It is ink on the page, no band (the one dark surface is the top bar). `flush` is the block alone,
- * for a screen that places it inside its own column; without it the block sits in a white strip with the page's own width.
- * The way back is not here: Home and Back are on the top bar (components/nav/TopBar.vue), which never scrolls away.
- * Slots: `meta` for right-aligned facts about this screen, the default for one quiet line under the title.
- */
 withDefaults(defineProps<{ title?: string; wide?: boolean; flush?: boolean }>(), { title: "Digital Payments: coordinator review", wide: false, flush: false });
 </script>
 

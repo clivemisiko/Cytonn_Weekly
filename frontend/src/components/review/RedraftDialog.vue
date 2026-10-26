@@ -2,10 +2,6 @@
 import { DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from "reka-ui";
 import Button from "@/components/ui/Button.vue";
 
-/**
- * "Draft <section> again?": asked before a section that already has a review is drafted over. It says what happens to
- * the earlier review and to the new draft (lib/redraft.ts); nothing here changes either.
- */
 defineProps<{ open: boolean; title: string; notes: string[]; confirmLabel: string }>();
 const emit = defineEmits<{ confirm: []; cancel: [] }>();
 </script>

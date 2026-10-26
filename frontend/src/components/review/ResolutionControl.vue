@@ -11,12 +11,6 @@ type Option = (typeof OPTIONS)[number];
 const THUMB: Record<Option, string> = { none: "bg-foreground/10", accept: "bg-ok", fix_needed: "bg-flag" };
 const SELECTED_TEXT: Record<Option, string> = { none: "text-foreground", accept: "text-ok-on", fix_needed: "text-flag-on" };
 
-/**
- * Unresolved | Accept | Fix needed, as one segmented control (a radio group, so it keeps arrow-key
- * navigation and a single tab stop). Selection is shown by fill AND weight, never colour alone. Each option keeps its natural
- * width and never wraps: about 265px in a row at the 16px body. The review items sit in a column that allows a word to break
- * anywhere, so in a card narrower than 17rem (the card is a container) the options stack instead of being cut.
- */
 const props = defineProps<{ label: string; value: Resolution; disabled: boolean }>();
 const emit = defineEmits<{ change: [next: Resolution] }>();
 const current = computed(() => resolutionKey(props.value));

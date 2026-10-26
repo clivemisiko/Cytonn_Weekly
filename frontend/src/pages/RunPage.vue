@@ -17,7 +17,6 @@ import { shell, useShellRibbon } from "@/lib/shell";
 import type { AppConfig, Run, RunEvent } from "@/lib/types";
 
 const POLL_MS = 2_000;
-/** How close to the foot of the page counts as "following along". */
 const FOLLOW_PX = 96;
 const MARK_WORD = { working: "In progress", done: "Done", skipped: "Skipped", failed: "Failed" } as const;
 const BOX = "grid size-5 shrink-0 place-items-center rounded-full";

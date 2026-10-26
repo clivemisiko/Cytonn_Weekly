@@ -8,12 +8,6 @@ import type { DismissReason, Notable } from "@/lib/types";
 import NotableCard from "./NotableCard.vue";
 import Notice from "./Notice.vue";
 
-/**
- * "Notable this week": suggestions that code worked out from history, each with its working, for the analyst to accept,
- * edit or dismiss. It is a worklist and nothing more: nothing here is added to the draft, the review, the analyst inputs
- * or the Word export, and a locked review stays locked. Only the analyst's choices are saved, on their own, and a failure
- * here (the list cannot be loaded, a choice cannot be saved) is shown here and leaves the rest of the screen working.
- */
 const props = defineProps<{
   /** The section's slug ("fixed_income"). */
   section: string;

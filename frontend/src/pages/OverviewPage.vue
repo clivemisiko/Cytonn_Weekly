@@ -23,10 +23,6 @@ const messageOf = (err: unknown) => (err instanceof Error ? err.message : String
 const REPORT_TYPES: ReportType[] = ["weekly", "quarterly", "half_year", "annual", "companion"];
 const one = (value: LocationQuery[string] | undefined) => (Array.isArray(value) ? value[0] : value) ?? null;
 
-/**
- * The overview of one report's sections, one section's start screen, or one open review. Only the chosen report is
- * remembered here (and in the address bar): the server holds every review, so going back to the overview re-reads it.
- */
 const route = useRoute();
 const router = useRouter();
 const phase = shallowRef<Phase>({ name: "booting" });

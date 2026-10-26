@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import Notice from "./Notice.vue";
 
-/** A draft's warnings as one notice: the first line shows, the rest fold under "N more", so they do not pile up. */
 defineProps<{ items: string[] }>();
 </script>
 

@@ -2,14 +2,7 @@
 import { computed } from "vue";
 import Notice from "../Notice.vue";
 
-/** Where a typed value and the uploaded workbook disagree, line by line. */
-const props = defineProps<{ lines: string[] }>();
-
-// Every line ends with the same sentence; it is said once, in the heading.
-const SUFFIX = / The typed value is used\.$/;
-const rows = computed(() => props.lines.map((l) => l.replace(SUFFIX, "")));
-// A long list is folded, but its count and the rule stay in view.
-const FOLD_AFTER = 3;
+defineProps<{ lines: string[] }>();
 </script>
 
 <template>

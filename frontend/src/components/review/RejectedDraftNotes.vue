@@ -6,11 +6,6 @@ import { RESOLUTION_LABELS, friendlyTime, resolutionKey } from "@/lib/format";
 import type { RejectedDraftNotes } from "@/lib/types";
 import Notice from "./Notice.vue";
 
-/**
- * What the coordinator said about the rejected draft just before this one: its fix-needed items and notes. Read-only, and
- * never copied onto this review's items: the labels can differ between drafts, and approval follows this review alone.
- * Shown only when the API returns something (the run before was rejected and holds a fix-needed item or a note).
- */
 const props = defineProps<{ runId: number }>();
 
 const CHIP = {

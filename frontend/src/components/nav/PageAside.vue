@@ -1,15 +1,6 @@
 <script setup lang="ts">
 import { PhCaretDoubleLeft, PhCaretDoubleRight } from "@phosphor-icons/vue";
 
-/**
- * The side panel of a screen laid out by PageGrid. From 1100px wide it is a column on the right with a hairline on its
- * left; below that it follows the screen's content, as wide as that content. `sticky` makes it stay under the top bar
- * and scroll by itself (for a short panel); a tall one is left in the page's flow. `foldable` adds the fold button (a
- * panel that holds something a person must not miss is not given one), and `open` is the PageGrid's state. Its body is a
- * container, so what is inside lays out by the panel's own width, not the window's.
- * `first` says it comes before the content in the page's order (the rule that sets it off stacked is then below it).
- * `title` names the landmark; `hideTitle` keeps it for a screen reader when the panel's content has its own heading.
- */
 defineProps<{ title?: string; hideTitle?: boolean; foldable?: boolean; open: boolean; sticky: boolean; first?: boolean }>();
 const emit = defineEmits<{ toggle: [] }>();
 </script>

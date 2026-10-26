@@ -3,7 +3,6 @@ import { PhCheck } from "@phosphor-icons/vue";
 import Button from "@/components/ui/Button.vue";
 import type { AnalystCarried } from "@/lib/types";
 
-/** A carried or suggested value that no draft reads until the coordinator accepts it for this week. */
 defineProps<{ carried: AnalystCarried | null; label: string; disabled: boolean }>();
 const emit = defineEmits<{ confirm: [] }>();
 </script>

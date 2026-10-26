@@ -14,11 +14,6 @@ import Notice from "./Notice.vue";
 import ReportPicker from "./ReportPicker.vue";
 import SectionRow from "./SectionRow.vue";
 
-/**
- * Every section of the chosen report at a glance; each one is reviewed and decided on its own. The feed in the middle
- * is the report picker, the notices that must be seen (dev mode, a draft running) and one card per section in the issue's
- * order. Beside it, a panel the person can fold holds how the sections stand and the weekly export.
- */
 const props = defineProps<{
   overview: Overview;
   config: AppConfig;

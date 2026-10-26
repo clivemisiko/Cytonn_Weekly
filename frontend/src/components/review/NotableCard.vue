@@ -9,11 +9,6 @@ import { DISMISS_REASONS, KIND_LABELS, checkEdit, figureLine, headlineOf, isEdit
 import type { DismissReason, Suggestion } from "@/lib/types";
 import WorkingChart from "./WorkingChart.vue";
 
-/**
- * One "Notable this week" suggestion in whichever list it is in: open (Accept, Edit, Dismiss), selected (Edit, Remove from
- * list) or dismissed (Restore). It shows the headline, where its history came from, and, on request, the working: the rule
- * that fired, the window and the points. It only asks its parent to act; nothing here is written into a draft.
- */
 const props = defineProps<{ suggestion: Suggestion; mode: "open" | "selected" | "dismissed"; disabled?: boolean }>();
 const emit = defineEmits<{
   accept: [];

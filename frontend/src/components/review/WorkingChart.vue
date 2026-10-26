@@ -4,13 +4,6 @@ import { friendlyDate } from "@/lib/format";
 import { chartGeometry } from "@/lib/notable";
 import type { Suggestion } from "@/lib/types";
 
-/**
- * The working's points as a line, drawn from `working.points` and nothing else: each point's value places it, each point's
- * display string is the only number printed (the highest and lowest as the scale, the latest by its dot). Dates are to scale,
- * so a missing week is a visible gap. The drawing is exactly as wide as its box, so it never scrolls: with room it puts the
- * scale at the left and the latest label beside its dot, and in a narrow box (a phone) the scale labels go above and below the
- * plot and the latest label above or below its dot. The 14px labels are never shrunk. Colours are the app's tokens.
- */
 const props = defineProps<{ working: Suggestion["working"] }>();
 
 const box = ref<HTMLElement | null>(null);

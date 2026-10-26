@@ -8,11 +8,6 @@ import { buttonVariants } from "@/components/ui/button";
 import { BACK_NONE, useBack } from "@/lib/nav";
 import { SSO_ENABLED } from "@/lib/sso";
 
-/**
- * The first screen: what the tool is, that it is ready, and the way in. Sign-in with Cytonn SSO is not built
- * (lib/sso.ts, backend/api/sso.py), so its button is disabled and says so, and the page states plainly that nothing
- * here is protected. `displayName` is for the signed-in name once sign-in exists; nothing passes it today.
- */
 const props = defineProps<{ displayName?: string }>();
 
 function greetingFor(hour: number): string {

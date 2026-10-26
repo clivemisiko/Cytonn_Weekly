@@ -1,9 +1,4 @@
 <script setup lang="ts">
-/**
- * A report table: headers wrap on wide screens and stay single-line (with sideways scroll) on a phone, figures
- * right-aligned in mono, a flagged row tinted with the checker's glyph in its first cell. Every section's
- * tables use this one component, so that behaviour is solved once.
- */
 defineProps<{
   id: string;
   title: string;

@@ -18,10 +18,6 @@ import RecheckResult from "./RecheckResult.vue";
 import RejectedDraftNotes from "./RejectedDraftNotes.vue";
 import StatusBar from "./StatusBar.vue";
 
-/**
- * One open review: the sticky status bar (progress and the decision), the scorecard, and the drafted section beside its review items.
- * The tool never approves anything; this screen only records what the coordinator decides.
- */
 const props = defineProps<{ initial: Review }>();
 const emit = defineEmits<{ close: []; open: [review: Review]; redraft: [slug: string] }>();
 // A card that fixed an item from a file hands the new review up, and the page shows it in this one's place.

@@ -1,5 +1,3 @@
-// The pure parts of the "Weekly analyst inputs" form (components/review/analyst/), kept apart
-// from the components so they can be unit-tested.
 import { friendlyDate } from "./format";
 import type { AnalystCarried, AnalystColumn, AnalystField, AnalystRow, AnalystTable } from "./types";
 

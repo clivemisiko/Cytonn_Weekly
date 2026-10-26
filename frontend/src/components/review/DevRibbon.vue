@@ -1,9 +1,4 @@
 <script setup lang="ts">
-/**
- * The dev-mode ribbon, directly under the top bar on the whole width of the page: a local-model draft can never be
- * mistaken for a production one. It sticks under the top bar as the page scrolls, and it is in the page's flow, so
- * nothing needs to be padded to clear it. The shell draws it (components/nav/AppShell.vue) for whichever screen says so.
- */
 defineProps<{ label: string }>();
 </script>
 
