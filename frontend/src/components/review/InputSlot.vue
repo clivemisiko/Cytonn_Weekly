@@ -5,6 +5,7 @@ import Button from "@/components/ui/Button.vue";
 import { LINK } from "@/components/ui/button";
 import { friendlyDate } from "@/lib/format";
 import type { InputSlot as InputSlotInfo } from "@/lib/types";
+import ExtractionNotices from "./ExtractionNotices.vue";
 import ToneChip from "./ToneChip.vue";
 
 /** One input of the week: what was received for it, the date read from the file itself, and its upload control. */
@@ -109,7 +110,8 @@ function picked(event: Event) {
           entry.slug === "nse_yield_curve" ? " It is still shown as context, with its own date." : " Figures it does not hold for this week are left out."
         }}
       </p>
-      <p v-if="file.note" class="text-xs text-warn-fg">{{ file.note }}</p>
+      <ExtractionNotices v-if="file.notices?.length" :notices="file.notices" />
+      <p v-else-if="file.note" class="text-xs text-warn-fg">{{ file.note }}</p>
     </template>
     <ul v-if="entry.per_day" class="grid grid-cols-2 gap-2 @min-[26rem]:grid-cols-3 @min-[40rem]:grid-cols-5">
       <li

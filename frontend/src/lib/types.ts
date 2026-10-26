@@ -296,6 +296,16 @@ export interface NotCovered {
   dev_pieces: { piece: string; drafted_by: string }[];
 }
 
+/** A table of an input file that could not be read and is left out, as the API had it before it made the sentence `text`. */
+export interface ExtractionNotice {
+  source: string;
+  issue_date: string | null;
+  sha256: string;
+  location: string;
+  reason: string;
+  text: string;
+}
+
 export interface BlocksSection {
   week_start: string;
   week_end: string;
@@ -309,6 +319,8 @@ export interface BlocksSection {
   pieces_expected: number;
   shortfall: number;
   warnings: string[];
+  /** Fixed Income and Equities: the bulletin's refused tables as fields. Their sentences are in `warnings` as well. */
+  notices?: ExtractionNotice[];
   /** Markets Reviews only: the real issue's chart titles, which the tool does not draw. */
   chart_notes?: string[];
   chart_reference?: string | null;
@@ -327,6 +339,8 @@ export interface InputFile {
   /** Whether the file's own date is this week's. */
   matches: boolean;
   note: string;
+  /** The tables of the file that could not be read, as fields (the bulletin); `note` holds the same as one sentence. */
+  notices?: ExtractionNotice[];
   size: number;
   original_name: string;
   received_at: string;

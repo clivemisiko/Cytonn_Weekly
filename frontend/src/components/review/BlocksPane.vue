@@ -3,6 +3,7 @@ import { PhChartBar, PhLockSimple } from "@phosphor-icons/vue";
 import { SCOPE_LABELS, friendlyDate, friendlyTime, weekRange } from "@/lib/format";
 import type { BlocksSection, ComputedBlock, NotCovered, Review, TableBlock } from "@/lib/types";
 import DataTable from "./DataTable.vue";
+import ExtractionNotices from "./ExtractionNotices.vue";
 import ChartCard from "./ChartCard.vue";
 import Markdown from "./Markdown.vue";
 import Notice from "./Notice.vue";
@@ -20,6 +21,11 @@ const SOURCE_LINK = "text-link underline decoration-link/40 underline-offset-2 h
 
 const safeUrl = (url: string | null | undefined) => (url && /^https?:\/\//.test(url) ? url : null);
 const typedRows = (block: TableBlock) => block.rows.filter((r) => r.typed).length;
+/** The warnings that are not a refused table: those sentences are shown as cards from `notices`. */
+const otherWarnings = (s: BlocksSection) => {
+  const shown = new Set((s.notices ?? []).map((n) => n.text));
+  return s.warnings.filter((w) => !shown.has(w));
+};
 
 /** A computed paragraph's one line of facts: how many figures were checked, and what kinds of input they rest on. */
 function computedParts(block: ComputedBlock) {
@@ -56,7 +62,8 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
         <Notice v-if="section.shortfall > 0" tone="warn" role="status" class="font-semibold">
           Only {{ section.pieces_found }} of {{ section.pieces_expected }} drafted pieces were found {{ review.period ? `for ${review.period}` : "this week" }}.
         </Notice>
-        <Notice v-for="(w, i) in section.warnings" :key="`${i}-${w}`" tone="warn">{{ w }}</Notice>
+        <ExtractionNotices :notices="section.notices ?? []" />
+        <Notice v-for="(w, i) in otherWarnings(section)" :key="`${i}-${w}`" tone="warn">{{ w }}</Notice>
       </div>
 
       <!-- Executive Summary only: for each section it includes, what that section's approved review holds that the
