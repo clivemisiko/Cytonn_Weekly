@@ -3,7 +3,8 @@ import { PhArrowSquareOut } from "@phosphor-icons/vue";
 import { computed, ref, watch } from "vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import { KIND_LABELS, RESOLUTION_CHIPS, STATUS_META, pyRepr, resolutionKey } from "@/lib/format";
-import type { Flag, Resolution, ReviewItem } from "@/lib/types";
+import type { Flag, Resolution, Review, ReviewItem } from "@/lib/types";
+import FixFromFile from "./FixFromFile.vue";
 import ResolutionControl from "./ResolutionControl.vue";
 
 const CHIP_STYLE = {
@@ -17,6 +18,8 @@ const props = defineProps<{
   /** The group shows this item's explanation once, under its header, so the card leaves it out. */
   sharedDetail?: string | null;
   item: ReviewItem;
+  /** The review the item is in: the fix-from-a-file control needs its week, run and decision. */
+  review: Review;
   locked: boolean;
   onResolve: (index: number, resolution: Resolution, note?: string) => Promise<boolean>;
 }>();
@@ -143,6 +146,7 @@ const cells = (flag: Flag): [string, string][] => [
 
     <div class="flex flex-wrap items-center gap-2">
       <ResolutionControl :label="item.ref" :value="shown" :disabled="locked" @change="(next) => send(next)" />
+      <FixFromFile :review="review" :item="item" />
       <Textarea
         v-model="note"
         rows="1"

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { PhLockSimple } from "@phosphor-icons/vue";
-import { computed, watch } from "vue";
+import { computed, provide, watch } from "vue";
+import { OPEN_REVIEW, lastRecheck } from "@/lib/fixfile";
 import { STATUS_ORDER, friendlyTime, weekRange } from "@/lib/format";
 import PageGrid from "@/components/nav/PageGrid.vue";
 import { weekOfReview } from "@/lib/notable";
@@ -13,6 +14,7 @@ import DraftPane from "./DraftPane.vue";
 import ItemsPane from "./ItemsPane.vue";
 import Masthead from "./Masthead.vue";
 import NotablePanel from "./NotablePanel.vue";
+import RecheckResult from "./RecheckResult.vue";
 import RejectedDraftNotes from "./RejectedDraftNotes.vue";
 import StatusBar from "./StatusBar.vue";
 
@@ -21,7 +23,10 @@ import StatusBar from "./StatusBar.vue";
  * The tool never approves anything; this screen only records what the coordinator decides.
  */
 const props = defineProps<{ initial: Review }>();
-const emit = defineEmits<{ close: [] }>();
+const emit = defineEmits<{ close: []; open: [review: Review]; redraft: [slug: string] }>();
+// A card that fixed an item from a file hands the new review up, and the page shows it in this one's place.
+provide(OPEN_REVIEW, (next: Review) => emit("open", next));
+const recheck = computed(() => (lastRecheck.value?.runId === props.initial.run_id ? lastRecheck.value.result : null));
 
 const session = useReviewSession(props.initial);
 const review = session.review;
@@ -80,6 +85,7 @@ function subline(c: StatusCounts): string {
          holds the flags) and, being as tall as the section, it is left in the flow. -->
     <PageGrid aside-title="Review items" hide-title wide-body :sticky="false">
       <div class="space-y-6">
+        <RecheckResult v-if="recheck" :result="recheck" @redraft="emit('redraft', review.section_slug)" />
         <RejectedDraftNotes :run-id="review.run_id" />
         <div
           v-if="review.decision"

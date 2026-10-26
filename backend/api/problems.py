@@ -46,6 +46,10 @@ PROBLEMS: dict[str, tuple[str, Optional[str]]] = {
     "review_not_found": ("The review was not found", None),
     "run_unknown": ("The draft run is no longer known", None),
     "export_not_ready": ("The report cannot be exported yet", "export-bar"),
+    "fix_not_possible": ("This item cannot be fixed from a file", None),
+    "fix_file_refused": ("The file was not used", None),
+    "fix_file_too_big": ("The file is too big", None),
+    "fix_check_failed": ("The figures could not be re-checked", None),
 }
 
 

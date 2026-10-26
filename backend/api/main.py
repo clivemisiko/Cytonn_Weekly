@@ -98,6 +98,7 @@ from cytonn_weekly.weekly import cbk_bulletin, cbk_rates
 from cytonn_weekly.weekly import export as weekly_export
 from cytonn_weekly.weekly import analyst as weekly_analyst
 from cytonn_weekly.weekly import inputs as weekly_inputs
+from cytonn_weekly.weekly import recheck as weekly_recheck
 from cytonn_weekly.weekly.week import NotAFriday, Week, latest_friday
 
 from api.problems import ProblemError, problem_handler
@@ -956,6 +957,54 @@ def create_app(
             item.resolve(body.resolution, note)
 
         return mutate(run_id, change)
+
+    @app.post("/api/reviews/{run_id}/items/{index}/fix-input")
+    async def fix_from_input(run_id: int, index: int, request: Request, slot: str = Query(max_length=40),
+                             filename: str = Query(default="", max_length=260)) -> dict:
+        """Re-check a flagged item against a file the reviewer uploads (the file is the request body, as for an input upload).
+
+        The file is checked and the section's figures re-read on a copy of the week's inputs, with no network and no model
+        (weekly/recheck.py).  Only if that works is the file kept and a NEW undecided review saved; the earlier review is
+        never edited.  Answers ``{"review", "result"}``.  The draft slot and the run registry are not touched.
+        """
+        old = load(run_id)
+        section = section_slug(old)
+        if old.report_type != WEEKLY or section not in weekly_recheck.SLOT_MAP or not 0 <= index < len(old.review_items) \
+                or "week_ending" not in old.section:
+            raise ProblemError(409, "This item cannot be fixed by adding a file.", "fix_not_possible")
+        if slot not in weekly_recheck.fix_slots(section, old.section, old.review_items[index]):
+            raise ProblemError(409, "That file does not feed this item, or the item is not one a file can fix. Open the item again.", "fix_not_possible")
+        too_big = "The file is over the {} MB limit. Upload a smaller copy of the file.".format(weekly_inputs.MAX_BYTES // 1_048_576)
+        declared = request.headers.get("content-length")
+        if declared and declared.isdigit() and int(declared) > weekly_inputs.MAX_BYTES:
+            raise ProblemError(413, too_big, "fix_file_too_big")
+        data = await request.body()
+        if len(data) > weekly_inputs.MAX_BYTES:
+            raise ProblemError(413, too_big, "fix_file_too_big")
+        week = Week(date.fromisoformat(old.section["week_ending"]))
+        try:
+            done = await run_in_threadpool(weekly_recheck.recheck, old, slot, data, filename, root, charts_root)
+        except weekly_inputs.InputError as exc:
+            raise ProblemError(422, str(exc), "fix_file_refused")
+        except Exception as exc:  # noqa: BLE001 - shown to the reviewer; nothing was kept or saved
+            log.exception("re-check of run %s from %s failed", run_id, slot)
+            raise ProblemError(500, f"The figures could not be re-checked, so nothing was changed and the file was not kept. {failure_message(exc)}", "fix_check_failed")
+        with write_lock:
+            try:
+                weekly_inputs.store(week, slot, data, filename, root)
+            except weekly_inputs.InputError as exc:
+                raise ProblemError(422, str(exc), "fix_file_refused")
+            try:
+                save(done.review)
+            except HTTPException:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                log.exception("saving the re-checked review of run %s failed", run_id)
+                raise ProblemError(500, "The file was kept among this week's inputs, but the new version could not be saved. "
+                                        f"Try again. {failure_message(exc)}", "fix_check_failed")
+        return {"review": serialize_review(done.review),
+                "result": {"changes": done.changes, "changed_items": done.changed_items, "kept": done.kept,
+                           "earlier_run_id": run_id, "slot": slot, "was_approved": old.decision == "approved"}}
 
     @app.post("/api/reviews/{run_id}/accept-clean")
     def accept_clean(run_id: int) -> dict:
