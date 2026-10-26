@@ -42,7 +42,6 @@ class Entry:
     why_not: str = ""
 
 
-_FETCHED = "it needs a source the tool fetches (CBK, NSE or cytonnreport.com), which a re-check does not reach"
 _BOTH = (wi.CBK_BULLETIN, wi.FI_WORKBOOK)
 
 SLOT_MAP: dict[str, tuple[Entry, ...]] = {
@@ -189,10 +188,9 @@ def _copy_chart_files(old: CoordinatorReview, new: CoordinatorReview, charts_roo
     files: dict[str, dict[str, bytes]] = {}
     for b in new.section.get("blocks", []):
         if b.get("kind") == "chart" and b.get("png_sha256"):
-            files[b["chart_id"]] = {
-                "png": chart_store.read_png(old.run_id, b["chart_id"], b["png_sha256"], charts_root),
-                "json": chart_store.read_series(old.run_id, b["chart_id"], b.get("series_sha256"), charts_root),
-            }
+            files[b["chart_id"]] = {"png": chart_store.read_png(old.run_id, b["chart_id"], b["png_sha256"], charts_root)}
+            if b.get("series_sha256"):   # a drawn chart can have no stored series; then there is no file to copy
+                files[b["chart_id"]]["json"] = chart_store.read_series(old.run_id, b["chart_id"], b["series_sha256"], charts_root)
     chart_store.attach(new, files)
 
 

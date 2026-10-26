@@ -64,7 +64,7 @@ const shared = computed(() => {
           </p>
           <p v-if="itemsOf(status).length === 0" class="pt-3 text-sm text-muted-foreground">None.</p>
           <ul v-else class="space-y-3 pt-3">
-            <ReviewItemCard v-for="item in itemsOf(status)" :key="item.index" :item="item" :review="review":locked="locked" :on-resolve="onResolve" :shared-detail="status === 'not_auto_verified' ? shared?.text : null" />
+            <ReviewItemCard v-for="item in itemsOf(status)" :key="item.index" :item="item" :review="review" :locked="locked" :on-resolve="onResolve" :shared-detail="status === 'not_auto_verified' ? shared?.text : null" />
           </ul>
         </CollapsibleContent>
       </CollapsibleRoot>
