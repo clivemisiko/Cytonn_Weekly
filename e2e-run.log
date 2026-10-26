@@ -1,0 +1,64 @@
+
+> test
+> playwright test app && playwright test more && playwright test buttons && playwright test notes && playwright test links && playwright test draftagain && playwright test notable && playwright test rail && playwright test overview && playwright test startscreen && playwright test reviewscreen && playwright test runview && playwright test startpages && playwright test chartcard && playwright test attention
+
+
+Running 16 tests using 1 worker
+
+  ok  1 tests\app.spec.ts:33:1 › T01 landing page loads, with Home current and Back disabled (2.3s)
+  ok  2 tests\app.spec.ts:49:1 › T02 an old bookmark of a report at / goes to the overview with its query kept (996ms)
+  ok  3 tests\app.spec.ts:58:1 › T03 overview lists the six weekly sections, the dev mark and the export gate (1.1s)
+  ok  4 tests\app.spec.ts:76:1 › T04 report picker shows the API's refusal, switches report, keeps it on reload; Back from the overview goes Home (2.0s)
+  ok  5 tests\app.spec.ts:97:1 › T05 theme toggle: Light, Dark, System, kept after a reload and applied before the first paint (2.2s)
+  ok  6 tests\app.spec.ts:141:1 › T06 top bar stays in view after scrolling; Back goes to the section list, Home to / (2.5s)
+  ok  7 tests\app.spec.ts:163:1 › T07 inputs panel: what was received, an upload refused with its reason, a week that is not a Friday (1.8s)
+  ok  8 tests\app.spec.ts:184:1 › T08 analyst inputs: refusals listed, the draft button waits for unsaved typing, Home and Back ask first (4.6s)
+  x   9 tests\app.spec.ts:262:1 › T09 Company Updates: run to done, open the review, Approve is gated, the decision is final (2.5s)
+  -  10 tests\app.spec.ts:331:1 › T10 the sticky status bar stays under the top bar while a review scrolls
+  -  11 tests\app.spec.ts:343:1 › T11 a stopped run shows the error text and the way back
+  -  12 tests\app.spec.ts:359:1 › T12 Fixed Income: run view steps to done, review lists the three statuses, accepting, notes, the leave prompt
+  -  13 tests\app.spec.ts:447:1 › T13 Equities: run to done and its review opens with items
+  -  14 tests\app.spec.ts:461:1 › T14 Word export: off until every section is approved; when the API says ready, the file downloads under its name
+  -  15 tests\app.spec.ts:493:1 › T15 a run the API no longer has says so and links to the overview
+  -  16 tests\app.spec.ts:501:1 › T16 keyboard: the skip link comes first, the theme group is one tab stop moved by arrow keys
+
+
+  1) tests\app.spec.ts:262:1 › T09 Company Updates: run to done, open the review, Approve is gated, the decision is final 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByText('Approve unlocks once every item is resolved and none needs a fix.')
+    Expected: visible
+    Error: strict mode violation: getByText('Approve unlocks once every item is resolved and none needs a fix.') resolved to 2 elements:
+        1) <span>Approve unlocks once every item is resolved and n…</span> aka getByText('Approve unlocks once every').first()
+        2) <span class="sr-only" id="approve-hint">Approve unlocks once every item is resolved and n…</span> aka getByRole('group', { name: 'Decision' }).getByText('Approve unlocks once every')
+
+    Call log:
+      - Expect "toBeVisible" getByText('Approve unlocks once every item is resolved and none needs a fix.') with timeout 15000ms
+      - waiting for getByText('Approve unlocks once every item is resolved and none needs a fix.')
+
+
+      285 |   await expect(approve).toBeDisabled();
+      286 |   await expect(page.getByRole("button", { name: "Reject", exact: true })).toBeEnabled();
+    > 287 |   await expect(page.getByText("Approve unlocks once every item is resolved and none needs a fix.")).toBeVisible();
+          |                                                                                                     ^
+      288 |   await expect(page.getByText("1 unresolved · 0 of 1 resolved")).toBeVisible();
+      289 |   await expect(page.locator('li[data-status="not_auto_verified"]')).toHaveCount(1);
+      290 |
+        at C:\Users\Misiko\OneDrive\Documents\Project\Cytonn_Weekly\e2e\tests\app.spec.ts:287:101
+
+    Error Context: test-results\app-T09-Company-Updates-ru-aca31-gated-the-decision-is-final\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\app-T09-Company-Updates-ru-aca31-gated-the-decision-is-final\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\app-T09-Company-Updates-ru-aca31-gated-the-decision-is-final\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    tests\app.spec.ts:262:1 › T09 Company Updates: run to done, open the review, Approve is gated, the decision is final 
+  7 did not run
+  8 passed (27.2s)
+EXIT 1

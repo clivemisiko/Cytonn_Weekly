@@ -23,6 +23,7 @@ test("T40 a link in Company Updates is flagged as plain text, and the section ca
     "Investment Updates:\nRead the rates at https://cytonn.example/cmmf-rates. Prices are on nse.co.ke as usual.");
   const card = page.locator('li[data-status="flagged"]');
   await expect(card).toHaveCount(1);
+  await card.getByRole("button", { name: /Show details/ }).click();
   await expect(card).toContainText("Link: https://cytonn.example/cmmf-rates (a web address starting http:// or https://), position 39");
   await expect(card).toContainText("Possible link: nse.co.ke (a domain without http), position 88");
   // Shown as text, never as something to click: no anchor anywhere on the page points at either address.
@@ -39,5 +40,6 @@ test("T41 Company Updates text with no link carries no link flag", async ({ page
   await expect(page.locator('li[data-status="flagged"]')).toHaveCount(0);
   const card = page.locator('li[data-status="not_auto_verified"]');
   await expect(card).toHaveCount(1);
+  await card.getByRole("button", { name: /Show details/ }).click();
   await expect(card).not.toContainText(/link|email address/i);
 });

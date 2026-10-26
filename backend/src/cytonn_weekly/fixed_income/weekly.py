@@ -1204,6 +1204,7 @@ def build_fixed_income_review(
     fetchers = fetchers or Fetchers()
     problems: list[str] = []
     warnings: list[str] = []
+    notices: list[dict[str, Any]] = []   # the bulletin's refused tables as fields; their sentences are in ``warnings`` too
 
     bulletin = inputs.bulletin
     if bulletin is None:
@@ -1219,6 +1220,7 @@ def build_fixed_income_review(
                         f"{week.ending.isoformat()}; figures it does not print for this week are left out.")
     if bulletin is not None:   # a table left out is said once here, whatever each part that needed it goes on to say
         warnings.extend(bulletin.unavailable.values())
+        notices.extend(bulletin.notices)
     rates = try_fetch(on_event, cbk_rates.SOURCE_NAME, fetchers.usd_rates, problems=problems)
     results = try_fetch(on_event, "CBK T-bond results", fetchers.tbonds, *week.value_date_window, problems=problems)
     issue = try_fetch(on_event, "Previous issue on cytonnreport.com", fetchers.previous_issue, week.ending,
@@ -1260,6 +1262,7 @@ def build_fixed_income_review(
         "blocks": numbered(blocks), "pieces_found": len(drafted["pieces"]), "pieces_expected": N_HIGHLIGHTS,
         "shortfall": drafted["shortfall"],
         "warnings": list(drafted["warnings"]) + warnings + inputs.analyst.difference_lines() + problems,
+        "notices": notices,
         "chart_notes": list(CHARTS), "chart_reference": CHART_REFERENCE, "chart_after": CHART_AFTER,
         "summary": compose_summary(blocks),
     }

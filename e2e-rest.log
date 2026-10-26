@@ -1,0 +1,17 @@
+== more
+  9 passed (58.1s)
+== buttons
+  9 passed (36.8s)
+== notes
+  3 passed (11.4s)
+== links
+  1) tests\links.spec.ts:21:1 › T40 a link in Company Updates is flagged as plain text, and the section can still be approved 
+  1 failed
+  1 did not run
+== draftagain
+  5 passed (25.5s)
+== notable
+  12 passed (38.4s)
+== rail
+  8 passed (23.4s)
+== overview

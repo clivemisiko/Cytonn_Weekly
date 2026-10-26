@@ -284,13 +284,13 @@ test("T09 Company Updates: run to done, open the review, Approve is gated, the d
   const approve = page.getByRole("button", { name: "Approve", exact: true });
   await expect(approve).toBeDisabled();
   await expect(page.getByRole("button", { name: "Reject", exact: true })).toBeEnabled();
-  await expect(page.getByText("Approve unlocks once every item is resolved and none needs a fix.")).toBeVisible();
+  await expect(page.getByText("Approve unlocks once every item is resolved and none needs a fix.").first()).toBeVisible();
   await expect(page.getByText("1 unresolved · 0 of 1 resolved")).toBeVisible();
   await expect(page.locator('li[data-status="not_auto_verified"]')).toHaveCount(1);
 
   // Fix needed blocks approval and says why; Accept unlocks it.
   await page.getByRole("radio", { name: "Fix needed" }).click();
-  await expect(page.getByText("Not approvable yet: 1 marked fix needed.")).toBeVisible();
+  await expect(page.getByText("Not approvable yet: 1 marked fix needed.").first()).toBeVisible();
   await expect(approve).toBeDisabled();
   await page.getByRole("radio", { name: "Accept", exact: true }).click();
   await expect(page.getByText("Approvable: every item is resolved and none needs a fix.")).toBeVisible();
