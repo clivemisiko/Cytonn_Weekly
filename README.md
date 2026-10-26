@@ -38,55 +38,23 @@ Endpoints, all under `/api` (see `backend/api/main.py`): `GET /config`, `GET /re
 
 ## Run with Docker
 
-Docker Desktop must be running first (on Windows, start it and wait until it says the engine is running). All commands are run from the repo root.
+Docker Desktop must be running first (on Windows, start it and wait until it says the engine is running). Run from the repo root, in PowerShell. `.env` must hold `CYTONN_DATABASE_URL`: the Docker app uses the same Supabase database as the native one and refuses to start without it (it never falls back to SQLite).
 
-```sh
-cp .env.example .env
+```powershell
+docker compose up -d --build        # build the two images and start them in the background
+docker compose ps                   # both should say "healthy" (web waits for api)
+docker compose logs --tail 50 api   # the API's last 50 lines
+docker compose down                 # stop both
 ```
 
-First-time setup: copies the list of settings to `.env`; fill in the ones you need (skip it if `.env` already exists).
+Then open http://127.0.0.1:5173 (the API is at http://127.0.0.1:8000), the same addresses as a native run. **Run one copy at a time**: stop the native API and `npm run dev` before starting Docker, and `docker compose down` before running natively, or the ports clash. Both are reachable from this machine only: the app has no sign-in, so the ports are published on 127.0.0.1 and must stay there.
 
-```sh
-docker compose up --build
-```
-
-Builds the two images and starts the API and the web app. Then open http://127.0.0.1:3000 (the API is at http://127.0.0.1:8000). Both are reachable from this machine only: the app has no sign-in, so the ports are published on 127.0.0.1 and must stay there.
-
-```sh
-docker compose down
-```
-
-Stops both. The database is kept, in the `cytonn_data` volume.
-
-```sh
-docker compose run --rm api pytest
-```
-
-Runs the test suite inside the API image.
-
-```sh
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
-```
-
-The development override: the source folders are mounted into the containers and both servers reload when a file changes.
-
-The local development model (Ollama) stays on the host; the container reaches it at `http://host.docker.internal:11434`.
-
-## Moving the existing database into Docker
-
-The Docker app keeps its database in the `cytonn_data` volume, which starts empty. To start it from the reviews already saved natively, copy `backend/data/app.db` into the volume once, from the repo root:
-
-```sh
-docker compose run --rm --no-deps -v "./backend/data:/from:ro" api cp /from/app.db /app/data/app.db
-```
-
-It starts a one-off `api` container with `backend/data` mounted read-only at `/from` and copies the file into the volume as the app's own user, so the app can write to it. It overwrites any `app.db` already in the volume.
-
-Chart pictures and series are files under `<data dir>/charts/<run_id>/`, not rows in `app.db`, so that folder must be copied along with `app.db`; a database moved without it leaves existing reviews with no pictures and the Word export marks them "could not be verified".
-
-**Stop both apps first**: the native API (uvicorn) and the Docker one (`docker compose down`). A database copied while either is writing to it can be incomplete.
-
-**After the copy the native app and the Docker app have SEPARATE databases.** A review saved in one is not in the other, and nothing syncs them. `backend/data/app.db` is left as it is.
+- **Files:** `backend/data` is bind-mounted into the API container, so inputs, charts, exports and the search cache are the same files as a native run. There is no Docker volume and nothing to copy.
+- **Secrets:** they reach the container from `.env` at run time only (`env_file`), never an image. Never run `docker compose config` without `--quiet` or `--no-env-resolution`: it prints what `.env` holds.
+- **Web:** the built app is served by nginx (`frontend/nginx.conf`), which proxies `/api` to the API, the run view's live stream included.
+- **Tests** are not in the runtime image. `docker build --target test -t cytonn-api-test backend` then `docker run --rm --network none cytonn-api-test` runs the suite without `.env` or the data folder.
+- **Development override** (`docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build`): source mounted, both servers reload. Updated for nginx but not yet run.
+- The local development model (Ollama) stays on the host; the container reaches it at `http://host.docker.internal:11434`.
 
 ## Drafting provider (Digital Payments)
 
