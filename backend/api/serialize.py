@@ -193,6 +193,16 @@ def section_title(slug: str, report_type: str = WEEKLY) -> str:
     return spec.title if spec else slug
 
 
+def _fix_slots(review: CoordinatorReview, item: Any) -> list[dict[str, str]]:
+    """The uploads that can fix this item, named as the inputs panel names them (weekly/recheck.py); [] for most items."""
+    from cytonn_weekly.weekly import inputs as weekly_inputs, recheck
+
+    if review.report_type != "weekly" or "blocks" not in review.section:
+        return []
+    slots = recheck.fix_slots(review.section.get("section"), review.section, item)
+    return [{"slug": s, "title": weekly_inputs.BY_SLUG[s].title} for s in slots]
+
+
 def serialize_review(review: CoordinatorReview) -> dict[str, Any]:
     items = review.review_items
     counts = {}
@@ -231,5 +241,5 @@ def serialize_review(review: CoordinatorReview) -> dict[str, Any]:
         "section": _serialize_blocks(review) if "blocks" in review.section else _serialize_section(review),
         # The section's summary for the CMS (composed, never drafted): weekly/summaries.py.
         "summary": section_summary(review.section),
-        "review_items": [{"index": n, **item.to_dict()} for n, item in enumerate(items)],
+        "review_items": [{"index": n, **item.to_dict(), "fix_slots": _fix_slots(review, item)} for n, item in enumerate(items)],
     })
