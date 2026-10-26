@@ -2,6 +2,7 @@
 import { DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from "reka-ui";
 import { computed, ref } from "vue";
 import Button from "@/components/ui/Button.vue";
+import { approveHint } from "@/lib/format";
 import type { Decision, Review } from "@/lib/types";
 
 const COPY: Record<Decision, { title: string; body: string; confirm: string }> = {
@@ -28,6 +29,7 @@ const asking = ref<Decision | null>(null);
 // The dialog keeps its words while it fades out after `asking` is cleared.
 const last = ref<Decision>("approved");
 const decided = computed(() => props.review.decision !== null);
+const hint = computed(() => approveHint(props.review.progress, props.review.is_approvable));
 const canApprove = computed(() => props.review.is_approvable && !decided.value);
 
 function ask(decision: Decision) {
@@ -56,7 +58,8 @@ function setOpen(open: boolean) {
         <span class="hidden lg:inline">One decision for the whole section. </span>Once recorded, it cannot be changed.
       </p>
       <div class="flex items-center gap-3">
-        <Button size="lg" :disabled="!canApprove || deciding" @click="ask('approved')">Approve</Button>
+        <Button size="lg" :disabled="!canApprove || deciding" :title="hint ?? undefined" :aria-describedby="hint ? 'approve-hint' : undefined" @click="ask('approved')">Approve</Button>
+        <span v-if="hint" id="approve-hint" class="sr-only">{{ hint }}</span>
         <Button size="lg" variant="outline" :disabled="deciding" @click="ask('rejected')">Reject</Button>
       </div>
     </div>

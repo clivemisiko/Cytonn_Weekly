@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { PhCheckCircle, PhInfo, PhWarning } from "@phosphor-icons/vue";
 import { computed } from "vue";
+import { approveHint } from "@/lib/format";
 import type { Decision, Review } from "@/lib/types";
 import DecisionControls from "./DecisionControls.vue";
 import Notice from "./Notice.vue";
@@ -68,11 +69,7 @@ const fraction = computed(() => (progress.value.total ? progress.value.resolved 
           <span v-else class="flex items-center gap-2 text-warn-fg">
             <PhWarning weight="bold" class="size-4 shrink-0" aria-hidden="true" />
             <span>
-              {{
-                progress.fix_needed
-                  ? `Not approvable yet: ${progress.fix_needed} marked fix needed.`
-                  : "Approve unlocks once every item is resolved and none needs a fix."
-              }}
+              {{ approveHint(progress, false) }}
             </span>
           </span>
         </div>
