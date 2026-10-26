@@ -280,7 +280,13 @@ const key = computed(() => {
         @home="home"
       />
 
-      <ReviewScreen v-else-if="phase.name === 'review'" :initial="phase.review" @close="home" />
+      <ReviewScreen
+        v-else-if="phase.name === 'review'"
+        :initial="phase.review"
+        @close="home"
+        @open="(next) => set({ name: 'review', review: next })"
+        @redraft="async (slug) => set(await fetchStart(slug))"
+      />
     </main>
   </Transition>
 </template>

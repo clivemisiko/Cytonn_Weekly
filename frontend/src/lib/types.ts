@@ -83,6 +83,8 @@ export interface ReviewItem {
   detail: Flag[] | string | null;
   resolution: Resolution;
   resolution_note: string | null;
+  /** The uploads that can fix this item (named as the inputs panel names them); empty or absent for most items. */
+  fix_slots?: { slug: string; title: string }[];
   context: ClaimContext;
 }
 
@@ -357,6 +359,16 @@ export interface ExportStatus {
   dev_mode_label: string | null;
   can_send: boolean;
   file_name: string;
+}
+
+/** What a re-check from an uploaded file did: each changed figure old then new, and what was left as it was. */
+export interface FixResult {
+  changes: { block: string; label: string; old: string; new: string }[];
+  changed_items: number;
+  kept: string[];
+  earlier_run_id: number;
+  slot: string;
+  was_approved: boolean;
 }
 
 /** "This week's inputs" for one report week. */

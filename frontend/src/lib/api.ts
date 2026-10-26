@@ -6,6 +6,7 @@ import type {
   Decision,
   DismissReason,
   ExportStatus,
+  FixResult,
   Notable,
   Overview,
   RejectedDraftNotes,
@@ -195,6 +196,17 @@ export const getChartSeries = (runId: number, chartId: string) =>
 /** Set the tool's chart aside for the team's own (use true) or take that back; the whole review comes back. */
 export const setTeamChart = (runId: number, chartId: string, use: boolean) =>
   request<Review>(`/api/reviews/${runId}/charts/${encodeURIComponent(chartId)}/team-chart`, { method: "PUT", body: JSON.stringify({ use }) });
+
+/**
+ * Check one flagged item against a file: the API re-reads the figures that file feeds (no network, no model), keeps the file
+ * and saves a new undecided review; the earlier one is untouched. A refusal or a failed check changes nothing.
+ */
+export const fixFromInput = (runId: number, index: number, slot: string, file: File) =>
+  request<{ review: Review; result: FixResult }>(
+    `/api/reviews/${runId}/items/${index}/fix-input?slot=${encodeURIComponent(slot)}&filename=${encodeURIComponent(file.name.slice(0, 200))}`,
+    { method: "POST", body: file, headers: { "Content-Type": "application/octet-stream" } },
+    UPLOAD_TIMEOUT_MS,
+  );
 
 export const decide = (runId: number, decision: Decision) =>
   request<Review>(`/api/reviews/${runId}/decide`, { method: "POST", body: JSON.stringify({ decision }) });
