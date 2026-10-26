@@ -4,6 +4,85 @@ Tooling to automate drafting, checking and publishing the Cytonn weekly report.
 
 See [CLAUDE.md](CLAUDE.md) for full project context and the task backlog.
 
+## Architecture & System Design
+
+### What it does
+
+The tool drafts the first version of the weekly Cytonn Weekly report. It pulls data from public sources and from the files the analysts send, maps it into the report's existing format, checks every figure, and hands a coordinator a draft to review instead of a blank page. The tool never approves anything: one coordinator approves each section.
+
+### Process flow
+
+```mermaid
+flowchart LR
+    A[Sources and uploads] --> B[Draft each section]
+    B --> C[Check every figure]
+    C --> D[Coordinator review<br/>approve or reject per section]
+    D --> E[Word summary by email<br/>Digital Payments only]
+    D --> F[Export approved week<br/>as one .docx]
+    F -.not built.-> G[CMS publish<br/>Playwright]
+    G -.not built.-> H[Distribute]
+```
+
+### Components
+
+```mermaid
+flowchart TB
+    subgraph Browser
+        UI[Vue 3 web app<br/>frontend/]
+    end
+    subgraph Backend[backend/]
+        API[FastAPI review API<br/>api/main.py]
+        REG[Section registry<br/>report_types.py, report_sections.py]
+        DRAFT[Drafting layer<br/>fetchers + narrative providers]
+        CHECK[Checking layer<br/>exact-match checkers]
+        STORE[(review_store<br/>SQLite or PostgreSQL)]
+        FILES[(Data folder<br/>inputs, charts, exports)]
+    end
+    subgraph External
+        PUB[CBK, NSE, KNBS, Yahoo Finance,<br/>afx, cytonnreport.com]
+        LLM[Anthropic API + web search<br/>production]
+        DEV[Ollama + Exa<br/>dev only]
+    end
+    UI -->|/api proxy| API
+    API --> REG --> DRAFT
+    DRAFT --> PUB
+    DRAFT --> LLM
+    DRAFT -.dev mode.-> DEV
+    DRAFT --> CHECK --> STORE
+    API <--> STORE
+    API <--> FILES
+```
+
+| Layer | Where | Role |
+| --- | --- | --- |
+| Web app | `frontend/` | Vue 3, Vite, Tailwind, Reka UI. Derives nothing itself: it shows what the API returns. Overview, start screen, run view and review screen. |
+| Review API | `backend/api/` | Stateless FastAPI. Each write loads the review fresh, changes it, saves it and returns the whole review. One draft runs at a time (`draft_slot.py`). No authentication yet. |
+| Section registry | `report_types.py`, `report_sections.py` | One list per report type (weekly, quarterly, half-year, annual, companion). A review's key is (report type, period, section). |
+| Drafting layer | `backend/src/cytonn_weekly/<section>/` | Per-section fetchers for tables, and an LLM provider for narrative, written only from search results with every claim cited. |
+| Checking layer | `checkers/`, `common/checks.py` | Exact-match of every table figure and every claim's figures against the normalized source, with rounding half up. Missing parts become flags. |
+| Review model | `coordinator_review.py`, `review_store.py` | `CoordinatorReview` with one item per figure, claim or missing part. Status (machine) is separate from resolution (coordinator). A decided review is frozen. |
+| Weekly inputs | `weekly/` | Upload store, readers for the workbooks, KCB reports, CBK bulletin and NSE price list (OCR), the analyst inputs form, and the Word export. |
+| Storage | `db.py`, `schema.sql` | SQLite by default, PostgreSQL (Supabase) when `CYTONN_DATABASE_URL` is set. Uploads, charts and exports are files under the data folder. |
+
+### The six weekly sections
+
+Company Updates (the coordinator's pasted text, carried verbatim), Fixed Income, Equities, Real Estate, Digital Payments and Focus of the Week. Digital Payments has its own content shape; every other section is built from generic blocks (`table`, `narrative`, `computed`, `carried`, `supplied`, `unavailable`). Both end as the same `CoordinatorReview`.
+
+### Design decisions
+
+- **Two layers, then a human.** Draft, then check, then one approve or reject per section.
+- **Nothing is invented.** Every figure and claim traces to a source. A part the tool cannot source becomes an `unavailable` block that names the reason and what would unblock it.
+- **Exact match, not a tolerance.** The source is normalized to the draft's display precision and then compared for equality. A mismatch (the draft differs from its source) and "sources disagree" (two sources differ) are different flags.
+- **Analyst inputs are never clean.** A figure typed by an analyst or read from a workbook is shown as such and not auto-verified. A figure read by OCR needs a second source.
+- **Dev mode cannot reach a recipient.** With `CYTONN_LLM_PROVIDER=local` every draft is marked `drafted_by: local:<model>`, the screen and the Word file carry a DEV MODE mark, and email and export refuse to send.
+- **The run view shows only real events.** Builders emit run events (`common/run_events.py`) and the API streams them as Server-Sent Events. There is no simulated progress.
+- **Report types share one pipeline.** Quarterly, half-year, annual and companion reports reuse the same review model, with their own section lists and period rules.
+- **Publishing is browser automation.** Cytonn has granted no CMS API or database access, so publishing is a documented stub (`backend/api/cms_publish.py`) that nothing can reach.
+
+### Not built yet
+
+CMS publish (Playwright, behind SSO), sign-in with Cytonn SSO (a stub), the production-mode drafts (blocked on Anthropic API budget approval), citation verification of drafted claims, and several Markets Review parts that wait on samples or access. [CLAUDE.md](CLAUDE.md) lists each stub with what unblocks it.
+
 ## Setup
 
 The project has two folders: `backend/` (Python: the package in `backend/src/`, the API in `backend/api/`, `backend/scripts/`, `backend/tests/`, `backend/data/`) and `frontend/` (the Vue 3 web app, built with Vite). `.env` stays in the repo root.
