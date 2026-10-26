@@ -58,6 +58,10 @@ function goBack() {
         <PhArrowLeft weight="bold" class="size-4" aria-hidden="true" />
         Back
       </button>
+      <div v-if="back.kind !== 'none'" class="hidden items-center gap-1.5 px-2 text-xs font-medium text-band-muted md:flex">
+        <span class="opacity-40">/</span>
+        <span class="font-semibold text-band-foreground/90 capitalize">{{ backTo === "all sections" ? "Section workspace" : backTo }}</span>
+      </div>
       <div class="ml-auto">
         <ThemeToggle />
       </div>

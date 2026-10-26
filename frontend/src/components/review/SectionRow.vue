@@ -78,7 +78,15 @@ const lists = computed(() =>
         {{ index + 1 }}
       </span>
 
-      <div class="card-interactive min-w-0 space-y-3.5 rounded-xl border border-border bg-card p-4.5 @lg:p-6" :class="state === 'unavailable' && 'bg-muted/40'">
+      <div
+        class="card-interactive min-w-0 space-y-3.5 rounded-xl border border-border bg-card p-4.5 @lg:p-6"
+        :class="[
+          state === 'unavailable' && 'bg-muted/40',
+          state === 'approved' && 'border-l-4 border-l-ok',
+          state === 'in_review' && 'border-l-4 border-l-primary',
+          state === 'rejected' && 'border-l-4 border-l-flag',
+        ]"
+      >
         <div class="flex items-start justify-between gap-4">
           <div class="min-w-0 space-y-2">
             <h2 :id="`sec-${s.slug}`" class="text-lg font-semibold tracking-tight text-foreground">{{ s.title }}</h2>

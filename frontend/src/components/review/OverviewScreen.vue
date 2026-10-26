@@ -94,6 +94,49 @@ const flagged = computed(() =>
         analysis, so none can be drafted yet; the weekly Focus of the Week can still draft a cited piece on the same topic.
       </Notice>
 
+      <!-- Visual Pipeline Progress Stepper -->
+      <div class="rounded-xl border border-border bg-card p-4.5 shadow-xs">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <span class="eyebrow">Publication Pipeline</span>
+            <span
+              class="rounded-full px-2 py-0.5 text-xs font-semibold"
+              :class="approved === overview.sections.length ? 'bg-ok/15 text-ok-fg' : 'bg-primary/10 text-primary-fg'"
+            >
+              {{ approved }} of {{ overview.sections.length }} approved
+            </span>
+          </div>
+          <span class="font-mono text-xs text-muted-foreground">
+            {{ approved === overview.sections.length ? '✓ Ready for Word Export' : `${overview.sections.length - approved} section${overview.sections.length - approved === 1 ? '' : 's'} remaining` }}
+          </span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 text-xs font-medium sm:grid-cols-4">
+          <div class="flex items-center gap-2 rounded-lg border border-border/80 bg-muted/40 p-2.5">
+            <span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-foreground font-mono text-[10px] font-bold text-background">1</span>
+            <span class="truncate">Inputs & Data</span>
+          </div>
+          <div class="flex items-center gap-2 rounded-lg border border-border/80 bg-muted/40 p-2.5">
+            <span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-foreground font-mono text-[10px] font-bold text-background">2</span>
+            <span class="truncate">AI Research & Draft</span>
+          </div>
+          <div class="flex items-center gap-2 rounded-lg border border-primary/40 bg-primary/5 p-2.5 text-primary-fg">
+            <span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary font-mono text-[10px] font-bold text-primary-invert">3</span>
+            <span class="truncate font-semibold">Review & Verify</span>
+          </div>
+          <div
+            class="flex items-center gap-2 rounded-lg border p-2.5"
+            :class="exportStatus?.ready ? 'border-ok/40 bg-ok/10 text-ok-fg' : 'border-border/80 bg-muted/20 text-muted-foreground'"
+          >
+            <span
+              class="flex size-5 shrink-0 items-center justify-center rounded-full font-mono text-[10px] font-bold"
+              :class="exportStatus?.ready ? 'bg-ok text-ok-invert' : 'bg-muted-foreground/30 text-foreground'"
+            >4</span>
+            <span class="truncate">Word Export</span>
+          </div>
+        </div>
+      </div>
+
       <CollapsibleRoot v-model:open="groupOpen" class="space-y-4">
         <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           <h2 class="text-base font-semibold">

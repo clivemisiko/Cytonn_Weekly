@@ -14,6 +14,14 @@ export const router = createRouter({
       beforeEnter: (to) => (OVERVIEW_PARAMS.some((name) => to.query[name] !== undefined) ? { path: "/overview", query: to.query, replace: true } : true),
     },
     { path: "/overview", component: () => import("./pages/OverviewPage.vue") },
+    {
+      path: "/sections/:slug",
+      redirect: (to) => ({ path: "/overview", query: { ...to.query, section: to.params.slug } }),
+    },
+    {
+      path: "/reviews/:reviewId",
+      redirect: (to) => ({ path: "/overview", query: { ...to.query, review: to.params.reviewId } }),
+    },
     { path: "/runs/:runId", component: () => import("./pages/RunPage.vue"), props: true },
     { path: "/:rest(.*)*", component: () => import("./pages/NotFoundPage.vue") },
   ],
