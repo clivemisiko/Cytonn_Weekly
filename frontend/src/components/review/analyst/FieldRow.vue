@@ -11,10 +11,6 @@ import Differences from "./Differences.vue";
 import OriginChip from "./OriginChip.vue";
 import SourceLine from "./SourceLine.vue";
 
-/**
- * One typed field. It is saved when the cursor leaves it; emptied, the workbook's value (if any) is used again.
- * The panel keys it on the value the API holds, so a save that was kept starts it afresh and a refused one keeps the typing.
- */
 const props = defineProps<{
   item: AnalystField;
   disabled: boolean;

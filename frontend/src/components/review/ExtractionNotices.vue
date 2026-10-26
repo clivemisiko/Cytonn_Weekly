@@ -4,7 +4,6 @@ import { groupNotices } from "@/lib/extraction";
 import type { ExtractionNotice } from "@/lib/types";
 import ExtractionErrorCard from "./ExtractionErrorCard.vue";
 
-/** The parts of input files that could not be read, grouped under the file they came from; each group folds. */
 const props = defineProps<{ notices: ExtractionNotice[] }>();
 const groups = computed(() => groupNotices(props.notices));
 </script>

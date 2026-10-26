@@ -19,7 +19,6 @@ import NotablePanel from "./NotablePanel.vue";
 import Notice from "./Notice.vue";
 import RedraftDialog from "./RedraftDialog.vue";
 
-/** The weekly sections worked out from the week's uploaded inputs. */
 const USES_INPUTS = ["fixed_income", "equities"];
 const MAX_TEXT = 10_000;
 

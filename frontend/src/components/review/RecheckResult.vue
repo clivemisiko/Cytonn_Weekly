@@ -5,11 +5,6 @@ import { changeLine, keptNames } from "@/lib/fixfile";
 import type { FixResult } from "@/lib/types";
 import Notice from "./Notice.vue";
 
-/**
- * What a re-check from an uploaded file did, shown at the top of the new review: each changed figure (old, then new), what was
- * kept from the earlier version, and the note that the text around changed figures was not rewritten. Focus moves here when it
- * appears, so a keyboard or screen reader user lands on the result. It lives in the draft's column, never in a foldable panel.
- */
 const props = defineProps<{ result: FixResult }>();
 defineEmits<{ redraft: [] }>();
 

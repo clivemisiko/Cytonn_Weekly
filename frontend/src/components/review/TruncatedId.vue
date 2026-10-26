@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { truncateId } from "@/lib/format";
 
-/** A long hash or id in monospace, shortened to first 8 + last 4; the full value is the tooltip and the screen-reader label. */
 defineProps<{ value: string }>();
 </script>
 

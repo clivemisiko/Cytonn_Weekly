@@ -1,4 +1,3 @@
-// Kept apart from theme.ts so vite.config.ts can import it without the browser code.
 export const THEME_KEY = "cytonn-theme";
 
 /**

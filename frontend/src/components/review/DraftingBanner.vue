@@ -5,7 +5,6 @@ import { elapsed, friendlyTime } from "@/lib/format";
 import type { Drafting } from "@/lib/types";
 import Notice from "./Notice.vue";
 
-/** Overview-level notice: which section is drafting, since when, and whether it looks stuck. */
 const props = defineProps<{ drafting: Drafting }>();
 const seconds = useLiveElapsed(() => props.drafting);
 </script>

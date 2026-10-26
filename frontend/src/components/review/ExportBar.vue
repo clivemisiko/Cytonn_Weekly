@@ -12,15 +12,6 @@ const STATE_LABEL: Record<string, string> = {
   not_drafted: "Not drafted",
 };
 
-/**
- * "Export weekly report": the approved week as one Word file, in the real issue's order. Enabled only when the API says
- * every weekly section of this report is approved; until then it lists each section's state. Nothing is sent or
- * published: the file is downloaded to the coordinator.
- *
- * It reads the export's status and tells its screen (`status`), because one thing in that status is not this bar's to show:
- * that the export carries the DEV MODE watermark. That is a warning, so the overview shows it in its feed beside the dev-mode
- * notice, where folding the panel this bar sits in cannot hide it.
- */
 const props = defineProps<{ period: string; refreshKey: string }>();
 const emit = defineEmits<{ status: [status: ExportStatus | null]; error: [message: string | null] }>();
 const status = ref<ExportStatus | null>(null);

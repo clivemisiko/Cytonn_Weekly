@@ -1,5 +1,4 @@
 <script setup lang="ts">
-/** Source, where it is printed and the range the API accepts: the same three facts under every item. */
 defineProps<{ source: string; usedIn: string; expected?: string }>();
 </script>
 

@@ -2,7 +2,6 @@
 import { STATUS_META } from "@/lib/format";
 import type { Status } from "@/lib/types";
 
-/** One count for one status, in the colour, glyph and border style the item cards use. `sub` is the scorecard's second line. */
 defineProps<{ status: Status; value: number; sub?: string }>();
 </script>
 

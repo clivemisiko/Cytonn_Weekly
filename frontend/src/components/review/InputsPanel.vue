@@ -10,7 +10,6 @@ import InputSlot from "./InputSlot.vue";
 import Notice from "./Notice.vue";
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-/** The weekday of an ISO date, read as a calendar date (no time zone shift). */
 const weekdayOf = (iso: string) => WEEKDAYS[new Date(`${iso}T00:00:00Z`).getUTCDay()];
 
 /**

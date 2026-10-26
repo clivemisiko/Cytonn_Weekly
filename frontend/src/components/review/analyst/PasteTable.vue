@@ -8,7 +8,6 @@ import type { AnalystTable } from "@/lib/types";
 import ConfirmBox from "./ConfirmBox.vue";
 import TableFrame from "./TableFrame.vue";
 
-/** A table pasted as lines (rank, fund, rate). The API reads the lines; this shows the rows it kept. */
 const props = defineProps<{ item: AnalystTable; disabled: boolean }>();
 const emit = defineEmits<{ save: [text: string | null]; dirty: [dirty: boolean]; confirm: [] }>();
 

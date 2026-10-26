@@ -8,12 +8,6 @@ const FIELD =
   "flex h-10 w-full rounded-md border border-input bg-card px-3 text-sm transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-60 aria-invalid:border-flag aria-invalid:ring-3 aria-invalid:ring-flag/20";
 const CARET = "pointer-events-none absolute top-1/2 right-3 size-3.5 -translate-y-1/2 text-muted-foreground";
 
-/**
- * Which report the overview shows: the weekly (the default), a quarterly, half-year or annual Markets Review, or a
- * companion research report. The period is part of every review's key, so Q3'2026 Fixed Income and a weekly Fixed
- * Income are different reviews. The API normalizes and validates the period; this only sends what was typed.
- * The overview keys this component on the report on screen, so a switch starts it afresh.
- */
 const props = defineProps<{
   current: ReportChoice;
   types: ReportTypeInfo[];

@@ -7,7 +7,6 @@ import { STATUS_META, STATUS_ORDER } from "@/lib/format";
 import type { Resolution, Review, Status } from "@/lib/types";
 import ReviewItemCard from "./ReviewItemCard.vue";
 
-/** Review items grouped Flagged, Not auto-verified, Clean. Clean starts collapsed: it is coverage, not work. */
 const props = defineProps<{
   review: Review;
   locked: boolean;

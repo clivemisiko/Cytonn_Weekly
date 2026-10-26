@@ -8,12 +8,6 @@ import { shell } from "@/lib/shell";
 import type { InputSlot, Review, ReviewItem } from "@/lib/types";
 import RedraftDialog from "./RedraftDialog.vue";
 
-/**
- * "Add the missing file" / "Replace the file", on a flagged item whose cause is an input file. The reviewer picks the
- * file (asked which one first when two inputs feed the item, and warned first when the section is approved); the API
- * checks it, re-reads the figures that file feeds and saves a new, undecided review, which then opens in place of this
- * one. The upload and the re-check are one request, so the card says "uploading and re-checking" while it runs.
- */
 const props = defineProps<{ review: Review; item: ReviewItem }>();
 const openReview = inject(OPEN_REVIEW, null);
 

@@ -4,10 +4,6 @@ import { computed } from "vue";
 import { RESOLUTION_CHIPS, STATUS_META } from "@/lib/format";
 import type { Status } from "@/lib/types";
 
-/**
- * The one pill for a review item's checker status (Flagged, Not auto-verified, Clean) or the coordinator's resolution
- * (Unresolved, Accepted, Fix needed). Each differs by shape (glyph, dashed edge, icon) as well as colour.
- */
 const props = defineProps<{ kind: Status | "none" | "accept" | "fix_needed" }>();
 const status = computed(() => (props.kind in STATUS_META ? (props.kind as Status) : null));
 const RES = {

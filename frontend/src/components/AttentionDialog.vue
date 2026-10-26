@@ -13,12 +13,6 @@ import { nextTick, ref, watch } from "vue";
 import Button from "@/components/ui/Button.vue";
 import { canShow, dialogProblem, dismiss, goTo } from "@/lib/attention";
 
-/**
- * The one alert dialog for an action that failed as a whole (lib/attention.ts places which problems open it). It says
- * only the problem's headline: the full sentence stays on the page, once. "Show me" goes to the place the problem
- * points at; it is not offered when that place is not on the page or has no box (a folded panel). A second problem
- * replaces the first; dialogs never stack. Mounted once, in App.vue, and portalled to the body (never in the rail).
- */
 const showable = ref(false);
 // Where focus goes back on Close: what had it when the dialog opened, if it is still there and usable. A button that
 // disables itself while it works (Draft) has already lost focus to the page body by then; focus then goes to the problem.

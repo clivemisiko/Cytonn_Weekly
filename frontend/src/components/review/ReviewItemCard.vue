@@ -10,7 +10,6 @@ import ResolutionControl from "./ResolutionControl.vue";
 import SeverityPill from "./SeverityPill.vue";
 import TextWithIds from "./TextWithIds.vue";
 
-/** One review item: its status, what the checker found, and the coordinator's resolution and note. */
 const props = defineProps<{
   /** The group shows this item's explanation once, under its header, so the card leaves it out. */
   sharedDetail?: string | null;

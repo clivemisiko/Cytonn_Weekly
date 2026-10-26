@@ -10,7 +10,6 @@ import Numeral from "./Numeral.vue";
 import PartsLine from "./PartsLine.vue";
 import Warnings from "./Warnings.vue";
 
-/** The drafted section (the weekly Digital Payments shape), for context while resolving items: highlights, the table, the outlook. */
 const props = defineProps<{ review: Review; section: Section }>();
 const highlights = computed(() => props.section.items.filter((i): i is HighlightItem => i.kind === "highlight"));
 const table = computed(() => props.section.items.find((i): i is StockTableItem => i.kind === "stock_table"));

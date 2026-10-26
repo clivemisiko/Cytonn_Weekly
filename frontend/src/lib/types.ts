@@ -1,5 +1,3 @@
-// The JSON the FastAPI layer serves (api/serialize.py). The web app derives nothing the API already knows.
-
 export type Status = "flagged" | "not_auto_verified" | "clean";
 export type Resolution = "accept" | "fix_needed" | null;
 export type ItemKind =

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import Notice from "../Notice.vue";
 
-/** Where a typed value and the uploaded workbook disagree, line by line. */
 defineProps<{ lines: string[] }>();
 </script>
 

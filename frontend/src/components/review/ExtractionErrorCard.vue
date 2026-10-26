@@ -2,11 +2,6 @@
 import { PhWarning } from "@phosphor-icons/vue";
 import TruncatedId from "./TruncatedId.vue";
 
-/**
- * One part of an input file that could not be read, as fields instead of one long sentence: where, what went wrong, what it
- * means for the draft and (when there is real text for it) the next step. The raw detail and the file's id are in a native
- * disclosure, closed by default. Every extraction error on every section renders through this card.
- */
 defineProps<{
   /** The file it came from; left out when a group header already names it. */
   source?: string;

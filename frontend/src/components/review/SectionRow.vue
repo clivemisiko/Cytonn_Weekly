@@ -16,14 +16,6 @@ const CHIP: Record<SectionState, { label: string; className: string; glyph?: str
 };
 const RING = 2 * Math.PI * 18; // the progress ring's circumference (radius 18 in a 44-unit box)
 
-/**
- * One section's card on the overview, in the issue's order: the section's number in a round badge outside the card, then
- * its title, its state and what is known about its latest run, a summary line, what is flagged and how many charts
- * the real issue carries, and the actions. Everything shown comes from the overview's payload for the section; nothing
- * here is worked out or fetched. What a person must act on is never cut: the reason a section is unavailable, what
- * unblocks it, the sentence about the last review, and the flagged count are always shown in full. "Show more" only
- * opens the section's own headings, its charts and what is already built.
- */
 const props = defineProps<{
   s: SectionSummary;
   index: number;
@@ -138,7 +130,7 @@ const lists = computed(() =>
                 :stroke-dashoffset="RING * (1 - fraction)"
               />
             </svg>
-            <span class="absolute inset-0 grid place-items-center font-mono text-xs font-semibold" aria-hidden="true">{{ run.progress.resolved }}/{{ run.progress.total }}</span>
+            <span class="absolute inset-0 grid place-items-center font-mono text-xs font-semibold" aria-hidden="true">{{ Math.floor(fraction * 100) }}%</span>
           </div>
         </div>
 

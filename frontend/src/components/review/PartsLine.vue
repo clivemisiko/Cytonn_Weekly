@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
 
-/** Where a piece came from, as one quiet line of facts separated by dots; empty facts are left out. */
 const props = defineProps<{ parts: { text: string; style?: "name" | "mono" }[] }>();
 const shown = computed(() => props.parts.filter((p) => p.text));
 </script>

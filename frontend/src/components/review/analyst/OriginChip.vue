@@ -12,7 +12,6 @@ const ORIGIN = {
   empty: { icon: PhQuestion, box: "border-dashed border-input text-muted-foreground" },
 } as const;
 
-/** Where an item's value comes from: typed here, the uploaded workbook, both and different, or nowhere. By shape as well as colour. */
 defineProps<{ origin: Origin }>();
 </script>
 

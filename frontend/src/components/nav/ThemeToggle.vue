@@ -10,11 +10,6 @@ const OPTIONS = {
   system: { label: "System", icon: PhMonitor },
 } as const;
 
-/**
- * Light | Dark | System, as one radio group on the top bar (arrow keys move between them, one tab stop). The current
- * choice is shown three ways, never by colour alone: the filled icon in a framed box, the word beside the group from
- * the sm breakpoint up, and the group's own name ("Theme: Dark").
- */
 // The page's own attribute is the truth (the inline script may have set it before this ran).
 const choice = ref<ThemeChoice>(currentTheme());
 onUnmounted(subscribeTheme(() => (choice.value = currentTheme())));

@@ -18,10 +18,6 @@ const COPY: Record<Decision, { title: string; body: string; confirm: string }> =
   },
 };
 
-/**
- * The section's one decision, as it sits in the sticky status bar: Approve, Reject and the warning that the
- * decision is final, or (once decided) the way back; the status bar's message states the outcome. Each choice is confirmed in a dialog.
- */
 const props = defineProps<{ review: Review; deciding: boolean; onDecide: (decision: Decision) => Promise<boolean> }>();
 const emit = defineEmits<{ close: [] }>();
 

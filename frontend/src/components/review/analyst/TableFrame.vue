@@ -7,10 +7,6 @@ import Differences from "./Differences.vue";
 import OriginChip from "./OriginChip.vue";
 import SourceLine from "./SourceLine.vue";
 
-/**
- * What every typed table has around its editor: the heading with its origin chip, help and source above (TableHead in
- * analyst-panel.tsx), and the workbook reference, warnings and differences below (TableNotes). The editor is the slot.
- */
 const props = defineProps<{ item: AnalystTable; count: number; typed: boolean }>();
 const origin = computed(() => tableOrigin(props.item));
 const rows = computed(() => `${props.count} row${props.count === 1 ? "" : "s"}`);

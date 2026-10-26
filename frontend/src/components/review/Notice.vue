@@ -3,7 +3,6 @@ import { PhInfo, PhWarning, PhWarningCircle } from "@phosphor-icons/vue";
 import { cn } from "cn";
 import { useAttrs } from "vue";
 
-/** One alert box for the whole app: flag for errors, warn for cautions, info for plain notes. */
 const TONES = {
   flag: { box: "border-flag/40 bg-flag/10 text-flag-fg", icon: PhWarningCircle },
   warn: { box: "border-warn/40 bg-warn/10 text-warn-fg", icon: PhWarning },

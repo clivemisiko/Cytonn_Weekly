@@ -9,11 +9,6 @@ import type { ChartBlock, ChartSeriesFile, Review } from "@/lib/types";
 import Notice from "./Notice.vue";
 import Numeral from "./Numeral.vue";
 
-/**
- * One chart the tool draws from the analyst workbook: the picture, the facts it rests on, the rows left out of the series and the
- * plotted points on request. Every notice about the chart is here, in the draft's column, or in the review items beside it; none
- * is in a panel that folds. The one choice it offers is "Use the team's own chart", which the parent saves with the review.
- */
 const props = defineProps<{ review: Review; block: ChartBlock; onTeamChart: (chartId: string, use: boolean) => Promise<boolean> }>();
 
 const uid = useId();

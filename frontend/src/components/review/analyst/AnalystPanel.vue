@@ -12,12 +12,6 @@ import FieldRow from "./FieldRow.vue";
 import GridTable from "./GridTable.vue";
 import PasteTable from "./PasteTable.vue";
 
-/**
- * "Weekly analyst inputs": the figures only the analysts hold, typed for one report week when no workbook is sent. The
- * API owns the form (fields, units, ranges, source labels) and checks every value; this renders what it returns and
- * shows a refusal in its words. An uploaded workbook prefills each item, a typed value overrides it, and any difference
- * is listed here and again for the reviewer. Derived figures are never typed: the draft works them out.
- */
 const props = defineProps<{
   /** The Friday the report week ends on (ISO date). */
   week: string;

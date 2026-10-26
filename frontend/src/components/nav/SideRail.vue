@@ -19,18 +19,6 @@ import { reportName } from "@/lib/format";
 import { mayLeave, useBackTarget } from "@/lib/nav";
 import { type RailSection, type RailState, shell } from "@/lib/shell";
 
-/**
- * The rail on the left of every screen but the start page: where you are (the report and week, the mode), the way back to
- * the overview, and the report's sections with their state. It reads everything from `lib/shell.ts`, which holds the
- * overview's own payload, so a state here is the state on the overview's cards, or the neutral mark when it is not known to
- * be current. State is shown three ways, never by colour alone: the icon's shape, the tooltip and screen-reader text.
- *
- * Going anywhere from here asks first when something typed is unsaved (the same `mayLeave` as Home and Back). The
- * sections open only where the overview page is on screen: on the run view they are inactive, as is the one on screen.
- *
- * From 1366px wide it is a full rail; from 768px it is a narrow strip of icons that a button expands over the page;
- * below 768px it is not shown (the top bar's Home and Back are all a phone has, as before).
- */
 const router = useRouter();
 const back = useBackTarget();
 const open = ref(false); // the narrow strip expanded over the page

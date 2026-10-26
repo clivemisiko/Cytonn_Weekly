@@ -9,15 +9,6 @@ import ThemeToggle from "./ThemeToggle.vue";
 const CONTROL =
   "inline-flex h-10 items-center gap-2 rounded-md px-3 text-sm font-semibold text-band-foreground outline-none transition-colors duration-150 hover:bg-band-foreground/10 focus-visible:ring-2 focus-visible:ring-band-muted focus-visible:ring-inset disabled:cursor-not-allowed disabled:text-band-muted/60 disabled:hover:bg-transparent aria-[current=page]:text-band-muted";
 
-/**
- * The one bar at the top of every page, always in view while the page scrolls: Home, Back and the theme. It is the
- * band's colour, so it reads as the top edge of the masthead under it, and it is 44px tall (--topbar-h in
- * styles.css), which everything that sticks below it offsets by.
- *
- * Home always goes to the start screen. Back goes where the page on screen says (lib/nav.ts): its own parent, or
- * Home when it has none; on the start screen it is disabled, not hidden. Neither ever leaves the app. Both ask first
- * when the page holds unsaved edits.
- */
 const router = useRouter();
 const route = useRoute();
 const back = useBackTarget();
