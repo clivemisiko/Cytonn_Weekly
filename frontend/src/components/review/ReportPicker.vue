@@ -66,8 +66,11 @@ const hint = computed(() => {
 </script>
 
 <template>
-  <form :aria-labelledby="`${id}-title`" class="@container rounded-lg border bg-card p-4 sm:p-6" @submit.prevent="apply">
-    <h2 :id="`${id}-title`" class="eyebrow pb-3">Report</h2>
+  <form :aria-labelledby="`${id}-title`" class="@container rounded-xl border border-border bg-card p-4.5 shadow-xs sm:p-6" @submit.prevent="apply">
+    <h2 :id="`${id}-title`" class="eyebrow flex items-center gap-2 pb-3">
+      <span class="size-1.5 rounded-full bg-primary" aria-hidden="true" />
+      Report
+    </h2>
     <div class="grid grid-cols-1 items-end gap-4 @min-[30rem]:grid-cols-2 @min-[41rem]:grid-cols-[minmax(0,16rem)_minmax(0,14rem)_auto]">
       <div class="space-y-1">
         <label :for="`${id}-type`" class="text-sm font-semibold">Report type</label>

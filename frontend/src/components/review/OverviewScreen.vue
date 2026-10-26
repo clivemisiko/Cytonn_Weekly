@@ -81,9 +81,7 @@ const flagged = computed(() =>
         :kinds="overview.companion_kinds"
         :on-apply="onReport"
       />
-      <Notice v-if="config.dev_mode" role="alert" class="font-semibold">
-        CYTONN_LLM_PROVIDER=local: DEV MODE. Drafts from the local model are NOT FOR PUBLICATION.
-      </Notice>
+      
       <Notice v-if="exportStatus?.is_dev_draft" role="alert" class="font-semibold">
         {{ exportStatus.dev_mode_label }} The export carries a DEV MODE watermark on every page and must not be sent or published ({{ exportStatus.dev_sections.join(", ") }}).
       </Notice>
@@ -128,10 +126,10 @@ const flagged = computed(() =>
     </div>
 
     <template #aside>
-      <dl role="group" aria-label="Sections by state" class="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border @xl:grid-cols-5">
-        <div v-for="[label, value] in tally" :key="label" class="flex flex-col gap-1 bg-card px-4 py-3 last:col-span-2 @xl:last:col-span-1">
+      <dl role="group" aria-label="Sections by state" class="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border shadow-xs @xl:grid-cols-5">
+        <div v-for="[label, value] in tally" :key="label" class="flex flex-col gap-1.5 bg-card px-4 py-3.5 transition-colors hover:bg-muted/30 last:col-span-2 @xl:last:col-span-1">
           <dt class="eyebrow">{{ label }}</dt>
-          <dd class="font-mono text-xl font-semibold">{{ value }}<span class="text-sm font-medium text-muted-foreground"> / {{ overview.sections.length }}</span></dd>
+          <dd class="font-mono text-xl font-bold tracking-tight text-foreground">{{ value }}<span class="text-xs font-normal text-muted-foreground"> / {{ overview.sections.length }}</span></dd>
         </div>
       </dl>
       <ExportBar

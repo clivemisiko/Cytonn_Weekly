@@ -200,8 +200,8 @@ const status = computed(() => {
         <section aria-labelledby="steps-title">
           <h2 id="steps-title" class="eyebrow pb-2">Steps</h2>
           <!-- Empty until the first event arrives: no placeholder moves while nothing has happened. -->
-          <ol role="log" aria-label="Steps of this draft" class="rounded-lg border bg-card" :class="lines.length === 0 && 'hidden'">
-            <li v-for="line in lines" :key="line.key" class="flex items-start gap-3 border-b px-4 py-3 last:border-b-0" :class="!reduced && 'rise-in'">
+          <ol role="log" aria-label="Steps of this draft" class="rounded-xl border border-border bg-card shadow-xs overflow-hidden" :class="lines.length === 0 && 'hidden'">
+            <li v-for="line in lines" :key="line.key" class="flex items-start gap-3 border-b border-border/60 px-4 py-3 last:border-b-0" :class="!reduced && 'rise-in'">
               <span v-if="line.mark === 'failed'" class="state-flagged" aria-hidden="true"><span class="glyph">!</span></span>
               <span v-else-if="line.mark === 'skipped'" :class="[BOX, 'border border-dashed border-input text-muted-foreground']" aria-hidden="true">
                 <PhMinus weight="bold" class="size-3" />
@@ -225,10 +225,10 @@ const status = computed(() => {
         <section
           v-if="final?.kind === 'run_finished'"
           aria-labelledby="result-title"
-          class="space-y-4 rounded-lg border border-t-[3px] border-t-primary bg-card p-6"
+          class="space-y-4 rounded-xl border border-border border-t-[3px] border-t-primary bg-card p-6 shadow-sm"
           :class="!reduced && 'rise-in'"
         >
-          <h2 id="result-title" class="text-lg font-semibold">Draft ready for review</h2>
+          <h2 id="result-title" class="text-lg font-semibold tracking-tight text-foreground">Draft ready for review</h2>
           <Notice v-if="run?.is_dev_draft && run.dev_mode_label" role="alert" class="font-semibold">{{ run.dev_mode_label }}</Notice>
           <div role="group" aria-label="Review items by status" class="grid grid-cols-1 gap-3 @min-[34rem]:grid-cols-3">
             <CountTile v-for="s in STATUS_ORDER" :key="s" :status="s" :value="final.counts?.[s] ?? 0" />

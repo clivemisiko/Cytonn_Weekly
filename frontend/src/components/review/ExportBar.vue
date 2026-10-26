@@ -60,11 +60,11 @@ const iconOf = (state: string) => (state === "approved" ? PhCheck : state === "r
 </script>
 
 <template>
-  <section v-if="status !== null || error" aria-labelledby="export-title" class="space-y-3 rounded-lg border bg-card p-4">
+  <section v-if="status !== null || error" aria-labelledby="export-title" class="space-y-3.5 rounded-xl border border-border bg-card p-4.5 shadow-xs">
     <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
       <div class="min-w-0 space-y-1">
-        <h2 id="export-title" class="text-base font-semibold">Export weekly report</h2>
-        <p class="text-sm text-muted-foreground">
+        <h2 id="export-title" class="text-base font-semibold tracking-tight text-foreground">Export weekly report</h2>
+        <p class="text-sm leading-relaxed text-muted-foreground">
           {{
             status?.ready
               ? "Every section is approved. The Word file has the six sections in the issue’s order, tables, chart placeholders and each section’s summary for the CMS."
@@ -72,7 +72,7 @@ const iconOf = (state: string) => (state === "approved" ? PhCheck : state === "r
           }}
         </p>
       </div>
-      <Button size="lg" :disabled="!status?.ready || busy" @click="download">
+      <Button size="lg" :disabled="!status?.ready || busy" :class="status?.ready && 'brand-dot font-semibold'" @click="download">
         <PhDownloadSimple weight="bold" data-icon="inline-start" aria-hidden="true" />
         {{ busy ? "Preparing…" : "Export weekly report" }}
       </Button>
@@ -81,7 +81,7 @@ const iconOf = (state: string) => (state === "approved" ? PhCheck : state === "r
       <li
         v-for="s in status.sections"
         :key="s.slug"
-        class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium"
+        class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium shadow-2xs transition-colors"
         :class="
           s.state === 'approved'
             ? 'border-ok/40 bg-ok/10 text-ok-fg'

@@ -52,9 +52,9 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
 </script>
 
 <template>
-  <section aria-labelledby="draft-title" class="min-w-0 rounded-lg border bg-card [overflow-wrap:anywhere]">
-    <div class="flex flex-col gap-3 px-4 py-4 sm:px-6">
-      <h2 id="draft-title" class="text-lg font-semibold">Drafted section: {{ weekRange(section.week_start, section.week_end) }}</h2>
+  <section aria-labelledby="draft-title" class="min-w-0 rounded-xl border border-border bg-card shadow-xs [overflow-wrap:anywhere]">
+    <div class="flex flex-col gap-3 px-4 py-5 sm:px-6">
+      <h2 id="draft-title" class="text-lg font-semibold tracking-tight text-foreground">Drafted section: {{ weekRange(section.week_start, section.week_end) }}</h2>
       <p v-if="section.topic" class="text-sm"><span class="eyebrow mr-2">Topic</span>{{ section.topic }}</p>
       <div class="space-y-2 empty:hidden">
         <Notice v-if="review.is_dev_draft && review.dev_mode_label" role="alert" class="font-semibold">{{ review.dev_mode_label }}</Notice>

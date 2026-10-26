@@ -104,9 +104,9 @@ const ITEM =
         <PhSidebarSimple weight="bold" class="size-5" aria-hidden="true" />
       </button>
 
-      <div v-if="shell.report.value" class="space-y-1 rounded-lg border bg-background p-3" :class="!open && 'hidden min-[1366px]:block'">
+      <div v-if="shell.report.value" class="space-y-1 rounded-xl border border-border/80 bg-background/80 p-3 shadow-2xs" :class="!open && 'hidden min-[1366px]:block'">
         <p class="eyebrow">Report</p>
-        <p class="text-sm font-semibold">{{ reportName(shell.report.value.title, shell.report.value.period) }}</p>
+        <p class="text-sm font-semibold tracking-tight text-foreground">{{ reportName(shell.report.value.title, shell.report.value.period) }}</p>
         <p v-if="mode" class="text-xs text-muted-foreground">{{ mode }}</p>
         <button v-if="hereSlug && shell.toOverview.value" type="button" :class="['text-xs', LINK]" @click="toOverview">Change report</button>
       </div>
@@ -154,12 +154,12 @@ const ITEM =
         </CollapsibleContent>
       </CollapsibleRoot>
 
-      <div v-if="showProgress" class="mt-auto space-y-2 rounded-lg border bg-muted/50 p-2 min-[1366px]:p-3">
+      <div v-if="showProgress" class="mt-auto space-y-2 rounded-xl border border-border/80 bg-muted/40 p-2.5 shadow-2xs min-[1366px]:p-3">
         <p class="text-center font-mono text-xs font-semibold" :class="open ? 'hidden' : 'min-[1366px]:hidden'" aria-hidden="true">
           {{ shell.approved.value === null ? "?" : shell.approved.value }}/{{ shell.total.value }}
         </p>
         <div :class="open ? '' : 'sr-only min-[1366px]:not-sr-only'" class="space-y-2">
-          <p class="text-sm font-semibold">
+          <p class="text-sm font-semibold tracking-tight text-foreground">
             {{ shell.approved.value === null ? "Approved count not known" : `${shell.approved.value} of ${shell.total.value} sections approved` }}
           </p>
           <div
@@ -171,7 +171,11 @@ const ITEM =
             :aria-valuenow="shell.approved.value"
             class="h-1.5 overflow-hidden rounded-full bg-border"
           >
-            <div class="h-full rounded-full bg-foreground" :style="{ width: `${shell.total.value ? (shell.approved.value / shell.total.value) * 100 : 0}%` }" />
+            <div
+              class="h-full rounded-full transition-all duration-300"
+              :class="shell.approved.value === shell.total.value ? 'bg-ok-fg' : 'bg-foreground'"
+              :style="{ width: `${shell.total.value ? (shell.approved.value / shell.total.value) * 100 : 0}%` }"
+            />
           </div>
           <p v-if="shell.report.value?.type === 'weekly'" class="text-xs text-muted-foreground">
             {{
