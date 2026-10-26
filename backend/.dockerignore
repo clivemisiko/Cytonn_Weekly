@@ -8,3 +8,9 @@ data/
 screenshots
 *.log
 .venv
+# Nothing of the repo's own state, nor any other database, reaches the build context.
+.git
+**/*.db
+**/*.sqlite*
+node_modules
+e2e

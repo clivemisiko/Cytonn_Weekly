@@ -1,10 +1,10 @@
 # Development override: source folders are mounted into the containers and both servers
-# reload on change.
+# reload on change. Updated 2026-10-23 for the nginx web image; not yet run.
 #
 #   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 #
-# Ports stay on 127.0.0.1 (set in docker-compose.yml) and the database still lives in the
-# cytonn_data volume. File events do not cross the Windows mount, so both servers poll.
+# Ports stay on 127.0.0.1 (set in docker-compose.yml) and the api uses the same database and
+# bind-mounted data folder. File events do not cross the Windows mount, so both servers poll.
 
 services:
   api:
@@ -34,6 +34,8 @@ services:
       target: dev
     environment:
       VITE_USE_POLLING: "true"
+      # Vite's dev server proxies /api itself (nginx is not in this image).
+      VITE_API_TARGET: http://api:8000
     volumes:
       - ./frontend/src:/app/src:ro
       - ./frontend/public:/app/public:ro
