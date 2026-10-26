@@ -23,6 +23,8 @@ export function plainReason(reason: string): { reason: string; raw: string } {
   if (m) return { reason: `The row for ${m[2]} in ${m[1]} does not hold the same ${m[3]} rates as the first row.`, raw: `Row: ${unquote(m[4])}` };
   m = /^(Table \d+) row for (.+?) has (\d+) figures, expected (\d+)$/.exec(reason);
   if (m) return { reason: `The row for ${m[2]} in ${m[1]} has ${m[3]} figures where ${m[4]} are expected.`, raw: "" };
+  m = /^'(.+)' table not found$/.exec(reason);
+  if (m) return { reason: `The "${m[1]}" table was not found in the file.`, raw: "" };
   m = /^'(.+)' not found$/.exec(reason);
   if (m) return { reason: `The heading "${m[1]}" was not found in the file.`, raw: "" };
   m = /^(Table \d+) has no (.+)$/.exec(reason);
@@ -59,7 +61,7 @@ export function groupNotices(notices: ExtractionNotice[]): NoticeGroup[] {
     g.cards.push({
       location: n.location,
       reason: plain.reason,
-      consequence: `${n.location} is not used in this draft. Any part of the draft that needs it is marked unavailable.`,
+      consequence: `${/^Table \d+$/.test(n.location) ? n.location : `The ${n.location} table`} is not used in this draft. Any part of the draft that needs it is marked unavailable.`,
       rawDetail: [plain.raw, plain.reason === sentence(n.reason) ? "" : `As reported: ${n.reason}`].filter(Boolean).join("\n"),
       fileId: n.sha256,
     });
