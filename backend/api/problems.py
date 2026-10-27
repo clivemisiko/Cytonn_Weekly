@@ -52,6 +52,7 @@ PROBLEMS: dict[str, tuple[str, Optional[str]]] = {
     "fix_check_failed": ("The figures could not be re-checked", None),
     "edit_not_possible": ("This sentence cannot be changed here", None),
     "edit_sentence_not_found": ("The sentence was not found in the text", None),
+    "edit_paragraph_not_possible": ("This paragraph cannot be changed here", None),
     "edit_text_refused": ("The new sentence was not saved", None),
     "edit_save_failed": ("The new version could not be saved", None),
 }

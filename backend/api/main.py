@@ -181,7 +181,7 @@ class Decision(BaseModel):
 class SentenceChange(BaseModel):
     """``text`` is judged by weekly/sentence_edit.plain(), the one place its length and characters are, so the refusal is in our words."""
 
-    action: Literal["edit", "remove"]
+    action: Literal["edit", "remove", "paragraph"]
     text: Optional[str] = None
 
 
@@ -1021,12 +1021,17 @@ def create_app(
         """
         old = load(run_id)
         try:
-            done = sentence_edit.apply(old, index, body.action, body.text, charts_root)
-        except sentence_edit.NotFound as exc:
-            raise ProblemError(409, str(exc), "edit_sentence_not_found")
+            if body.action == "paragraph":   # a whole carried-forward paragraph, retyped by hand
+                done = sentence_edit.apply_paragraph(old, index, body.text, charts_root)
+            else:
+                done = sentence_edit.apply(old, index, body.action, body.text, charts_root)
         except sentence_edit.TextRefused as exc:
             raise ProblemError(422, str(exc), "edit_text_refused")
-        except sentence_edit.NotPossible as exc:
+        except (sentence_edit.NotFound, sentence_edit.NotPossible) as exc:
+            if body.action == "paragraph":
+                raise ProblemError(409, str(exc), "edit_paragraph_not_possible")
+            if isinstance(exc, sentence_edit.NotFound):
+                raise ProblemError(409, str(exc), "edit_sentence_not_found")
             raise ProblemError(409, str(exc), "edit_not_possible")
         except Exception:  # noqa: BLE001 - nothing was saved; the reviewer gets a fixed sentence, the log gets the cause
             log.exception("checking the %s of a sentence in run %s failed", body.action, run_id)
