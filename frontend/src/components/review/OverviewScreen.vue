@@ -81,9 +81,7 @@ const flagged = computed(() =>
         :kinds="overview.companion_kinds"
         :on-apply="onReport"
       />
-      <Notice v-if="config.dev_mode" role="alert" class="font-semibold">
-        CYTONN_LLM_PROVIDER=local: DEV MODE. Drafts from the local model are NOT FOR PUBLICATION.
-      </Notice>
+      
       <Notice v-if="exportStatus?.is_dev_draft" role="alert" class="font-semibold">
         {{ exportStatus.dev_mode_label }} The export carries a DEV MODE watermark on every page and must not be sent or published ({{ exportStatus.dev_sections.join(", ") }}).
       </Notice>
@@ -95,6 +93,49 @@ const flagged = computed(() =>
         Companion research reports ride inside a weekly issue as its Focus of the Week. Every section below is Cytonn’s own
         analysis, so none can be drafted yet; the weekly Focus of the Week can still draft a cited piece on the same topic.
       </Notice>
+
+      <!-- Visual Pipeline Progress Stepper -->
+      <div class="rounded-xl border border-border bg-card p-4.5 shadow-xs">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <span class="eyebrow">Publication Pipeline</span>
+            <span
+              class="rounded-full px-2 py-0.5 text-xs font-semibold"
+              :class="approved === overview.sections.length ? 'bg-ok/15 text-ok-fg' : 'bg-primary/10 text-primary-fg'"
+            >
+              {{ approved }} of {{ overview.sections.length }} approved
+            </span>
+          </div>
+          <span class="font-mono text-xs text-muted-foreground">
+            {{ approved === overview.sections.length ? '✓ Ready for Word Export' : `${overview.sections.length - approved} section${overview.sections.length - approved === 1 ? '' : 's'} remaining` }}
+          </span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 text-xs font-medium sm:grid-cols-4">
+          <div class="flex items-center gap-2 rounded-lg border border-border/80 bg-muted/40 p-2.5">
+            <span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-foreground font-mono text-[10px] font-bold text-background">1</span>
+            <span class="truncate">Inputs & Data</span>
+          </div>
+          <div class="flex items-center gap-2 rounded-lg border border-border/80 bg-muted/40 p-2.5">
+            <span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-foreground font-mono text-[10px] font-bold text-background">2</span>
+            <span class="truncate">AI Research & Draft</span>
+          </div>
+          <div class="flex items-center gap-2 rounded-lg border border-primary/40 bg-primary/5 p-2.5 text-primary-fg">
+            <span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary font-mono text-[10px] font-bold text-primary-invert">3</span>
+            <span class="truncate font-semibold">Review & Verify</span>
+          </div>
+          <div
+            class="flex items-center gap-2 rounded-lg border p-2.5"
+            :class="exportStatus?.ready ? 'border-ok/40 bg-ok/10 text-ok-fg' : 'border-border/80 bg-muted/20 text-muted-foreground'"
+          >
+            <span
+              class="flex size-5 shrink-0 items-center justify-center rounded-full font-mono text-[10px] font-bold"
+              :class="exportStatus?.ready ? 'bg-ok text-ok-invert' : 'bg-muted-foreground/30 text-foreground'"
+            >4</span>
+            <span class="truncate">Word Export</span>
+          </div>
+        </div>
+      </div>
 
       <CollapsibleRoot v-model:open="groupOpen" class="space-y-4">
         <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
@@ -128,10 +169,10 @@ const flagged = computed(() =>
     </div>
 
     <template #aside>
-      <dl role="group" aria-label="Sections by state" class="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border @xl:grid-cols-5">
-        <div v-for="[label, value] in tally" :key="label" class="flex flex-col gap-1 bg-card px-4 py-3 last:col-span-2 @xl:last:col-span-1">
+      <dl role="group" aria-label="Sections by state" class="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border shadow-xs @xl:grid-cols-5">
+        <div v-for="[label, value] in tally" :key="label" class="flex flex-col gap-1.5 bg-card px-4 py-3.5 transition-colors hover:bg-muted/30 last:col-span-2 @xl:last:col-span-1">
           <dt class="eyebrow">{{ label }}</dt>
-          <dd class="font-mono text-xl font-semibold">{{ value }}<span class="text-sm font-medium text-muted-foreground"> / {{ overview.sections.length }}</span></dd>
+          <dd class="font-mono text-xl font-bold tracking-tight text-foreground">{{ value }}<span class="text-xs font-normal text-muted-foreground"> / {{ overview.sections.length }}</span></dd>
         </div>
       </dl>
       <ExportBar

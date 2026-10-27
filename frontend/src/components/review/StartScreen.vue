@@ -299,6 +299,42 @@ const lists = computed(() => [
               </p>
             </div>
 
+            <!-- Pre-draft Readiness Checklist -->
+            <div class="rounded-xl border border-border bg-muted/40 p-3.5 space-y-2 text-xs">
+              <p class="font-semibold text-foreground flex items-center justify-between">
+                <span>Draft readiness checklist</span>
+                <span :class="cannotDraft ? 'text-warn-fg font-medium' : 'text-ok-fg font-semibold'">
+                  {{ cannotDraft ? "Prerequisites pending" : "Ready to draft" }}
+                </span>
+              </p>
+              <ul class="space-y-1.5 text-muted-foreground">
+                <li class="flex items-center gap-2">
+                  <span v-if="!providerBlocked" class="flex size-4 items-center justify-center rounded-full bg-ok/20 font-bold text-ok-fg text-[10px]">✓</span>
+                  <span v-else class="flex size-4 items-center justify-center rounded-full bg-flag/20 font-bold text-flag-fg text-[10px]">✗</span>
+                  <span>AI Engine: {{ providerBlocked ? config.provider_problem : (llm ? `${config.provider} active` : 'Internal synthesis (no external LLM)') }}</span>
+                </li>
+                <li v-if="section.needs_topic" class="flex items-center gap-2">
+                  <span v-if="topic.trim() && !topicOver" class="flex size-4 items-center justify-center rounded-full bg-ok/20 font-bold text-ok-fg text-[10px]">✓</span>
+                  <span v-else class="flex size-4 items-center justify-center rounded-full bg-warn/20 font-bold text-warn-fg text-[10px]">!</span>
+                  <span>Focus topic: {{ topic.trim() ? (topicOver ? 'Exceeds limit' : 'Provided') : 'Topic required above' }}</span>
+                </li>
+                <li v-if="section.needs_text" class="flex items-center gap-2">
+                  <span v-if="text.trim()" class="flex size-4 items-center justify-center rounded-full bg-ok/20 font-bold text-ok-fg text-[10px]">✓</span>
+                  <span v-else class="flex size-4 items-center justify-center rounded-full bg-warn/20 font-bold text-warn-fg text-[10px]">!</span>
+                  <span>Section text: {{ text.trim() ? 'Text provided' : 'Pasted text required above' }}</span>
+                </li>
+                <li v-if="usesInputs" class="flex items-center gap-2">
+                  <span v-if="!typedPending" class="flex size-4 items-center justify-center rounded-full bg-ok/20 font-bold text-ok-fg text-[10px]">✓</span>
+                  <span v-else class="flex size-4 items-center justify-center rounded-full bg-warn/20 font-bold text-warn-fg text-[10px]">!</span>
+                  <span>Analyst form: {{ typedPending ? 'Unsaved or unconfirmed inputs in form' : 'Inputs confirmed' }}</span>
+                </li>
+                <li v-if="blocked" class="flex items-center gap-2 text-warn-fg font-medium">
+                  <span class="flex size-4 items-center justify-center rounded-full bg-warn/20 font-bold text-[10px]">⏳</span>
+                  <span>Server slot: Busy drafting {{ serverDrafting?.title ?? 'another section' }}</span>
+                </li>
+              </ul>
+            </div>
+
             <!-- A long period ("Draft the Week ending 2026-10-09 section") wraps on a phone instead of widening the page. -->
             <Button
               size="lg"

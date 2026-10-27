@@ -73,17 +73,25 @@ const lists = computed(() =>
 
 <template>
   <li class="@container" :aria-labelledby="`sec-${s.slug}`">
-    <div class="grid grid-cols-1 gap-x-3 @md:grid-cols-[2.5rem_minmax(0,1fr)]">
-      <span class="hidden size-10 place-items-center rounded-full bg-muted font-mono text-sm font-semibold text-foreground @md:grid" aria-hidden="true">
+    <div class="grid grid-cols-1 gap-x-3.5 @md:grid-cols-[2.5rem_minmax(0,1fr)]">
+      <span class="hidden size-10 place-items-center rounded-full border border-border/80 bg-muted/60 font-mono text-xs font-semibold text-foreground/80 shadow-xs @md:grid" aria-hidden="true">
         {{ index + 1 }}
       </span>
 
-      <div class="min-w-0 space-y-3 rounded-lg border bg-card p-4 @lg:p-6" :class="state === 'unavailable' && 'bg-muted/50'">
+      <div
+        class="card-interactive min-w-0 space-y-3.5 rounded-xl border border-border bg-card p-4.5 @lg:p-6"
+        :class="[
+          state === 'unavailable' && 'bg-muted/40',
+          state === 'approved' && 'border-l-4 border-l-ok',
+          state === 'in_review' && 'border-l-4 border-l-primary',
+          state === 'rejected' && 'border-l-4 border-l-flag',
+        ]"
+      >
         <div class="flex items-start justify-between gap-4">
           <div class="min-w-0 space-y-2">
-            <h2 :id="`sec-${s.slug}`" class="text-lg font-semibold">{{ s.title }}</h2>
+            <h2 :id="`sec-${s.slug}`" class="text-lg font-semibold tracking-tight text-foreground">{{ s.title }}</h2>
             <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span :class="[CHIP_BASE, chip.className, chip.stateClass]">
+              <span :class="[CHIP_BASE, chip.className, chip.stateClass, 'shadow-2xs']">
                 <span v-if="chip.glyph" class="glyph size-4 text-xs" aria-hidden="true">{{ chip.glyph }}</span>
                 <PhLockSimple v-if="state === 'unavailable'" weight="bold" class="size-3" aria-hidden="true" />
                 {{ chipLabel }}
@@ -91,15 +99,15 @@ const lists = computed(() =>
               <!-- Small chip on the drafting section's own card. -->
               <span
                 v-if="drafting"
-                :class="[CHIP_BASE, drafting.stale ? 'border-warn/40 bg-warn/10 text-warn-fg' : 'border-input bg-muted text-foreground']"
+                :class="[CHIP_BASE, drafting.stale ? 'border-warn/40 bg-warn/10 text-warn-fg' : 'border-input bg-muted text-foreground', 'shadow-2xs']"
               >
                 <PhCircleNotch weight="bold" class="size-3" :class="!drafting.stale && 'animate-spin motion-reduce:animate-none'" aria-hidden="true" />
                 {{ drafting.stale ? "Looks stuck" : "Drafting now" }}
                 <span class="font-mono font-medium tabular-nums">{{ elapsed(seconds) }}</span>
               </span>
-              <span v-if="current && run?.is_dev_draft" class="hatch-dev rounded-sm px-1.5 py-0.5 font-mono text-xs font-semibold text-dev-ink">DEV DRAFT</span>
+              <span v-if="current && run?.is_dev_draft" class="hatch-dev rounded-sm px-1.5 py-0.5 font-mono text-xs font-semibold text-dev-ink shadow-2xs">DEV DRAFT</span>
               <p v-if="run && current && state !== 'unavailable'" class="text-xs text-muted-foreground">
-                Run <span class="font-mono">{{ run.run_id }}</span
+                Run <span class="font-mono font-medium">{{ run.run_id }}</span
                 >{{ run.week_start && run.week_end ? `, ${period ? "period" : "report week"} ${weekRange(run.week_start, run.week_end)}` : ""
                 }}{{ run.topic ? `. Topic: ${run.topic}` : "" }}
               </p>
@@ -116,21 +124,22 @@ const lists = computed(() =>
             :aria-valuenow="run.progress.resolved"
             class="relative hidden size-12 shrink-0 @md:block"
           >
-            <svg viewBox="0 0 44 44" class="size-12 -rotate-90" aria-hidden="true">
-              <circle cx="22" cy="22" r="18" fill="none" stroke-width="4" class="stroke-border" />
+            <svg viewBox="0 0 44 44" class="size-12 -rotate-90 transition-all duration-300" aria-hidden="true">
+              <circle cx="22" cy="22" r="18" fill="none" stroke-width="3.5" class="stroke-border/70" />
               <circle
                 cx="22"
                 cy="22"
                 r="18"
                 fill="none"
-                stroke-width="4"
+                stroke-width="3.5"
                 stroke-linecap="round"
-                class="stroke-foreground"
+                class="transition-[stroke-dashoffset] duration-500 ease-out"
+                :class="fraction === 1 ? 'stroke-ok-fg' : 'stroke-foreground'"
                 :stroke-dasharray="RING"
                 :stroke-dashoffset="RING * (1 - fraction)"
               />
             </svg>
-            <span class="absolute inset-0 grid place-items-center font-mono text-xs font-semibold" aria-hidden="true">{{ Math.floor(fraction * 100) }}%</span>
+            <span class="absolute inset-0 grid place-items-center font-mono text-xs font-semibold tabular-nums" aria-hidden="true">{{ Math.floor(fraction * 100) }}%</span>
           </div>
         </div>
 

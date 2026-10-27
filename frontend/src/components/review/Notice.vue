@@ -15,7 +15,7 @@ const attrs = useAttrs();
 </script>
 
 <template>
-  <div v-bind="attrs" :class="cn('flex items-start gap-2 rounded-lg border px-3 py-2 text-sm', TONES[props.tone].box, attrs.class as string)">
+  <div v-bind="attrs" :class="cn('flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-sm leading-relaxed shadow-2xs', TONES[props.tone].box, attrs.class as string)">
     <component :is="TONES[props.tone].icon" weight="bold" class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
     <span class="min-w-0"><slot /></span>
   </div>

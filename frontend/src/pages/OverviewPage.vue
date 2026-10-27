@@ -4,8 +4,11 @@ import { type LocationQuery, useRoute, useRouter } from "vue-router";
 import Masthead from "@/components/review/Masthead.vue";
 import Notice from "@/components/review/Notice.vue";
 import OverviewScreen from "@/components/review/OverviewScreen.vue";
+import OverviewSkeleton from "@/components/review/OverviewSkeleton.vue";
 import ReviewScreen from "@/components/review/ReviewScreen.vue";
+import ReviewSkeleton from "@/components/review/ReviewSkeleton.vue";
 import StartScreen from "@/components/review/StartScreen.vue";
+import StartSkeleton from "@/components/review/StartSkeleton.vue";
 import Button from "@/components/ui/Button.vue";
 import * as api from "@/lib/api";
 import { BACK_HOME, type BackTarget, useBack } from "@/lib/nav";
@@ -13,7 +16,7 @@ import { shell, useShellActions, useShellHere } from "@/lib/shell";
 import type { AppConfig, Drafting, Overview, ReportChoice, ReportType, Review, SectionSummary } from "@/lib/types";
 
 type Phase =
-  | { name: "booting" }
+  | { name: "booting"; target?: "overview" | "review" | "start" }
   | { name: "unreachable"; message: string }
   | { name: "overview"; config: AppConfig; overview: Overview }
   | { name: "start"; config: AppConfig; section: SectionSummary; saved: Review | null; drafting: Drafting | null; week: string | null }
@@ -25,7 +28,10 @@ const one = (value: LocationQuery[string] | undefined) => (Array.isArray(value) 
 
 const route = useRoute();
 const router = useRouter();
-const phase = shallowRef<Phase>({ name: "booting" });
+const phase = shallowRef<Phase>({
+  name: "booting",
+  target: reviewFromUrl() ? "review" : sectionFromUrl() ? "start" : "overview",
+});
 const report = shallowRef<ReportChoice>(api.WEEKLY_REPORT);
 let live = true;
 onUnmounted(() => (live = false));
@@ -45,13 +51,24 @@ function reviewFromUrl(): number | null {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
+/** A section slug in the address bar (?section=fixed_income). */
+function sectionFromUrl(): string | null {
+  const slug = one(route.query.section);
+  return typeof slug === "string" && slug.trim() ? slug.trim() : null;
+}
+
 /** The chosen report in the address bar, without a history entry. */
-function reportToUrl(next: ReportChoice) {
+function reportToUrl(next: ReportChoice, reviewId: number | null = null, sectionSlug: string | null = null) {
   const query: Record<string, string> = {};
   if (next.type !== "weekly" || next.period) {
     query.report = next.type;
     if (next.period) query.period = next.period;
     if (next.kind) query.kind = next.kind;
+  }
+  if (reviewId !== null) {
+    query.review = String(reviewId);
+  } else if (sectionSlug !== null) {
+    query.section = sectionSlug;
   }
   void router.replace({ path: route.path, query });
 }
@@ -112,6 +129,7 @@ const set = (next: Phase) => {
 onMounted(async () => {
   const wanted = reportFromUrl();
   const reviewId = reviewFromUrl();
+  const sectionSlug = sectionFromUrl();
   // The review named in the address bar, or the overview if it cannot be read. Closing it goes to its own report.
   if (reviewId !== null) {
     try {
@@ -124,12 +142,24 @@ onMounted(async () => {
       /* fall through to the overview */
     }
   }
+  if (sectionSlug) {
+    try {
+      const startPhase = await fetchStart(sectionSlug);
+      if (startPhase.name === "start") {
+        set(startPhase);
+        return;
+      }
+    } catch {
+      /* fall through to the overview */
+    }
+  }
   show(await fetchOverview(wanted));
 });
 
 function home() {
+  reportToUrl(report.value, null, null);
   shell.invalidate(); // the overview is read again below, which then hands the rail its payload
-  set({ name: "booting" });
+  set({ name: "booting", target: "overview" });
   void fetchOverview(report.value).then(show);
 }
 
@@ -155,13 +185,18 @@ async function openSection(slug: string, resume: boolean) {
   if (now.name !== "overview") return;
   const run = now.overview.sections.find((s) => s.slug === slug)?.latest;
   if (resume && run) {
+    set({ name: "booting", target: "review" });
     try {
-      set({ name: "review", review: await api.getReview(run.run_id) });
+      const review = await api.getReview(run.run_id);
+      reportToUrl(report.value, review.run_id, null);
+      set({ name: "review", review });
     } catch (err) {
       set({ name: "unreachable", message: messageOf(err) });
     }
     return;
   }
+  set({ name: "booting", target: "start" });
+  reportToUrl(report.value, null, slug);
   set(await fetchStart(slug));
 }
 
@@ -183,13 +218,18 @@ async function goToSection(slug: string) {
   if (!section || !section.available) return;
   const run = section.latest;
   if (run && (run.current ?? run.this_week)) {
+    set({ name: "booting", target: "review" });
     try {
-      set({ name: "review", review: await api.getReview(run.run_id) });
+      const review = await api.getReview(run.run_id);
+      reportToUrl(report.value, review.run_id, null);
+      set({ name: "review", review });
     } catch (err) {
       set({ name: "unreachable", message: messageOf(err) });
     }
     return;
   }
+  set({ name: "booting", target: "start" });
+  reportToUrl(report.value, null, slug);
   set(await fetchStart(slug, overview));
 }
 
@@ -206,7 +246,7 @@ useShellHere(() => {
 /** On a start screen, switch the weekly report to the week ending on another Friday and show that week's section. */
 async function chooseWeek(slug: string, weekEnding: string) {
   report.value = { type: "weekly", period: api.weekPeriod(weekEnding), kind: null };
-  reportToUrl(report.value);
+  reportToUrl(report.value, null, slug);
   set(await fetchStart(slug));
 }
 
@@ -221,20 +261,24 @@ function refreshOverview(overview: Overview) {
 
 const key = computed(() => {
   const p = phase.value;
-  return p.name === "review" ? `review-${p.review.run_id}` : p.name === "start" ? `start-${p.section.slug}` : p.name;
+  return p.name === "review"
+    ? `review-${p.review.run_id}`
+    : p.name === "start"
+      ? `start-${p.section.slug}`
+      : p.name === "booting"
+        ? `booting-${p.target ?? "overview"}`
+        : p.name;
 });
 </script>
 
 <template>
   <Transition name="phase" mode="out-in">
     <main id="main" :key="key" tabindex="-1">
-      <div v-if="phase.name === 'booting'" aria-busy="true" aria-label="Loading">
-        <div class="h-28 border-b bg-card" />
-        <div class="mx-auto w-full max-w-275 space-y-3 px-4 pt-8 sm:px-6">
-          <div data-slot="skeleton" class="h-16 w-full animate-pulse rounded-lg bg-border/60" />
-          <div v-for="i in 5" :key="i" data-slot="skeleton" class="h-24 w-full animate-pulse rounded-lg bg-border/60" />
-        </div>
-      </div>
+      <template v-if="phase.name === 'booting'">
+        <ReviewSkeleton v-if="phase.target === 'review'" />
+        <StartSkeleton v-else-if="phase.target === 'start'" />
+        <OverviewSkeleton v-else />
+      </template>
 
       <template v-else-if="phase.name === 'unreachable'">
         <Masthead title="Coordinator review" />
@@ -272,7 +316,7 @@ const key = computed(() => {
         :week="phase.week"
         :on-recheck="async () => set(await fetchStart((phase as Extract<Phase, { name: 'start' }>).section.slug))"
         @week="(weekEnding) => chooseWeek((phase as Extract<Phase, { name: 'start' }>).section.slug, weekEnding)"
-        @open="(review) => set({ name: 'review', review })"
+        @open="(review) => (reportToUrl(report, review.run_id), set({ name: 'review', review }))"
         @home="home"
       />
 
@@ -280,8 +324,8 @@ const key = computed(() => {
         v-else-if="phase.name === 'review'"
         :initial="phase.review"
         @close="home"
-        @open="(next) => set({ name: 'review', review: next })"
-        @redraft="async (slug) => set(await fetchStart(slug))"
+        @open="(next) => (reportToUrl(report, next.run_id), set({ name: 'review', review: next }))"
+        @redraft="async (slug) => (reportToUrl(report, null, slug), set(await fetchStart(slug)))"
       />
     </main>
   </Transition>

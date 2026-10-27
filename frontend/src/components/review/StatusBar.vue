@@ -24,10 +24,10 @@ const fraction = computed(() => (progress.value.total ? progress.value.resolved 
 <template>
   <div
     data-attention="review-status-bar"
-    class="sticky z-30 border-b bg-background/95 px-4 py-3 backdrop-blur supports-backdrop-filter:bg-background/85 sm:px-6"
+    class="sticky z-30 border-b border-border/80 bg-background/95 px-4 py-3.5 shadow-xs backdrop-blur supports-backdrop-filter:bg-background/85 sm:px-6"
     :class="hasDevRibbon ? 'top-[calc(var(--topbar-h)+1.75rem)]' : 'top-(--topbar-h)'"
   >
-    <div class="mx-auto w-full max-w-375">
+    <div class="w-full">
       <div class="flex flex-wrap items-center gap-x-8 gap-y-3">
         <div class="min-w-55 flex-1 sm:max-w-sm">
           <div class="mb-2 flex items-baseline justify-between gap-3 text-sm">
@@ -49,7 +49,11 @@ const fraction = computed(() => (progress.value.total ? progress.value.resolved 
             :aria-valuenow="progress.resolved"
             class="h-2 overflow-hidden rounded-full bg-border"
           >
-            <div class="h-full origin-left rounded-full bg-foreground transition-transform duration-[240ms] ease-(--ease-out)" :style="{ transform: `scaleX(${fraction})` }" />
+            <div
+              class="h-full origin-left rounded-full transition-transform duration-[240ms] ease-(--ease-out)"
+              :class="fraction === 1 ? 'bg-ok-fg' : 'bg-foreground'"
+              :style="{ transform: `scaleX(${fraction})` }"
+            />
           </div>
         </div>
         <div class="relative min-h-6 basis-full text-sm font-medium sm:flex-1 sm:basis-0" aria-live="polite">
