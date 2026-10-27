@@ -273,8 +273,9 @@ def _add_blocks(doc, review: CoordinatorReview, charts_root: Optional[Union[Path
                 _small(doc, "Source: " + "; ".join(names))
         elif kind == "carried":
             doc.add_heading(block["title"], level=2)
-            note = doc.add_paragraph().add_run(CARRIED_NOTE)
-            note.bold, note.font.color.rgb = True, _RED
+            if not block.get("edits"):   # a paragraph the reviewer rewrote (sentence_edit.apply_paragraph) is no longer carried text
+                note = doc.add_paragraph().add_run(CARRIED_NOTE)
+                note.bold, note.font.color.rgb = True, _RED
             _add_text(doc, block["body_md"])
         elif kind == "supplied":
             if len(section.get("blocks", [])) > 1:
