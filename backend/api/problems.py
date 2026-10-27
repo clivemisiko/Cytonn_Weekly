@@ -50,6 +50,10 @@ PROBLEMS: dict[str, tuple[str, Optional[str]]] = {
     "fix_file_refused": ("The file was not used", None),
     "fix_file_too_big": ("The file is too big", None),
     "fix_check_failed": ("The figures could not be re-checked", None),
+    "edit_not_possible": ("This sentence cannot be changed here", None),
+    "edit_sentence_not_found": ("The sentence was not found in the text", None),
+    "edit_text_refused": ("The new sentence was not saved", None),
+    "edit_save_failed": ("The new version could not be saved", None),
 }
 
 

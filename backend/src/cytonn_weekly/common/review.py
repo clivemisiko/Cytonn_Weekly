@@ -227,7 +227,14 @@ def _short(text: str) -> str:
 
 
 def _claim_context(claim: dict[str, Any]) -> dict[str, Any]:
-    return {k: claim.get(k, "") for k in ("text", "url", "title", "cited_text")}
+    context = {k: claim.get(k, "") for k in ("text", "url", "title", "cited_text")}
+    if claim.get("edited_at"):   # a sentence the reviewer rewrote by hand (weekly/sentence_edit.py)
+        context.update(edited_at=claim["edited_at"], was=claim.get("was", ""))
+    return context
+
+
+REMOVED_NOTE = ("Removed by you. The sentence is no longer in the draft. Read the piece again to check that it still "
+                "holds together.")
 
 
 def supplied_item(b: dict[str, Any]) -> ReviewItem:
@@ -320,6 +327,11 @@ def build_review(content: dict[str, Any], report: CheckReport) -> CoordinatorRev
                     items.append(ReviewItem(kind=CLAIM, ref=ref, status=NOT_AUTO_VERIFIED,
                                             detail=check_claim(b["id"], n, claim).note,
                                             context=_claim_context(claim)))
+            for e in b.get("edits") or []:
+                if e["kind"] == "removed":   # no longer in the text, so no claim: its item is how the removal is seen and acknowledged
+                    ref = f"{b.get('numeral', '')} {b.get('headline', '')}: {_short(e['was'])} (removed by you)".strip()
+                    items.append(ReviewItem(kind=CLAIM, ref=ref, status=NOT_AUTO_VERIFIED, detail=REMOVED_NOTE,
+                                            context={"text": e["was"], "removed_at": e["at"]}))
             if not b.get("claims"):
                 # A drafted piece with no cited claim at all still needs a human look.
                 items.append(ReviewItem(

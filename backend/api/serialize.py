@@ -116,6 +116,8 @@ _COMPUTED_FIELDS = ("numeral", "kind", "id", "title", "body_md", "figures", "sou
 _CARRIED_FIELDS = ("numeral", "kind", "id", "title", "body_md", "carried_from")
 _NARRATIVE_FIELDS = ("numeral", "kind", "id", "topic", "headline", "body_md", "claims", "warnings",
                      "search_scope", "preferred_domains", "drafted_by",
+                     # Sentences the reviewer rewrote or removed by hand (weekly/sentence_edit.py).
+                     "edits",
                      # Executive Summary only: which approved section and run the piece was carried from.
                      "source_section", "source_run_id", "source_headline")
 _UNAVAILABLE_FIELDS = ("numeral", "kind", "id", "title", "reason", "unblock")
@@ -204,6 +206,13 @@ def _fix_slots(review: CoordinatorReview, item: Any) -> list[dict[str, str]]:
     return [{"slug": s, "title": weekly_inputs.BY_SLUG[s].title} for s in slots]
 
 
+def _can_edit_sentence(review: CoordinatorReview, n: int, item: Any) -> bool:
+    """True for a flagged claim of a drafted piece that the reviewer can rewrite or remove by hand."""
+    from cytonn_weekly.weekly import sentence_edit
+
+    return item.status == "flagged" and sentence_edit.can_edit(review, n)
+
+
 def serialize_review(review: CoordinatorReview) -> dict[str, Any]:
     items = review.review_items
     counts = {}
@@ -242,5 +251,6 @@ def serialize_review(review: CoordinatorReview) -> dict[str, Any]:
         "section": _serialize_blocks(review) if "blocks" in review.section else _serialize_section(review),
         # The section's summary for the CMS (composed, never drafted): weekly/summaries.py.
         "summary": section_summary(review.section),
-        "review_items": [{"index": n, **item.to_dict(), "fix_slots": _fix_slots(review, item)} for n, item in enumerate(items)],
+        "review_items": [{"index": n, **item.to_dict(), "fix_slots": _fix_slots(review, item),
+                          "edit_sentence": _can_edit_sentence(review, n, item)} for n, item in enumerate(items)],
     })

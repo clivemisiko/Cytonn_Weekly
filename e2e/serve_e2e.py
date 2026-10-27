@@ -117,7 +117,14 @@ def main() -> None:
     from tests.section_helpers import FakeNarrativeProvider  # noqa: E402
 
     assert paths.DATA_DIR == DATA, paths.DATA_DIR
-    drafter.get_narrative_provider = lambda: FakeNarrativeProvider()
+
+    class _E2EProvider(FakeNarrativeProvider):
+        # A topic that says so is drafted with a figure its cited text lacks, so the sentence-edit tests have a flagged sentence.
+        def draft_piece(self, brief, **kw):
+            self.bad_figure = "bad figure" in brief.label
+            return super().draft_piece(brief, **kw)
+
+    drafter.get_narrative_provider = lambda: _E2EProvider()
 
     def _fail(**_):
         waited = 0.0

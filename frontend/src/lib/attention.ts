@@ -11,7 +11,7 @@ import type { ApiProblem } from "./api";
  *   view, then focus), with no dialog.
  * - `none`: the page is itself the message (a review or run that no longer exists); nothing more is done.
  *
- * A Vitest compares these 30 codes with the backend's, so a code added on one side only fails the suite.
+ * A Vitest compares these 34 codes with the backend's, so a code added on one side only fails the suite.
  */
 export const PLACEMENT = {
   upload_refused: "inline",
@@ -44,6 +44,10 @@ export const PLACEMENT = {
   fix_file_refused: "dialog",
   fix_file_too_big: "dialog",
   fix_check_failed: "dialog",
+  edit_not_possible: "dialog",
+  edit_sentence_not_found: "dialog",
+  edit_text_refused: "inline",
+  edit_save_failed: "dialog",
 } as const satisfies Record<string, "dialog" | "inline" | "none">;
 
 export type ProblemCode = keyof typeof PLACEMENT;
