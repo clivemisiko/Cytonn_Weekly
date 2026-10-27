@@ -105,8 +105,22 @@ NEED_BULLETIN = ("The CBK Weekly Bulletin for this week is not among this week's
 
 PLACEMENTS_FLAG = ("its source is unconfirmed: it was named as the CBK bulletin and then the NSE price list, and "
                    "neither carries it. Confirm the figure with the fixed income team")
-TARGET_FLAG = ("the team has not confirmed whether the net domestic borrowing target is the workbook's figure or the "
-               "Budget workbook's ('Borrowings', FY'2026/2027 domestic borrowing)")
+
+
+def target_flag(cell: Any) -> str:
+    """Why the target is flagged: both candidates named as far as the app knows them, and which one it used."""
+    if getattr(cell, "source", None) is not None:
+        used = f"{cell.value} bn, {typed_source(cell, WB)}"
+        other = getattr(cell, "other", None)
+        if other is not None:
+            used += f" (the uploaded {WB.lower()} holds {other.value} bn at {other.ref})"
+    else:
+        used = f"{cell.value} bn, read from the {WB.lower()} at {cell.ref}"
+    return ("the team has not confirmed which figure is the net domestic borrowing target. The app used " + used + ", "
+            "because it is the only target the app reads. The other candidate is the Budget workbook's 'Borrowings' "
+            "sheet, FY'2026/2027 domestic borrowing; the app does not read that workbook, so its file, cell and value "
+            "are not known here. Compare the two and confirm with the fixed income team")
+
 
 # "Yields at Issue" is not in the workbook's issue list.  These are the figures #38.2026 printed,
 # by column; that table's fixed rows are known to be stale or shifted, so every one needs the
@@ -1027,10 +1041,10 @@ def _borrowing_sentence(figs: Figures, flows: dict[str, dict], net_expr: list, t
     if net_second is not None:
         figs.items[-1]["second"] = net_second
     prorated = figs.add("prorated_target", "Pro-rated net domestic borrowing target (Kshs bn)", PLAIN, 1, target, prorated_expr,
-                        flag=TARGET_FLAG, note=f"{days} days from {fy_start.isoformat()} to the latest auction's "
+                        flag=target_flag(target_cell), note=f"{days} days from {fy_start.isoformat()} to the latest auction's "
                                                 f"value date, {as_at.isoformat()}, over a 364-day year.{start_note}")
     ratio = figs.add("ratio", "Net borrowing as a share of the pro-rated target", PLAIN_PCT, 1, {**flows, **target},
-                     ["mul", ["div", net_expr, prorated_expr], 100], flag=TARGET_FLAG)
+                     ["mul", ["div", net_expr, prorated_expr], 100], flag=target_flag(target_cell))
     return (f"The government is at {ratio} of its pro-rated net domestic borrowing target of Kshs {prorated} bn, with a net "
             f"borrowing position of Kshs {net} bn (inclusive of T-bills).")
 
