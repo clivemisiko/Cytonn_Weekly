@@ -819,3 +819,8 @@ def test_a_single_ocr_reading_says_what_to_check_it_against(tmp_path, text_pdfs)
         "of 2026-10-02 (https://www.nse.co.ke/wp-content/uploads/02-OCT-26.pdf) and read the NSE 10 Share Index in its index box, "
         "or check it against the equities team's own figure for that day, before accepting.")
     assert not {"nse_10", "banking", "indices"} & {i["key"] for g in analyst.status(WEEK, tmp_path)["groups"] for i in g["items"]}
+
+
+def test_shown_drops_float_noise_from_a_workbook_percentage():
+    from cytonn_weekly.weekly.analyst import shown
+    assert shown(0.10310000000000001, 100) == "10.31"

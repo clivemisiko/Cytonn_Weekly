@@ -42,6 +42,11 @@ log = logging.getLogger(__name__)
 
 DATABASE_URL_ENV = "CYTONN_DATABASE_URL"
 DATABASE_SCHEMA_ENV = "CYTONN_DATABASE_SCHEMA"
+# Set to 1 by docker-compose.yml only: there the data folder is the real backend/data, bind-mounted, so falling back
+# to SQLite would create or open app.db beside the real files. With it set, no SQLite database is ever opened.
+REQUIRE_POSTGRES_ENV = "CYTONN_REQUIRE_POSTGRES"
+REQUIRE_POSTGRES = ("CYTONN_REQUIRE_POSTGRES=1 is set (the Docker app), but CYTONN_DATABASE_URL is missing or empty, "
+                    "so the app refuses to use SQLite. Put CYTONN_DATABASE_URL in .env and start it again.")
 DEFAULT_SCHEMA = "cytonn"
 MIN_SQLITE = (3, 39, 0)  # IS NOT DISTINCT FROM; RETURNING needs 3.35 and ON CONFLICT 3.24
 
@@ -383,6 +388,8 @@ def target(db_path: Optional[Path | str] = None) -> tuple[str, Optional[Path]]:
     """Where ``connect(db_path)`` would go, without opening anything: ("postgres", None) or ("sqlite", the file)."""
     if db_path is None and os.environ.get(DATABASE_URL_ENV, "").strip():
         return "postgres", None
+    if os.environ.get(REQUIRE_POSTGRES_ENV, "").strip() == "1":
+        raise RuntimeError(REQUIRE_POSTGRES)
     return "sqlite", Path(db_path) if db_path is not None else _DEFAULT_DB
 
 

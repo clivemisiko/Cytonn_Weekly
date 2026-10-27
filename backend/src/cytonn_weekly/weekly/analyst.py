@@ -361,6 +361,11 @@ def _plain(d: Decimal) -> str:
     return text or "0"
 
 
+def _clean(number: float) -> Decimal:
+    """A workbook float without its binary noise: 0.10310000000000001 is the 0.1031 the cell shows."""
+    return Decimal(f"{number:.12g}")
+
+
 def shown(value: Any, scale: int = 1) -> str:
     """A workbook value in the form's unit and wording."""
     if isinstance(value, (Cell, Typed)):
@@ -372,7 +377,7 @@ def shown(value: Any, scale: int = 1) -> str:
     if isinstance(value, bool) or value is None:
         return ""
     if isinstance(value, (int, float)):
-        return _plain(Decimal(repr(value)) * scale)
+        return _plain(_clean(value) * scale)
     return " ".join(str(value).split())
 
 

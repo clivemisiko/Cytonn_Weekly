@@ -5,3 +5,10 @@ dist
 *.tsbuildinfo
 Dockerfile
 .dockerignore
+# Nothing of the repo's own state reaches the build context.
+.git
+**/__pycache__
+screenshots
+e2e
+test-results
+playwright-report
