@@ -213,10 +213,10 @@ export const fixFromInput = (runId: number, index: number, slot: string, file: F
  * Rewrite or remove one flagged sentence by hand. The API checks the figures again (no network, no model) and saves a new
  * undecided review; the earlier one is untouched. A refusal or a failed check changes nothing.
  */
-export const changeSentence = (runId: number, index: number, action: "edit" | "remove", text?: string) =>
+export const changeSentence = (runId: number, index: number, action: "edit" | "remove" | "paragraph", text?: string) =>
   request<{ review: Review; result: SentenceResult }>(`/api/reviews/${runId}/items/${index}/sentence`, {
     method: "POST",
-    body: JSON.stringify(action === "edit" ? { action, text } : { action }),
+    body: JSON.stringify(action === "remove" ? { action } : { action, text }),
   });
 
 export const decide = (runId: number, decision: Decision) =>

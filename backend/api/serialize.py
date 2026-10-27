@@ -113,7 +113,7 @@ _TABLE_FIELDS = ("numeral", "kind", "id", "title", "columns", "key_field", "rows
 # A paragraph the tool worked out, with each figure and what it was made from (common/computed.py).
 _COMPUTED_FIELDS = ("numeral", "kind", "id", "title", "body_md", "figures", "sources", "notes")
 # Text copied from the previous issue, with where it came from.
-_CARRIED_FIELDS = ("numeral", "kind", "id", "title", "body_md", "carried_from")
+_CARRIED_FIELDS = ("numeral", "kind", "id", "title", "body_md", "carried_from", "edits")
 _NARRATIVE_FIELDS = ("numeral", "kind", "id", "topic", "headline", "body_md", "claims", "warnings",
                      "search_scope", "preferred_domains", "drafted_by",
                      # Sentences the reviewer rewrote or removed by hand (weekly/sentence_edit.py).
@@ -213,6 +213,13 @@ def _can_edit_sentence(review: CoordinatorReview, n: int, item: Any) -> bool:
     return item.status == "flagged" and sentence_edit.can_edit(review, n)
 
 
+def _can_edit_paragraph(review: CoordinatorReview, n: int, item: Any) -> bool:
+    """True for a carried-forward paragraph the reviewer can retype by hand."""
+    from cytonn_weekly.weekly import sentence_edit
+
+    return item.kind == "carried_text" and sentence_edit.can_edit_paragraph(review, n)
+
+
 def serialize_review(review: CoordinatorReview) -> dict[str, Any]:
     items = review.review_items
     counts = {}
@@ -252,5 +259,7 @@ def serialize_review(review: CoordinatorReview) -> dict[str, Any]:
         # The section's summary for the CMS (composed, never drafted): weekly/summaries.py.
         "summary": section_summary(review.section),
         "review_items": [{"index": n, **item.to_dict(), "fix_slots": _fix_slots(review, item),
-                          "edit_sentence": _can_edit_sentence(review, n, item)} for n, item in enumerate(items)],
+                          "edit_sentence": _can_edit_sentence(review, n, item),
+                          "edit_paragraph": _can_edit_paragraph(review, n, item)}
+                         for n, item in enumerate(items)],
     })

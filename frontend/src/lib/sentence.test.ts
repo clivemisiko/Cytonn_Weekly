@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_SENTENCE, sentenceCheck, sentenceLength, tidy } from "./sentence";
+import { MAX_PARAGRAPH, MAX_SENTENCE, sentenceCheck, sentenceLength, tidy } from "./sentence";
 
 describe("the typed sentence", () => {
   it("is counted as the API stores it: one line, single spaces", () => {
@@ -15,6 +15,12 @@ describe("the typed sentence", () => {
     expect(sentenceCheck("x".repeat(MAX_SENTENCE), "old").ok).toBe(true);
     const over = sentenceCheck("x".repeat(MAX_SENTENCE + 1), "old");
     expect(over).toMatchObject({ over: 1, ok: false });
+  });
+
+  it("judges a paragraph against its own, longer limit", () => {
+    expect(sentenceCheck("x".repeat(MAX_SENTENCE + 1), "old", MAX_PARAGRAPH).ok).toBe(true);
+    expect(sentenceCheck("x".repeat(MAX_PARAGRAPH), "old", MAX_PARAGRAPH).ok).toBe(true);
+    expect(sentenceCheck("x".repeat(MAX_PARAGRAPH + 1), "old", MAX_PARAGRAPH)).toMatchObject({ over: 1, ok: false });
   });
 
   it("cannot be saved empty or unchanged", () => {

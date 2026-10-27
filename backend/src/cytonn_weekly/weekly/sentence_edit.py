@@ -7,12 +7,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from cytonn_weekly.common.review import CLAIM, build_review, check_section
+from cytonn_weekly.common.review import CARRIED_TEXT, CLAIM, build_review, check_section
 from cytonn_weekly.digital_payments.coordinator_review import FLAGGED, CoordinatorReview
 from cytonn_weekly.weekly.recheck import carry_marks, copy_chart_files
 
 MAX_CHARS = 600
-EDIT, REMOVE = "edit", "remove"
+# The longest carried block in the test fixtures is a few hundred characters; a real closing outlook runs to about a thousand.
+MAX_PARAGRAPH_CHARS = 1200
+EDIT, REMOVE, PARAGRAPH = "edit", "remove", "paragraph"
 
 
 class SentenceError(ValueError):
@@ -47,7 +49,16 @@ CHECK_FAILED = ("The new text could not be checked, so nothing was changed. The 
 SAVE_FAILED = ("The new version could not be saved, so nothing was changed. The earlier version is still there. Try again; "
                "if it happens again, report it with the section name.")
 
-_NOT_PLAIN = re.compile(r"[\[\]<>`*\\\x00-\x1f\x7f]|\A(?:[#+-]|\d+[.)])")
+NOT_A_PARAGRAPH = ("Only a carried-forward paragraph can be rewritten here, and this item is not one. Open the item again, "
+                   "or mark it Fix needed.")
+PARAGRAPH_NOT_FOUND = ("This carried-forward paragraph could not be found exactly once in the section, so nothing was "
+                       "changed. Mark the item Fix needed with a note, or reject the draft.")
+EMPTY_PARAGRAPH = "Type the new paragraph. To leave the carried text as it is, cancel."
+SAME_PARAGRAPH = "The paragraph is the same as before, so nothing was saved. Change it, or cancel."
+NOT_PLAIN_PARAGRAPH = ("Type plain text only. The characters [ ] < > * ` and \\ are not allowed, and the paragraph cannot "
+                       "start with #, + or -, or with a number and a full stop. Remove them and save again.")
+
+_NOT_PLAIN =re.compile(r"[\[\]<>`*\\\x00-\x1f\x7f]|\A(?:[#+-]|\d+[.)])")
 
 
 @dataclass
@@ -57,15 +68,20 @@ class Edited:
     changed_items: int
 
 
-def plain(text: Optional[str]) -> str:
-    """The typed sentence as it will be stored: one line, single spaces, plain text, 1 to MAX_CHARS characters."""
+def plain(text: Optional[str], paragraph: bool = False) -> str:
+    """The typed text as it will be stored: one line, single spaces (line breaks become spaces), plain text.
+
+    A sentence is 1 to MAX_CHARS characters, a paragraph 1 to MAX_PARAGRAPH_CHARS.
+    """
     t = " ".join((text or "").split())
     if not t:
-        raise TextRefused(EMPTY_TEXT)
-    if len(t) > MAX_CHARS:
-        raise TextRefused(f"The sentence is {len(t)} characters; the limit is {MAX_CHARS}. Shorten it and save again.")
+        raise TextRefused(EMPTY_PARAGRAPH if paragraph else EMPTY_TEXT)
+    limit = MAX_PARAGRAPH_CHARS if paragraph else MAX_CHARS
+    if len(t) > limit:
+        raise TextRefused(f"The {'paragraph' if paragraph else 'sentence'} is {len(t)} characters; the limit is {limit}. "
+                          "Shorten it and save again.")
     if _NOT_PLAIN.search(t):
-        raise TextRefused(NOT_PLAIN)
+        raise TextRefused(NOT_PLAIN_PARAGRAPH if paragraph else NOT_PLAIN)
     return t
 
 
@@ -150,7 +166,54 @@ def apply(old: CoordinatorReview, index: int, action: str, text: Optional[str], 
             block["body"] = _cut(body, was)
         del block["claims"][n]
         edits.append({"kind": "removed", "at": at, "was": was})
+    return _rebuilt(old, content, action, charts_root)
+
+
+def _rebuilt(old: CoordinatorReview, content: dict[str, Any], action: str, charts_root: Optional[Path]) -> Edited:
     new = build_review(content, check_section(content))
     new.report_type, new.period = old.report_type, old.period
     copy_chart_files(old, new, charts_root)
     return Edited(new, action, carry_marks(old, new))
+
+
+def _carried_at(review: CoordinatorReview, index: int) -> int:
+    """Position of the carried block a CARRIED_TEXT item stands for, found by its title (the item's ref), which must be unique."""
+    items = review.review_items
+    if "blocks" not in review.section or not 0 <= index < len(items) or items[index].kind != CARRIED_TEXT:
+        raise NotPossible(NOT_A_PARAGRAPH)
+    found = [bi for bi, b in enumerate(review.section["blocks"])
+             if b.get("kind") == "carried" and f"{b.get('title')} (carried forward)" == items[index].ref]
+    if len(found) != 1:
+        raise NotFound(PARAGRAPH_NOT_FOUND)
+    if review.section["blocks"][found[0]].get("source_run_id") is not None:
+        raise NotPossible(CARRIED_PIECE)
+    return found[0]
+
+
+def can_edit_paragraph(review: CoordinatorReview, index: int) -> bool:
+    try:
+        _carried_at(review, index)
+    except SentenceError:
+        return False
+    return True
+
+
+def apply_paragraph(old: CoordinatorReview, index: int, text: Optional[str], charts_root: Optional[Path] = None,
+                    now: Optional[datetime] = None) -> Edited:
+    """A new, undecided review in which one carried-forward paragraph is replaced by the reviewer's own text.
+
+    The checker has no source for typed text, so the item becomes "not auto-verified" and the carried flag goes;
+    nothing typed is compared with anything.  ``old`` is never touched.
+    """
+    bi = _carried_at(old, index)
+    new_text = plain(text, paragraph=True)
+    content = copy.deepcopy(old.section)
+    block = content["blocks"][bi]
+    current = block.get("body_md") or ""
+    if " ".join(current.split()) == new_text:
+        raise TextRefused(SAME_PARAGRAPH)
+    at = (now or datetime.now(timezone.utc)).isoformat(timespec="seconds")
+    edits = block.setdefault("edits", [])
+    edits.append({"kind": "edited", "at": at, "was": edits[0]["was"] if edits else current, "now": new_text})
+    block["body_md"] = new_text
+    return _rebuilt(old, content, PARAGRAPH, charts_root)

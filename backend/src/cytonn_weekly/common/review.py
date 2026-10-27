@@ -107,6 +107,9 @@ SUPPLIED_SCOPE = "supplied"
 LINK_FLAG = "link"
 POSSIBLE_LINK_FLAG = "possible_link"
 
+EDITED_PARAGRAPH_NOTE = ("You wrote this paragraph, so the checker has no source for it. Read every figure in it against "
+                         "its source by hand.")
+
 SUPPLIED_NOTE = (
     "Supplied by you and carried verbatim. The tool neither drafts nor checks this text, so read it "
     "before accepting."
@@ -193,7 +196,8 @@ def check_section(content: dict[str, Any], on_event: Optional[Observer] = None) 
                 counts["flagged" if flags else "not_auto_verified" if note else "clean"] += 1
             emit(on_event, CHECK_FINISHED, b["title"], counts=counts)
         elif b["kind"] == "carried":
-            report.flags.append(carried_flag(b))
+            if not b.get("edits"):
+                report.flags.append(carried_flag(b))
         elif b["kind"] == "narrative":
             emit(on_event, CHECK_STARTED, b.get("headline", ""))
             claims = b.get("claims") or []
@@ -311,7 +315,13 @@ def build_review(content: dict[str, Any], report: CheckReport) -> CoordinatorRev
         elif b["kind"] == "carried":
             subject = (CARRIED_SCOPE, b["id"])
             used.add(subject)
-            items.append(ReviewItem(kind=CARRIED_TEXT, ref=f"{b['title']} (carried forward)", status=FLAGGED,
+            ref = f"{b['title']} (carried forward)"
+            if b.get("edits"):
+                items.append(ReviewItem(kind=CARRIED_TEXT, ref=ref, status=NOT_AUTO_VERIFIED, detail=EDITED_PARAGRAPH_NOTE,
+                                        context={"text": b.get("body_md", ""), "edited_at": b["edits"][-1]["at"],
+                                                 "was": b["edits"][0]["was"]}))
+                continue
+            items.append(ReviewItem(kind=CARRIED_TEXT, ref=ref, status=FLAGGED,
                                     detail=by_subject.get(subject) or [carried_flag(b)],
                                     context={"text": b.get("body_md", "")}))
         elif b["kind"] == "narrative":

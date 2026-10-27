@@ -11,9 +11,13 @@ onMounted(() => root.value?.focus());
 <template>
   <section ref="root" tabindex="-1" aria-labelledby="sentence-title" class="rise-in space-y-3 rounded-lg border border-l-[6px] border-ok/40 border-l-ok bg-ok/10 px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-ring">
     <h2 id="sentence-title" role="status" class="text-base font-semibold text-ok-fg">
-      {{ result.action === "edit" ? "Sentence edited. The figures were checked again." : "Sentence removed." }}
+      {{ result.action === "paragraph" ? "Paragraph rewritten by you." : result.action === "edit" ? "Sentence edited. The figures were checked again." : "Sentence removed." }}
     </h2>
-    <p class="text-sm text-muted-foreground">
+    <p v-if="result.action === 'paragraph'" class="text-sm text-muted-foreground">
+      Nothing was checked against a source, because you wrote this paragraph. Read every figure in it against its source by hand.
+      No model and no web search was used. Only that paragraph changed.
+    </p>
+    <p v-else class="text-sm text-muted-foreground">
       The check ran on this computer only: no model and no web search. Only that sentence changed. Nothing else in the draft was touched.
     </p>
     <p class="text-sm text-muted-foreground">

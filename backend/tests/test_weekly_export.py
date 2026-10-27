@@ -270,3 +270,38 @@ def test_nothing_in_the_app_sends_or_publishes_the_export():
     assert "smtplib" not in source and "cms_publish" not in source and "publish_report" not in source
     with pytest.raises(cms_publish.PublishNotAllowed):
         cms_publish.publish_report("weekly", PERIOD, [])
+
+
+NOTE = "[Carried forward from the previous issue: edit before publishing]"
+OUTLOOK_REF = "Rates and outlook (closing paragraph) (carried forward)"
+REWRITTEN = "Rates have eased this month, and inflation stood at 6.6% in September."
+
+
+def _rewrite_outlook(db, text):
+    """Saves a new, approved Fixed Income review in which the closing outlook is the reviewer's own paragraph."""
+    from cytonn_weekly.weekly import sentence_edit
+
+    old = review_store.load_latest_review(section="fixed_income", db_path=db)
+    new = sentence_edit.apply_paragraph(old, next(n for n, i in enumerate(old.review_items) if i.ref == OUTLOOK_REF), text).review
+    _save(db, "fixed_income", new)
+    return new
+
+
+def test_an_unedited_carried_paragraph_keeps_its_red_line(week, tmp_path):
+    _, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
+    assert text.count(NOTE) == 3
+
+
+def test_a_rewritten_carried_paragraph_is_exported_as_plain_text_with_no_red_line(week, tmp_path):
+    _rewrite_outlook(week, REWRITTEN)
+    _, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
+    assert text.count(NOTE) == 2 and text.count(REWRITTEN) == 1
+    heading = text.index("Rates and outlook (closing paragraph)")
+    assert text[heading + 1] == REWRITTEN
+
+
+def test_a_re_edited_paragraph_exports_the_same_way(week, tmp_path):
+    _rewrite_outlook(week, REWRITTEN)
+    _rewrite_outlook(week, "Rates eased again.")
+    _, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
+    assert text.count(NOTE) == 2 and "Rates eased again." in text and REWRITTEN not in text
