@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { PhArrowSquareOut, PhCaretDown } from "@phosphor-icons/vue";
+import { PhArrowSquareOut, PhCaretDown, PhPencilSimple } from "@phosphor-icons/vue";
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "reka-ui";
 import { computed, ref, watch } from "vue";
 import Textarea from "@/components/ui/Textarea.vue";
-import { KIND_LABELS, pyRepr, resolutionKey } from "@/lib/format";
+import { KIND_LABELS, friendlyTime, pyRepr, resolutionKey } from "@/lib/format";
 import type { Flag, Resolution, Review, ReviewItem } from "@/lib/types";
+import EditSentence from "./EditSentence.vue";
 import FixFromFile from "./FixFromFile.vue";
 import ResolutionControl from "./ResolutionControl.vue";
 import SeverityPill from "./SeverityPill.vue";
@@ -89,6 +90,12 @@ const cells = (flag: Flag): [string, string][] => [
       <SeverityPill :kind="item.status" />
       <span class="text-sm font-semibold">{{ item.ref }}</span>
       <span class="text-xs text-muted-foreground">{{ KIND_LABELS[item.kind] ?? item.kind }}</span>
+      <span v-if="ctx.edited_at" class="inline-flex items-center gap-1 text-xs font-medium">
+        <PhPencilSimple weight="bold" class="size-3.5" aria-hidden="true" />Edited by you, {{ friendlyTime(ctx.edited_at) }}
+      </span>
+      <span v-else-if="ctx.removed_at" class="inline-flex items-center gap-1 text-xs font-medium">
+        <PhPencilSimple weight="bold" class="size-3.5" aria-hidden="true" />Removed by you, {{ friendlyTime(ctx.removed_at) }}
+      </span>
       <span class="ml-auto"><SeverityPill :kind="chipKey" /></span>
     </div>
 
@@ -131,6 +138,9 @@ const cells = (flag: Flag): [string, string][] => [
         </ul>
       </div>
       <blockquote v-if="ctx.text" class="border-l-2 border-input pl-3 text-sm text-foreground/85">{{ ctx.text }}</blockquote>
+      <p v-if="ctx.edited_at" class="text-xs text-muted-foreground [overflow-wrap:anywhere]">
+        Your wording replaced: "{{ ctx.was }}". The source below was cited for the earlier wording, so read it to check that it supports yours.
+      </p>
       <p v-if="safeUrl" class="text-sm">
         Source:
         <a :href="safeUrl" target="_blank" rel="noopener noreferrer" class="text-link underline decoration-link/40 underline-offset-2 hover:decoration-link">
@@ -158,6 +168,7 @@ const cells = (flag: Flag): [string, string][] => [
     <div class="flex flex-wrap items-center gap-2">
       <ResolutionControl :label="item.ref" :value="shown" :disabled="locked" @change="(next) => send(next)" />
       <FixFromFile :review="review" :item="item" />
+      <EditSentence :review="review" :item="item" />
       <Textarea
         v-model="note"
         rows="1"

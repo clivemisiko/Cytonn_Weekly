@@ -70,6 +70,11 @@ export interface ClaimContext {
   /** Computed figures only: what the figure was worked out from. */
   inputs?: Record<string, FigureInput>;
   note?: string;
+  /** A sentence the reviewer rewrote by hand: when, and the wording it replaced. */
+  edited_at?: string;
+  was?: string;
+  /** A sentence the reviewer took out: when. */
+  removed_at?: string;
 }
 
 export interface ReviewItem {
@@ -83,6 +88,8 @@ export interface ReviewItem {
   resolution_note: string | null;
   /** The uploads that can fix this item (named as the inputs panel names them); empty or absent for most items. */
   fix_slots?: { slug: string; title: string }[];
+  /** True for a flagged sentence of a drafted piece that the reviewer can rewrite or remove by hand. */
+  edit_sentence?: boolean;
   context: ClaimContext;
 }
 
@@ -211,6 +218,15 @@ export interface NarrativeBlock {
   search_scope: string | null;
   preferred_domains: string[];
   drafted_by: string;
+  /** Sentences the reviewer rewrote or removed by hand, oldest first. */
+  edits?: BlockEdit[] | null;
+}
+
+export interface BlockEdit {
+  kind: "edited" | "removed";
+  at: string;
+  was: string;
+  now?: string;
 }
 
 export interface UnavailableBlock {
@@ -380,6 +396,13 @@ export interface FixResult {
   kept: string[];
   earlier_run_id: number;
   slot: string;
+  was_approved: boolean;
+}
+
+export interface SentenceResult {
+  action: "edit" | "remove";
+  changed_items: number;
+  earlier_run_id: number;
   was_approved: boolean;
 }
 

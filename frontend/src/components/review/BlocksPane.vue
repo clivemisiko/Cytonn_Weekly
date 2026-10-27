@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { PhChartBar, PhLockSimple } from "@phosphor-icons/vue";
 import { SCOPE_LABELS, friendlyDate, friendlyTime, weekRange } from "@/lib/format";
-import type { BlocksSection, ComputedBlock, NotCovered, Review, TableBlock } from "@/lib/types";
+import type { BlocksSection, ComputedBlock, NarrativeBlock, NotCovered, Review, TableBlock } from "@/lib/types";
 import DataTable from "./DataTable.vue";
 import ExtractionNotices from "./ExtractionNotices.vue";
 import ChartCard from "./ChartCard.vue";
@@ -21,6 +21,8 @@ const SOURCE_LINK = "text-link underline decoration-link/40 underline-offset-2 h
 
 const safeUrl = (url: string | null | undefined) => (url && /^https?:\/\//.test(url) ? url : null);
 const typedRows = (block: TableBlock) => block.rows.filter((r) => r.typed).length;
+/** The sentences the reviewer rewrote in a piece. A removed one is in the review items, not in the text. */
+const edited = (block: NarrativeBlock) => (block.edits ?? []).filter((e) => e.kind === "edited");
 /** The warnings that are not a refused table: those sentences are shown as cards from `notices`. */
 const otherWarnings = (s: BlocksSection) => {
   const shown = new Set((s.notices ?? []).map((n) => n.text));
@@ -122,6 +124,11 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
           <span>{{ b.headline }}</span>
         </h3>
         <Markdown :class="BODY" :text="b.body_md" />
+        <ul v-if="edited(b).length" aria-label="Sentences you edited" class="space-y-1 text-xs text-muted-foreground md:pl-11">
+          <li v-for="e in edited(b)" :key="`${e.at}|${e.now}`" class="[overflow-wrap:anywhere]">
+            <span class="font-medium text-foreground">Edited by you, {{ friendlyTime(e.at) }}.</span> Now: "{{ e.now }}" Was: "{{ e.was }}"
+          </li>
+        </ul>
         <PartsLine
           :parts="[
             { text: b.topic, style: 'name' },
