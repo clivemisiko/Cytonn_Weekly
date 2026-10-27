@@ -99,6 +99,7 @@ from cytonn_weekly.weekly import export as weekly_export
 from cytonn_weekly.weekly import analyst as weekly_analyst
 from cytonn_weekly.weekly import inputs as weekly_inputs
 from cytonn_weekly.weekly import recheck as weekly_recheck
+from cytonn_weekly.weekly import sentence_edit
 from cytonn_weekly.weekly.week import NotAFriday, Week, latest_friday
 
 from api.problems import ProblemError, problem_handler
@@ -175,6 +176,13 @@ class ItemResolution(BaseModel):
 
 class Decision(BaseModel):
     decision: Literal["approved", "rejected"]
+
+
+class SentenceChange(BaseModel):
+    """``text`` is judged by weekly/sentence_edit.plain(), the one place its length and characters are, so the refusal is in our words."""
+
+    action: Literal["edit", "remove"]
+    text: Optional[str] = None
 
 
 class TeamChartBody(BaseModel):
@@ -1003,6 +1011,37 @@ def create_app(
         return {"review": serialize_review(done.review),
                 "result": {"changes": done.changes, "changed_items": done.changed_items, "kept": done.kept,
                            "earlier_run_id": run_id, "slot": slot, "was_approved": old.decision == "approved"}}
+
+    @app.post("/api/reviews/{run_id}/items/{index}/sentence")
+    def change_sentence(run_id: int, index: int, body: SentenceChange) -> dict:
+        """Rewrite or remove one flagged sentence of a drafted piece by hand: no model, no network.
+
+        The figures are checked again with the same offline checker, and a NEW undecided review is saved (the earlier
+        one is never edited, even if approved).  Answers ``{"review", "result"}``.  The draft slot and runs are not touched.
+        """
+        old = load(run_id)
+        try:
+            done = sentence_edit.apply(old, index, body.action, body.text, charts_root)
+        except sentence_edit.NotFound as exc:
+            raise ProblemError(409, str(exc), "edit_sentence_not_found")
+        except sentence_edit.TextRefused as exc:
+            raise ProblemError(422, str(exc), "edit_text_refused")
+        except sentence_edit.NotPossible as exc:
+            raise ProblemError(409, str(exc), "edit_not_possible")
+        except Exception:  # noqa: BLE001 - nothing was saved; the reviewer gets a fixed sentence, the log gets the cause
+            log.exception("checking the %s of a sentence in run %s failed", body.action, run_id)
+            raise ProblemError(500, sentence_edit.CHECK_FAILED, "edit_save_failed")
+        with write_lock:
+            try:
+                save(done.review)
+            except HTTPException:
+                raise
+            except Exception:  # noqa: BLE001
+                log.exception("saving the %s of a sentence in run %s failed", body.action, run_id)
+                raise ProblemError(500, sentence_edit.SAVE_FAILED, "edit_save_failed")
+        return {"review": serialize_review(done.review),
+                "result": {"action": done.action, "changed_items": done.changed_items, "earlier_run_id": run_id,
+                           "was_approved": old.decision == "approved"}}
 
     @app.post("/api/reviews/{run_id}/accept-clean")
     def accept_clean(run_id: int) -> dict:

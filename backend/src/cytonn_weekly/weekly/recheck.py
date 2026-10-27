@@ -167,7 +167,7 @@ def _merge(section: str, slot: str, old: list[dict[str, Any]], rebuilt: list[dic
     return out
 
 
-def _carry(old: CoordinatorReview, new: CoordinatorReview) -> int:
+def carry_marks(old: CoordinatorReview, new: CoordinatorReview) -> int:
     """Notes and marks go to the items that did not change; a changed item starts undecided.  Returns how many changed."""
     pool: dict[tuple[str, str], list[ReviewItem]] = {}
     for i in old.review_items:
@@ -183,7 +183,7 @@ def _carry(old: CoordinatorReview, new: CoordinatorReview) -> int:
     return changed
 
 
-def _copy_chart_files(old: CoordinatorReview, new: CoordinatorReview, charts_root: Optional[Path]) -> None:
+def copy_chart_files(old: CoordinatorReview, new: CoordinatorReview, charts_root: Optional[Path]) -> None:
     """A drawn chart's files live under its review's run id; the new review gets a checked copy of each."""
     files: dict[str, dict[str, bytes]] = {}
     for b in new.section.get("blocks", []):
@@ -231,8 +231,8 @@ def recheck(old: CoordinatorReview, slot: str, data: bytes, filename: str, root:
     rebuilt_ids = {b["id"] for b in rebuilt.section["blocks"] if (entry_for(section, b["id"]) or Entry("", (), False)).readable
                    and slot in entry_for(section, b["id"]).slots}
     kept = [b.get("title") or b.get("headline") for b in content["blocks"] if b["id"] not in rebuilt_ids and (b.get("title") or b.get("headline"))]
-    _copy_chart_files(old, new, charts_root)
-    return Rechecked(new, changes, kept, _carry(old, new))
+    copy_chart_files(old, new, charts_root)
+    return Rechecked(new, changes, kept, carry_marks(old, new))
 
 
 def _module(section: str):
