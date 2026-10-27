@@ -90,6 +90,7 @@ export interface ReviewItem {
   fix_slots?: { slug: string; title: string }[];
   /** True for a flagged sentence of a drafted piece that the reviewer can rewrite or remove by hand. */
   edit_sentence?: boolean;
+  edit_paragraph?: boolean;
   context: ClaimContext;
 }
 
@@ -204,6 +205,8 @@ export interface CarriedBlock {
   title: string;
   body_md: string;
   carried_from: { issue_id: number | null; url: string | null; published: string | null };
+  /** Set once the reviewer retyped the paragraph by hand (weekly/sentence_edit.py). */
+  edits?: BlockEdit[] | null;
 }
 
 export interface NarrativeBlock {
@@ -400,7 +403,7 @@ export interface FixResult {
 }
 
 export interface SentenceResult {
-  action: "edit" | "remove";
+  action: "edit" | "remove" | "paragraph";
   changed_items: number;
   earlier_run_id: number;
   was_approved: boolean;

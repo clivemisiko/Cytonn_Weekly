@@ -194,7 +194,11 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
           <Numeral>{{ b.numeral }}</Numeral>
           <span>{{ b.title }}</span>
         </h3>
-        <Notice tone="flag" class="font-medium md:ml-11">
+        <Notice v-if="b.edits?.length" tone="warn" class="font-medium md:ml-11">
+          Edited by you, {{ friendlyTime(b.edits[b.edits.length - 1].at) }}. You wrote this paragraph, so the checker has no source for it. It was
+          copied from {{ b.carried_from.issue_id ? `issue ${b.carried_from.issue_id}` : "the previous issue" }} before you changed it.
+        </Notice>
+        <Notice v-else tone="flag" class="font-medium md:ml-11">
           Carried forward, edit before approving. Copied from
           {{ b.carried_from.issue_id ? `issue ${b.carried_from.issue_id} on cytonnreport.com` : "the previous issue"
           }}{{ b.carried_from.published ? `, published ${friendlyDate(b.carried_from.published)}` : "" }}.
