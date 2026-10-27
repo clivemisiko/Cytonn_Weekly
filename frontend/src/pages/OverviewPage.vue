@@ -4,8 +4,11 @@ import { type LocationQuery, useRoute, useRouter } from "vue-router";
 import Masthead from "@/components/review/Masthead.vue";
 import Notice from "@/components/review/Notice.vue";
 import OverviewScreen from "@/components/review/OverviewScreen.vue";
+import OverviewSkeleton from "@/components/review/OverviewSkeleton.vue";
 import ReviewScreen from "@/components/review/ReviewScreen.vue";
+import ReviewSkeleton from "@/components/review/ReviewSkeleton.vue";
 import StartScreen from "@/components/review/StartScreen.vue";
+import StartSkeleton from "@/components/review/StartSkeleton.vue";
 import Button from "@/components/ui/Button.vue";
 import * as api from "@/lib/api";
 import { BACK_HOME, type BackTarget, useBack } from "@/lib/nav";
@@ -13,7 +16,7 @@ import { shell, useShellActions, useShellHere } from "@/lib/shell";
 import type { AppConfig, Drafting, Overview, ReportChoice, ReportType, Review, SectionSummary } from "@/lib/types";
 
 type Phase =
-  | { name: "booting" }
+  | { name: "booting"; target?: "overview" | "review" | "start" }
   | { name: "unreachable"; message: string }
   | { name: "overview"; config: AppConfig; overview: Overview }
   | { name: "start"; config: AppConfig; section: SectionSummary; saved: Review | null; drafting: Drafting | null; week: string | null }
@@ -25,7 +28,10 @@ const one = (value: LocationQuery[string] | undefined) => (Array.isArray(value) 
 
 const route = useRoute();
 const router = useRouter();
-const phase = shallowRef<Phase>({ name: "booting" });
+const phase = shallowRef<Phase>({
+  name: "booting",
+  target: reviewFromUrl() ? "review" : sectionFromUrl() ? "start" : "overview",
+});
 const report = shallowRef<ReportChoice>(api.WEEKLY_REPORT);
 let live = true;
 onUnmounted(() => (live = false));
@@ -153,7 +159,7 @@ onMounted(async () => {
 function home() {
   reportToUrl(report.value, null, null);
   shell.invalidate(); // the overview is read again below, which then hands the rail its payload
-  set({ name: "booting" });
+  set({ name: "booting", target: "overview" });
   void fetchOverview(report.value).then(show);
 }
 
@@ -179,6 +185,7 @@ async function openSection(slug: string, resume: boolean) {
   if (now.name !== "overview") return;
   const run = now.overview.sections.find((s) => s.slug === slug)?.latest;
   if (resume && run) {
+    set({ name: "booting", target: "review" });
     try {
       const review = await api.getReview(run.run_id);
       reportToUrl(report.value, review.run_id, null);
@@ -188,6 +195,7 @@ async function openSection(slug: string, resume: boolean) {
     }
     return;
   }
+  set({ name: "booting", target: "start" });
   reportToUrl(report.value, null, slug);
   set(await fetchStart(slug));
 }
@@ -210,6 +218,7 @@ async function goToSection(slug: string) {
   if (!section || !section.available) return;
   const run = section.latest;
   if (run && (run.current ?? run.this_week)) {
+    set({ name: "booting", target: "review" });
     try {
       const review = await api.getReview(run.run_id);
       reportToUrl(report.value, review.run_id, null);
@@ -219,6 +228,7 @@ async function goToSection(slug: string) {
     }
     return;
   }
+  set({ name: "booting", target: "start" });
   reportToUrl(report.value, null, slug);
   set(await fetchStart(slug, overview));
 }
@@ -251,20 +261,24 @@ function refreshOverview(overview: Overview) {
 
 const key = computed(() => {
   const p = phase.value;
-  return p.name === "review" ? `review-${p.review.run_id}` : p.name === "start" ? `start-${p.section.slug}` : p.name;
+  return p.name === "review"
+    ? `review-${p.review.run_id}`
+    : p.name === "start"
+      ? `start-${p.section.slug}`
+      : p.name === "booting"
+        ? `booting-${p.target ?? "overview"}`
+        : p.name;
 });
 </script>
 
 <template>
   <Transition name="phase" mode="out-in">
     <main id="main" :key="key" tabindex="-1">
-      <div v-if="phase.name === 'booting'" aria-busy="true" aria-label="Loading">
-        <div class="h-28 border-b bg-card" />
-        <div class="mx-auto w-full max-w-275 space-y-3 px-4 pt-8 sm:px-6">
-          <div data-slot="skeleton" class="h-16 w-full animate-pulse rounded-lg bg-border/60" />
-          <div v-for="i in 5" :key="i" data-slot="skeleton" class="h-24 w-full animate-pulse rounded-lg bg-border/60" />
-        </div>
-      </div>
+      <template v-if="phase.name === 'booting'">
+        <ReviewSkeleton v-if="phase.target === 'review'" />
+        <StartSkeleton v-else-if="phase.target === 'start'" />
+        <OverviewSkeleton v-else />
+      </template>
 
       <template v-else-if="phase.name === 'unreachable'">
         <Masthead title="Coordinator review" />

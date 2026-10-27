@@ -15,18 +15,16 @@ function toggle() {
   if (props.storageKey) writePanelOpen(props.storageKey, open.value);
 }
 
+// Responsive column template for desktop: keeps aside panel width constrained while content expands fluidly
 const columns = computed(() => {
   if (!slots.aside) return "";
   if (!open.value) return "min-[1100px]:grid-cols-[minmax(0,1fr)_3rem]";
   return "min-[1100px]:grid-cols-[minmax(0,1fr)_clamp(20rem,25vw,28rem)]";
 });
-// The same width cap for the content and, when the panel is stacked under (or over) it, for the panel.
-const cap = computed(() => (props.wideBody ? "max-w-5xl" : "max-w-184"));
-const stackedCap = computed(() => (props.wideBody ? "max-[1099px]:max-w-5xl" : "max-[1099px]:max-w-184"));
 </script>
 
 <template>
-  <div class="grid w-full gap-8 px-4 pt-6 pb-16 sm:px-6" :class="columns">
+  <div class="grid w-full gap-4 px-3 pt-4 pb-16 sm:px-5 lg:gap-5" :class="columns">
     <PageAside
       v-if="slots.aside && asideFirst"
       first
@@ -36,12 +34,11 @@ const stackedCap = computed(() => (props.wideBody ? "max-[1099px]:max-w-5xl" : "
       :open="open"
       :sticky="sticky"
       class="min-[1100px]:col-start-2 min-[1100px]:row-start-1"
-      :class="stackedCap"
       @toggle="toggle"
     >
       <slot name="aside" />
     </PageAside>
-    <div class="@container mx-auto w-full min-w-0 min-[1100px]:col-start-1 min-[1100px]:row-start-1" :class="cap">
+    <div class="@container w-full min-w-0 min-[1100px]:col-start-1 min-[1100px]:row-start-1">
       <slot />
     </div>
     <PageAside
@@ -52,7 +49,6 @@ const stackedCap = computed(() => (props.wideBody ? "max-[1099px]:max-w-5xl" : "
       :open="open"
       :sticky="sticky"
       class="min-[1100px]:col-start-2 min-[1100px]:row-start-1"
-      :class="stackedCap"
       @toggle="toggle"
     >
       <slot name="aside" />

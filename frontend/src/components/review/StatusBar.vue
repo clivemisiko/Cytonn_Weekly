@@ -27,7 +27,7 @@ const fraction = computed(() => (progress.value.total ? progress.value.resolved 
     class="sticky z-30 border-b border-border/80 bg-background/95 px-4 py-3.5 shadow-xs backdrop-blur supports-backdrop-filter:bg-background/85 sm:px-6"
     :class="hasDevRibbon ? 'top-[calc(var(--topbar-h)+1.75rem)]' : 'top-(--topbar-h)'"
   >
-    <div class="mx-auto w-full max-w-375">
+    <div class="w-full">
       <div class="flex flex-wrap items-center gap-x-8 gap-y-3">
         <div class="min-w-55 flex-1 sm:max-w-sm">
           <div class="mb-2 flex items-baseline justify-between gap-3 text-sm">

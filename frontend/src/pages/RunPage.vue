@@ -273,7 +273,20 @@ const status = computed(() => {
             <dd class="font-medium">{{ friendlyTime(final.at) }}</dd>
           </div>
         </dl>
-        <p v-else class="text-sm text-muted-foreground">Not read yet.</p>
+        <div v-else class="space-y-3.5 text-sm animate-pulse" aria-busy="true" aria-label="Loading draft details">
+          <div>
+            <dt class="eyebrow">Section</dt>
+            <dd class="mt-1 h-4 w-32 rounded bg-border/60" />
+          </div>
+          <div>
+            <dt class="eyebrow">Report</dt>
+            <dd class="mt-1 h-4 w-44 rounded bg-border/60" />
+          </div>
+          <div>
+            <dt class="eyebrow">Started</dt>
+            <dd class="mt-1 h-4 w-24 rounded bg-border/40" />
+          </div>
+        </div>
       </template>
     </PageGrid>
   </main>

@@ -80,9 +80,31 @@ async function copy() {
       </p>
     </div>
 
-    <div v-if="!data && !loadError" aria-busy="true" aria-label="Loading suggestions" class="space-y-2">
-      <div data-slot="skeleton" class="h-16 w-full animate-pulse rounded-md bg-border/60" />
-      <div data-slot="skeleton" class="h-16 w-full animate-pulse rounded-md bg-border/60" />
+    <div v-if="!data && !loadError" aria-busy="true" aria-label="Loading suggestions" class="space-y-3">
+      <div data-slot="skeleton" class="space-y-2 rounded-lg border border-border/80 bg-muted/20 p-3.5">
+        <div class="flex items-center gap-2">
+          <div class="h-5 w-20 rounded bg-border/60 animate-pulse" />
+          <div class="h-5 w-28 rounded bg-border/40 animate-pulse" />
+        </div>
+        <div class="h-4 w-3/4 rounded bg-border/70 animate-pulse" />
+        <div class="h-3.5 w-1/2 rounded bg-border/40 animate-pulse" />
+        <div class="flex items-center gap-2 pt-1 border-t border-border/40">
+          <div class="h-7 w-16 rounded bg-border/50 animate-pulse" />
+          <div class="h-7 w-14 rounded bg-border/30 animate-pulse" />
+        </div>
+      </div>
+      <div data-slot="skeleton" class="space-y-2 rounded-lg border border-border/80 bg-muted/20 p-3.5">
+        <div class="flex items-center gap-2">
+          <div class="h-5 w-24 rounded bg-border/60 animate-pulse" />
+          <div class="h-5 w-20 rounded bg-border/40 animate-pulse" />
+        </div>
+        <div class="h-4 w-4/5 rounded bg-border/70 animate-pulse" />
+        <div class="h-3.5 w-2/3 rounded bg-border/40 animate-pulse" />
+        <div class="flex items-center gap-2 pt-1 border-t border-border/40">
+          <div class="h-7 w-16 rounded bg-border/50 animate-pulse" />
+          <div class="h-7 w-14 rounded bg-border/30 animate-pulse" />
+        </div>
+      </div>
     </div>
 
     <div v-else-if="loadError" class="space-y-2">

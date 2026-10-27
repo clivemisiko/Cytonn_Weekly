@@ -4,7 +4,7 @@ withDefaults(defineProps<{ title?: string; wide?: boolean; flush?: boolean }>(),
 
 <template>
   <header :class="!flush && 'border-b bg-card'">
-    <div :class="!flush && ['mx-auto w-full px-4 py-6 sm:px-6', wide ? 'max-w-375' : 'max-w-275']">
+    <div :class="!flush && 'w-full px-4 py-5 sm:px-6'">
       <p v-if="!flush" class="eyebrow flex items-center gap-2">
         <span aria-hidden="true" class="brand-dot size-2 rounded-full bg-primary" />
         Cytonn Weekly
