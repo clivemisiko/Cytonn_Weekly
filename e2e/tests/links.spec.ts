@@ -43,3 +43,15 @@ test("T41 Company Updates text with no link carries no link flag", async ({ page
   await card.getByRole("button", { name: /Show details/ }).click();
   await expect(card).not.toContainText(/link|email address/i);
 });
+
+test("T105 a not-auto-verified item shows its whole explanation in the details, wrapped", async ({ page }) => {
+  await draftAndOpen(page, "Week ending 2026-11-27",
+    "Investment Updates:\nWrite to research@cytonn.example for the full table of rates.");
+  const card = page.locator('li[data-status="not_auto_verified"]');
+  await expect(card).toHaveCount(1);
+  await card.getByRole("button", { name: /Show details/ }).click();
+  const detail = card.getByTestId("item-detail");
+  await expect(detail).toContainText(/email address/i);
+  // Wrapped, not cut: the paragraph holds all of its text inside its own box.
+  expect(await detail.evaluate((el) => el.scrollWidth <= el.clientWidth + 1 && getComputedStyle(el).textOverflow !== "ellipsis")).toBe(true);
+});

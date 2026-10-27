@@ -12,8 +12,6 @@ import SeverityPill from "./SeverityPill.vue";
 import TextWithIds from "./TextWithIds.vue";
 
 const props = defineProps<{
-  /** The group shows this item's explanation once, under its header, so the card leaves it out. */
-  sharedDetail?: string | null;
   item: ReviewItem;
   /** The review the item is in: the fix-from-a-file control needs its week, run and decision. */
   review: Review;
@@ -76,6 +74,7 @@ const summary = computed(() => {
   const first = flags.value[0]?.message ?? (typeof props.item.detail === "string" ? props.item.detail : "") ?? "";
   return (first || ctx.value.text || "").trim();
 });
+const detailText = computed(() => (typeof props.item.detail === "string" ? props.item.detail : ""));
 const inputs = computed(() => Object.entries(ctx.value.inputs ?? {}));
 const cells = (flag: Flag): [string, string][] => [
   ["Drafted", pyRepr(flag.drafted)],
@@ -158,9 +157,9 @@ const cells = (flag: Flag): [string, string][] => [
           </li>
           <li v-if="inputs.length > 12" class="text-muted-foreground">and {{ inputs.length - 12 }} more inputs of the same kind.</li>
         </ul>
-        <p v-if="ctx.note" class="text-xs text-muted-foreground">{{ ctx.note }}</p>
       </div>
-      <p v-if="item.status === 'not_auto_verified' && typeof item.detail === 'string' && item.detail !== sharedDetail" class="text-xs whitespace-pre-line text-muted-foreground [overflow-wrap:anywhere]"><TextWithIds :text="item.detail" /></p>
+      <p v-if="ctx.note && ctx.note !== detailText" data-testid="item-note" class="text-xs whitespace-pre-line text-muted-foreground [overflow-wrap:anywhere]">{{ ctx.note }}</p>
+      <p v-if="detailText" data-testid="item-detail" class="text-xs whitespace-pre-line text-muted-foreground [overflow-wrap:anywhere]"><TextWithIds :text="detailText" /></p>
     </div>
       </CollapsibleContent>
     </CollapsibleRoot>
