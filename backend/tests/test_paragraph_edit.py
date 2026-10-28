@@ -7,8 +7,9 @@ from api.main import create_app
 from api.problems import PROBLEMS
 from api.serialize import serialize_review
 from cytonn_weekly.common.computed import carried_block
-from cytonn_weekly.common.review import EDITED_PARAGRAPH_NOTE, build_review, check_section, unavailable_block
+from cytonn_weekly.common.review import EDITED_PARAGRAPH_NOTE, build_review, check_section, supplied_block, unavailable_block
 from cytonn_weekly.digital_payments import review_store as rs
+from cytonn_weekly.fixed_income import weekly as fi_weekly
 from cytonn_weekly.weekly import sentence_edit as se
 
 NOW = datetime(2026, 10, 27, 8, 42, tzinfo=timezone.utc)
@@ -114,6 +115,17 @@ def test_a_second_edit_keeps_the_first_original():
     second = edit(first.review, "Rates eased again.")
     assert [e["was"] for e in carried(second.review)["edits"]] == [OLD, OLD]
     assert second.review.review_items[idx(second.review, OUTLOOK_REF)].context["was"] == OLD
+
+
+def test_a_carried_paragraph_edit_keeps_the_stored_summary_whole():
+    bidding = supplied_block("bidding_range", "T-Bonds: recommended bidding range", "We recommend bidding 13.5% to 13.9%.")
+    blocks = [bidding, carried_block("outlook", "Rates and outlook", OLD, FROM)]
+    content = {"section": "fixed_income", "title": "Fixed Income", "blocks": blocks,
+               "summary": fi_weekly.compose_summary(blocks)}
+    old = build_review(content, check_section(content))
+    done = edit(old)
+    assert carried(done.review)["body_md"] == NEW
+    assert done.review.section["summary"] == old.section["summary"] == "We recommend bidding 13.5% to 13.9%."
 
 
 def test_the_same_paragraph_is_refused():
