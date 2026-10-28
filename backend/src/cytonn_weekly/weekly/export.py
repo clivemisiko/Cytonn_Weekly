@@ -39,7 +39,14 @@ from docx.shared import Inches, Pt, RGBColor
 from cytonn_weekly import paths
 from cytonn_weekly.charts import store as chart_store
 from cytonn_weekly.charts.block import PROVENANCE, team_chart_chosen
-from cytonn_weekly.common.word_layout import executive_summary
+from cytonn_weekly.common.word_layout import (
+    apply_report_look,
+    executive_summary,
+    shade_header,
+    small_line,
+    title,
+    title_line,
+)
 from cytonn_weekly.digital_payments import review_store
 from cytonn_weekly.digital_payments.coordinator_review import APPROVED, CoordinatorReview
 from cytonn_weekly.digital_payments.delivery import DevModeDeliveryBlocked, is_dev_mode_review
@@ -49,8 +56,6 @@ from cytonn_weekly.digital_payments.summary import (
     TABLE_COLUMNS,
     TABLE_TITLE,
     _average_row,
-    _shade,
-    _small,
     _style_document,
     footnote_links,
 )
@@ -158,7 +163,7 @@ def _add_text(doc, body_md: str) -> None:
                 if line.lstrip().startswith("- "):
                     doc.add_paragraph(_plain(line.lstrip()[2:]), style="List Bullet")
     if sources:
-        p = _small(doc, "Sources:")
+        p = small_line(doc, "Sources:")
         for n, anchor, url in sources:
             p.add_run().add_break()
             p.add_run(f"[{n}] {anchor}: {url}").font.size = Pt(9)
@@ -178,16 +183,16 @@ def _add_grid(doc, grid: list[list[str]], header_rows: int = 1, numeric_from: in
             para.alignment = WD_ALIGN_PARAGRAPH.RIGHT if c >= numeric_from and r >= header_rows else WD_ALIGN_PARAGRAPH.LEFT
             para.paragraph_format.space_after = Pt(0)
             if r < header_rows:
-                _shade(cells[c], "E7EAF0")
+                shade_header(cells[c])
 
 
 def _source_line(doc, source: dict[str, Any]) -> None:
     if source and source.get("name"):
-        _small(doc, f"Source: {source['name']}")
+        small_line(doc, f"Source: {source['name']}")
 
 
 def _add_table_block(doc, block: dict[str, Any]) -> None:
-    doc.add_paragraph().add_run(block["title"]).bold = True
+    title_line(doc, block["title"])
     if block.get("export_grid"):
         _add_grid(doc, block["export_grid"], header_rows=2)
     else:
@@ -196,13 +201,13 @@ def _add_table_block(doc, block: dict[str, Any]) -> None:
         grid = [[c["label"] for c in columns]] + [[row.get(c["key"], "") for c in columns] for row in block.get("rows", [])]
         _add_grid(doc, grid, numeric_from=numeric)
     for note in block.get("footnotes") or []:
-        _small(doc, note)
+        small_line(doc, note)
     for note in block.get("notes") or []:
-        _small(doc, note, italic=True)
+        small_line(doc, note, italic=True)
     _source_line(doc, block.get("source") or {})
     failed = [r for r in block.get("source_rows", []) if r.get("error")]
     for r in failed:
-        _small(doc, f"{r.get(block['key_field'])}: {r['error']}", color=_RED, italic=True)
+        small_line(doc, f"{r.get(block['key_field'])}: {r['error']}", color=_RED, italic=True)
 
 
 def _placeholder(doc, caption: str) -> None:
@@ -245,7 +250,7 @@ def _chart(doc, caption: str, chart: Optional[dict[str, Any]], review: Coordinat
     para.paragraph_format.keep_with_next = True      # the line below stays on the picture's page
     shape = para.add_run().add_picture(BytesIO(png), width=CHART_WIDTH)
     shape._inline.docPr.set("descr", caption)
-    _small(doc, CHART_NOT_VERIFIED)
+    small_line(doc, CHART_NOT_VERIFIED)
 
 
 def _add_blocks(doc, review: CoordinatorReview, charts_root: Optional[Union[Path, str]] = None) -> None:
@@ -272,7 +277,7 @@ def _add_blocks(doc, review: CoordinatorReview, charts_root: Optional[Union[Path
             _add_text(doc, block["body_md"])
             names = [s["name"] for s in block.get("sources") or [] if s.get("name")]
             if names:
-                _small(doc, "Source: " + "; ".join(names))
+                small_line(doc, "Source: " + "; ".join(names))
         elif kind == "carried":
             doc.add_heading(block["title"], level=2)
             if not block.get("edits"):   # a paragraph the reviewer rewrote (sentence_edit.apply_paragraph) is no longer carried text
@@ -303,14 +308,14 @@ def _add_digital_payments(doc, section: dict[str, Any]) -> None:
             doc.add_heading(f"{item.get('numeral', '')}. {item.get('headline', '')}".strip(". "), level=2)
             _add_text(doc, item.get("body_md") or item.get("body") or "")
         elif item.get("kind") == "stock_table":
-            doc.add_paragraph().add_run(f"{item.get('numeral', '')}. {TABLE_TITLE}".strip(". ")).bold = True
+            title_line(doc, f"{item.get('numeral', '')}. {TABLE_TITLE}".strip(". "))
             rows = item.get("rows", [])
             grid = [[label for _, label, _ in TABLE_COLUMNS]] + [[r[k] for k, _, _ in TABLE_COLUMNS] for r in format_table_rows(rows)]
             average = _average_row(outlook.get("stats") or {})
             if average:
                 grid.append(average)
             _add_grid(doc, grid, numeric_from=2)
-            _small(doc, "Source: Yahoo Finance. Forward P/E is based on analyst consensus forward earnings estimates.")
+            small_line(doc, "Source: Yahoo Finance. Forward P/E is based on analyst consensus forward earnings estimates.")
     text = outlook.get("text") or (outlook.get("text_md") or "").strip("*")
     if text:
         doc.add_heading("Outlook", level=2)
@@ -360,9 +365,7 @@ def build_weekly_document(reviews: list[tuple[SectionSpec, CoordinatorReview]], 
     ``charts_root`` is where the reviews' chart files are kept (default: under the data directory)."""
     doc = Document()
     _style_document(doc)
-    heading1 = doc.styles["Heading 1"]
-    heading1.font.name, heading1.font.size, heading1.font.bold = "Calibri", Pt(16), True
-    heading1.font.color.rgb = _INK
+    apply_report_look(doc)
     doc.core_properties.title = report_title(period)
     doc.core_properties.author = "Cytonn Weekly tool"
     dev = any(is_dev_mode_review(review) for _, review in reviews)
@@ -371,10 +374,9 @@ def build_weekly_document(reviews: list[tuple[SectionSpec, CoordinatorReview]], 
         banner = doc.add_paragraph().add_run(DEV_LABEL)
         banner.bold, banner.font.color.rgb = True, _RED
 
-    title = doc.add_paragraph().add_run(report_title(period))
-    title.bold, title.font.size, title.font.color.rgb = True, Pt(22), _INK
+    title(doc, report_title(period))
     decided = max((review.decided_at or "" for _, review in reviews), default="")
-    _small(doc, f"Every section checked and approved by the coordinator{f' (last on {decided[:10]})' if decided else ''}. "
+    small_line(doc,f"Every section checked and approved by the coordinator{f' (last on {decided[:10]})' if decided else ''}. "
                 "Charts are added by hand where marked; text marked as carried forward must be edited before publishing.")
     executive_summary(doc, SUMMARY_HEADING, [(HEADINGS.get(spec.slug, spec.title), summary_text(review.section))
                                              for spec, review in reviews])
