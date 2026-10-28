@@ -47,9 +47,13 @@ services:
   web:
     build:
       context: ./frontend
-      target: web
+      target: runner
     ports:
-      - "127.0.0.1:5173:8080"
+      # vite preview listens on 3000 in the runner stage (the dev override's dev stage uses 8080).
+      - "127.0.0.1:5173:3000"
+    environment:
+      # vite preview proxies /api; inside the container 127.0.0.1 is the container itself, so name the api service.
+      VITE_API_TARGET: http://api:8000
     depends_on:
       api:
         condition: service_healthy
