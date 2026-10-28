@@ -509,10 +509,12 @@ test("T16 keyboard: the skip link comes first, the theme group is one tab stop m
   await expect(page).toHaveURL(/#main$/);
   await expect(page.locator("main#main")).toHaveAttribute("tabindex", "-1");
 
-  // A held key, as a person presses it: the group moves focus a moment after the key goes down.
+  // A held key, as a person presses it: the group moves focus a moment after the key goes down, and checks the radio a
+  // timer tick later only while the key is still down (reka-ui's RadioGroupItem), so the key is let go once it is checked.
   const arrowLeftTo = async (name: string) => {
     await page.keyboard.down("ArrowLeft");
     await expect(page.getByRole("radio", { name })).toBeFocused();
+    await expect(page.getByRole("radio", { name })).toBeChecked();
     await page.keyboard.up("ArrowLeft");
     await expect(page.getByRole("radio", { name })).toBeChecked();
   };
