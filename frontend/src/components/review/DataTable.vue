@@ -25,7 +25,7 @@ defineProps<{
             v-for="c in columns"
             :key="c.key"
             scope="col"
-            class="eyebrow px-3 py-2.5 align-bottom whitespace-nowrap lg:whitespace-normal"
+            class="eyebrow px-2 py-2 align-bottom whitespace-nowrap lg:whitespace-normal"
             :class="c.numeric ? 'text-right' : 'text-left'"
           >
             {{ c.label }}
@@ -46,9 +46,9 @@ defineProps<{
             v-for="(c, i) in columns"
             :key="c.key"
             :translate="c.numeric ? undefined : 'no'"
-            class="px-3 py-2.5 whitespace-nowrap"
+            class="px-2 py-2 whitespace-nowrap"
             :class="[
-              c.numeric ? 'text-right font-mono tabular-nums' : 'text-left',
+              c.numeric ? 'text-right' : 'text-left',
               i === 0 && 'font-medium',
               c.key === 'ticker' && 'font-mono text-muted-foreground',
               i === 0 && row.flagged && 'shadow-[inset_6px_0_0_var(--flag)]',
