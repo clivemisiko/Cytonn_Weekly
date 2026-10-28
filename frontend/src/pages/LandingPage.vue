@@ -58,7 +58,7 @@ const rise = (order: number) => ({ animationDelay: `${order * 60}ms` });
           </div>
           <div class="flex items-center gap-2 rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-xs font-medium text-foreground">
             <PhCheckCircle class="size-4 shrink-0 text-ok-fg" />
-            <span>Source verified</span>
+            <span>Figures checked against the source</span>
           </div>
           <div class="flex items-center gap-2 rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-xs font-medium text-foreground">
             <PhFileDoc class="size-4 shrink-0 text-muted-foreground" />
