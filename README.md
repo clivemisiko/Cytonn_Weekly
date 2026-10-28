@@ -133,6 +133,7 @@ Then open http://127.0.0.1:5173 (the API is at http://127.0.0.1:8000), the same 
 - **Web:** the built app is served by nginx (`frontend/nginx.conf`), which proxies `/api` to the API, the run view's live stream included.
 - **Tests** are not in the runtime image. `docker build --target test -t cytonn-api-test backend` then `docker run --rm --network none cytonn-api-test` runs the suite without `.env` or the data folder.
 - **Development override** (`docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build`): source mounted, both servers reload. Updated for nginx but not yet run.
+- **On the shared server** the images are built elsewhere and loaded from a tarball, because that box cannot build them without risking its other workloads. See [deploy/README.md](deploy/README.md); never run `--build` there.
 - The local development model (Ollama) stays on the host; the container reaches it at `http://host.docker.internal:11434`.
 
 ## Drafting provider (Digital Payments)

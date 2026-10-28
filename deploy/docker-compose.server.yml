@@ -1,0 +1,35 @@
+# Server override for 159.223.140.184. Not committed: it describes this one host.
+#
+# The images are built elsewhere and loaded from a tarball, so nothing is ever built or pulled here:
+# this box has too little memory to compile either image without risking its other workloads.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.server.yml up -d --no-build
+#
+# Both ports stay on 127.0.0.1: the app has no sign-in, so it is reached over an SSH tunnel.
+#   ssh -L 8010:127.0.0.1:8010 -L 5173:127.0.0.1:5173 clive@159.223.140.184
+
+services:
+  api:
+    image: cytonn-weekly-api:2026-10-28
+    pull_policy: never
+    build: !reset null
+    # 8000 is held by ai-client-engagement-ace-1, so the api is published on 8010 instead.
+    ports: !override
+      - "127.0.0.1:8010:8000"
+    # This box runs other production workloads in under 2 GB. The limit is here so that if this
+    # app does not fit, the kernel kills this container and not a neighbour.
+    mem_limit: 768m
+    # The image builds a home for uid 10001, but the bind-mounted data folder is owned by clive
+    # (1007) and root is not available here to change it. So the api runs as clive instead, and
+    # HOME moves to the one folder it can write: without it matplotlib's font cache has nowhere
+    # to go. Revert both lines once the data folder is chowned to 10001.
+    user: "1007:1007"
+    environment:
+      HOME: /app/data
+      MPLCONFIGDIR: /app/data/.mplconfig
+
+  web:
+    image: cytonn-weekly-web:2026-10-28
+    pull_policy: never
+    build: !reset null
+    mem_limit: 256m
