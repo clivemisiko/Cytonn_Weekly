@@ -2,7 +2,11 @@
 import { computed } from "vue";
 import Notice from "../Notice.vue";
 
-defineProps<{ lines: string[] }>();
+const props = defineProps<{ lines: string[] }>();
+
+const SUFFIX = / The typed value is used\.$/;
+const rows = computed(() => props.lines.map((l) => l.replace(SUFFIX, "")));
+const FOLD_AFTER = 3;
 </script>
 
 <template>

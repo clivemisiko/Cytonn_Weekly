@@ -32,6 +32,9 @@ services:
   web:
     build:
       target: dev
+    # Replace (not append to) the base mapping: the dev stage listens on 8080, the runner stage on 3000.
+    ports: !override
+      - "127.0.0.1:5173:8080"
     environment:
       VITE_USE_POLLING: "true"
       # Vite's dev server proxies /api itself (nginx is not in this image).
