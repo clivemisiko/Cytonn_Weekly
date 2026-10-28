@@ -15,9 +15,11 @@ const changed = props.result.changes.length;
 
 <template>
   <section ref="root" tabindex="-1" aria-labelledby="recheck-title" class="rise-in space-y-3 rounded-lg border border-l-[6px] border-ok/40 border-l-ok bg-ok/10 px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-ring">
-    <h2 id="recheck-title" role="status" class="text-base font-semibold text-ok-fg">
-      Figures re-checked. {{ changed === 0 ? "Nothing changed." : `${changed} changed.` }}
-    </h2>
+    <div role="status">
+      <h2 id="recheck-title" class="text-base font-semibold text-ok-fg">
+        Figures re-checked. {{ changed === 0 ? "Nothing changed." : `${changed} changed.` }}
+      </h2>
+    </div>
     <ul v-if="changed" class="list-disc space-y-1 pl-5 text-sm [overflow-wrap:anywhere]">
       <li v-for="c in result.changes" :key="`${c.block}|${c.label}`">{{ changeLine(c) }}</li>
     </ul>
