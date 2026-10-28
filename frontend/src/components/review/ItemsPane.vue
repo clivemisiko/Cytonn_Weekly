@@ -205,7 +205,6 @@ const shared = computed(() => {
               :locked="locked"
               :on-resolve="onResolve"
               v-model:open="expanded[item.index]"
-              :shared-detail="status === 'not_auto_verified' ? shared?.text : null"
             />
           </ul>
         </CollapsibleContent>

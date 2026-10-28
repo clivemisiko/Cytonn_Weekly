@@ -294,11 +294,20 @@ def test_what_the_spec_says_to_flag_is_flagged(root):
     placements = flagged["Money Market Performance: 3-month bank placements (9.5%)"]
     assert "its source is unconfirmed" in placements.detail[0].message
     target = next(i for ref, i in flagged.items() if ref.startswith("Net domestic borrowing against the pro-rated target: Pro-rated"))
-    assert "has not confirmed whether the net domestic borrowing target" in target.detail[0].message
+    message = target.detail[0].message
+    assert "has not confirmed which figure is the net domestic borrowing target" in message
+    assert "The app used" in message and "Budget workbook's 'Borrowings' sheet" in message
     assert sum(1 for ref in flagged if "amount issued, years to maturity and yield at issue" in ref) == 5   # Yields at Issue
     assert any(ref == "T-Bonds: recommended bidding range (the analysts' recommendation) (not available yet)" for ref in flagged)
     assert {"Kenya Shilling: what pressures the shilling (carried forward)", "Rates and outlook (closing paragraph) (carried forward)"} <= set(flagged)
     assert not review.is_approvable
+
+
+def test_the_target_flag_names_the_cell_it_used_and_the_one_it_did_not_read():
+    from cytonn_weekly.weekly.workbook import Cell
+    msg = fiw.target_flag(Cell(919.36, "Government Borrowing", 40, 3))
+    assert "919.36 bn" in msg and "Government Borrowing" in msg and "C40" in msg and "only target the app reads" in msg
+    assert "does not read that workbook" in msg and "not known here" in msg
 
 
 def test_the_borrowing_sentence_is_worked_out_and_never_says_ahead(root):

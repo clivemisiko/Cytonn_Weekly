@@ -9,7 +9,7 @@ from typing import Any, Optional
 
 from cytonn_weekly.common.review import CARRIED_TEXT, CLAIM, build_review, check_section
 from cytonn_weekly.digital_payments.coordinator_review import FLAGGED, CoordinatorReview
-from cytonn_weekly.weekly.recheck import carry_marks, copy_chart_files
+from cytonn_weekly.weekly.recheck import EQUITIES, FIXED_INCOME, _module, carry_marks, copy_chart_files
 
 MAX_CHARS = 600
 # The longest carried block in the test fixtures is a few hundred characters; a real closing outlook runs to about a thousand.
@@ -170,6 +170,9 @@ def apply(old: CoordinatorReview, index: int, action: str, text: Optional[str], 
 
 
 def _rebuilt(old: CoordinatorReview, content: dict[str, Any], action: str, charts_root: Optional[Path]) -> Edited:
+    section = content.get("section")
+    if section in (FIXED_INCOME, EQUITIES):   # their summary is stored when built; the other sections compose theirs at export
+        content["summary"] = _module(section).compose_summary(content["blocks"])
     new = build_review(content, check_section(content))
     new.report_type, new.period = old.report_type, old.period
     copy_chart_files(old, new, charts_root)

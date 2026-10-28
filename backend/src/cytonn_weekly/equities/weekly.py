@@ -690,7 +690,7 @@ def universe_block(m: Market, warnings: list[str]) -> dict[str, Any]:
                                                    f"{'it' if len(gaps) == 1 else 'them'} under \"{analyst.FORM}\""})
             continue
         if gaps:
-            rows.append({"company": name, "error": f"the workbook has no usable {', '.join(gaps)} for {name} (row {c['price'].row})"})
+            rows.append({"company": name, "error": f"{WB} '{equities_workbook.UNIVERSE_SHEET}' has no usable {', '.join(gaps)} for {name} (row {c['price'].row})"})
             continue
         row: dict[str, Any] = {"company": name, **raw}
         # Worked out exactly (decimal arithmetic), as the checker does, so a figure on a rounding

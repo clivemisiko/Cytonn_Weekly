@@ -7,7 +7,10 @@ from fastapi.testclient import TestClient
 from api.main import create_app
 from api.problems import PROBLEMS
 from api.serialize import is_dev_draft, serialize_review
+from cytonn_weekly.common.review import CLAIM, build_review, check_section
 from cytonn_weekly.digital_payments import review_store as rs
+from cytonn_weekly.equities import weekly as eq_weekly
+from cytonn_weekly.fixed_income import weekly as fi_weekly
 from cytonn_weekly.weekly import sentence_edit as se
 from tests import section_helpers as sh
 
@@ -119,6 +122,45 @@ def test_only_the_one_sentence_changes_in_its_block():
     assert b["claims"][0] == a["claims"][0] and b["claims"][1]["url"] == a["claims"][1]["url"]
     assert b["claims"][1]["cited_text"] == a["claims"][1]["cited_text"]
     assert b["edits"] == [{"kind": "edited", "at": "2026-10-27T08:42:00+00:00", "was": "Lending rose to Sh99.9 billion.", "now": GOOD}]
+
+
+# --- the stored summary of Fixed Income and Equities ----------------------------------------------
+
+def stored_summary_review(section, module):
+    """Real Estate's drafted pieces (each with a flagged second sentence) under a section that stores its summary."""
+    content = copy.deepcopy(sh.real_estate_review(provider=sh.FakeNarrativeProvider(bad_figure=True)).section)
+    content["section"] = section
+    content["summary"] = module.compose_summary(content["blocks"])
+    return build_review(content, check_section(content))
+
+
+def flagged_claims(review):
+    return [n for n, i in enumerate(review.review_items) if i.kind == CLAIM and i.status == "flagged"]
+
+
+def test_editing_a_sentence_the_summary_is_built_from_changes_the_stored_summary():
+    old = stored_summary_review("fixed_income", fi_weekly)
+    assert "Lending rose to Sh99.9 billion." in old.section["summary"]
+    done = se.apply(old, flagged_claims(old)[0], "edit", GOOD, now=NOW)
+    summary = done.review.section["summary"]
+    assert GOOD in summary and "Sh99.9" not in summary
+    assert summary == fi_weekly.compose_summary(done.review.section["blocks"])
+
+
+def test_editing_a_sentence_outside_the_summary_leaves_it_identical():
+    old = stored_summary_review("fixed_income", fi_weekly)
+    assert len(flagged_claims(old)) >= 2
+    done = se.apply(old, flagged_claims(old)[1], "edit", GOOD, now=NOW)
+    assert done.review.section["summary"] == old.section["summary"]
+
+
+def test_removing_a_sentence_takes_it_out_of_the_stored_summary():
+    old = stored_summary_review("equities", eq_weekly)
+    assert "Lending rose to Sh99.9 billion." in old.section["summary"]
+    done = se.apply(old, flagged_claims(old)[0], "remove", None, now=NOW)
+    summary = done.review.section["summary"]
+    assert "Lending rose to Sh99.9 billion." not in summary and summary.startswith("During the week, ")
+    assert summary == eq_weekly.compose_summary(done.review.section["blocks"])
 
 
 def test_editing_the_same_sentence_again_keeps_the_first_wording_as_the_original():
