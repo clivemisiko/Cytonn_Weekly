@@ -62,7 +62,7 @@ from cytonn_weekly.digital_payments.summary import (
 from cytonn_weekly.report_sections import SECTIONS, SectionSpec, is_current, latest_runs
 from cytonn_weekly.report_types import WEEKLY, week_ending_of
 from cytonn_weekly.weekly.summaries import section_summary
-from cytonn_weekly.weekly.week import ordinal
+from cytonn_weekly.weekly.week import day_text, ordinal
 
 DEV_LABEL = "DEV MODE DRAFT (local model): NOT FOR PUBLICATION OR CIRCULATION"
 WATERMARK = "DEV MODE DRAFT"
@@ -210,13 +210,20 @@ def _add_table_block(doc, block: dict[str, Any]) -> None:
         small_line(doc, f"{r.get(block['key_field'])}: {r['error']}", color=_RED, italic=True)
 
 
+def _mark(doc, text: str):
+    """A review mark's run, in a left-aligned paragraph: the body is justified, which would stretch a mark's words."""
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    return p.add_run(text)
+
+
 def _placeholder(doc, caption: str) -> None:
-    r = doc.add_paragraph().add_run(f"[Chart to add: {caption}]")
+    r = _mark(doc, f"[Chart to add: {caption}]")
     r.italic, r.font.color.rgb = True, _INK
 
 
 def _red_line(doc, text: str) -> None:
-    r = doc.add_paragraph().add_run(text)
+    r = _mark(doc, text)
     r.italic, r.font.color.rgb = True, _RED
 
 
@@ -281,7 +288,7 @@ def _add_blocks(doc, review: CoordinatorReview, charts_root: Optional[Union[Path
         elif kind == "carried":
             doc.add_heading(block["title"], level=2)
             if not block.get("edits"):   # a paragraph the reviewer rewrote (sentence_edit.apply_paragraph) is no longer carried text
-                note = doc.add_paragraph().add_run(CARRIED_NOTE)
+                note = _mark(doc, CARRIED_NOTE)
                 note.bold, note.font.color.rgb = True, _RED
             _add_text(doc, block["body_md"])
         elif kind == "supplied":
@@ -289,9 +296,7 @@ def _add_blocks(doc, review: CoordinatorReview, charts_root: Optional[Union[Path
                 doc.add_heading(block["title"], level=2)
             _add_text(doc, block["body_md"])
         elif kind == "unavailable":
-            p = doc.add_paragraph()
-            r = p.add_run(f"[Not included: {block['title']}. {block['reason']}]")
-            r.italic, r.font.color.rgb = True, _RED
+            _red_line(doc, f"[Not included: {block['title']}. {block['reason']}]")
         # A chart block prints nothing where it stands: its place is where its caption is listed (chart_after).
         captions = chart_after.get(block["id"]) or []
         place(captions)
@@ -371,12 +376,13 @@ def build_weekly_document(reviews: list[tuple[SectionSpec, CoordinatorReview]], 
     dev = any(is_dev_mode_review(review) for _, review in reviews)
     if dev:
         _watermark(doc)
-        banner = doc.add_paragraph().add_run(DEV_LABEL)
+        banner = _mark(doc, DEV_LABEL)
         banner.bold, banner.font.color.rgb = True, _RED
 
     title(doc, report_title(period))
     decided = max((review.decided_at or "" for _, review in reviews), default="")
-    small_line(doc,f"Every section checked and approved by the coordinator{f' (last on {decided[:10]})' if decided else ''}. "
+    on = f" (last on {day_text(date.fromisoformat(decided[:10]))})" if decided else ""
+    small_line(doc, f"Every section checked and approved by the coordinator{on}. "
                 "Charts are added by hand where marked; text marked as carried forward must be edited before publishing.")
     executive_summary(doc, SUMMARY_HEADING, [(HEADINGS.get(spec.slug, spec.title), summary_text(review.section))
                                              for spec, review in reviews])

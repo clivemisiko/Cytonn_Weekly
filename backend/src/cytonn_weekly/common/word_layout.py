@@ -60,8 +60,9 @@ def title_line(doc, text: str):
 
 
 def small_line(doc, text: str, *, color: RGBColor = DARK_GREY, italic: bool = False, bold: bool = False):
-    """A source line, footnote or note under a table or paragraph: 9 pt."""
+    """A source line, footnote or note under a table or paragraph: 9 pt, left-aligned (never stretched like the body)."""
     p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.LEFT
     r = p.add_run(text)
     r.font.size, r.font.color.rgb, r.italic, r.bold = Pt(9), color, italic, bold
     p.paragraph_format.space_after = Pt(3)

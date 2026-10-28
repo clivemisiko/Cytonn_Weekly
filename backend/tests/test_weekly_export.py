@@ -327,6 +327,7 @@ def test_the_review_copy_keeps_every_mark_with_a_dev_draft(week, tmp_path):
     assert text.count(NOTE) == 3 and any(t.startswith("[Not included: ") for t in text)
     note = next(p for p in doc.paragraphs if p.text == NOTE).runs[0]
     assert note.bold and str(note.font.color.rgb) == "C00000"
+    assert doc.paragraphs[0].alignment == WD_ALIGN_PARAGRAPH.LEFT   # the dev banner
 
 
 def test_every_page_has_a_page_number_and_the_headings_are_real_heading_styles(week, tmp_path):
@@ -347,3 +348,26 @@ def test_the_chart_placeholders_keep_their_wording_and_look(week, tmp_path):
     assert [t for t in text if t.startswith("[Chart to add: ")] == [f"[Chart to add: {c}]" for c in fi_weekly.CHARTS]
     run = next(p for p in doc.paragraphs if p.text.startswith("[Chart to add: ")).runs[0]
     assert run.italic and str(run.font.color.rgb) == "1F2A44"
+
+
+def test_the_review_marks_and_small_lines_are_left_aligned_not_stretched(week, tmp_path):
+    doc, _ = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
+    marks = [p for p in doc.paragraphs if p.text.startswith(("[Not included: ", "[Chart to add: ", "Source: ", "Every section checked"))
+             or p.text in (NOTE, "Changes are in percentage points.")]
+    kinds = {p.text.split(":")[0] for p in marks}
+    assert {"[Not included", "[Chart to add", "Source", NOTE.split(":")[0]} <= kinds
+    assert all(p.alignment == WD_ALIGN_PARAGRAPH.LEFT for p in marks), [p.text[:40] for p in marks if p.alignment != WD_ALIGN_PARAGRAPH.LEFT]
+    assert doc.styles["Normal"].paragraph_format.alignment == WD_ALIGN_PARAGRAPH.JUSTIFY   # the body stays justified
+
+
+def test_the_approval_line_writes_its_date_as_the_app_does(week, tmp_path):
+    import re
+
+    from cytonn_weekly.weekly.week import day_text
+
+    _, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
+    line = text[1]
+    reviews = export.require_all_approved(export.weekly_reviews(week, PERIOD))
+    last = max(review.decided_at for _, review in reviews)
+    assert line.startswith(f"Every section checked and approved by the coordinator (last on {day_text(date.fromisoformat(last[:10]))}). ")
+    assert re.search(r"\(last on \d{1,2} [A-Z][a-z]{2} \d{4}\)", line) and not re.search(r"\d{4}-\d{2}-\d{2}", line)

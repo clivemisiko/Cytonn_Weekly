@@ -81,7 +81,9 @@ const flagged = computed(() =>
         :kinds="overview.companion_kinds"
         :on-apply="onReport"
       />
-      
+      <Notice v-if="config.dev_mode" role="alert" class="font-semibold">
+        CYTONN_LLM_PROVIDER=local: DEV MODE. Drafts from the local model are NOT FOR PUBLICATION.
+      </Notice>
       <Notice v-if="exportStatus?.is_dev_draft" role="alert" class="font-semibold">
         {{ exportStatus.dev_mode_label }} The export carries a DEV MODE watermark on every page and must not be sent or published ({{ exportStatus.dev_sections.join(", ") }}).
       </Notice>
