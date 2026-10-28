@@ -259,3 +259,26 @@ def test_document_properties_and_review_untouched(db, tmp_path):
     path = latest_summary(db, tmp_path)
     assert Document(str(path)).core_properties.title == "Digital Payments: weekly insight summary"
     assert rs.load_review(review.run_id, db_path=db) == before  # generating a summary changes nothing
+
+
+def _look(path):
+    """The styles the summary uses, as Word stores them, and its footer."""
+    doc = Document(str(path))
+    styles = {name: doc.styles[name].element.xml for name in ("Normal", "Heading 1", "Heading 2")}
+    return styles, doc.sections[0].footer._element.xml
+
+
+def test_the_summary_keeps_its_own_look_when_the_weekly_export_is_written(db, tmp_path):
+    from cytonn_weekly.report_sections import BY_SLUG
+    from cytonn_weekly.weekly import export
+
+    review = approved_review(db)
+    before = _look(latest_summary(db, tmp_path, "before.docx"))
+    export.build_weekly_document([(BY_SLUG["digital_payments"], review)], "")   # the weekly look is applied to its own document only
+    after = _look(latest_summary(db, tmp_path, "after.docx"))
+    assert after == before
+    doc = Document(str(tmp_path / "after.docx"))
+    normal, heading = doc.styles["Normal"], doc.styles["Heading 2"]
+    assert normal.paragraph_format.alignment is None and normal.font.name == "Calibri"
+    assert heading.font.color.rgb == sm._INK and not heading.font.underline
+    assert "PAGE" not in after[1]

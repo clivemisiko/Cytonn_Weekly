@@ -34,8 +34,10 @@ def apply_report_look(doc) -> None:
         _plain_font(heading)
         heading.font.color.rgb, heading.font.bold, heading.font.underline = BLACK, True, True
     doc.styles["Heading 1"].font.size = Pt(16)
-    for section in doc.sections:
-        para = section.footer.paragraphs[0] if section.footer.paragraphs else section.footer.add_paragraph()
+    for n, section in enumerate(doc.sections):
+        if n and section.footer.is_linked_to_previous:
+            continue   # it shows the footer before it, which already has the number
+        para =section.footer.paragraphs[0] if section.footer.paragraphs else section.footer.add_paragraph()
         para.alignment = WD_ALIGN_PARAGRAPH.CENTER
         para._p.append(parse_xml(f'<w:fldSimple {nsdecls("w")} w:instr=" PAGE "><w:r><w:t>1</w:t></w:r></w:fldSimple>'))
 

@@ -10,6 +10,7 @@ from datetime import date
 
 import pytest
 from docx import Document
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from fastapi.testclient import TestClient
 
 from api.main import create_app
@@ -126,13 +127,14 @@ def test_the_report_has_the_real_order_and_headings_with_a_summary_per_section(w
     assert path.name == "Cytonn-Weekly-2026-10-02.docx"
     doc, text = _text(path)
     headings = [p.text for p in doc.paragraphs if p.style.name == "Heading 1"]
-    assert headings == ORDER + ["Section summaries for the CMS"]
+    assert headings == ["Executive Summary:"] + ORDER
     assert text[0] == "Cytonn Weekly: week ending 2nd October 2026" and doc.core_properties.title == text[0]
-    # the last part: one summary per section, in the same order; Company Updates has none, as published
-    tail = text[text.index("Section summaries for the CMS"):]
-    assert [t for t in tail if t in ORDER] == ORDER
-    assert "No summary: the published issue's section has none." in tail
-    assert any(t.startswith("This week, T-bills were oversubscribed, with the overall subscription rate coming in at 170.4%") for t in tail)
+    # page 1: one summary paragraph per section, led by its name in bold; Company Updates has none, as published
+    summary = text[text.index("Executive Summary:") + 1:text.index("Company Updates")]
+    assert [t.split(":")[0] for t in summary] == ORDER[1:]
+    assert summary[0].startswith("Fixed Income: This week, T-bills were oversubscribed, with the overall subscription rate "
+                                 "coming in at 170.4%")
+    assert "Section summaries for the CMS" not in text and "No summary: the published issue's section has none." not in text
 
 
 def test_computed_paragraphs_tables_charts_and_marked_text_are_all_in_the_file(week, tmp_path):
@@ -305,3 +307,43 @@ def test_a_re_edited_paragraph_exports_the_same_way(week, tmp_path):
     _rewrite_outlook(week, "Rates eased again.")
     _, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
     assert text.count(NOTE) == 2 and "Rates eased again." in text and REWRITTEN not in text
+
+
+# --- the published look (common/word_layout.py) --------------------------------------------------
+
+def test_the_executive_summary_comes_before_the_first_section(week, tmp_path):
+    doc, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
+    first = next(n for n, p in enumerate(doc.paragraphs) if p.style.name == "Heading 1")
+    assert doc.paragraphs[first].text == "Executive Summary:" and text.index("Executive Summary:") < text.index("Company Updates")
+    lead = doc.paragraphs[first + 1]
+    assert lead.runs[0].text == "Fixed Income:" and lead.runs[0].bold   # Company Updates has no summary, so it is not listed
+    assert not any(t.startswith("Company Updates:") for t in text)
+
+
+def test_the_review_copy_keeps_every_mark_with_a_dev_draft(week, tmp_path):
+    _save(week, "digital_payments", make_review(provider=LocalFakeProvider()))
+    doc, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
+    assert text[0] == export.DEV_LABEL and 'string="DEV MODE DRAFT"' in doc.sections[0].header._element.xml
+    assert text.count(NOTE) == 3 and any(t.startswith("[Not included: ") for t in text)
+    note = next(p for p in doc.paragraphs if p.text == NOTE).runs[0]
+    assert note.bold and str(note.font.color.rgb) == "C00000"
+
+
+def test_every_page_has_a_page_number_and_the_headings_are_real_heading_styles(week, tmp_path):
+    doc, _ = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
+    assert 'w:instr=" PAGE "' in doc.sections[0].footer._element.xml
+    assert not doc.sections[0].header.paragraphs[0].text            # the footer is the page number's; the header stays empty
+    for name in ("Heading 1", "Heading 2"):
+        style = doc.styles[name]
+        assert style.font.bold and style.font.underline and str(style.font.color.rgb) == "000000"
+    assert doc.styles["Normal"].paragraph_format.alignment == WD_ALIGN_PARAGRAPH.JUSTIFY
+    assert {p.style.name for p in doc.paragraphs if p.text in ORDER} == {"Heading 1"}
+    header = doc.tables[0].rows[0].cells[0]
+    assert 'w:fill="006C5B"' in header._tc.xml and str(header.paragraphs[0].runs[0].font.color.rgb) == "FFFFFF"
+
+
+def test_the_chart_placeholders_keep_their_wording_and_look(week, tmp_path):
+    doc, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
+    assert [t for t in text if t.startswith("[Chart to add: ")] == [f"[Chart to add: {c}]" for c in fi_weekly.CHARTS]
+    run = next(p for p in doc.paragraphs if p.text.startswith("[Chart to add: ")).runs[0]
+    assert run.italic and str(run.font.color.rgb) == "1F2A44"
