@@ -7,6 +7,7 @@ import { LINK } from "@/components/ui/button";
 import * as api from "@/lib/api";
 import { isDraftingThis, providerOff, slotTaken, useDraftingPoll, useLiveElapsed } from "@/lib/drafting";
 import { elapsed, friendlyTime, weekRange } from "@/lib/format";
+import { draftChartsNote } from "@/lib/charts";
 import { redraftNotes } from "@/lib/redraft";
 import { shell, useShellRibbon } from "@/lib/shell";
 import { MAX_TOPIC, topicLength } from "@/lib/topic";
@@ -92,9 +93,26 @@ const cannotDraft = computed(
 // Drafting over a section that already has a review asks first (what happens to the earlier one), then drafts.
 const confirming = ref(false);
 const notes = computed(() => (props.saved ? redraftNotes(props.saved, props.report.type, props.section.requires_approved) : []));
-function start() {
+// Fixed Income and Equities say first how many of their charts have no image; the analyst may draft anyway.
+const chartNote = ref<string | null>(null);
+async function start() {
+  if (usesInputs.value && props.week) {
+    try {
+      chartNote.value = draftChartsNote((await api.getInputs(props.week)).charts ?? [], props.section.slug);
+    } catch {
+      chartNote.value = null; // a failed read never stops a draft
+    }
+    if (chartNote.value) return;
+  }
+  afterCharts();
+}
+function afterCharts() {
   if (props.saved) confirming.value = true;
   else void draft();
+}
+function chartsConfirmed() {
+  chartNote.value = null;
+  afterCharts();
 }
 function confirmed() {
   confirming.value = false;
@@ -364,6 +382,15 @@ const lists = computed(() => [
               @confirm="confirmed"
               @cancel="confirming = false"
             />
+            <RedraftDialog
+              :open="chartNote !== null"
+              title="Some charts have no image"
+              :notes="chartNote ? [chartNote] : []"
+              confirm-label="Draft anyway"
+              cancel-label="Go back"
+              @confirm="chartsConfirmed"
+              @cancel="chartNote = null"
+            />
           </div>
         </section>
         <!-- The weekly report's analyst worklist: suggestions with their working, never added to the draft. -->
@@ -377,7 +404,7 @@ const lists = computed(() => [
       </div>
 
       <template #aside>
-        <InputsPanel v-if="usesInputs && week" :key="week" :week="week" :disabled="starting" @week="(w) => emit('week', w)" @change="uploads++" />
+        <InputsPanel v-if="usesInputs && week" :key="week" :week="week" :section="section.slug" :disabled="starting" @week="(w) => emit('week', w)" @change="uploads++" />
         <div class="space-y-6" :class="usesInputs && week && 'border-t pt-6'">
           <section aria-labelledby="flow-title">
             <h2 id="flow-title" class="pb-4 text-lg font-semibold">What a run does</h2>
