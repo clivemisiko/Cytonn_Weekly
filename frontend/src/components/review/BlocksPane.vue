@@ -118,11 +118,15 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
     </div>
 
     <template v-for="b in section.blocks" :key="b.id">
+      <!-- Real Estate prints its stories under numbered groups; a grouped story's numeral is its letter in the group. -->
+      <h3 v-if="'group_heading' in b && b.group_heading" class="border-t px-4 pt-6 text-base font-semibold sm:px-6">
+        {{ b.group_heading }}
+      </h3>
       <article v-if="b.kind === 'narrative'" :class="PIECE" :aria-labelledby="`blk-${b.id}`">
-        <h3 :id="`blk-${b.id}`" :class="HEAD">
+        <component :is="b.group ? 'h4' : 'h3'" :id="`blk-${b.id}`" :class="HEAD">
           <Numeral>{{ b.numeral }}</Numeral>
           <span>{{ b.headline }}</span>
-        </h3>
+        </component>
         <Markdown :class="BODY" :text="b.body_md" />
         <ul v-if="edited(b).length" aria-label="Sentences you edited" class="space-y-1 text-xs text-muted-foreground md:pl-11">
           <li v-for="e in edited(b)" :key="`${e.at}|${e.now}`" class="[overflow-wrap:anywhere]">
@@ -142,10 +146,10 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
       </article>
 
       <section v-else-if="b.kind === 'table'" :class="PIECE" :aria-labelledby="`blk-${b.id}`">
-        <h3 :id="`blk-${b.id}`" class="flex items-center gap-3 text-base font-semibold">
+        <component :is="b.group ? 'h4' : 'h3'" :id="`blk-${b.id}`" class="flex items-center gap-3 text-base font-semibold">
           <Numeral>{{ b.numeral }}</Numeral>
           {{ b.title }}
-        </h3>
+        </component>
         <DataTable :id="b.id" :title="b.title" :columns="b.columns" :rows="b.rows" :row-key="b.key_field" />
         <p class="text-xs text-muted-foreground">
           Source:

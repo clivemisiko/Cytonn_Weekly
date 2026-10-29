@@ -164,6 +164,9 @@ export interface TableColumn {
 
 export interface TableBlock {
   numeral: string;
+  /** Real Estate (weekly) only: the group it is printed under, and on the group's first block its heading ("I. Residential Sector"). */
+  group?: string;
+  group_heading?: string;
   kind: "table";
   id: string;
   title: string;
@@ -211,6 +214,9 @@ export interface CarriedBlock {
 
 export interface NarrativeBlock {
   numeral: string;
+  /** Real Estate (weekly) only: the group it is printed under, and on the group's first block its heading ("I. Residential Sector"). */
+  group?: string;
+  group_heading?: string;
   kind: "narrative";
   id: string;
   topic: string;
