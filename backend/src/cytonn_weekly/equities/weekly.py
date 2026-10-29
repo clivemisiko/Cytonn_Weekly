@@ -266,7 +266,8 @@ def _level(m: Market, key: str, when: str) -> Optional[dict[str, Any]]:
     cbk, why = _table_6(m, day, key) if day else (None, "")
     if cbk is not None:
         return published(cbk, f"{cbk_bulletin.SOURCE_NAME}, Table 6", second=typed_reading, decimals=2)
-    name = TABLE_6_NAMES.get(key)   # only the indices CBK publishes get a notice
+    # only the indices CBK publishes get a notice, and not the year open: Table 6 never covers January
+    name = TABLE_6_NAMES.get(key) if when != "year_open" else None
 
     def fell_back(source: str, link: Optional[str] = None) -> None:
         if name:
