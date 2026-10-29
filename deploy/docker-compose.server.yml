@@ -1,17 +1,18 @@
-# Server override for 159.223.140.184. Not committed: it describes this one host.
+# Server override for 159.223.140.184.
 #
-# The images are built elsewhere and loaded from a tarball, so nothing is ever built or pulled here:
-# this box has too little memory to compile either image without risking its other workloads.
+# Nothing is ever built here: this box has too little memory to compile either image without risking
+# its other workloads. api and web are pulled from ghcr.io (built by .github/workflows/publish-images.yml);
+# the proxy is still loaded from a tarball. IMAGE_TAG picks a build (sha-<commit>), default latest.
 #
-#   docker compose -f docker-compose.yml -f docker-compose.server.yml up -d --no-build
+#   ./deploy.sh [sha-<commit>]      see DEPLOY.md
 #
 # Both ports stay on 127.0.0.1: the app has no sign-in, so it is reached over an SSH tunnel.
 #   ssh -L 8010:127.0.0.1:8010 -L 5173:127.0.0.1:5173 clive@159.223.140.184
 
 services:
   api:
-    image: cytonn-weekly-api:2026-10-28
-    pull_policy: never
+    image: ghcr.io/clivemisiko/cytonn-weekly-api:${IMAGE_TAG:-latest}
+    # Reset, not overridden: with no build section compose has nothing to build, even with --build.
     build: !reset null
     # 8000 is held by ai-client-engagement-ace-1, so the api is published on 8010 instead.
     ports: !override
@@ -29,8 +30,7 @@ services:
       MPLCONFIGDIR: /app/data/.mplconfig
 
   web:
-    image: cytonn-weekly-web:2026-10-28b
-    pull_policy: never
+    image: ghcr.io/clivemisiko/cytonn-weekly-web:${IMAGE_TAG:-latest}
     build: !reset null
     mem_limit: 256m
     environment:
