@@ -108,11 +108,13 @@ def test_the_section_is_in_the_real_issues_order_with_no_afx_tables(root):
 def test_the_indices_are_ordered_by_the_size_of_their_move(root):
     by = blocks(build(root, boxes={**SYNTHETIC_BOXES, WEEK.ending: {**SYNTHETIC_BOXES[WEEK.ending], "nse_10": 2490.0}}))
     f = figures(by["indices"])
-    assert (f["nse_10_wow"], f["nasi_wow"], f["nse_20_wow"], f["nse_25_wow"]) == ("1.4%", "1.0%", "1.0%", "1.0%")
+    # The previous Friday's NASI, NSE 20 and NSE 25 are the real bulletin's Table 6 closes (CBK first), against the
+    # synthetic Friday from KCB's report; NSE 10 is not in Table 6 and keeps its synthetic price-list pair.
+    assert (f["nse_10_wow"], f["nasi_wow"], f["nse_20_wow"], f["nse_25_wow"]) == ("1.4%", "19.5%", "8.3%", "0.9%")
     assert (f["nasi_ytd"], f["nse_10_ytd"]) == ("25.0%", "24.5%")
     assert by["indices"]["body_md"] == (
-        "During the week, the equities market was on a downward trajectory, with NSE 10, NSE 25, NSE 20 and NASI losing by "
-        "1.4%, 1.0%, 1.0% and 1.0%, respectively, taking the YTD performance to gains of 25.0%, 25.0%, 25.0% and 24.5% for "
+        "During the week, the equities market was on a downward trajectory, with NASI, NSE 20, NSE 10 and NSE 25 losing by "
+        "19.5%, 8.3%, 1.4% and 0.9%, respectively, taking the YTD performance to gains of 25.0%, 25.0%, 25.0% and 24.5% for "
         "NSE 25, NSE 20, NASI and NSE 10 respectively.")
 
 
@@ -120,13 +122,18 @@ def test_a_mixed_week_names_each_indexs_direction(root):
     boxes = {**SYNTHETIC_BOXES, WEEK.ending: {**SYNTHETIC_BOXES[WEEK.ending], "nse_10": 2550.0}}
     text = blocks(build(root, boxes=boxes))["indices"]["body_md"]
     assert text.startswith("During the week, the equities market recorded a mixed performance, with ")
-    assert "NSE 10 gaining by 1.0%" in text and "NASI losing by 1.0%" in text
+    assert "NSE 10 gaining by 1.0%" in text and "NASI losing by 19.5%" in text   # NASI's previous Friday is Table 6's
 
 
-def test_kcbs_levels_are_clean_and_ocr_levels_confirmed_only_by_the_workbook_are_not(root):
+def test_table_6_levels_meet_the_workbook_and_ocr_levels_confirmed_only_by_the_workbook_are_not(root):
     review = build(root)
     status = {i.ref.split(": ", 1)[1].split(" (")[0]: i.status for i in items(review, "Market Performance: N")}
-    assert status["NASI week-on-week change"] == "clean" and status["NSE 20 week-on-week change"] == "clean"
+    # The previous Friday comes from the bulletin's Table 6, which differs from the synthetic workbook's typed 202 and
+    # 4,040: a human call, flagged, not a silent pick of either.
+    for name in ("NASI week-on-week change", "NSE 20 week-on-week change"):
+        item = items(review, f"Market Performance: {name}")[0]
+        assert status[name] == "flagged" and item.detail[0].kind == SOURCES_DISAGREE
+        assert "CBK Weekly Bulletin, Table 6" in item.detail[0].message
     assert status["NSE 10 week-on-week change"] == "not_auto_verified"   # OCR, agreed only by the typed workbook
     assert status["NASI year-to-date change"] == "not_auto_verified"     # the year open is OCR against a typed cell
     nse10 = items(review, "Market Performance: NSE 10 week-on-week change")[0]
