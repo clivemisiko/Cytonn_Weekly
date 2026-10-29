@@ -257,12 +257,13 @@ def _uploaded_chart(doc, caption: str, upload: tuple[bytes, str]) -> None:
     text_width = page.page_width - page.left_margin - page.right_margin
     if shape.width > text_width:
         shape.height, shape.width = int(shape.height * text_width / shape.width), text_width
-    shape._inline.docPr.set("descr", caption)
+    shape._inline.docPr.set("descr", lead_in)
     para.insert_paragraph_before(lead_in).paragraph_format.keep_with_next = True
 
 
 def _uploaded_charts(period: str, inputs_root: Optional[Union[Path, str]]) -> dict[str, tuple[bytes, str]]:
-    """Caption to (image, lead-in) for each chart slot of the week with an uploaded image."""
+    """Caption to (image, lead-in) for each chart slot of the week with an uploaded image; the lead-in is the analyst's,
+    else the slot's default sentence, never the caption."""
     friday = week_ending_of(period)
     if friday is None:
         return {}
@@ -270,7 +271,8 @@ def _uploaded_charts(period: str, inputs_root: Optional[Union[Path, str]]) -> di
     for slot in chart_uploads.slots():
         stored = chart_uploads.image(week, slot["key"], inputs_root)
         if stored:
-            out[slot["caption"]] = (stored[0], chart_uploads.lead_in(week, slot["key"], inputs_root) or slot["caption"])
+            out[slot["caption"]] = (stored[0], chart_uploads.lead_in(week, slot["key"], inputs_root)
+                                    or chart_uploads.DEFAULT_LEAD_INS[slot["key"]])
     return out
 
 

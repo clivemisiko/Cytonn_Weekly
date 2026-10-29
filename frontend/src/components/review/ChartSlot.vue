@@ -80,9 +80,13 @@ function saveLeadIn() {
         maxlength="600"
         :disabled="busy"
         :placeholder="entry.default_lead_in"
+        :aria-describedby="entry.has_image ? `lead-in-hint-${entry.key}` : undefined"
         :class="[FIELD, 'w-full']"
         @blur="saveLeadIn"
       />
+      <p v-if="entry.has_image" :id="`lead-in-hint-${entry.key}`" class="text-xs text-muted-foreground">
+        Add the dates to this sentence, as the published report does.
+      </p>
     </div>
   </li>
 </template>

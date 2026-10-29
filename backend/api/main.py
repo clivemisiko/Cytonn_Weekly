@@ -219,7 +219,7 @@ class InputNotes(BaseModel):
 
 
 class ChartLeadIn(BaseModel):
-    """The sentence printed above an uploaded chart.  Blank clears it, and the caption is printed instead."""
+    """The sentence printed above an uploaded chart.  Blank clears it, and the slot's default sentence is printed instead."""
 
     lead_in: Optional[str] = Field(default=None, max_length=10_000)
 

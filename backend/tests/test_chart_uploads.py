@@ -130,10 +130,19 @@ def test_the_summary_lists_every_slot_with_its_state(client):
     charts = client.get(f"/api/inputs/weekly/{WEEK.ending.isoformat()}").json()["charts"]
     assert [c["key"] for c in charts] == list(chart_uploads.KEYS)
     assert [c["section"] for c in charts].count("fixed_income") == 6 and [c["section"] for c in charts].count("equities") == 2
-    assert [c["default_lead_in"] for c in charts] == list(fixed_income.CHARTS) + list(equities.CHARTS)
+    assert [c["default_lead_in"] for c in charts] == [chart_uploads.DEFAULT_LEAD_INS[k] for k in chart_uploads.KEYS]
+    assert not {c["default_lead_in"] for c in charts} & set(fixed_income.CHARTS + equities.CHARTS)
     assert [c["key"] for c in charts if c["has_image"]] == ["nasi_yield"]
     empty = by_key({"charts": charts})["tbill_91_growth"]
     assert (empty["type"], empty["size"], empty["lead_in"]) == (None, None, "")
+
+
+def test_every_slot_has_a_clean_default_sentence():
+    assert set(chart_uploads.DEFAULT_LEAD_INS) == set(chart_uploads.KEYS)
+    for key in chart_uploads.KEYS:
+        text = chart_uploads.DEFAULT_LEAD_INS[key]
+        assert text.strip() and text.endswith(".")
+        assert "(" not in text and ")" not in text and chr(0x2014) not in text
 
 
 def test_the_export_status_counts_the_charts_with_no_image(client):
@@ -153,13 +162,14 @@ def test_a_filled_slot_prints_its_lead_in_and_image_and_an_empty_one_keeps_the_p
     chart_uploads.set_lead_in(WEEK, "nasi_pe", "Invented lead-in for the P/E chart.", tmp_path / "weekly")
     doc = exported(review, charts, tmp_path)
     texts = [p.text for p in doc.paragraphs]
-    assert len(doc.inline_shapes) == 1 and doc.inline_shapes[0]._inline.docPr.get("descr") == CAPTIONS[0]
+    assert len(doc.inline_shapes) == 1
+    assert doc.inline_shapes[0]._inline.docPr.get("descr") == "Invented lead-in for the P/E chart."
     at = next(i for i, p in enumerate(doc.paragraphs) if p._p.xpath(".//w:drawing"))
     assert texts[at - 1] == "Invented lead-in for the P/E chart."
     assert placeholders(doc) == [f"[Chart to add: {CAPTIONS[1]}]"]
 
 
-def test_an_upload_wins_over_a_drawn_chart_and_a_blank_lead_in_prints_the_caption(tmp_path):
+def test_an_upload_wins_over_a_drawn_chart_and_a_blank_lead_in_prints_the_default_sentence(tmp_path):
     review, charts = approved(tmp_path)
     data = png(3, 1)
     chart_uploads.store(WEEK, "nasi_yield", data, tmp_path / "weekly")
@@ -170,7 +180,8 @@ def test_an_upload_wins_over_a_drawn_chart_and_a_blank_lead_in_prints_the_captio
     uploaded = shapes[1]
     assert doc.part.related_parts[uploaded._inline.graphic.graphicData.pic.blipFill.blip.embed].blob == data
     at = [i for i, p in enumerate(doc.paragraphs) if p._p.xpath(".//w:drawing")][1]
-    assert texts[at - 1] == CAPTIONS[1]
+    assert texts[at - 1] == "The chart below shows the NASI dividend yield."
+    assert CAPTIONS[1] not in texts and uploaded._inline.docPr.get("descr") == texts[at - 1]
     assert "From the analyst workbook, not verified." not in texts[at:at + 2]
 
 

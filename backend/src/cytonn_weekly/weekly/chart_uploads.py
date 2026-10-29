@@ -27,20 +27,28 @@ _SLOTS = (
     ("nasi_yield", "equities", "NASI dividend yield", 1),
 )
 KEYS = tuple(s[0] for s in _SLOTS)
+# Printed above an uploaded chart when the analyst typed no sentence of their own. The captions are not used here:
+# some are notes for the team ("uncaptioned chart under ...") that must never reach the Word file.
+DEFAULT_LEAD_INS = {
+    "tbill_91_growth": "The chart below shows the change in the monthly average 91-day T-bill yield.",
+    "tbill_yields": "The chart below shows the 91-day, 182-day and 364-day T-bill yields.",
+    "tbill_subscription": "The chart below shows T-bill subscription rates.",
+    "money_market": "The chart below shows money market yields.",
+    "interbank": "The chart below shows interbank rates.",
+    "import_cover": "The chart below shows months of import cover.",
+    "nasi_pe": "The chart below shows the NASI price to earnings ratio.",
+    "nasi_yield": "The chart below shows the NASI dividend yield.",
+}
 
 
 def slots() -> list[dict[str, str]]:
-    """The eight slots, each with the caption the issue prints, which is also its default lead-in."""
+    """The eight slots, each with the caption its section's CHARTS list holds (the key the export places it by)."""
     # Imported here: both section modules import weekly.inputs, which reads this module lazily.
     from cytonn_weekly.equities import weekly as equities
     from cytonn_weekly.fixed_income import weekly as fixed_income
     charts = {"fixed_income": fixed_income.CHARTS, "equities": equities.CHARTS}
     return [{"key": key, "section": section, "title": title, "caption": charts[section][i]}
             for key, section, title, i in _SLOTS]
-
-
-def slot_for_caption(caption: str) -> Optional[dict[str, str]]:
-    return next((s for s in slots() if s["caption"] == caption), None)
 
 
 def _folder(week: Week, root: Optional[Path]) -> Path:
@@ -149,7 +157,7 @@ def status(week: Week, root: Optional[Path] = None) -> list[dict[str, Any]]:
     out = []
     for s in slots():
         stored = _stored(week, s["key"], meta, root)
-        out.append({"key": s["key"], "section": s["section"], "title": s["title"], "default_lead_in": s["caption"],
+        out.append({"key": s["key"], "section": s["section"], "title": s["title"], "default_lead_in": DEFAULT_LEAD_INS[s["key"]],
                     "lead_in": meta.get(s["key"], {}).get("lead_in", ""), "has_image": stored is not None,
                     "type": stored[1] if stored else None, "size": stored[0].stat().st_size if stored else None})
     return out
