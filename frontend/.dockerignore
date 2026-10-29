@@ -12,3 +12,6 @@ screenshots
 e2e
 test-results
 playwright-report
+# Key files never reach an image.
+*.pem
+*.key
