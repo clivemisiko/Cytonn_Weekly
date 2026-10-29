@@ -338,7 +338,8 @@ class LocalProvider(DraftingProvider):
 
     # -- search (ported from scripts/check_exa_ir_sourcing.py) ---------------
 
-    def _exa_search(self, query: str, start: date, include_domains: Optional[list[str]] = None):
+    def _exa_search(self, query: str, start: date, include_domains: Optional[list[str]] = None,
+                    exclude_domains: Optional[list[str]] = None):
         body: dict[str, Any] = {
             "query": query,
             "numResults": NUM_RESULTS,
@@ -347,6 +348,8 @@ class LocalProvider(DraftingProvider):
         }
         if include_domains:
             body["includeDomains"] = include_domains
+        if exclude_domains:
+            body["excludeDomains"] = exclude_domains
         key = self._exa_key()
         resp = self._http.post(EXA_URL, headers={"x-api-key": key, "Content-Type": "application/json"}, json=body)
         if resp.status_code in (401, 403):
