@@ -31,6 +31,9 @@ so it must not be published on `0.0.0.0` or put behind anything another machine 
 
 ## Deploying a new build
 
+api and web now come from ghcr.io: see [DEPLOY.md](DEPLOY.md). The tarball steps below are the
+old way, still used for the proxy image.
+
 From the repo root, with the images built locally:
 
 ```powershell
