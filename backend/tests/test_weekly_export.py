@@ -104,7 +104,7 @@ def test_the_export_is_refused_until_every_section_is_approved(tmp_path, built):
     db = tmp_path / "app.db"
     status = export.export_status(db, PERIOD)
     assert status["ready"] is False and [s["state"] for s in status["sections"]] == ["not_drafted"] * 6
-    assert [s["title"] for s in status["sections"]] == ORDER and status["file_name"] == "Cytonn-Weekly-2026-10-02.docx"
+    assert [s["title"] for s in status["sections"]] == ORDER and status["file_name"] == "cytonn-weekly-2026-10-02.docx"
     fi, _ = built
     _save(db, "fixed_income", _copy(fi), approve=False)
     _save(db, "company_updates", company_updates.build_company_updates_weekly_review("Text.", WEEK.ending))
@@ -124,11 +124,12 @@ def test_the_export_is_refused_until_every_section_is_approved(tmp_path, built):
 def test_the_report_has_the_real_order_and_headings_with_a_summary_per_section(week, tmp_path):
     assert export.export_status(week, PERIOD)["ready"] is True
     path = export.write_weekly_report(week, PERIOD, tmp_path / "out")
-    assert path.name == "Cytonn-Weekly-2026-10-02.docx"
+    assert path.name == "ssa-eurobonds-a-development-cytonn-weekly.docx"   # the Focus headline, as the file prints it
     doc, text = _text(path)
     headings = [p.text for p in doc.paragraphs if p.style.name == "Heading 1"]
     assert headings == ["Executive Summary:"] + ORDER
-    assert text[0] == "Cytonn Weekly: week ending 2nd October 2026" and doc.core_properties.title == text[0]
+    assert text[0] == "Cytonn Weekly: week ending 2nd October 2026"
+    assert doc.core_properties.title == "SSA Eurobonds: a development, Cytonn Weekly"
     # page 1: one summary paragraph per section, led by its name in bold; Company Updates has none, as published
     summary = text[text.index("Executive Summary:") + 1:text.index("Company Updates")]
     assert [t.split(":")[0] for t in summary] == ORDER[1:]
@@ -241,7 +242,7 @@ def test_each_week_exports_only_its_own_sections(week, tmp_path):
     assert [s["state"] for s in export.export_status(week, other)["sections"]] == ["not_drafted"] * 6
     with pytest.raises(export.ExportNotAllowed):
         export.write_weekly_report(week, other, tmp_path / "out")
-    assert export.file_name("") == "Cytonn-Weekly-unlabelled.docx" and export.file_name("Weekly #38.2026") == "Cytonn-Weekly-Weekly-38-2026.docx"
+    assert export.file_name("") == "cytonn-weekly.docx" and export.file_name("Weekly #38.2026") == "cytonn-weekly-weekly-38-2026.docx"
     assert export.report_title("Weekly #38.2026") == "Cytonn Weekly: Weekly #38.2026"
 
 
@@ -252,11 +253,11 @@ def test_the_api_reports_readiness_and_returns_the_file(week, tmp_path):
     r = client.post("/api/export/weekly", params={"period": "2026-10-02"})
     assert r.status_code == 200
     assert r.headers["content-type"] == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    assert 'filename="Cytonn-Weekly-2026-10-02.docx"' in r.headers["content-disposition"]
+    assert 'filename="ssa-eurobonds-a-development-cytonn-weekly.docx"' in r.headers["content-disposition"]
     _, text = _text(r.content)
     assert text[0] == "Cytonn Weekly: week ending 2nd October 2026"
     assert len(Document(io.BytesIO(r.content)).inline_shapes) == 2        # the Equities charts, read through the route's own check
-    assert (tmp_path / "exports" / "Cytonn-Weekly-2026-10-02.docx").is_file()
+    assert (tmp_path / "exports" / "ssa-eurobonds-a-development-cytonn-weekly.docx").is_file()
     refused = client.post("/api/export/weekly", params={"period": "2026-09-25"})
     assert refused.status_code == 409 and refused.json()["detail"].startswith("The weekly report cannot be exported yet")
     assert client.get("/api/export/weekly", params={"period": "2026-10-03"}).status_code == 422

@@ -18,7 +18,8 @@ def test_the_shared_module_imports_no_report_type_package_and_holds_no_weekly_wo
             imported += [a.name for a in node.names]
         elif isinstance(node, ast.ImportFrom):
             imported.append(node.module or "")
-    assert imported and all(m == "__future__" or m == "docx" or m.startswith("docx.") for m in imported), imported
+    assert imported and all(m in ("__future__", "re", "typing", "urllib.parse") or m == "docx" or m.startswith("docx.")
+                             for m in imported), imported
     assert not any(m.startswith(REPORT_PACKAGES) for m in imported)
     assert "weekly" not in source.lower()
 
