@@ -54,7 +54,9 @@ class LocalNarrativeProvider(dp_local.LocalProvider, NarrativeProvider):
 
     def _brief_search(self, brief: NarrativeBrief, preferred: bool, start: date) -> list[dict[str, Any]]:
         query = f"Kenya {brief.label}: {brief.focus}"
-        return self._exa_search(query, start, list(brief.preferred_domains) if preferred else None)
+        if preferred:
+            return self._exa_search(query, start, list(brief.preferred_domains))
+        return self._exa_search(query, start, exclude_domains=list(brief.blocked_domains) or None)
 
     def _draft(self, brief: NarrativeBrief, scope: str, results: list[dict[str, Any]],
                warnings: list[str]) -> HighlightResult | None:

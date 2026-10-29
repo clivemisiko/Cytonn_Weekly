@@ -35,6 +35,7 @@ class NarrativeBrief:
     ``label``: short name shown to the coordinator ("Residential and mortgage lending").
     ``focus``: what qualifies, in a sentence the model is given verbatim.
     ``preferred_domains``: searched first; the open web only if they yield nothing.
+    ``blocked_domains``: never searched in the open-web pass (the preferred pass is limited to its own list).
     ``opener``: required first words of the paragraph (None for free-form, e.g. Focus).
     ``report``: the kind of report, as the prompt names it ("weekly", "quarterly markets
     review"); ``window``: what the search window is called ("report week", "report
@@ -49,6 +50,7 @@ class NarrativeBrief:
     words: tuple[int, int] = (100, 180)
     opener: Optional[str] = "During the week,"
     preferred_domains: tuple[str, ...] = field(default_factory=tuple)
+    blocked_domains: tuple[str, ...] = field(default_factory=tuple)
     max_searches: int = 5
     report: str = "weekly"
     window: str = "report week"

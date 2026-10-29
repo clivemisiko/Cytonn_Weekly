@@ -25,6 +25,7 @@ it, by the same test the Word summary's email path uses.
 from __future__ import annotations
 
 import re
+import unicodedata
 from datetime import date
 from io import BytesIO
 from pathlib import Path
@@ -40,6 +41,8 @@ from cytonn_weekly import paths
 from cytonn_weekly.charts import store as chart_store
 from cytonn_weekly.charts.block import PROVENANCE, team_chart_chosen
 from cytonn_weekly.common.word_layout import (
+    add_hyperlink,
+    add_linked_text,
     apply_report_look,
     executive_summary,
     shade_header,
@@ -117,7 +120,7 @@ def export_status(db_path: Optional[Union[Path, str]], period: str, today: Optio
     dev = [HEADINGS.get(spec.slug, spec.title) for spec, review in reviews if review is not None and is_dev_mode_review(review)]
     return {"period": period, "ready": all(s["state"] == APPROVED for s in sections), "sections": sections,
             "is_dev_draft": bool(dev), "dev_sections": dev, "dev_mode_label": DEV_LABEL if dev else None,
-            "can_send": not dev, "file_name": file_name(period)}
+            "can_send": not dev, "file_name": file_name(period, focus_title(reviews, typed_first=True))}
 
 
 def require_all_approved(reviews: list[tuple[SectionSpec, Optional[CoordinatorReview]]]) -> list[tuple[SectionSpec, CoordinatorReview]]:
@@ -150,24 +153,33 @@ def _plain(text: str) -> str:
 
 
 def _add_text(doc, body_md: str) -> None:
-    """Paragraphs and "- " bullets of a block's text; inline links become numbered sources listed after it."""
+    """Paragraphs and "- " bullets of a block's text; inline links become numbered sources listed after it.
+
+    In the paragraphs each source's phrase is a real link (its "[n]" marker removed, or the marker linked when the
+    phrase is not just before it); in the Sources list each address is a link."""
     text, sources = footnote_links(body_md or "")
-    for para in re.split(r"\n\s*\n", text.strip()):
-        lines = [line for line in para.splitlines() if line.strip()]
+    links = {n: (_plain(anchor), url) for n, anchor, url in sources}
+
+    def para(line: str, style: Optional[str] = None) -> None:
+        add_linked_text(doc.add_paragraph(style=style), _plain(line), links)
+
+    for block in re.split(r"\n\s*\n", text.strip()):
+        lines = [line for line in block.splitlines() if line.strip()]
         if lines and all(line.lstrip().startswith("- ") for line in lines):
             for line in lines:
-                doc.add_paragraph(_plain(line.lstrip()[2:]), style="List Bullet")
+                para(line.lstrip()[2:], "List Bullet")
         elif lines:
             head = [line for line in lines if not line.lstrip().startswith("- ")]
-            doc.add_paragraph(_plain(" ".join(line.strip() for line in head)))
+            para(" ".join(line.strip() for line in head))
             for line in lines:
                 if line.lstrip().startswith("- "):
-                    doc.add_paragraph(_plain(line.lstrip()[2:]), style="List Bullet")
+                    para(line.lstrip()[2:], "List Bullet")
     if sources:
         p = small_line(doc, "Sources:")
         for n, anchor, url in sources:
             p.add_run().add_break()
-            p.add_run(f"[{n}] {anchor}: {url}").font.size = Pt(9)
+            p.add_run(f"[{n}] {anchor}: ").font.size = Pt(9)
+            add_hyperlink(p, url, url).font.size = Pt(9)
 
 
 def _add_grid(doc, grid: list[list[str]], header_rows: int = 1, numeric_from: int = 1) -> None:
@@ -331,7 +343,7 @@ def _add_digital_payments(doc, section: dict[str, Any]) -> None:
     text = outlook.get("text") or (outlook.get("text_md") or "").strip("*")
     if text:
         doc.add_heading("Outlook", level=2)
-        doc.add_paragraph(_plain(text))
+        add_linked_text(doc.add_paragraph(), _plain(text))
 
 
 def _watermark(doc) -> None:
@@ -378,7 +390,8 @@ def build_weekly_document(reviews: list[tuple[SectionSpec, CoordinatorReview]], 
     doc = Document()
     _style_document(doc)
     apply_report_look(doc)
-    doc.core_properties.title = report_title(period)
+    topic = focus_title(reviews)
+    doc.core_properties.title = f"{topic}, Cytonn Weekly" if topic else report_title(period)
     doc.core_properties.author = "Cytonn Weekly tool"
     dev = any(is_dev_mode_review(review) for _, review in reviews)
     if dev:
@@ -412,11 +425,47 @@ def _label(period: str) -> str:
     week = week_ending_of(period)
     if week is not None:
         return week.isoformat()
-    return re.sub(r"[^A-Za-z0-9]+", "-", period).strip("-") or "unlabelled"
+    return re.sub(r"[^A-Za-z0-9]+", "-", period).strip("-")
 
 
-def file_name(period: str) -> str:
-    return f"Cytonn-Weekly-{_label(period)}.docx"
+MAX_SLUG = 80
+
+
+def slug(text: str) -> str:
+    """Lowercase ASCII words joined by hyphens: accents stripped, apostrophes dropped (Kenya's is kenyas), at most
+    MAX_SLUG characters, cut at a word boundary."""
+    text = re.sub(r"['\u2018\u2019\u02bc`]", "", text or "")
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii").lower()
+    out = re.sub(r"[^a-z0-9]+", "-", text).strip("-")
+    if len(out) > MAX_SLUG:
+        cut = out[:MAX_SLUG + 1]
+        out = cut.rsplit("-", 1)[0] if "-" in cut else out[:MAX_SLUG]
+    return out.strip("-")
+
+
+def focus_title(reviews, typed_first: bool = False) -> str:
+    """The Focus of the Week title as the Word file prints it: its piece's headline, else the coordinator's topic.
+
+    ``typed_first``: the topic the coordinator typed (the section's ``topic``) first, then the headline; the file
+    name uses this, because the headline is drafted and changes on every redraft."""
+    for spec, review in reviews:
+        if spec.slug == "focus" and review is not None:
+            section = review.section
+            piece = next((b for b in section.get("blocks", []) if b.get("kind") == "narrative"), {})
+            names = [piece.get("headline"), piece.get("topic"), section.get("topic")]
+            if typed_first:
+                names.insert(0, section.get("topic"))
+            return " ".join(next((n for n in names if n and n.strip()), "").split())
+    return ""
+
+
+def file_name(period: str, topic: str = "") -> str:
+    """"<focus title slug>-cytonn-weekly.docx"; with no title, "cytonn-weekly-<week ending>.docx"."""
+    name = slug(topic)
+    if name:
+        return f"{name}-cytonn-weekly.docx"
+    label = slug(_label(period))
+    return f"cytonn-weekly-{label}.docx" if label else "cytonn-weekly.docx"
 
 
 def export_dir(root: Optional[Union[Path, str]] = None) -> Path:
@@ -429,6 +478,6 @@ def write_weekly_report(db_path: Optional[Union[Path, str]], period: str, out_di
     reviews = require_all_approved(weekly_reviews(db_path, period, today))
     folder = export_dir(out_dir)
     folder.mkdir(parents=True, exist_ok=True)
-    path = folder / file_name(period)
+    path = folder / file_name(period, focus_title(reviews, typed_first=True))
     build_weekly_document(reviews, period, charts_root).save(str(path))
     return path

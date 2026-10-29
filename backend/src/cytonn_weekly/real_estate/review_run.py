@@ -12,6 +12,8 @@ the section always closes with the REITs table.
 
 from __future__ import annotations
 
+import re
+from dataclasses import replace
 from datetime import date
 from typing import Any, Callable, Optional
 
@@ -26,8 +28,33 @@ SECTION = "real_estate"
 TITLE = "Real Estate"
 N_SUBSECTIONS = 4
 
+# The team's preferred sites (supplied by the owner, 2026-10-29), searched first by every brief after its own.
+_PREFERRED_SITES_TEXT = """
+nation.africa
+businessdailyafrica.com
+standardmedia.co.ke
+bloomberg.com
+"""
+_HOST = re.compile(r"[a-z0-9-]+(\.[a-z0-9-]+)+")
+# Social media is never a cited source: left out of the open-web pass.
+SOCIAL_DOMAINS = ("x.com", "twitter.com", "facebook.com", "instagram.com", "tiktok.com")
+
+
+def preferred_sites(text: str) -> tuple[str, ...]:
+    """One lowercase hostname a line (no scheme, path or space, at least one dot), duplicates dropped.
+
+    ValueError naming every refused line."""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    bad = [line for line in lines if not _HOST.fullmatch(line)]
+    if bad:
+        raise ValueError("not a lowercase hostname: " + ", ".join(repr(b) for b in bad))
+    return tuple(dict.fromkeys(lines))
+
+
+PREFERRED_SITES = preferred_sites(_PREFERRED_SITES_TEXT)
+
 _KENYA = "in Kenya, published during the report week"
-BRIEFS: list[NarrativeBrief] = [
+_BRIEFS: list[NarrativeBrief] = [
     NarrativeBrief(
         id="residential", section=TITLE, label="Residential and mortgage lending",
         focus=f"mortgage lending statistics, mortgage products or residential property market data {_KENYA}",
@@ -55,6 +82,10 @@ BRIEFS: list[NarrativeBrief] = [
         id="land", section=TITLE, label="Land",
         focus=f"land prices, land policy or land-registration developments {_KENYA}",
     ),
+]
+BRIEFS: list[NarrativeBrief] = [
+    replace(b, preferred_domains=tuple(dict.fromkeys(b.preferred_domains + PREFERRED_SITES)), blocked_domains=SOCIAL_DOMAINS)
+    for b in _BRIEFS
 ]
 
 

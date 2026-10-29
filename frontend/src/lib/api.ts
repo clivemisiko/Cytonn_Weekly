@@ -302,7 +302,7 @@ export const exportWeekly = async (period: string): Promise<{ blob: Blob; name: 
     throw failed(detailText(body, `${res.status} ${res.statusText}`), res.status, parseProblems(body), true);
   }
   const named = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "");
-  return { blob: await res.blob(), name: named ? named[1] : "Cytonn-Weekly.docx" };
+  return { blob: await res.blob(), name: named ? named[1] : "cytonn-weekly.docx" };
 };
 
 const notablePath = (section: string) => `/api/notable/${encodeURIComponent(section)}`;

@@ -152,6 +152,8 @@ class AnthropicNarrativeProvider(NarrativeProvider):
             tool = {**dp.WEB_SEARCH_TOOL, "max_uses": brief.max_searches}
             if preferred:
                 tool["allowed_domains"] = list(brief.preferred_domains)
+            elif brief.blocked_domains:   # web search takes allowed_domains or blocked_domains, never both in one request
+                tool["blocked_domains"] = list(brief.blocked_domains)
             piece = parse_piece(_run(self.client, self.model, system, _prompt(brief, preferred, start, end, today), tool), brief)
             if piece:
                 return HighlightResult(
