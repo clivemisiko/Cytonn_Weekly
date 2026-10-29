@@ -34,6 +34,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import date, timedelta
+from decimal import Decimal
 from typing import Any, Callable, Optional
 
 from cytonn_weekly.common.computed import (
@@ -68,6 +69,7 @@ from cytonn_weekly.weekly.prose import (
     Figures,
     direction,
     join_names,
+    source_notice,
     published,
     second_reading,
     try_fetch,
@@ -166,6 +168,9 @@ class Fetchers:
     tbonds: Callable[[date, date], dict[str, Any]] = cbk_auctions.fetch_period_tbonds
     # every T-bill and T-bond result of the fiscal year so far, kept under the data folder (the net borrowing log)
     releases: Callable[[date, date, Any], dict[str, Any]] = net_borrowing.fetch_releases
+    # the T-bill results files of two weeks, read through the same kept folder, when Table 4 lacks a tenor
+    tbill_results: Callable[[date, date, Any], dict[str, Any]] = (
+        lambda start, end, folder: cbk_auctions.fetch_period_tbills(start, end, get=net_borrowing.ResultsCache(folder).get))
     previous_issue: Callable[[date, Optional[str]], previous_issue.Issue] = (
         lambda day, ref: previous_issue.find_previous_issue(day, reference=ref))
 
@@ -195,38 +200,118 @@ def _typed_sources(inputs: WeeklyInputs, *cells: Any) -> list[dict[str, Any]]:
 # 1. T-bills
 # ---------------------------------------------------------------------------
 
-def _auction_rows(bulletin: cbk_bulletin.Bulletin, week: Week) -> Optional[tuple[dict[str, dict], dict[str, dict]]]:
-    """(this week's row, the previous week's row) per tenor from Table 4, or None if either is not printed."""
-    this, prev = {}, {}
+TBILL_RESULTS = "CBK T-bill auction results"
+
+
+def _auction_rows(bulletin: cbk_bulletin.Bulletin, week: Week, fallback: Optional[tuple[dict, dict]] = None
+                  ) -> Optional[tuple[dict[str, dict], dict[str, dict], list[str]]]:
+    """(this week's row, the previous week's row) per tenor from Table 4, a tenor Table 4 lacks from ``fallback``
+    (the results files, ``_results_rows``), and the tenors so filled; None if any tenor has neither."""
+    this, prev, filled = {}, {}, []
     for tenor in TENORS:
         rows = bulletin.tbills.get(tenor) or []
         t = next((r for r in rows if week.monday <= r["date"] <= week.ending), None)
         p = next((r for r in rows if week.previous.monday <= r["date"] <= week.previous.ending), None)
+        if (t is None or p is None) and fallback and tenor in fallback[0] and tenor in fallback[1]:
+            t, p = fallback[0][tenor], fallback[1][tenor]
+            filled.append(tenor)
         if t is None or p is None:
             return None
         this[tenor], prev[tenor] = t, p
-    return this, prev
+    return this, prev, filled
 
 
-def _tbill_inputs(bulletin: cbk_bulletin.Bulletin, week: Week, wb_tbills: Optional[dict[str, Any]]) -> Optional[dict[str, dict]]:
-    rows = _auction_rows(bulletin, week)
+def _missing_tenors(bulletin: cbk_bulletin.Bulletin, week: Week) -> list[str]:
+    """The tenors Table 4 does not print for both this week and the previous week."""
+    out = []
+    for tenor in TENORS:
+        rows = bulletin.tbills.get(tenor) or []
+        if not (any(week.monday <= r["date"] <= week.ending for r in rows)
+                and any(week.previous.monday <= r["date"] <= week.previous.ending for r in rows)):
+            out.append(tenor)
+    return out
+
+
+def _mn(kes_bn: Optional[float]) -> Optional[float]:
+    """Kshs bn as the results parser gives it, back to the Kshs mn Table 4 prints (exact: the parser divided by 1000)."""
+    return None if kes_bn is None else float(Decimal(repr(kes_bn)) * 1000)
+
+
+def _results_rows(results: Optional[dict[str, Any]], week: Week) -> tuple[dict[str, dict], dict[str, dict]]:
+    """(this week's, the previous week's) rows per tenor from CBK's T-bill results files, in Table 4's shape and units.
+
+    An auction is this week's when its value date falls in the week's value-date window (the Thursday auction
+    settles the Monday after).  A tenor with a figure missing, or a file that could not be read, gives no row.
+    """
+    out: tuple[dict[str, dict], dict[str, dict]] = ({}, {})
+    for auction in (results or {}).get("auctions") or []:
+        if auction.get("error"):
+            continue
+        when = date.fromisoformat(auction["value_date"])
+        for side, w in zip(out, (week, week.previous)):
+            if not w.value_date_window[0] <= when <= w.value_date_window[1]:
+                continue
+            accepted = auction.get("accepted_kes_m") or {}
+            for row in auction.get("rows") or []:
+                values = {"bids": _mn(row.get("bids_kes_bn")), "offered": _mn(row.get("offered_kes_bn")),
+                          "accepted": accepted.get(row["tenor"]), "rate": row.get("avg_rate_pct")}
+                if row.get("error") is None and all(v is not None for v in values.values()):
+                    side.setdefault(row["tenor"], {"date": when, **values,
+                                                   "source": f"{TBILL_RESULTS}, value date {when.isoformat()}",
+                                                   "url": auction.get("url")})
+    return out
+
+
+def tbill_notice(bulletin: Optional[cbk_bulletin.Bulletin], week: Week, rows: Optional[tuple],
+                 results: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    """The notice when Table 4 lacks a tenor: where its figures came from instead, or that they are missing."""
+    if bulletin is None:
+        return None
+    missing = _missing_tenors(bulletin, week)
+    if not missing:
+        return None
+    names = join_names(missing)
+    if rows is not None and rows[2]:
+        filled = rows[2]
+        days = sorted({rows[0][t]["date"] for t in filled} | {rows[1][t]["date"] for t in filled})
+        return source_notice(f"{join_names(filled)} T-bill figures", TBILL_RESULTS,
+                             f"The {join_names(filled)} T-bill figures came from CBK's auction results files, because the "
+                             "weekly bulletin table did not include them.", link=rows[0][filled[0]].get("url"), days=days)
+    why = "could not be fetched" if results is None else "do not hold both this week's and the previous week's auction"
+    return source_notice(f"{names} T-bill figures", TBILL_RESULTS,
+                         f"The {names} T-bill figures are missing. The weekly bulletin table did not include them, and CBK's "
+                         f"auction results files {why}.", level="warning")
+
+
+def _tbill_inputs(bulletin: cbk_bulletin.Bulletin, week: Week, wb_tbills: Optional[dict[str, Any]],
+                  rows: Optional[tuple] = None) -> Optional[dict[str, dict]]:
+    rows = rows if rows is not None else _auction_rows(bulletin, week)
     if rows is None:
         return None
-    this, prev = rows
-    src = _bulletin_src(4)
+    this, prev = rows[0], rows[1]
     inputs: dict[str, dict] = {}
     for tenor in TENORS:
         n = tenor.split("-")[0]
         wb = (wb_tbills or {}).get(tenor) or {}
+        src, psrc = this[tenor].get("source", _bulletin_src(4)), prev[tenor].get("source", _bulletin_src(4))
         inputs[f"bids_{n}"] = published(this[tenor]["bids"], src, second=typed_second(wb.get("bids"), WB), decimals=2)
         inputs[f"offered_{n}"] = published(this[tenor]["offered"], src, second=typed_second(wb.get("offered"), WB), decimals=2)
         inputs[f"accepted_{n}"] = published(this[tenor]["accepted"], src, second=typed_second(wb.get("accepted"), WB), decimals=2)
         inputs[f"rate_{n}"] = published(this[tenor]["rate"], src, second=typed_second(wb.get("rate"), WB, 100), decimals=3)
-        inputs[f"prev_bids_{n}"] = published(prev[tenor]["bids"], src)
-        inputs[f"prev_offered_{n}"] = published(prev[tenor]["offered"], src)
-        inputs[f"prev_rate_{n}"] = published(prev[tenor]["rate"], src, second=typed_second(wb.get("previous_rate"), WB, 100),
+        inputs[f"prev_bids_{n}"] = published(prev[tenor]["bids"], psrc)
+        inputs[f"prev_offered_{n}"] = published(prev[tenor]["offered"], psrc)
+        inputs[f"prev_rate_{n}"] = published(prev[tenor]["rate"], psrc, second=typed_second(wb.get("previous_rate"), WB, 100),
                                              decimals=3)
     return inputs
+
+
+def _tbill_sources(inputs: dict[str, dict]) -> list[dict[str, Any]]:
+    """Table 4, and the results files when a tenor came from them."""
+    used = [i["source"] for i in inputs.values() if i.get("source")]
+    out = [{"name": _bulletin_src(4), "url": cbk_bulletin.LISTING}] if _bulletin_src(4) in used else []
+    if any(u.startswith(TBILL_RESULTS) for u in used):
+        out.append({"name": TBILL_RESULTS, "url": cbk_auctions.TBILL_LISTING})
+    return out
 
 
 def _pick(inputs: dict[str, dict], *names: str) -> dict[str, dict]:
@@ -299,8 +384,7 @@ def tbills_block(inputs: Optional[dict[str, dict]], bulletin: Optional[cbk_bulle
     clauses = sorted((_yield_clause(figs, inputs, t) for t in TENORS), key=lambda c: -c[0])
     parts = [c[1] for c in clauses]
     text.append(f"On yields, {parts[0]}, {parts[1]}, while {parts[2]}.")
-    return computed_block("tbills", title, " ".join(text), figs.items,
-                          sources=[{"name": _bulletin_src(4), "url": cbk_bulletin.LISTING}])
+    return computed_block("tbills", title, " ".join(text), figs.items, sources=_tbill_sources(inputs))
 
 
 # ---------------------------------------------------------------------------
@@ -489,7 +573,8 @@ def money_market_blocks(inputs: WeeklyInputs, tbill_inputs: Optional[dict[str, d
                     f"by {bps} to {top} from {was} recorded the previous week.")
     rates = [f["rate"] for f in table["funds"]]
     blocks = [computed_block("money_market", title, " ".join(text), figs.items,
-                             sources=_typed_sources(inputs, placements, *rates) + [{"name": _bulletin_src(4), "url": cbk_bulletin.LISTING}],
+                             sources=_typed_sources(inputs, placements, *rates) + (
+                                 _tbill_sources(tbill_inputs) if tbill_inputs else [{"name": _bulletin_src(4), "url": cbk_bulletin.LISTING}]),
                              notes=["The Top 5 average is the average of this week's five highest rates in the fund table."])]
     rows = [{"rank": str(int(f["rank"].number)) if f["rank"].number is not None else str(f["rank"].value),
              "fund": " ".join(str(f["fund"].value).replace("( ", "(").split()), "rate": f["rate"].number * 100}
@@ -803,6 +888,19 @@ _MONTHS = ("January", "February", "March", "April", "May", "June", "July", "Augu
            "December")
 
 
+def _rate_sources(figures: list[dict[str, Any]], cbk: str) -> list[dict[str, Any]]:
+    """The sources the shilling's rates were read from: CBK's daily rates, the bulletin's Table 1, the workbook or the form."""
+    used = {i["source"] for f in figures for i in f["inputs"].values()}
+    out = [{"name": cbk, "url": cbk_rates.PAGE}] if cbk in used else []
+    if _bulletin_src(1) in used:
+        out.append({"name": _bulletin_src(1), "url": cbk_bulletin.LISTING})
+    if any(u.startswith("analyst input") for u in used):
+        out.append({"name": WB})
+    if any("typed on the weekly form" in u for u in used):
+        out.append({"name": analyst.FORM})
+    return out
+
+
 def shilling_blocks(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bulletin], rates: Optional[dict[date, float]],
                     week: Week, issue: Optional[previous_issue.Issue], warnings: list[str]) -> list[dict[str, Any]]:
     title = "Kenya Shilling"
@@ -864,7 +962,7 @@ def shilling_blocks(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bullet
             text.append(sentence + ".")
         else:
             warnings.append("Kenya Shilling: the year-to-date move is left out; the year's first rate was not found.")
-        blocks.append(computed_block("shilling", title, " ".join(text), figs.items, sources=[{"name": cbk, "url": cbk_rates.PAGE}, {"name": WB}],
+        blocks.append(computed_block("shilling", title, " ".join(text), figs.items, sources=_rate_sources(figs.items, cbk),
                                      notes=[f"Friday to Friday: {week.previous_friday.isoformat()} to {week.ending.isoformat()}."]))
 
     # What supports the shilling: remittances (workbook) and reserves (bulletin).
@@ -1246,7 +1344,16 @@ def build_fixed_income_review(
             wb_tbills = fi_workbook.read_tbills(inputs.fi_book, week)
         except WorkbookError as exc:
             warnings.append(f"T-bills cross-check skipped: {exc}")
-    tbill_inputs = _tbill_inputs(bulletin, week, wb_tbills) if bulletin is not None else None
+    rows = _auction_rows(bulletin, week) if bulletin is not None else None
+    tbill_results = None
+    if bulletin is not None and rows is None and _missing_tenors(bulletin, week):
+        tbill_results = try_fetch(on_event, TBILL_RESULTS, fetchers.tbill_results, week.previous.value_date_window[0],
+                                  week.value_date_window[1], inputs.results_dir, problems=problems)
+        rows = _auction_rows(bulletin, week, _results_rows(tbill_results, week))
+    tbill_inputs = _tbill_inputs(bulletin, week, wb_tbills, rows) if rows is not None else None
+    notice = tbill_notice(bulletin, week, rows, tbill_results)
+    if notice is not None:
+        notices.append(notice)
     previous_inputs = WeeklyInputs(week.previous, inputs.root)
 
     blocks: list[dict[str, Any]] = [tbills_block(tbill_inputs, bulletin)]

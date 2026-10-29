@@ -104,3 +104,30 @@ def join_names(names: list[str]) -> str:
     if len(names) <= 1:
         return "".join(names)
     return ", ".join(names[:-1]) + " and " + names[-1]
+
+
+# A figure CBK publishes that came from another source: (figure, source used, why not CBK, link) -> the days.
+Fallbacks = dict[tuple[str, str, str, Optional[str]], set]
+
+
+def note_fallback(log: Fallbacks, figure: str, source: str, day: Any, reason: str, link: Optional[str] = None) -> None:
+    log.setdefault((figure, source, reason, link), set()).add(day)
+
+
+def source_notice(figure: str, source: str, text: str, *, level: str = "info", link: Optional[str] = None,
+                  days: Optional[list[Any]] = None) -> dict[str, Any]:
+    """A notice telling the analyst where a figure came from, in the shape of the bulletin's notices (``kind`` "source")."""
+    return {"kind": "source", "level": level, "figure": figure, "source": source, "link": link,
+            "days": [d.isoformat() for d in days or []], "location": figure, "reason": text, "issue_date": None, "sha256": "",
+            "text": text}
+
+
+def fallback_notices(log: Fallbacks) -> list[dict[str, Any]]:
+    """One info notice per figure, source and reason, naming every day it covers."""
+    out = []
+    for (figure, source, reason, link), days in log.items():
+        days = sorted(days)
+        when = join_names([f"{d:%A} {d.day} {d:%b}" for d in days])
+        why = reason.replace("that day", "those days") if len(days) > 1 else reason
+        out.append(source_notice(figure, source, f"{figure} for {when} came from the {source}. {why}", link=link, days=days))
+    return out

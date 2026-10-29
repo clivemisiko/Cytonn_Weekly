@@ -327,6 +327,12 @@ export interface ExtractionNotice {
   location: string;
   reason: string;
   text: string;
+  /** "source": a figure CBK publishes that came from another source (or is missing); shown as a plain notice. */
+  kind?: "source";
+  level?: "info" | "warning";
+  figure?: string;
+  link?: string | null;
+  days?: string[];
 }
 
 export interface BlocksSection {

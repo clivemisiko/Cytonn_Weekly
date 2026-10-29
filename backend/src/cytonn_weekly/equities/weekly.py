@@ -35,7 +35,7 @@ Week windows: Monday to Friday throughout.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Any, Callable, Optional
 
@@ -62,9 +62,12 @@ from cytonn_weekly.narrative.drafter import draft_pieces
 from cytonn_weekly.weekly import analyst, cbk_bulletin, cbk_rates, equities_workbook, fi_workbook, kcb, nse_price_list, previous_issue
 from cytonn_weekly.weekly.inputs import WeeklyInputs
 from cytonn_weekly.weekly.prose import (
+    Fallbacks,
     Figures,
     direction,
+    fallback_notices,
     join_names,
+    note_fallback,
     published,
     scanned,
     second_reading,
@@ -126,9 +129,13 @@ OCR_NAMES = {"nse_10": "NSE 10 Share Index", "nse_20": "NSE 20 Share Index", "ns
              "nasi": "NSE All Share Index", "banking": "Banking Sector Share Index"}
 
 
+def _price_list_url(day: date) -> str:
+    return f"{nse_price_list.BASE}/{day.strftime('%d-%b-%y').upper()}.pdf"
+
+
 def _ocr_check(day: date, what: str) -> str:
     """What to compare a single OCR reading with: the price list itself, by its address, or the equities team's figure."""
-    return (f"Open the NSE daily price list of {day.isoformat()} ({nse_price_list.BASE}/{day.strftime('%d-%b-%y').upper()}.pdf) and "
+    return (f"Open the NSE daily price list of {day.isoformat()} ({_price_list_url(day)}) and "
             f"read {what}, or check it against the equities team's own figure for that day, before accepting")
 
 
@@ -154,6 +161,24 @@ class Market:
     year_open_day: Optional[date]
     afx: Optional[dict[str, dict[str, float]]]       # afx's own week and year changes, only when its page is for the Friday
     typed_indices: Optional[dict[str, dict[str, Any]]]
+    fallbacks: Fallbacks = field(default_factory=dict)   # CBK figures that came from another source, for the notices
+
+
+TABLE_6_NAMES = {"nasi": "NASI close", "nse_20": "NSE 20 close", "nse_25": "NSE 25 close"}
+
+
+def _table_6(m: Market, day: Optional[date], key: str) -> tuple[Optional[float], str]:
+    """(the bulletin's Table 6 figure for the day, or None, and why there is none, as a sentence for the analyst)."""
+    if m.bulletin is None:
+        return None, "The CBK Weekly Bulletin for this week was not available."
+    if "Table 6" in m.bulletin.unavailable:
+        return None, "CBK Table 6 could not be read."
+    row = next((r for r in m.bulletin.market if r["date"] == day), None)
+    if row is None:
+        return None, "CBK Table 6 does not cover that day."
+    if row.get(key) is None:
+        return None, "CBK Table 6 has no figure for that day."
+    return row[key], ""
 
 
 def _box(fetchers: Fetchers, inputs: WeeklyInputs, day: date, on_event: Optional[Observer], problems: list[str]
@@ -237,20 +262,31 @@ def _level(m: Market, key: str, when: str) -> Optional[dict[str, Any]]:
     day = {"today": week.ending, "last_week": week.previous_friday, "year_open": m.year_open_day}[when]
     cell = (m.typed_indices or {}).get(key, {}).get(when)
     typed_reading = typed_second(cell, WB)
+    # CBK first (Table 6 covers the Friday before to the Thursday, so never this Friday), then KCB IB, then the price list.
+    cbk, why = _table_6(m, day, key) if day else (None, "")
+    if cbk is not None:
+        return published(cbk, f"{cbk_bulletin.SOURCE_NAME}, Table 6", second=typed_reading, decimals=2)
+    # only the indices CBK publishes get a notice, and not the year open: Table 6 never covers January
+    name = TABLE_6_NAMES.get(key) if when != "year_open" else None
+
+    def fell_back(source: str, link: Optional[str] = None) -> None:
+        if name:
+            note_fallback(m.fallbacks, name, source, day, why, link)
+
     kcb_weekly = m.inputs.kcb_weekly
     if when != "year_open" and kcb_weekly is not None and key in kcb_weekly.indicators and kcb_weekly.report_date == week.ending \
             and kcb_weekly.previous_date == week.previous_friday:
         value = kcb_weekly.indicators[key]["current" if when == "today" else "previous"]
+        fell_back(f"{kcb.SOURCE_NAME} weekly report")
         return published(value, f"{kcb.SOURCE_NAME} weekly report, {week.ending.isoformat()}", second=typed_reading, decimals=2)
     daily = m.inputs.kcb_daily.get(day) if day else None
     if when != "year_open" and daily is not None and key in daily.indicators:
+        fell_back(f"{kcb.SOURCE_NAME} daily report")
         return published(daily.indicators[key]["current"], f"{kcb.SOURCE_NAME} daily report, {day.isoformat()}",
                          second=typed_reading, decimals=2)
-    row = next((r for r in (m.bulletin.market if m.bulletin else []) if r["date"] == day), None)
-    if row is not None and row.get(key) is not None:
-        return published(row[key], f"{cbk_bulletin.SOURCE_NAME}, Table 6", second=typed_reading, decimals=2)
     box = m.boxes.get(day) if day else None
     if box is not None and key in box.values:
+        fell_back("NSE daily price list", _price_list_url(day))
         return scanned(box.values[key], f"NSE daily price list of {day.isoformat()}", second=typed_reading, decimals=2,
                        check=_ocr_check(day, f"the {OCR_NAMES.get(key, key)} in its index box"))
     if cell is not None and cell.number is not None:
@@ -399,21 +435,23 @@ def large_caps_block(m: Market) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def _day_turnover(m: Market, day: date) -> Optional[dict[str, Any]]:
-    """One day's equities turnover in KES as an input: KCB's daily report, else the bulletin, else the price list."""
+    """One day's equities turnover in KES as an input: the bulletin's Table 6, else KCB's daily report, else the price list."""
     daily = m.inputs.kcb_daily.get(day)
-    row = next((r for r in (m.bulletin.market if m.bulletin else []) if r["date"] == day), None)
-    bulletin_kes = row["equity_turnover_mn"] * 1_000_000 if row and row.get("equity_turnover_mn") is not None else None
+    bulletin_mn, why = _table_6(m, day, "equity_turnover_mn")
+    bulletin_kes = bulletin_mn * 1_000_000 if bulletin_mn is not None else None
     box = m.boxes.get(day)
     ocr_kes = box.values.get("equity_turnover") if box is not None else None
-    if daily is not None and daily.equities_turnover is not None:
-        second = second_reading(bulletin_kes, f"{cbk_bulletin.SOURCE_NAME}, Table 6") if bulletin_kes is not None else (
-            second_reading(ocr_kes, nse_price_list.SOURCE_NAME) if ocr_kes is not None else None)
-        return published(daily.equities_turnover, f"{kcb.SOURCE_NAME} daily report, {day.isoformat()}, trading stats",
-                         second=second, decimals=-4 if second and bulletin_kes is not None else 0)
+    kcb_kes = daily.equities_turnover if daily is not None else None
     if bulletin_kes is not None:
-        return published(bulletin_kes, f"{cbk_bulletin.SOURCE_NAME}, Table 6",
-                         second=second_reading(ocr_kes, nse_price_list.SOURCE_NAME) if ocr_kes is not None else None, decimals=-4)
+        second = second_reading(kcb_kes, f"{kcb.SOURCE_NAME} daily report, {day.isoformat()}, trading stats") \
+            if kcb_kes is not None else (second_reading(ocr_kes, nse_price_list.SOURCE_NAME) if ocr_kes is not None else None)
+        return published(bulletin_kes, f"{cbk_bulletin.SOURCE_NAME}, Table 6", second=second, decimals=-4)
+    if kcb_kes is not None:
+        note_fallback(m.fallbacks, "Equities turnover", f"{kcb.SOURCE_NAME} daily report", day, why)
+        second = second_reading(ocr_kes, nse_price_list.SOURCE_NAME) if ocr_kes is not None else None
+        return published(kcb_kes, f"{kcb.SOURCE_NAME} daily report, {day.isoformat()}, trading stats", second=second, decimals=0)
     if ocr_kes is not None:
+        note_fallback(m.fallbacks, "Equities turnover", "NSE daily price list", day, why, _price_list_url(day))
         return scanned(ocr_kes, f"NSE daily price list of {day.isoformat()}",
                        check=_ocr_check(day, "the equity turnover in its market summary"))
     return None
@@ -889,6 +927,7 @@ def build_equities_weekly_review(
     blocks: list[dict[str, Any]] = [indices_block(market), large_caps_block(market), banking_block(market),
                                     turnover_block(market), foreign_block(market), valuation, *charts,
                                     universe_block(market, warnings)]
+    notices += fallback_notices(market.fallbacks)
     drafted = (draft or draft_pieces)(BRIEFS, N_HIGHLIGHTS, provider=provider, today=today,
                                       window=(week.ending - timedelta(days=6), week.ending), on_event=on_event)
     blocks += [narrative_block(f"highlight_{p['brief_id']}", p) for p in drafted["pieces"]]
