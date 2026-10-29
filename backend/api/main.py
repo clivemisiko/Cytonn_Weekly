@@ -97,6 +97,7 @@ from cytonn_weekly.report_types import (
 from cytonn_weekly.weekly import cbk_bulletin, cbk_rates
 from cytonn_weekly.weekly import export as weekly_export
 from cytonn_weekly.weekly import analyst as weekly_analyst
+from cytonn_weekly.weekly import chart_uploads
 from cytonn_weekly.weekly import inputs as weekly_inputs
 from cytonn_weekly.weekly import recheck as weekly_recheck
 from cytonn_weekly.weekly import sentence_edit
@@ -215,6 +216,12 @@ class InputNotes(BaseModel):
 
     bidding_range: Optional[str] = Field(default=None, max_length=weekly_inputs.MAX_NOTE)
     previous_issue: Optional[str] = Field(default=None, max_length=weekly_inputs.MAX_NOTE)
+
+
+class ChartLeadIn(BaseModel):
+    """The sentence printed above an uploaded chart.  Blank clears it, and the caption is printed instead."""
+
+    lead_in: Optional[str] = Field(default=None, max_length=10_000)
 
 
 class AnalystInputs(BaseModel):
@@ -720,6 +727,57 @@ def create_app(
             raise ProblemError(409, str(exc), "analyst_suggestion_unavailable")
         return weekly_analyst.status(week, root, section)
 
+    def chart_key(key: str) -> str:
+        if key not in chart_uploads.KEYS:
+            raise HTTPException(404, f"no chart slot {key!r}")
+        return key
+
+    @app.put("/api/inputs/weekly/{week_ending}/charts/{key}")
+    async def upload_chart(week_ending: str, key: str, request: Request) -> dict:
+        """Upload one chart image (PNG or JPEG, judged by its first bytes): the file is the request body.
+
+        It replaces the slot's earlier image. 413 over the size limit, 422 when it is empty or not an image.
+        The image is kept for the Word export only; no draft reads it.
+        """
+        week, key = week_of(week_ending), chart_key(key)
+        too_big = (f"The image is over the {chart_uploads.MAX_BYTES // 1_048_576} MB limit. "
+                   "Save a smaller copy and upload that.")
+        declared = request.headers.get("content-length")
+        if declared and declared.isdigit() and int(declared) > chart_uploads.MAX_BYTES:
+            raise ProblemError(413, too_big, "upload_too_big")
+        data = await request.body()
+        if len(data) > chart_uploads.MAX_BYTES:
+            raise ProblemError(413, too_big, "upload_too_big")
+        try:
+            await run_in_threadpool(chart_uploads.store, week, key, data, root)
+        except weekly_inputs.InputError as exc:
+            raise ProblemError(422, str(exc), "upload_refused")
+        return weekly_inputs.status(week, root)
+
+    @app.get("/api/inputs/weekly/{week_ending}/charts/{key}/image")
+    def chart_upload_image(week_ending: str, key: str) -> Response:
+        week, key = week_of(week_ending), chart_key(key)
+        stored = chart_uploads.image(week, key, root)
+        if stored is None:
+            raise HTTPException(404, "this chart has no image")
+        return Response(stored[0], media_type=chart_uploads.MEDIA_TYPE[stored[1]], headers={"Cache-Control": "no-store"})
+
+    @app.delete("/api/inputs/weekly/{week_ending}/charts/{key}")
+    def delete_chart(week_ending: str, key: str) -> dict:
+        week, key = week_of(week_ending), chart_key(key)
+        if not chart_uploads.remove(week, key, root):
+            raise HTTPException(404, "this chart has no image")
+        return weekly_inputs.status(week, root)
+
+    @app.put("/api/inputs/weekly/{week_ending}/charts/{key}/lead-in")
+    def put_chart_lead_in(week_ending: str, key: str, body: ChartLeadIn) -> dict:
+        week, key = week_of(week_ending), chart_key(key)
+        try:
+            chart_uploads.set_lead_in(week, key, body.lead_in, root)
+        except weekly_inputs.InputError as exc:
+            raise ProblemError(422, str(exc), "note_refused")
+        return weekly_inputs.status(week, root)
+
     @app.put("/api/inputs/weekly/{week_ending}/{slot}")
     async def upload_input(week_ending: str, slot: str, request: Request,
                            filename: str = Query(default="", max_length=260)) -> dict:
@@ -834,7 +892,10 @@ def create_app(
     @app.get("/api/export/weekly")
     def export_weekly_status(period: Optional[str] = Query(default=None, max_length=40)) -> dict:
         """Whether the week's report can be exported: every weekly section's state, and whether it is a dev-mode draft."""
-        return weekly_export.export_status(db_path, weekly_period(period))
+        normalized = weekly_period(period)
+        friday = week_ending_of(normalized)
+        missing = chart_uploads.missing(Week(friday) if friday else None, root)
+        return {**weekly_export.export_status(db_path, normalized), "charts_missing": missing}
 
     @app.post("/api/export/weekly")
     def export_weekly(period: Optional[str] = Query(default=None, max_length=40)) -> FileResponse:
