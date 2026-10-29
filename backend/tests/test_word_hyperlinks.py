@@ -146,7 +146,7 @@ def test_slug(topic, expected):
 
 
 def test_a_long_topic_is_cut_at_a_word_boundary():
-    full = export.slug("market " * 30)
+    full = "-".join(["market"] * 30)   # the uncut slug
     out = export.slug("Market " * 30)
     assert len(out) <= 80 and not out.endswith("-") and full.startswith(out) and full[len(out)] == "-"
     assert export.slug("a" * 100) == "a" * 80
