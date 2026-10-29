@@ -1,0 +1,43 @@
+# The one way in from outside. Everything here exists because the app itself has no sign-in yet
+# (backend/api/sso.py is still blocked), so this file is what stands between the internet and a tool
+# holding Cytonn research data and a live Anthropic key.
+#
+# It binds 443 only. Port 80 belongs to the ai-client-engagement project's nginx and is never taken
+# here, which is also why the certificate is obtained over DNS (below) rather than over HTTP.
+
+{
+	# No HTTP listener at all: with port 80 left alone there is nothing to redirect from, and an
+	# open 80 here would collide with the other project.
+	auto_https disable_redirects
+}
+
+{$SITE_DOMAIN} {
+	# DNS-01 through DuckDNS, so no inbound port is needed to prove the name. The token comes from
+	# the server's .env at run time and is never written into this file or an image.
+	tls {
+		dns duckdns {$DUCKDNS_TOKEN}
+	}
+
+	# A shared password, not an identity: it gates access, it does not record who approved a
+	# section. The hash is bcrypt and is safe to commit; the password itself is not in this repo.
+	# Replace with Cytonn SSO once that is unblocked.
+	basic_auth {
+		{$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}
+	}
+
+	# The app's own ports stay on 127.0.0.1; this reaches it over the compose network instead, so
+	# the SSH tunnel keeps working as a fallback and nothing extra is published on the host.
+	reverse_proxy web:3000
+
+	encode gzip
+
+	# The run view streams Server-Sent Events, which must not be buffered or cut short.
+	request_body {
+		max_size 100MB
+	}
+
+	log {
+		output stderr
+		format console
+	}
+}
