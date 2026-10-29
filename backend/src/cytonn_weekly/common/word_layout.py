@@ -24,12 +24,12 @@ def _plain_font(style) -> None:
 
 
 def apply_report_look(doc) -> None:
-    """Body justified and black in Calibri, Heading 1 and 2 black, bold and underlined, a page number in every footer."""
+    """Body justified and black in Calibri, Heading 1 to 3 black, bold and underlined, a page number in every footer."""
     normal = doc.styles["Normal"]
     _plain_font(normal)
     normal.font.color.rgb = BLACK
     normal.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-    for name in ("Heading 1", "Heading 2"):
+    for name in ("Heading 1", "Heading 2", "Heading 3"):   # Heading 3: a Real Estate story under its group
         heading = doc.styles[name]
         _plain_font(heading)
         heading.font.color.rgb, heading.font.bold, heading.font.underline = BLACK, True, True

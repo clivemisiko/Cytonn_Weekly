@@ -29,6 +29,7 @@ from cytonn_weekly.digital_payments.coordinator_review import (
 )
 from cytonn_weekly.digital_payments.fetcher import format_table_rows
 from cytonn_weekly.digital_payments.highlights import N_HIGHLIGHTS
+from cytonn_weekly.real_estate.review_run import layout as real_estate_layout
 from cytonn_weekly.report_sections import section_slug, spec_for
 from cytonn_weekly.report_types import TYPES, WEEKLY
 from cytonn_weekly.weekly.summaries import section_summary
@@ -146,7 +147,7 @@ def _serialize_blocks(review: CoordinatorReview) -> dict[str, Any]:
     sec = review.section
     flagged = _flagged_rows(review)
     blocks = []
-    for b in sec.get("blocks", []):
+    for b in real_estate_layout(sec, review.report_type):
         if b["kind"] == "table":
             out = {k: b.get(k) for k in _TABLE_FIELDS}
             key = b["key_field"]
@@ -170,6 +171,9 @@ def _serialize_blocks(review: CoordinatorReview) -> dict[str, Any]:
             blocks.append({**{k: b.get(k) for k in _CHART_FIELDS}, "use_team_chart": team_chart_chosen(review, b["chart_id"])})
         else:
             blocks.append({k: b.get(k) for k in _UNAVAILABLE_FIELDS})
+        for key in ("group", "group_heading"):   # Real Estate's groups (real_estate/review_run.layout)
+            if b.get(key):
+                blocks[-1][key] = b[key]
     return {
         "week_start": sec.get("week_start"),
         "week_end": sec.get("week_end"),

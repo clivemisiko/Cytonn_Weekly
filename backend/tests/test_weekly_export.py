@@ -334,7 +334,7 @@ def test_every_page_has_a_page_number_and_the_headings_are_real_heading_styles(w
     doc, _ = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
     assert 'w:instr=" PAGE "' in doc.sections[0].footer._element.xml
     assert not doc.sections[0].header.paragraphs[0].text            # the footer is the page number's; the header stays empty
-    for name in ("Heading 1", "Heading 2"):
+    for name in ("Heading 1", "Heading 2", "Heading 3"):   # Heading 3: Real Estate's lettered stories
         style = doc.styles[name]
         assert style.font.bold and style.font.underline and str(style.font.color.rgb) == "000000"
     assert doc.styles["Normal"].paragraph_format.alignment == WD_ALIGN_PARAGRAPH.JUSTIFY

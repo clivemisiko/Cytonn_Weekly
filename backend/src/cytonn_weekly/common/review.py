@@ -59,7 +59,7 @@ matched against the cited span, but its wording never is).
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from cytonn_weekly.checkers.digital_payments import NOT_IMPLEMENTED, UNSOURCED, CheckReport, Flag
 from cytonn_weekly.checkers.digital_payments import SourceValue
@@ -123,6 +123,52 @@ _REF_CHARS = 80
 def numbered(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Give every block its roman numeral in order (the report numbers its sub-items)."""
     return [{**b, "numeral": ROMAN[i]} for i, b in enumerate(blocks)]
+
+
+def letter(n: int) -> str:
+    """0 is "a", 25 is "z", 26 is "aa", 27 is "ab": a story's letter inside its group."""
+    out = ""
+    n += 1
+    while n:
+        n, r = divmod(n - 1, 26)
+        out = chr(97 + r) + out
+    return out
+
+
+def grouped(blocks: list[dict[str, Any]], group_of: Callable[[dict[str, Any]], Optional[str]],
+            last: Optional[str] = None) -> list[dict[str, Any]]:
+    """Copies of ``blocks`` laid out under numbered groups, as Real Estate prints them.
+
+    Groups follow the order of their first block, ``last`` always comes last, and a group's blocks stay
+    together in their own order.  A grouped block's ``numeral`` becomes its letter in the group, and the
+    first block of each group carries ``group_heading`` ("I. Residential Sector").  A block whose group is
+    None keeps its place and its numeral, with no heading.
+    """
+    units: list[Any] = []    # a group's name, or an ungrouped block
+    members: dict[str, list[dict[str, Any]]] = {}
+    for b in blocks:
+        name = group_of(b)
+        if name is None:
+            units.append(b)
+        else:
+            if name not in members:
+                members[name] = []
+                if name != last:
+                    units.append(name)
+            members[name].append(b)
+    if last in members:
+        units.append(last)
+    out, n = [], 0
+    for unit in units:
+        if isinstance(unit, dict):
+            out.append(dict(unit))
+            continue
+        numeral = ROMAN[n] if n < len(ROMAN) else str(n + 1)
+        n += 1
+        for i, b in enumerate(members[unit]):
+            out.append({**b, "numeral": letter(i), "group": unit,
+                        **({"group_heading": f"{numeral}. {unit}"} if i == 0 else {})})
+    return out
 
 
 def table_block(block_id: str, title: str, columns: list[dict[str, Any]], source_rows: list[dict[str, Any]],

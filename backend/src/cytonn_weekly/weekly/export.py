@@ -59,6 +59,7 @@ from cytonn_weekly.digital_payments.summary import (
     _style_document,
     footnote_links,
 )
+from cytonn_weekly.real_estate.review_run import layout as real_estate_layout
 from cytonn_weekly.report_sections import SECTIONS, SectionSpec, is_current, latest_runs
 from cytonn_weekly.report_types import WEEKLY, week_ending_of
 from cytonn_weekly.weekly.summaries import section_summary
@@ -270,14 +271,20 @@ def _add_blocks(doc, review: CoordinatorReview, charts_root: Optional[Union[Path
             _chart(doc, caption, charts.get(caption), review, charts_root)
 
     placed: set[str] = set()
-    for block in section.get("blocks", []):
+    for block in real_estate_layout(section, WEEKLY):
         kind = block["kind"]
         if block.get("export") is False:
             continue   # shown on the review screen only; its content is inside another block's table
+        if block.get("group_heading"):
+            doc.add_heading(block["group_heading"], level=2)
         if kind == "table":
             _add_table_block(doc, block)
         elif kind == "narrative":
-            doc.add_heading(block.get("headline") or block.get("topic") or "", level=2)
+            headline = block.get("headline") or block.get("topic") or ""
+            if block.get("group"):   # a Real Estate story under its group: "a. <headline>"
+                doc.add_heading(f"{block['numeral']}. {headline}", level=3)
+            else:
+                doc.add_heading(headline, level=2)
             _add_text(doc, block.get("body_md") or "")
         elif kind == "computed":
             doc.add_heading(block["title"], level=2)
