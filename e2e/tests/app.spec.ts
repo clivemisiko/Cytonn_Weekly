@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { draftAnyway } from "./helpers";
 
 /**
  * The suite for the web app in frontend/. The tests use only what a person sees (roles, names, text) plus the few
@@ -359,7 +360,7 @@ test("T11 a stopped run shows the error text and the way back", async ({ page })
 test("T12 Fixed Income: run view steps to done, review lists the three statuses, accepting, notes, the leave prompt", async ({ page }) => {
   test.setTimeout(RUN_TIMEOUT + 120_000);
   await openStart(page, "Fixed Income");
-  await page.getByRole("button", { name: DRAFT }).click();
+  await draftAnyway(page, DRAFT);
   await expect(page).toHaveURL(/\/runs\/[^/]+$/);
   await expect(page.getByRole("heading", { name: "Fixed Income: draft run", level: 1 })).toBeVisible();
   await expect(page.getByText(`Weekly, ${PERIOD}. Each line below is a step the draft has really taken.`)).toBeVisible();
@@ -447,7 +448,7 @@ test("T12 Fixed Income: run view steps to done, review lists the three statuses,
 test("T13 Equities: run to done and its review opens with items", async ({ page }) => {
   test.setTimeout(RUN_TIMEOUT + 120_000);
   await openStart(page, "Equities");
-  await page.getByRole("button", { name: DRAFT }).click();
+  await draftAnyway(page, DRAFT);
   await expect(page.getByRole("heading", { name: "Equities: draft run", level: 1 })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Draft ready for review", level: 2 })).toBeVisible({ timeout: RUN_TIMEOUT });
   await page.getByRole("link", { name: "Open review" }).click();

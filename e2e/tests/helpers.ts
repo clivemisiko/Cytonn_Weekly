@@ -21,6 +21,17 @@ export async function openStart(page: Page, title: string, period = PERIOD, type
   await expect(page.getByRole("heading", { name: `${title}: coordinator review`, level: 1 })).toBeVisible();
 }
 
+/**
+ * Press a Fixed Income or Equities draft button and answer the chart dialog with "Draft anyway": the demo weeks hold no
+ * chart images, so the dialog always opens first.
+ */
+export async function draftAnyway(page: Page, name = DRAFT) {
+  await page.getByRole("button", { name }).click();
+  const charts = page.getByRole("dialog", { name: "Some charts have no image" });
+  await expect(charts).toBeVisible();
+  await charts.getByRole("button", { name: "Draft anyway" }).click();
+}
+
 // While this file exists the test API's weekly Real Estate draft waits, holding the one draft slot (e2e/serve_e2e.py).
 const HOLD = join(process.env.E2E_DATA_DIR ?? join(REPO, "backend", "data", "demo-e2e", "data"), "e2e-hold");
 export const hold = () => writeFileSync(HOLD, "held by a test");
