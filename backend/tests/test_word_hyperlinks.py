@@ -169,3 +169,27 @@ def test_the_focus_title_names_the_file_and_the_document():
     assert export.focus_title(reviews) == "SSA Eurobonds: a development"     # the headline the file prints
     doc = export.build_weekly_document(reviews, PERIOD)
     assert doc.core_properties.title == "SSA Eurobonds: a development, Cytonn Weekly"
+
+
+def _focus(topic, headline):
+    review = sh.focus_review(topic="SSA Eurobonds")
+    review.section["topic"] = topic
+    for b in review.section["blocks"]:
+        if b["kind"] == "narrative":
+            b["headline"], b["topic"] = headline, topic
+    return [(BY_SLUG["focus"], review)]
+
+
+def test_the_file_name_prefers_the_typed_topic_then_the_headline():
+    typed = _focus("Kenya's Balance of Payments Report", "A long drafted headline about the balance")
+    assert export.file_name(PERIOD, export.focus_title(typed, typed_first=True)) == \
+        "kenyas-balance-of-payments-report-cytonn-weekly.docx"
+    assert export.focus_title(typed) == "A long drafted headline about the balance"   # the document title is unchanged
+    for blank in ("", "   "):
+        headline_only = _focus(blank, "Drafted Headline")
+        assert export.file_name(PERIOD, export.focus_title(headline_only, typed_first=True)) == \
+            "drafted-headline-cytonn-weekly.docx"
+    neither = _focus("", "")
+    assert export.focus_title(neither, typed_first=True) == ""
+    assert export.file_name(PERIOD, export.focus_title(neither, typed_first=True)) == "cytonn-weekly-2026-10-02.docx"
+    assert export.file_name("", export.focus_title(neither, typed_first=True)) == "cytonn-weekly.docx"
