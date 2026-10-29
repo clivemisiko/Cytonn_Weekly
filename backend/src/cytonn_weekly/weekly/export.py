@@ -120,7 +120,7 @@ def export_status(db_path: Optional[Union[Path, str]], period: str, today: Optio
     dev = [HEADINGS.get(spec.slug, spec.title) for spec, review in reviews if review is not None and is_dev_mode_review(review)]
     return {"period": period, "ready": all(s["state"] == APPROVED for s in sections), "sections": sections,
             "is_dev_draft": bool(dev), "dev_sections": dev, "dev_mode_label": DEV_LABEL if dev else None,
-            "can_send": not dev, "file_name": file_name(period, focus_title(reviews))}
+            "can_send": not dev, "file_name": file_name(period, focus_title(reviews, typed_first=True))}
 
 
 def require_all_approved(reviews: list[tuple[SectionSpec, Optional[CoordinatorReview]]]) -> list[tuple[SectionSpec, CoordinatorReview]]:
@@ -443,13 +443,19 @@ def slug(text: str) -> str:
     return out.strip("-")
 
 
-def focus_title(reviews) -> str:
-    """The Focus of the Week title as the Word file prints it: its piece's headline, else the coordinator's topic."""
+def focus_title(reviews, typed_first: bool = False) -> str:
+    """The Focus of the Week title as the Word file prints it: its piece's headline, else the coordinator's topic.
+
+    ``typed_first``: the topic the coordinator typed (the section's ``topic``) first, then the headline; the file
+    name uses this, because the headline is drafted and changes on every redraft."""
     for spec, review in reviews:
         if spec.slug == "focus" and review is not None:
             section = review.section
             piece = next((b for b in section.get("blocks", []) if b.get("kind") == "narrative"), {})
-            return " ".join((piece.get("headline") or piece.get("topic") or section.get("topic") or "").split())
+            names = [piece.get("headline"), piece.get("topic"), section.get("topic")]
+            if typed_first:
+                names.insert(0, section.get("topic"))
+            return " ".join(next((n for n in names if n and n.strip()), "").split())
     return ""
 
 
@@ -472,6 +478,6 @@ def write_weekly_report(db_path: Optional[Union[Path, str]], period: str, out_di
     reviews = require_all_approved(weekly_reviews(db_path, period, today))
     folder = export_dir(out_dir)
     folder.mkdir(parents=True, exist_ok=True)
-    path = folder / file_name(period, focus_title(reviews))
+    path = folder / file_name(period, focus_title(reviews, typed_first=True))
     build_weekly_document(reviews, period, charts_root).save(str(path))
     return path
