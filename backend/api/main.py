@@ -906,7 +906,8 @@ def create_app(
         """
         normalized = weekly_period(period)
         try:
-            path = weekly_export.write_weekly_report(db_path, normalized, export_root, charts_root=charts_root)
+            path = weekly_export.write_weekly_report(db_path, normalized, export_root, charts_root=charts_root,
+                                                     inputs_root=root)
         except weekly_export.ExportNotAllowed as exc:
             raise ProblemError(409, str(exc), "export_not_ready")
         return FileResponse(path, filename=path.name,
