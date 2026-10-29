@@ -15,7 +15,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any, Callable, Optional
 
-from cytonn_weekly.common.review import build_review, check_section, narrative_block, numbered, table_block
+from cytonn_weekly.common.review import build_review, check_section, grouped, narrative_block, numbered, table_block
 from cytonn_weekly.common.run_events import Observer, fetch_source, report_blocks
 from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview
 from cytonn_weekly.narrative.base import NarrativeBrief, NarrativeProvider
@@ -56,6 +56,31 @@ BRIEFS: list[NarrativeBrief] = [
         focus=f"land prices, land policy or land-registration developments {_KENYA}",
     ),
 ]
+
+
+# The issue's group headings (issues 891, 893, 894, 895).  "Commercial Sector" has not been seen in an issue yet.
+GROUPS = {"residential": "Residential Sector", "affordable_housing": "Residential Sector",
+          "hospitality": "Hospitality Sector", "infrastructure": "Infrastructure Sector",
+          "land": "Land Sector", "commercial": "Commercial Sector"}
+REITS_GROUP = "Real Estate Investment Trusts (REITs)"
+
+
+def group_of(block: dict[str, Any]) -> Optional[str]:
+    if block.get("id") == "reits":
+        return REITS_GROUP
+    return GROUPS.get(block.get("brief_id")) if block.get("kind") == "narrative" else None
+
+
+def layout(section: dict[str, Any], report_type: str) -> list[dict[str, Any]]:
+    """The section's blocks as the weekly prints them: numbered groups, lettered stories, REITs last.
+
+    Worked out when shown, never stored, so a review saved before groups existed shows them too.  Every
+    other section, and the Markets Reviews' Real Estate, get their blocks back unchanged.
+    """
+    blocks = section.get("blocks", [])
+    if report_type != "weekly" or section.get("section") != SECTION:
+        return blocks
+    return grouped(blocks, group_of, REITS_GROUP)
 
 
 def compose(draft: dict[str, Any], reits: dict[str, Any]) -> dict[str, Any]:
