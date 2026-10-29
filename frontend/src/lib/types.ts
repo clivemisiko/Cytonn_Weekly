@@ -402,6 +402,7 @@ export interface ExportStatus {
   dev_mode_label: string | null;
   can_send: boolean;
   file_name: string;
+  charts_missing: number;
 }
 
 /** What a re-check from an uploaded file did: each changed figure old then new, and what was left as it was. */
@@ -429,6 +430,19 @@ export interface WeeklyInputs {
   slots: InputSlot[];
   notes: { bidding_range?: string; previous_issue?: string };
   max_bytes: number;
+  charts: ChartUpload[];
+  chart_max_bytes: number;
+}
+
+export interface ChartUpload {
+  key: string;
+  section: string;
+  title: string;
+  default_lead_in: string;
+  lead_in: string;
+  has_image: boolean;
+  type: "png" | "jpeg" | null;
+  size: number | null;
 }
 
 /** Where a value came from while it is still what was carried from last week's form, or what was suggested. */

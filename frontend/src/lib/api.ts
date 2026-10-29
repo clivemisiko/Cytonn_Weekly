@@ -248,6 +248,23 @@ export const fetchBulletin = (weekEnding: string) =>
 export const saveInputNotes = (weekEnding: string, notes: { bidding_range?: string; previous_issue?: string }) =>
   request<WeeklyInputs>(`${inputsPath(weekEnding)}/notes`, { method: "PUT", body: JSON.stringify(notes) });
 
+const chartPath = (weekEnding: string, key: string) => `${inputsPath(weekEnding)}/charts/${encodeURIComponent(key)}`;
+
+/** Upload a chart image (PNG or JPEG) for one slot, replacing the slot's earlier image. */
+export const uploadChart = (weekEnding: string, key: string, file: File) =>
+  request<WeeklyInputs>(chartPath(weekEnding, key), {
+    method: "PUT", body: file, headers: { "Content-Type": "application/octet-stream" },
+  }, UPLOAD_TIMEOUT_MS);
+
+export const removeChart = (weekEnding: string, key: string) =>
+  request<WeeklyInputs>(chartPath(weekEnding, key), { method: "DELETE" });
+
+export const saveChartLeadIn = (weekEnding: string, key: string, leadIn: string) =>
+  request<WeeklyInputs>(`${chartPath(weekEnding, key)}/lead-in`, { method: "PUT", body: JSON.stringify({ lead_in: leadIn }) });
+
+export const chartUploadUrl = (weekEnding: string, key: string, version: string) =>
+  `${API_BASE}${chartPath(weekEnding, key)}/image?v=${encodeURIComponent(version)}`;
+
 const analystPath = (weekEnding: string, section: string) =>
   `${inputsPath(weekEnding)}/analyst?section=${encodeURIComponent(section)}`;
 

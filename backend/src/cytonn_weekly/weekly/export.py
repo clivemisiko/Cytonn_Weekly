@@ -65,8 +65,9 @@ from cytonn_weekly.digital_payments.summary import (
 from cytonn_weekly.real_estate.review_run import layout as real_estate_layout
 from cytonn_weekly.report_sections import SECTIONS, SectionSpec, is_current, latest_runs
 from cytonn_weekly.report_types import WEEKLY, week_ending_of
+from cytonn_weekly.weekly import chart_uploads
 from cytonn_weekly.weekly.summaries import section_summary
-from cytonn_weekly.weekly.week import day_text, ordinal
+from cytonn_weekly.weekly.week import Week, day_text, ordinal
 
 DEV_LABEL = "DEV MODE DRAFT (local model): NOT FOR PUBLICATION OR CIRCULATION"
 WATERMARK = "DEV MODE DRAFT"
@@ -75,6 +76,7 @@ CARRIED_NOTE = "[Carried forward from the previous issue: edit before publishing
 CHART_WIDTH = Inches(6.0)
 CHART_NOT_VERIFIED = f"{PROVENANCE[0].upper()}{PROVENANCE[1:]}."   # its own paragraph, so the editor can delete it
 PICTURE_UNVERIFIED = "[Chart not drawn: the stored picture could not be verified]"
+UPLOAD_UNREADABLE = "[Chart image not used: the uploaded picture could not be read. Upload it again.]"
 
 # The issue's own section headings (#38.2026).
 HEADINGS = {"company_updates": "Company Updates", "fixed_income": "Fixed Income", "equities": "Equities",
@@ -240,8 +242,42 @@ def _red_line(doc, text: str) -> None:
     r.italic, r.font.color.rgb = True, _RED
 
 
+def _uploaded_chart(doc, caption: str, upload: tuple[bytes, str]) -> None:
+    """The analyst's uploaded image: its lead-in, then the picture no wider than the text, keeping its proportions."""
+    data, lead_in = upload
+    para = doc.add_paragraph()
+    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    try:
+        shape = para.add_run().add_picture(BytesIO(data))
+    except Exception:  # noqa: BLE001 - a stored file python-docx cannot read is shown as a review line, never a crash
+        para._p.getparent().remove(para._p)
+        _placeholder(doc, caption)
+        return _red_line(doc, UPLOAD_UNREADABLE)
+    page = doc.sections[-1]
+    text_width = page.page_width - page.left_margin - page.right_margin
+    if shape.width > text_width:
+        shape.height, shape.width = int(shape.height * text_width / shape.width), text_width
+    shape._inline.docPr.set("descr", lead_in)
+    para.insert_paragraph_before(lead_in).paragraph_format.keep_with_next = True
+
+
+def _uploaded_charts(period: str, inputs_root: Optional[Union[Path, str]]) -> dict[str, tuple[bytes, str]]:
+    """Caption to (image, lead-in) for each chart slot of the week with an uploaded image; the lead-in is the analyst's,
+    else the slot's default sentence, never the caption."""
+    friday = week_ending_of(period)
+    if friday is None:
+        return {}
+    week, out = Week(friday), {}
+    for slot in chart_uploads.slots():
+        stored = chart_uploads.image(week, slot["key"], inputs_root)
+        if stored:
+            out[slot["caption"]] = (stored[0], chart_uploads.lead_in(week, slot["key"], inputs_root)
+                                    or chart_uploads.DEFAULT_LEAD_INS[slot["key"]])
+    return out
+
+
 def _chart(doc, caption: str, chart: Optional[dict[str, Any]], review: CoordinatorReview,
-           charts_root: Optional[Union[Path, str]]) -> None:
+           charts_root: Optional[Union[Path, str]], upload: Optional[tuple[bytes, str]] = None) -> None:
     """One chart's place in the file.  ``chart`` is the section's chart block for this caption, if the tool has one.
 
     * The tool's chart was drawn, is still the one in use and its stored picture verifies (the same SHA-256 check as the
@@ -253,7 +289,10 @@ def _chart(doc, caption: str, chart: Optional[dict[str, Any]], review: Coordinat
     * The picture is drawn but its file is changed or missing now: the placeholder and a red line, never a picture
       that cannot be verified.
     * No chart block for the caption (every chart outside this feature): the placeholder, as before.
+    * An image the analyst uploaded for the slot wins over all of these: it is the team's own chart.
     """
+    if upload is not None:
+        return _uploaded_chart(doc, caption, upload)
     if chart is None or chart["status"] == "no_workbook" or team_chart_chosen(review, chart["chart_id"]):
         return _placeholder(doc, caption)
     if chart["status"] != "drawn":
@@ -273,14 +312,15 @@ def _chart(doc, caption: str, chart: Optional[dict[str, Any]], review: Coordinat
     small_line(doc, CHART_NOT_VERIFIED)
 
 
-def _add_blocks(doc, review: CoordinatorReview, charts_root: Optional[Union[Path, str]] = None) -> None:
+def _add_blocks(doc, review: CoordinatorReview, charts_root: Optional[Union[Path, str]] = None,
+                uploads: Optional[dict[str, tuple[bytes, str]]] = None) -> None:
     section = review.section
     chart_after: dict[str, list[str]] = section.get("chart_after") or {}
     charts = {b["caption"]: b for b in section.get("blocks", []) if b.get("kind") == "chart"}
 
     def place(captions: list[str]) -> None:
         for caption in captions:
-            _chart(doc, caption, charts.get(caption), review, charts_root)
+            _chart(doc, caption, charts.get(caption), review, charts_root, (uploads or {}).get(caption))
 
     placed: set[str] = set()
     for block in real_estate_layout(section, WEEKLY):
@@ -383,10 +423,11 @@ def report_title(period: str) -> str:
 
 
 def build_weekly_document(reviews: list[tuple[SectionSpec, CoordinatorReview]], period: str,
-                          charts_root: Optional[Union[Path, str]] = None):
+                          charts_root: Optional[Union[Path, str]] = None, inputs_root: Optional[Union[Path, str]] = None):
     """The python-docx Document of an approved week (the caller has already required every section approved).
 
-    ``charts_root`` is where the reviews' chart files are kept (default: under the data directory)."""
+    ``charts_root`` is where the reviews' chart files are kept (default: under the data directory); ``inputs_root``
+    is the weekly inputs store, where the week's uploaded chart images are."""
     doc = Document()
     _style_document(doc)
     apply_report_look(doc)
@@ -407,11 +448,12 @@ def build_weekly_document(reviews: list[tuple[SectionSpec, CoordinatorReview]], 
     executive_summary(doc, SUMMARY_HEADING, [(HEADINGS.get(spec.slug, spec.title), summary_text(review.section))
                                              for spec, review in reviews])
 
+    uploads = _uploaded_charts(period, inputs_root)
     for spec, review in reviews:
         doc.add_heading(HEADINGS.get(spec.slug, spec.title), level=1)
         section = review.section
         if "blocks" in section:
-            _add_blocks(doc, review, charts_root)
+            _add_blocks(doc, review, charts_root, uploads)
         else:
             _add_digital_payments(doc, section)
     return doc
@@ -473,11 +515,12 @@ def export_dir(root: Optional[Union[Path, str]] = None) -> Path:
 
 
 def write_weekly_report(db_path: Optional[Union[Path, str]], period: str, out_dir: Optional[Union[Path, str]] = None,
-                        today: Optional[date] = None, charts_root: Optional[Union[Path, str]] = None) -> Path:
+                        today: Optional[date] = None, charts_root: Optional[Union[Path, str]] = None,
+                        inputs_root: Optional[Union[Path, str]] = None) -> Path:
     """Write the week's approved report and return its path.  ExportNotAllowed unless every section is approved."""
     reviews = require_all_approved(weekly_reviews(db_path, period, today))
     folder = export_dir(out_dir)
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / file_name(period, focus_title(reviews, typed_first=True))
-    build_weekly_document(reviews, period, charts_root).save(str(path))
+    build_weekly_document(reviews, period, charts_root, inputs_root).save(str(path))
     return path

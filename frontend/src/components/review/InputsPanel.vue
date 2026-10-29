@@ -6,6 +6,7 @@ import { FIELD } from "@/components/ui/button";
 import * as api from "@/lib/api";
 import { friendlyDate } from "@/lib/format";
 import type { WeeklyInputs } from "@/lib/types";
+import ChartSlot from "./ChartSlot.vue";
 import InputSlot from "./InputSlot.vue";
 import Notice from "./Notice.vue";
 
@@ -21,6 +22,8 @@ const weekdayOf = (iso: string) => WEEKDAYS[new Date(`${iso}T00:00:00Z`).getUTCD
 const props = defineProps<{
   /** The Friday the report week ends on (ISO date). */
   week: string;
+  /** The section on screen: only its own chart slots are listed. */
+  section?: string;
   disabled?: boolean;
 }>();
 const emit = defineEmits<{
@@ -90,6 +93,17 @@ const upload = (slot: string, files: File[]) =>
   });
 
 const remove = (name: string) => act(() => api.removeInput(props.week, name));
+const charts = computed(() => (status.value?.charts ?? []).filter((c) => c.section === props.section));
+// Bumped on each image change, so a replaced image's thumbnail is read again.
+const chartVersion = ref(0);
+const uploadChart = (key: string, file: File) =>
+  act(async () => {
+    const next = await api.uploadChart(props.week, key, file);
+    chartVersion.value++;
+    return next;
+  });
+const removeChart = (key: string) => act(() => api.removeChart(props.week, key));
+const saveLeadIn = (key: string, text: string) => act(() => api.saveChartLeadIn(props.week, key, text));
 const fetchBulletin = () => act(() => api.fetchBulletin(props.week));
 
 function saveNote(key: "bidding_range" | "previous_issue", value: string) {
@@ -154,6 +168,27 @@ function saveNote(key: "bidding_range" | "previous_issue", value: string) {
           @fetch="fetchBulletin"
         />
       </ul>
+
+      <section v-if="charts.length" aria-labelledby="charts-title" class="space-y-2 border-t pt-4">
+        <h3 id="charts-title" class="text-sm font-semibold">Charts (optional)</h3>
+        <p class="text-xs text-muted-foreground">
+          PNG or JPEG, up to {{ Math.round(status.chart_max_bytes / 1_048_576) }} MB each. An image added here goes into the
+          Word file with the sentence above it. A chart with no image keeps its placeholder.
+        </p>
+        <ul>
+          <ChartSlot
+            v-for="chart in charts"
+            :key="chart.key"
+            :entry="chart"
+            :week="status.week_ending"
+            :busy="locked"
+            :version="chartVersion"
+            @upload="uploadChart"
+            @remove="removeChart"
+            @lead-in="saveLeadIn"
+          />
+        </ul>
+      </section>
 
       <div class="space-y-4 border-t pt-4">
         <div class="space-y-1">

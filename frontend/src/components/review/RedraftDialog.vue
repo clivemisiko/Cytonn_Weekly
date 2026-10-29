@@ -2,7 +2,9 @@
 import { DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from "reka-ui";
 import Button from "@/components/ui/Button.vue";
 
-defineProps<{ open: boolean; title: string; notes: string[]; confirmLabel: string }>();
+withDefaults(defineProps<{ open: boolean; title: string; notes: string[]; confirmLabel: string; cancelLabel?: string }>(), {
+  cancelLabel: "Cancel",
+});
 const emit = defineEmits<{ confirm: []; cancel: [] }>();
 </script>
 
@@ -24,7 +26,7 @@ const emit = defineEmits<{ confirm: []; cancel: [] }>();
           </DialogDescription>
         </div>
         <div data-slot="dialog-footer" class="-mx-6 -mb-6 flex flex-col-reverse gap-2 rounded-b-lg border-t bg-muted px-6 py-4 sm:flex-row sm:justify-end">
-          <Button variant="outline" @click="emit('cancel')">Cancel</Button>
+          <Button variant="outline" @click="emit('cancel')">{{ cancelLabel }}</Button>
           <Button @click="emit('confirm')">{{ confirmLabel }}</Button>
         </div>
       </DialogContent>

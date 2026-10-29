@@ -310,9 +310,10 @@ def status(week: Week, root: Optional[Path] = None) -> dict[str, Any]:
             view["received"] = bool(files)
             view["complete"] = bool(files) and bool(files[0].get("matches"))
         slots.append(view)
+    from cytonn_weekly.weekly import chart_uploads
     return {"week_ending": week.ending.isoformat(), "monday": week.monday.isoformat(),
             "previous_friday": week.previous_friday.isoformat(), "slots": slots, "notes": read_notes(week, root),
-            "max_bytes": MAX_BYTES}
+            "max_bytes": MAX_BYTES, "charts": chart_uploads.status(week, root), "chart_max_bytes": chart_uploads.MAX_BYTES}
 
 
 # ---------------------------------------------------------------------------

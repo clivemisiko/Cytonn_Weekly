@@ -3,6 +3,7 @@ import { PhCaretDown } from "@phosphor-icons/vue";
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "reka-ui";
 import { computed, ref } from "vue";
 import PageGrid from "@/components/nav/PageGrid.vue";
+import { exportChartsNote } from "@/lib/charts";
 import { type SectionState, draftAgainOff, isDraftingThis, stateOf, useDraftingPoll } from "@/lib/drafting";
 import { friendlyDate, plural, reportName } from "@/lib/format";
 import { useShellRibbon } from "@/lib/shell";
@@ -86,6 +87,10 @@ const flagged = computed(() =>
       </Notice>
       <Notice v-if="exportStatus?.is_dev_draft" role="alert" class="font-semibold">
         {{ exportStatus.dev_mode_label }} The export carries a DEV MODE watermark on every page and must not be sent or published ({{ exportStatus.dev_sections.join(", ") }}).
+      </Notice>
+      <!-- In the feed, not the foldable panel beside the export button: a note there could be folded away. -->
+      <Notice v-if="exportChartsNote(exportStatus?.charts_missing ?? 0)" tone="info" role="status">
+        {{ exportChartsNote(exportStatus?.charts_missing ?? 0) }}
       </Notice>
       <div v-if="exportError" data-attention="export-bar">
         <Notice role="alert" data-problem class="font-medium">{{ exportError }}</Notice>
