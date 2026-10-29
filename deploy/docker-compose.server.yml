@@ -29,7 +29,37 @@ services:
       MPLCONFIGDIR: /app/data/.mplconfig
 
   web:
-    image: cytonn-weekly-web:2026-10-28
+    image: cytonn-weekly-web:2026-10-28b
     pull_policy: never
     build: !reset null
     mem_limit: 256m
+    environment:
+      # Vite serves a request only under a name it knows; behind the proxy that is the real domain.
+      VITE_ALLOWED_HOSTS: ${SITE_DOMAIN}
+
+  # The only service reachable from outside. It binds 443; port 80 stays with the other project's
+  # nginx, which is why the certificate is obtained over DNS. See deploy/Caddyfile.
+  proxy:
+    image: cytonn-weekly-proxy:2026-10-28
+    pull_policy: never
+    restart: unless-stopped
+    ports:
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Issued certificates, so a restart does not ask the CA for a new one and hit its rate limit.
+      - caddy_data:/data
+      - caddy_config:/config
+    # Read as a file, not with ${...}: a bcrypt hash is full of $ signs and compose reads those as
+    # variable references, which silently hands Caddy a mangled hash and refuses every password.
+    # This file holds only what the proxy needs, so the Anthropic key never enters this container.
+    env_file:
+      - ./.env.proxy
+    depends_on:
+      web:
+        condition: service_healthy
+    mem_limit: 96m
+
+volumes:
+  caddy_data:
+  caddy_config:

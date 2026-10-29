@@ -1,0 +1,12 @@
+# Caddy with the DuckDNS DNS module, which stock Caddy does not ship.
+# The module is what lets the certificate be proved over DNS instead of over port 80, and port 80
+# belongs to the ai-client-engagement project.
+#
+# Built locally and shipped as a tarball like the other two images; the server never builds.
+#   docker build -f deploy/Dockerfile.proxy -t cytonn-weekly-proxy:<date> deploy
+
+FROM caddy:2-builder AS builder
+RUN xcaddy build --with github.com/caddy-dns/duckdns
+
+FROM caddy:2
+COPY --from=builder /usr/bin/caddy /usr/bin/caddy
