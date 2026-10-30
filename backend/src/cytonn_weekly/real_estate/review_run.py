@@ -53,12 +53,15 @@ def preferred_sites(text: str) -> tuple[str, ...]:
 
 PREFERRED_SITES = preferred_sites(_PREFERRED_SITES_TEXT)
 
+# The sources the investments team named on 2026-10-30.
+_KNIGHT_FRANK = ("knightfrank.com", "content.knightfrank.com")
+_HASS_CONSULT = "hassconsult.co.ke"   # to be confirmed by Clive
 _KENYA = "in Kenya, published during the report week"
 _BRIEFS: list[NarrativeBrief] = [
     NarrativeBrief(
         id="residential", section=TITLE, label="Residential and mortgage lending",
         focus=f"mortgage lending statistics, mortgage products or residential property market data {_KENYA}",
-        preferred_domains=("centralbank.go.ke", "kba.co.ke", "kmrc.co.ke"),
+        preferred_domains=("centralbank.go.ke", "kba.co.ke", "kmrc.co.ke", "knbs.or.ke", *_KNIGHT_FRANK, _HASS_CONSULT),
     ),
     NarrativeBrief(
         id="affordable_housing", section=TITLE, label="Affordable housing",
@@ -77,10 +80,12 @@ _BRIEFS: list[NarrativeBrief] = [
     NarrativeBrief(
         id="commercial", section=TITLE, label="Commercial office, retail and industrial",
         focus=f"office, retail mall, warehouse or industrial property market data or major transactions {_KENYA}",
+        preferred_domains=_KNIGHT_FRANK,
     ),
     NarrativeBrief(
         id="land", section=TITLE, label="Land",
         focus=f"land prices, land policy or land-registration developments {_KENYA}",
+        preferred_domains=(_HASS_CONSULT,),
     ),
 ]
 BRIEFS: list[NarrativeBrief] = [

@@ -32,6 +32,16 @@ def test_every_weekly_brief_searches_the_sites_and_blocks_social_media():
     assert residential.preferred_domains[:3] == ("centralbank.go.ke", "kba.co.ke", "kmrc.co.ke")   # its own first
 
 
+def test_the_sources_the_team_named_are_in_their_themes_and_the_exclusion_list_is_unchanged():
+    own = {b.id: b.preferred_domains[:-len(SITES)] for b in review_run.BRIEFS}
+    knight_frank = ("knightfrank.com", "content.knightfrank.com")
+    assert own["residential"] == ("centralbank.go.ke", "kba.co.ke", "kmrc.co.ke", "knbs.or.ke", *knight_frank, "hassconsult.co.ke")
+    assert own["land"] == ("hassconsult.co.ke",) and own["commercial"] == knight_frank
+    assert own["affordable_housing"] == ("housing.go.ke", "bomayangu.go.ke") and own["hospitality"] == ("tourism.go.ke", "ktb.go.ke")
+    assert own["infrastructure"] == ()
+    assert review_run.SOCIAL_DOMAINS == ("x.com", "twitter.com", "facebook.com", "instagram.com", "tiktok.com")
+
+
 def test_the_periodic_themes_reuse_the_weekly_briefs():
     themes = periodic_real_estate.briefs(ph.ctx("quarterly", "Q3'2026"))[1:]
     assert [t.preferred_domains for t in themes] == [b.preferred_domains for b in review_run.BRIEFS]
