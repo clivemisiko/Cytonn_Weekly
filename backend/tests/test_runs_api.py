@@ -547,3 +547,64 @@ def test_the_default_keepalive_is_fifteen_seconds():
     from api import runs
 
     assert runs.SSE_KEEPALIVE_SECONDS == 15.0
+
+
+FAKE_KEY = "sk-ant-api03-Abcdefghijklmnop0123456789"
+UNEXPECTED = "An unexpected error occurred ({}). Try again; if it happens again, report it with the section name."
+
+
+def api_error(status, message, kind=None):
+    import anthropic
+
+    kinds_by_status = {400: anthropic.BadRequestError, 401: anthropic.AuthenticationError,
+                       403: anthropic.PermissionDeniedError, 429: anthropic.RateLimitError}
+    response = httpx.Response(status, request=httpx.Request("POST", "https://api.example.invalid/v1/messages"))
+    return (kind or kinds_by_status[status])(message, response=response, body=None)
+
+
+CREDIT_MESSAGE = f"Error code: 400 - Your credit balance is too low to access the API. key {FAKE_KEY}"
+
+
+@pytest.mark.parametrize("status, message, sentence, retryable", [
+    (400, CREDIT_MESSAGE, "The Anthropic credit balance is empty, so drafting cannot continue. Ask whoever manages "
+                          "Billing to add credit. Trying again will not help until they do.", False),
+    (400, "Error code: 400 - YOUR CREDIT BALANCE IS TOO LOW", "The Anthropic credit balance is empty, so drafting cannot "
+                          "continue. Ask whoever manages Billing to add credit. Trying again will not help until they do.", False),
+    (401, f"Error code: 401 - invalid x-api-key {FAKE_KEY}", "The Anthropic key was not accepted. It may be wrong, revoked "
+                          "or expired. Ask the person who looks after the server settings to replace it.", False),
+    (403, f"Error code: 403 - not allowed {FAKE_KEY}", "The Anthropic key is not allowed to do this. Ask the person who "
+                          "looks after the account to check the key's workspace and permissions.", False),
+    (429, f"Error code: 429 - rate limited {FAKE_KEY}", "Anthropic is limiting requests right now. Wait a minute and try "
+                          "again. If it keeps happening, the workspace's monthly limit may be reached.", True),
+])
+def test_an_anthropic_billing_or_limit_error_is_a_plain_sentence(status, message, sentence, retryable):
+    error = api_error(status, message)
+    assert ev.anthropic_problem(error) == (sentence, retryable)
+    assert failure_message(error) == sentence
+    assert "sk-ant-" not in failure_message(error) and "Error code" not in failure_message(error)
+    described = ev.safe_describe(error)
+    assert described == f"{type(error).__name__} (status {status})"
+
+
+def test_any_other_anthropic_400_keeps_todays_message():
+    error = api_error(400, "messages: at least one message is required")
+    assert ev.anthropic_problem(error) is None
+    assert failure_message(error) == UNEXPECTED.format("messages: at least one message is required")
+    assert ev.safe_describe(error) == "BadRequestError: messages: at least one message is required"
+
+
+def test_a_status_with_no_sentence_and_an_error_from_elsewhere_are_not_mapped():
+    import anthropic
+
+    assert ev.anthropic_problem(api_error(500, "server error", anthropic.InternalServerError)) is None
+    assert ev.anthropic_problem(ValueError("credit balance is too low")) is None
+
+
+def test_a_run_stopped_by_an_empty_credit_balance_shows_the_sentence(client, monkeypatch):
+    def out_of_credit(on_event=None):
+        raise api_error(400, CREDIT_MESSAGE)
+
+    monkeypatch.setattr(review_run, "build_digital_payments_review", out_of_credit)
+    run = run_to_end(client, **WEEKLY_DP)
+    assert kinds(run) == ["run_started", "run_failed"]
+    assert run["events"][-1]["detail"] == ev.anthropic_problem(api_error(400, CREDIT_MESSAGE))[0]

@@ -45,6 +45,12 @@ describe("run steps", () => {
     ]);
   });
 
+  it("shows a billing sentence from the API whole, after the fixed words", () => {
+    const sentence = "The Anthropic credit balance is empty, so drafting cannot continue. Trying again will not help until they do.";
+    const lines = stepLines([event(1, "run_failed", "", { detail: sentence })]);
+    expect(lines.map((l) => l.text)).toEqual([`The draft stopped. ${sentence}`]);
+  });
+
   it("words a check with its counts, and a skipped part with its reason", () => {
     const lines = stepLines([
       event(1, "check_finished", "Table", { counts: { clean: 3, flagged: 1, not_auto_verified: 2 } }),

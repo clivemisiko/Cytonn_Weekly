@@ -160,7 +160,36 @@ def redact(text: str) -> str:
 def safe_describe(exc: BaseException) -> str:
     """``describe`` for a log line: a database driver error is named by its class alone (its message can name the host
     and the user); anything else keeps its message with the secrets removed."""
+    if anthropic_problem(exc):
+        return f"{type(exc).__name__} (status {exc.status_code})"  # type: ignore[attr-defined]  # the SDK's message quotes the response body
     return type(exc).__name__ if database.is_postgres_error(exc) else redact(describe(exc))
+
+
+CREDIT_TOO_LOW = "credit balance is too low"
+CREDIT_EMPTY = ("The Anthropic credit balance is empty, so drafting cannot continue. Ask whoever manages Billing to add "
+                "credit. Trying again will not help until they do.")
+ANTHROPIC_PROBLEMS: dict[int, tuple[str, bool]] = {
+    401: ("The Anthropic key was not accepted. It may be wrong, revoked or expired. Ask the person who looks after the "
+          "server settings to replace it.", False),
+    403: ("The Anthropic key is not allowed to do this. Ask the person who looks after the account to check the key's "
+          "workspace and permissions.", False),
+    429: ("Anthropic is limiting requests right now. Wait a minute and try again. If it keeps happening, the workspace's "
+          "monthly limit may be reached.", True),
+}
+
+
+def anthropic_problem(exc: BaseException) -> Optional[tuple[str, bool]]:
+    """(the plain sentence, whether trying again can help) for an Anthropic billing, key or limit error, or None.
+
+    The sentence is fixed text, so the key, the request and the response body cannot reach the screen.
+    """
+    import anthropic  # imported here: only a failed run needs it
+
+    if not isinstance(exc, anthropic.APIStatusError):
+        return None
+    if exc.status_code == 400:
+        return (CREDIT_EMPTY, False) if CREDIT_TOO_LOW in str(exc).lower() else None
+    return ANTHROPIC_PROBLEMS.get(exc.status_code)
 
 
 def user_message(exc: BaseException) -> str:
@@ -169,12 +198,16 @@ def user_message(exc: BaseException) -> str:
     "ConnectTimeout: _ssl.c:983: The handshake operation timed out" names neither the service nor
     what to do.  httpx's errors, and the Anthropic SDK's, which wrap them, carry the request, so
     the host is named (its address only: the key travels in a header).  A database driver error is
-    one of two fixed sentences, by class: its own words can name the host and the user.
+    one of two fixed sentences, by class: its own words can name the host and the user.  An Anthropic
+    billing, key or limit error is its fixed sentence (``anthropic_problem``).
     """
     if isinstance(exc, database.DatabaseNotAvailable):
         return str(exc)  # fixed text or the name of a setting, never the driver's words (it is UNREACHABLE for a connection failure)
     if database.is_postgres_error(exc):
         return database.UNREACHABLE if database.is_connection_error(exc) else database.REJECTED
+    problem = anthropic_problem(exc)
+    if problem:
+        return problem[0]
     import anthropic  # imported here: only a failed run needs it
 
     if not isinstance(exc, (httpx.TransportError, anthropic.APIConnectionError)):
