@@ -244,9 +244,10 @@ def _red_line(doc, text: str) -> None:
     r.italic, r.font.color.rgb = True, _RED
 
 
-def _uploaded_chart(doc, caption: str, upload: tuple[bytes, str]) -> None:
-    """The analyst's uploaded image: its lead-in, then the picture no wider than the text, keeping its proportions."""
-    data, lead_in = upload
+def _uploaded_chart(doc, caption: str, upload: tuple[bytes, str, str]) -> None:
+    """The analyst's uploaded image: its lead-in, then the picture no wider than the text, keeping its proportions,
+    then the analyst's source line, if one was typed; none is ever filled in."""
+    data, lead_in, source = upload
     para = doc.add_paragraph()
     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
     try:
@@ -261,6 +262,9 @@ def _uploaded_chart(doc, caption: str, upload: tuple[bytes, str]) -> None:
         shape.height, shape.width = int(shape.height * text_width / shape.width), text_width
     shape._inline.docPr.set("descr", lead_in)
     para.insert_paragraph_before(lead_in).paragraph_format.keep_with_next = True
+    if source:
+        para.paragraph_format.keep_with_next = True      # the line below stays on the picture's page
+        _source_line(doc, {"name": source})
 
 
 def export_week(period: str, reviews, today: Optional[date] = None) -> Week:
@@ -281,9 +285,9 @@ def export_week(period: str, reviews, today: Optional[date] = None) -> Week:
     return week_for(None, today)
 
 
-def _uploaded_charts(week: Optional[Week], inputs_root: Optional[Union[Path, str]]) -> dict[str, tuple[bytes, str]]:
-    """Caption to (image, lead-in) for each chart slot of the week with an uploaded image; the lead-in is the analyst's,
-    else the slot's default sentence, never the caption."""
+def _uploaded_charts(week: Optional[Week], inputs_root: Optional[Union[Path, str]]) -> dict[str, tuple[bytes, str, str]]:
+    """Caption to (image, lead-in, source) for each chart slot of the week with an uploaded image; the lead-in is the
+    analyst's, else the slot's default sentence, never the caption; the source is the analyst's or empty."""
     if week is None:
         return {}
     out = {}
@@ -291,12 +295,13 @@ def _uploaded_charts(week: Optional[Week], inputs_root: Optional[Union[Path, str
         stored = chart_uploads.image(week, slot["key"], inputs_root)
         if stored:
             out[slot["caption"]] = (stored[0], chart_uploads.lead_in(week, slot["key"], inputs_root)
-                                    or chart_uploads.DEFAULT_LEAD_INS[slot["key"]])
+                                    or chart_uploads.DEFAULT_LEAD_INS[slot["key"]],
+                                    chart_uploads.source(week, slot["key"], inputs_root))
     return out
 
 
 def _chart(doc, caption: str, chart: Optional[dict[str, Any]], review: CoordinatorReview,
-           charts_root: Optional[Union[Path, str]], upload: Optional[tuple[bytes, str]] = None) -> None:
+           charts_root: Optional[Union[Path, str]], upload: Optional[tuple[bytes, str, str]] = None) -> None:
     """One chart's place in the file.  ``chart`` is the section's chart block for this caption, if the tool has one.
 
     * The tool's chart was drawn, is still the one in use and its stored picture verifies (the same SHA-256 check as the
@@ -332,7 +337,7 @@ def _chart(doc, caption: str, chart: Optional[dict[str, Any]], review: Coordinat
 
 
 def _add_blocks(doc, review: CoordinatorReview, charts_root: Optional[Union[Path, str]] = None,
-                uploads: Optional[dict[str, tuple[bytes, str]]] = None) -> None:
+                uploads: Optional[dict[str, tuple[bytes, str, str]]] = None) -> None:
     section = review.section
     chart_after: dict[str, list[str]] = section.get("chart_after") or {}
     charts = {b["caption"]: b for b in section.get("blocks", []) if b.get("kind") == "chart"}

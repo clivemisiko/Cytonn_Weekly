@@ -224,6 +224,12 @@ class ChartLeadIn(BaseModel):
     lead_in: Optional[str] = Field(default=None, max_length=10_000)
 
 
+class ChartSource(BaseModel):
+    """The text printed as "Source: <text>" under an uploaded chart.  Blank clears it, and nothing is printed."""
+
+    source: Optional[str] = Field(default=None, max_length=10_000)
+
+
 class AnalystInputs(BaseModel):
     """What was typed on the weekly analyst inputs form.  An item left out is kept; null or empty clears it.
 
@@ -774,6 +780,15 @@ def create_app(
         week, key = week_of(week_ending), chart_key(key)
         try:
             chart_uploads.set_lead_in(week, key, body.lead_in, root)
+        except weekly_inputs.InputError as exc:
+            raise ProblemError(422, str(exc), "note_refused")
+        return weekly_inputs.status(week, root)
+
+    @app.put("/api/inputs/weekly/{week_ending}/charts/{key}/source")
+    def put_chart_source(week_ending: str, key: str, body: ChartSource) -> dict:
+        week, key = week_of(week_ending), chart_key(key)
+        try:
+            chart_uploads.set_source(week, key, body.source, root)
         except weekly_inputs.InputError as exc:
             raise ProblemError(422, str(exc), "note_refused")
         return weekly_inputs.status(week, root)

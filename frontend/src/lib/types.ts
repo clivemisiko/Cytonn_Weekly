@@ -440,6 +440,7 @@ export interface ChartUpload {
   title: string;
   default_lead_in: string;
   lead_in: string;
+  source: string;
   has_image: boolean;
   type: "png" | "jpeg" | null;
   size: number | null;

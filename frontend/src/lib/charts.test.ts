@@ -3,7 +3,7 @@ import { draftChartsNote, exportChartsNote } from "./charts";
 import type { ChartUpload } from "./types";
 
 const slot = (key: string, section: string, has_image: boolean): ChartUpload => ({
-  key, section, title: key, default_lead_in: "", lead_in: "", has_image, type: has_image ? "png" : null, size: has_image ? 1 : null,
+  key, section, title: key, default_lead_in: "", lead_in: "", source: "", has_image, type: has_image ? "png" : null, size: has_image ? 1 : null,
 });
 const FI = ["a", "b", "c", "d", "e", "f"].map((k, i) => slot(k, "fixed_income", i < 3));
 const EQ = [slot("g", "equities", true), slot("h", "equities", false)];
