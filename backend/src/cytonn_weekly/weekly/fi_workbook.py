@@ -9,7 +9,7 @@ or date, since rows are added daily:
   Average rate of accepted bids", "Previous Weighted Average rate of accepted bids").
 * 'Money Market Performance': "3-Months Bank Placements" (typed); the ranked fund table
   under "Money Market Fund Yield for Fund Managers as published on <date>" (Rank, Fund
-  Manager, Effective Annual Rate), source Business Daily.
+  Manager, Effective Annual Rate), typed from the Daily Nation e-paper.
 * 'Liquidity Indicators': column A the date, B the interbank volume (KSh mn), C the rate.
 * 'Eurobond': each issue has its own date column and yield column, side by side; the
   blocks are not row-aligned with one another, so each is read by its own dates.  The

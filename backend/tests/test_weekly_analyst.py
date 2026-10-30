@@ -85,7 +85,7 @@ def test_the_form_lists_only_what_the_analysts_alone_hold_with_units_ranges_and_
     placements, pe = item("placements", tmp_path), item("pe", tmp_path)
     assert (placements["unit"], placements["min"], placements["max"], placements["source"]) == ("%", 1, 40, "Rates offered by various banks")
     assert (pe["unit"], pe["source"], pe["used_in"]) == ("x", "Bloomberg NASI P/E", "Valuation")
-    assert item("mmf", tmp_path)["source"] == "Business Daily" and item("mmf", tmp_path)["mode"] == "paste"
+    assert item("mmf", tmp_path)["source"] == "Daily Nation e-paper" and item("mmf", tmp_path)["mode"] == "paste"
     assert [c["key"] for c in item("universe", tmp_path)["columns"]] == [
         "company", "last_price", "price", "month_end_price", "year_open", "target", "dps", "shares_bn", "tbv_bn"]
     # Nothing derived is on the form: no Top 5 average, no upside, yield, multiple or recommendation.
@@ -299,8 +299,7 @@ def test_every_typed_value_is_an_analyst_input_never_clean(typed_week):
     table = items(review, "Money Market Fund Yield for Fund Managers")
     assert len(table) == len(wh.FUNDS) and {i.status for i in table} == {"not_auto_verified"}
     assert table[0].detail == ("Not auto-verified: analyst input typed on the weekly form (money market fund table; source: "
-                               "Business Daily). The tool cannot read Business Daily (login pending), so check the row against "
-                               "the paper.")
+                               "Daily Nation e-paper). The tool does not read the e-paper, so check the row against the paper.")
     top5 = items(review, "Money Market Performance: Average yield of the Top 5")[0]
     assert top5.status == "not_auto_verified" and "(10.72%)" in top5.ref                     # worked out, never typed
     assert "analyst input typed on the weekly form (money market fund table, Alpha Money Market Fund" in top5.detail
@@ -824,3 +823,57 @@ def test_a_single_ocr_reading_says_what_to_check_it_against(tmp_path, text_pdfs)
 def test_shown_drops_float_noise_from_a_workbook_percentage():
     from cytonn_weekly.weekly.analyst import shown
     assert shown(0.10310000000000001, 100) == "10.31"
+
+
+# ---------------------------------------------------------------------------
+# The fund table's source label
+# ---------------------------------------------------------------------------
+
+def source_label(root, week=WEEK):
+    return analyst.Analyst(inputs.WeeklyInputs(week, root)).mmf_source()
+
+
+def test_the_fund_table_source_label_defaults_to_daily_nation_and_waits_for_nothing(tmp_path):
+    field = item("mmf_source", tmp_path)
+    assert source_label(tmp_path) == "Daily Nation"
+    assert (field["kind"], field["value"], field["default"], field["needs_confirmation"]) == ("text", None, "Daily Nation", False)
+    assert "e-paper issue of that Friday" in field["help"] and "its own rate" in field["help"]
+
+
+def test_an_older_form_without_the_label_still_loads(tmp_path):
+    path = inputs.week_dir(WEEK, tmp_path) / "analyst.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({"fields": {"placements": "9.5"}, "tables": {}}), encoding="utf-8")
+    assert analyst.read_form(WEEK, tmp_path)["fields"] == {"placements": "9.5"}
+    assert source_label(tmp_path) == "Daily Nation" and item("placements", tmp_path)["value"] == "9.5"
+
+
+def test_a_typed_label_is_printed_on_the_fund_tables_source_line(typed_week):
+    default = blocks(fi.build(typed_week))["mmf_table"]["source"]
+    assert default["name"] == "Daily Nation"
+    save(typed_week, {"mmf_source": "  Invented Paper "})
+    assert blocks(fi.build(typed_week))["mmf_table"]["source"] == {**default, "name": "Invented Paper"}
+
+
+def test_the_label_is_trimmed_and_kept_as_typed_and_blank_falls_back_to_the_default(tmp_path):
+    save(tmp_path, {"mmf_source": "  <b>Invented</b> Paper  "})
+    assert analyst.read_form(WEEK, tmp_path)["fields"]["mmf_source"] == "<b>Invented</b> Paper"
+    save(tmp_path, {"mmf_source": "x" * 60})
+    assert source_label(tmp_path) == "x" * 60
+    save(tmp_path, {"mmf_source": "   "})
+    assert "mmf_source" not in analyst.read_form(WEEK, tmp_path)["fields"] and source_label(tmp_path) == "Daily Nation"
+
+
+@pytest.mark.parametrize("value", ["x" * 61, "Invented\nPaper", "Invented\r\nPaper", "Invented Paper\n"])
+def test_a_label_too_long_or_on_two_lines_is_refused_and_nothing_is_stored(tmp_path, value):
+    save(tmp_path, {"mmf_source": "Invented Paper"})
+    assert refused(tmp_path, {"mmf_source": value}) == "Fund table source label: type one line of at most 60 characters."
+    assert source_label(tmp_path) == "Invented Paper"
+
+
+def test_the_label_carries_forward_and_is_used_at_once(tmp_path):
+    save(tmp_path, {"mmf_source": "Invented Paper"})
+    done = analyst.carry_forward(NEXT, tmp_path)
+    assert "mmf_source" in done["carried"] and "mmf_source" not in done["unconfirmed"]
+    assert source_label(tmp_path, NEXT) == "Invented Paper"
+    assert analyst.status(NEXT, tmp_path)["unconfirmed"] == []

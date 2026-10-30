@@ -130,7 +130,7 @@ def test_mmf_display_ties_still_rank_sequentially_as_cytonn_weekly_38_2026_did()
 
 
 def test_unbuilt_sources_fail_loudly():
-    with pytest.raises(NotImplementedError, match="Business Daily"):
+    with pytest.raises(NotImplementedError, match="Daily Nation"):
         mmf.fetch_mmf_yields()
 
 

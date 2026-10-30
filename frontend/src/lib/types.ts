@@ -462,11 +462,11 @@ export interface AnalystField {
   type: "field";
   key: string;
   label: string;
-  kind: "number" | "date" | "names";
+  kind: "number" | "date" | "names" | "text";
   unit: string;
   min: number | null;
   max: number | null;
-  /** Where the analysts read it ("Business Daily", "Bloomberg NASI P/E"). */
+  /** Where the analysts read it ("Daily Nation e-paper", "Bloomberg NASI P/E"). */
   source: string;
   help: string;
   /** The part of the section that prints it. */
@@ -483,7 +483,7 @@ export interface AnalystField {
   needs_confirmation: boolean;
   /** A running total the API can work a suggestion out for. */
   suggestable: boolean;
-  /** What is used when nothing is typed and no workbook holds it (the fiscal year's start: 1 July). */
+  /** What is used when nothing is typed and no workbook holds it (the fiscal year's start: 1 July; the fund table's source label). */
   default: string | null;
 }
 

@@ -583,10 +583,9 @@ def money_market_blocks(inputs: WeeklyInputs, tbill_inputs: Optional[dict[str, d
         "mmf_table", table["title"],
         [{"key": "rank", "label": "Rank", "fmt": TEXT}, {"key": "fund", "label": "Fund Manager", "fmt": TEXT},
          {"key": "rate", "label": "Effective Annual Rate", "fmt": PCT, "decimals": 1}],
-        rows, "fund", "fund", {"name": "Business Daily", "url": None, "as_of": table["published"].isoformat()})
+        rows, "fund", "fund", {"name": inputs.analyst.mmf_source(), "url": None, "as_of": table["published"].isoformat()})
     block["row_origin"] = ANALYST
-    block["origin_note"] = (f"Not auto-verified: {table['origin']}. The tool cannot read Business Daily (login pending), "
-                            "so check the row against the paper.")
+    block["origin_note"] = f"Not auto-verified: {table['origin']}. The tool does not read the e-paper, so check the row against the paper."
     # A typed rate that differs from the uploaded workbook's is shown to the reviewer on its row.
     block["second_sources"] = [{"row": row["fund"], "column": "rate", "source": typed_source(f["rate"].other, WB),
                                 "value": f["rate"].other.number * 100}
