@@ -67,7 +67,7 @@ from cytonn_weekly.report_sections import SECTIONS, SectionSpec, is_current, lat
 from cytonn_weekly.report_types import WEEKLY, week_ending_of
 from cytonn_weekly.weekly import chart_uploads
 from cytonn_weekly.weekly.summaries import section_summary
-from cytonn_weekly.weekly.week import Week, day_text, ordinal
+from cytonn_weekly.weekly.week import Week, day_text, ordinal, week_for
 
 DEV_LABEL = "DEV MODE DRAFT (local model): NOT FOR PUBLICATION OR CIRCULATION"
 WATERMARK = "DEV MODE DRAFT"
@@ -114,15 +114,17 @@ def _state(review: Optional[CoordinatorReview]) -> str:
     return review.decision or "in_review"
 
 
-def export_status(db_path: Optional[Union[Path, str]], period: str, today: Optional[date] = None) -> dict[str, Any]:
-    """Whether the week's report can be exported, and each section's state."""
+def export_status(db_path: Optional[Union[Path, str]], period: str, today: Optional[date] = None,
+                  inputs_root: Optional[Union[Path, str]] = None) -> dict[str, Any]:
+    """Whether the week's report can be exported, each section's state, and how many chart slots have no image."""
     reviews = weekly_reviews(db_path, period, today)
     sections = [{"slug": spec.slug, "title": HEADINGS.get(spec.slug, spec.title), "state": _state(review),
                  "run_id": review.run_id if review else None} for spec, review in reviews]
     dev = [HEADINGS.get(spec.slug, spec.title) for spec, review in reviews if review is not None and is_dev_mode_review(review)]
     return {"period": period, "ready": all(s["state"] == APPROVED for s in sections), "sections": sections,
             "is_dev_draft": bool(dev), "dev_sections": dev, "dev_mode_label": DEV_LABEL if dev else None,
-            "can_send": not dev, "file_name": file_name(period, focus_title(reviews, typed_first=True))}
+            "can_send": not dev, "file_name": file_name(period, focus_title(reviews, typed_first=True)),
+            "charts_missing": chart_uploads.missing(export_week(period, reviews, today), inputs_root)}
 
 
 def require_all_approved(reviews: list[tuple[SectionSpec, Optional[CoordinatorReview]]]) -> list[tuple[SectionSpec, CoordinatorReview]]:
@@ -261,13 +263,30 @@ def _uploaded_chart(doc, caption: str, upload: tuple[bytes, str]) -> None:
     para.insert_paragraph_before(lead_in).paragraph_format.keep_with_next = True
 
 
-def _uploaded_charts(period: str, inputs_root: Optional[Union[Path, str]]) -> dict[str, tuple[bytes, str]]:
+def export_week(period: str, reviews, today: Optional[date] = None) -> Week:
+    """The week whose chart uploads the export reads: the one the period names; else the week the Fixed Income review,
+    then the Equities review, was drafted for; else the latest Friday, as the inputs panel and the drafts take it.
+
+    ``reviews`` are (spec, review or None) pairs. When Fixed Income and Equities store different weeks, Fixed Income's wins."""
+    friday = week_ending_of(period)
+    if friday is not None:
+        return Week(friday)
+    by_slug = {spec.slug: review for spec, review in reviews if review is not None}
+    for slug in ("fixed_income", "equities"):
+        stored = by_slug[slug].section.get("week_ending") if slug in by_slug else None
+        try:
+            return Week(date.fromisoformat(stored))
+        except (TypeError, ValueError):   # missing, not a date, or not a Friday: try the next
+            continue
+    return week_for(None, today)
+
+
+def _uploaded_charts(week: Optional[Week], inputs_root: Optional[Union[Path, str]]) -> dict[str, tuple[bytes, str]]:
     """Caption to (image, lead-in) for each chart slot of the week with an uploaded image; the lead-in is the analyst's,
     else the slot's default sentence, never the caption."""
-    friday = week_ending_of(period)
-    if friday is None:
+    if week is None:
         return {}
-    week, out = Week(friday), {}
+    out = {}
     for slot in chart_uploads.slots():
         stored = chart_uploads.image(week, slot["key"], inputs_root)
         if stored:
@@ -448,7 +467,7 @@ def build_weekly_document(reviews: list[tuple[SectionSpec, CoordinatorReview]], 
     executive_summary(doc, SUMMARY_HEADING, [(HEADINGS.get(spec.slug, spec.title), summary_text(review.section))
                                              for spec, review in reviews])
 
-    uploads = _uploaded_charts(period, inputs_root)
+    uploads = _uploaded_charts(export_week(period, reviews), inputs_root)
     for spec, review in reviews:
         doc.add_heading(HEADINGS.get(spec.slug, spec.title), level=1)
         section = review.section

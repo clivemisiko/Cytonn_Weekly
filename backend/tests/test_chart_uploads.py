@@ -2,6 +2,7 @@
 
 import struct
 import zlib
+from datetime import timedelta
 
 import pytest
 from docx.shared import Emu
@@ -10,7 +11,9 @@ from fastapi.testclient import TestClient
 from api.main import create_app
 from cytonn_weekly.equities import weekly as equities
 from cytonn_weekly.fixed_income import weekly as fixed_income
+from cytonn_weekly.common.review import build_review, check_section
 from cytonn_weekly.weekly import chart_uploads, export, inputs
+from cytonn_weekly.weekly.week import Week
 from cytonn_weekly.report_sections import BY_SLUG
 from tests.test_weekly_export_charts import CAPTIONS, PERIOD, approved, placeholders
 from tests.weekly_helpers import WEEK
@@ -145,11 +148,14 @@ def test_every_slot_has_a_clean_default_sentence():
         assert "(" not in text and ")" not in text and chr(0x2014) not in text
 
 
-def test_the_export_status_counts_the_charts_with_no_image(client):
+def test_the_export_status_counts_the_charts_with_no_image(client, tmp_path):
     assert client.get("/api/export/weekly", params={"period": PERIOD}).json()["charts_missing"] == 8
     client.put(f"{URL}/nasi_pe", content=png())
     assert client.get("/api/export/weekly", params={"period": PERIOD}).json()["charts_missing"] == 7
-    assert client.get("/api/export/weekly").json()["charts_missing"] == 8   # no week named: none can be used
+    # No week named and no reviews: the latest Friday's uploads count, so 8 only while that Friday's folder is empty.
+    root = tmp_path / "weekly"
+    assert export.export_status(tmp_path / "app.db", "", today=WEEK.ending + timedelta(days=8), inputs_root=root)["charts_missing"] == 8
+    assert export.export_status(tmp_path / "app.db", "", today=WEEK.ending + timedelta(days=1), inputs_root=root)["charts_missing"] == 7
 
 
 # ---------------------------------------------------------------------------
@@ -203,3 +209,93 @@ def test_a_corrupt_stored_image_falls_back_to_the_placeholder_and_a_warning_line
     assert placeholders(doc) == [f"[Chart to add: {c}]" for c in CAPTIONS]
     [line] = [p for p in doc.paragraphs if p.text == export.UPLOAD_UNREADABLE]
     assert line.runs[0].italic and line.runs[0].font.color.rgb == export._RED
+
+
+# ---------------------------------------------------------------------------
+# The week the export reads uploads for
+# ---------------------------------------------------------------------------
+
+OTHER = Week(WEEK.ending - timedelta(days=7))
+FI_SLOTS = [s["key"] for s in chart_uploads.slots() if s["section"] == "fixed_income"]
+
+
+def fixed_income_review(week_ending: str, period: str = ""):
+    """An approved Fixed Income-like review: a tbills block and the section's own chart placement, as the builder stores it."""
+    content = {"section": "fixed_income", "title": "Fixed Income", "week_ending": week_ending,
+               "blocks": [{"kind": "supplied", "id": "tbills", "title": "T-Bills", "body_md": "Invented T-bill text.",
+                           "supplied_by": "coordinator"}],
+               "chart_after": fixed_income.CHART_AFTER, "chart_notes": list(fixed_income.CHARTS)}
+    review = build_review(content, check_section(content))
+    for item in review.review_items:
+        if item.resolution is None:
+            item.resolve("accept")
+    review.decide("approved")
+    review.report_type, review.period = "weekly", period
+    return review
+
+
+def upload_fixed_income(week, root, keys=None):
+    for key in keys or [k for k in FI_SLOTS if k != "interbank"]:
+        chart_uploads.store(week, key, png(), root)
+
+
+def test_an_unlabelled_period_exports_the_uploads_of_the_reviews_week(tmp_path):
+    root = tmp_path / "weekly"
+    upload_fixed_income(WEEK, root)
+    doc = export.build_weekly_document([(BY_SLUG["fixed_income"], fixed_income_review(WEEK.ending.isoformat()))], "",
+                                       inputs_root=root)
+    texts = [p.text for p in doc.paragraphs]
+    assert len(doc.inline_shapes) == 5
+    uploaded = [c for k, c in zip(chart_uploads.KEYS, fixed_income.CHARTS) if k != "interbank"]
+    assert not any(t == f"[Chart to add: {c}]" for t in texts for c in uploaded)
+    # The three T-bill charts follow the tbills block, each under its own default sentence.
+    at = texts.index("Invented T-bill text.")
+    assert texts[at + 1:at + 7:2] == [chart_uploads.DEFAULT_LEAD_INS[k] for k in FI_SLOTS[:3]]
+    assert all(doc.paragraphs[at + i]._p.xpath(".//w:drawing") for i in (2, 4, 6))
+
+
+def test_a_fixed_income_slot_with_no_image_keeps_its_placeholder(tmp_path):
+    root = tmp_path / "weekly"
+    upload_fixed_income(WEEK, root)
+    doc = export.build_weekly_document([(BY_SLUG["fixed_income"], fixed_income_review(WEEK.ending.isoformat()))], "",
+                                       inputs_root=root)
+    assert placeholders(doc) == [f"[Chart to add: {fixed_income.CHARTS[4]}]"]   # the interbank slot
+
+
+def test_the_export_status_counts_uploads_for_an_unlabelled_period(tmp_path):
+    root = tmp_path / "weekly"
+    chart_uploads.store(WEEK, "tbill_yields", png(), root)
+    status = export.export_status(tmp_path / "app.db", "", today=WEEK.ending, inputs_root=root)
+    assert status["charts_missing"] == 7
+
+
+def test_a_period_that_names_a_week_wins_over_the_reviews_week(tmp_path):
+    root = tmp_path / "weekly"
+    upload_fixed_income(OTHER, root)
+    review = fixed_income_review(WEEK.ending.isoformat(), PERIOD)   # the review says WEEK, the period names OTHER
+    named = f"Week ending {OTHER.ending.isoformat()}"
+    assert export.export_week(named, [(BY_SLUG["fixed_income"], review)]) == OTHER
+    doc = export.build_weekly_document([(BY_SLUG["fixed_income"], review)], named, inputs_root=root)
+    assert len(doc.inline_shapes) == 5
+    assert len(export.build_weekly_document([(BY_SLUG["fixed_income"], review)], PERIOD, inputs_root=root).inline_shapes) == 0
+
+
+def test_an_equities_only_export_with_an_unlabelled_period_uses_the_equities_reviews_week(tmp_path):
+    review, charts = approved(tmp_path, workbook=False)   # its section week_ending is WEEK
+    review.period = ""
+    root = tmp_path / "weekly"
+    chart_uploads.store(WEEK, "nasi_pe", png(), root)
+    reviews = [(BY_SLUG["equities"], review)]
+    assert export.export_week("", reviews, today=OTHER.ending) == WEEK
+    doc = export.build_weekly_document(reviews, "", charts_root=charts, inputs_root=root)
+    assert len(doc.inline_shapes) == 1
+    assert placeholders(doc) == [f"[Chart to add: {CAPTIONS[1]}]"]
+
+
+def test_fixed_incomes_week_wins_and_a_bad_stored_week_is_skipped(tmp_path):
+    review, _ = approved(tmp_path, workbook=False)   # Equities, week_ending WEEK
+    fi = fixed_income_review(OTHER.ending.isoformat())
+    assert export.export_week("", [(BY_SLUG["fixed_income"], fi), (BY_SLUG["equities"], review)]) == OTHER
+    broken = fixed_income_review("not a date")
+    assert export.export_week("", [(BY_SLUG["fixed_income"], broken), (BY_SLUG["equities"], review)]) == WEEK
+    assert export.export_week("", [(BY_SLUG["fixed_income"], broken)], today=WEEK.ending + timedelta(days=3)) == WEEK
