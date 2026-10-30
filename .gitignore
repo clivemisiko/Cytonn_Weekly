@@ -69,3 +69,4 @@ backend/data/
 Claude outputs/
 # Scratch output of end-to-end runs
 e2e-*.log
+e2e-*.log
