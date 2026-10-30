@@ -104,6 +104,7 @@ const uploadChart = (key: string, file: File) =>
   });
 const removeChart = (key: string) => act(() => api.removeChart(props.week, key));
 const saveLeadIn = (key: string, text: string) => act(() => api.saveChartLeadIn(props.week, key, text));
+const saveChartSource = (key: string, text: string) => act(() => api.saveChartSource(props.week, key, text));
 const fetchBulletin = () => act(() => api.fetchBulletin(props.week));
 
 function saveNote(key: "bidding_range" | "previous_issue", value: string) {
@@ -186,6 +187,7 @@ function saveNote(key: "bidding_range" | "previous_issue", value: string) {
             @upload="uploadChart"
             @remove="removeChart"
             @lead-in="saveLeadIn"
+            @source="saveChartSource"
           />
         </ul>
       </section>

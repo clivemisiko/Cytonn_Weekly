@@ -262,6 +262,9 @@ export const removeChart = (weekEnding: string, key: string) =>
 export const saveChartLeadIn = (weekEnding: string, key: string, leadIn: string) =>
   request<WeeklyInputs>(`${chartPath(weekEnding, key)}/lead-in`, { method: "PUT", body: JSON.stringify({ lead_in: leadIn }) });
 
+export const saveChartSource = (weekEnding: string, key: string, source: string) =>
+  request<WeeklyInputs>(`${chartPath(weekEnding, key)}/source`, { method: "PUT", body: JSON.stringify({ source }) });
+
 export const chartUploadUrl = (weekEnding: string, key: string, version: string) =>
   `${API_BASE}${chartPath(weekEnding, key)}/image?v=${encodeURIComponent(version)}`;
 

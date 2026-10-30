@@ -5,7 +5,7 @@ import zlib
 from datetime import timedelta
 
 import pytest
-from docx.shared import Emu
+from docx.shared import Emu, Pt
 from fastapi.testclient import TestClient
 
 from api.main import create_app
@@ -128,6 +128,64 @@ def test_the_lead_in_is_saved_cleared_and_limited(client):
     assert long.status_code == 422 and long.json()["problems"][0]["code"] == "note_refused"
 
 
+def test_the_source_line_is_stored_returned_trimmed_and_kept_as_typed(client):
+    r = client.put(f"{URL}/import_cover/source", json={"source": "  <b>Invented</b>  Bureau  "})
+    assert r.status_code == 200
+    assert by_key(r.json())["import_cover"]["source"] == "<b>Invented</b>  Bureau"
+    assert by_key(client.get(f"/api/inputs/weekly/{WEEK.ending.isoformat()}").json())["import_cover"]["source"] == "<b>Invented</b>  Bureau"
+    exact = "x" * chart_uploads.MAX_SOURCE
+    assert by_key(client.put(f"{URL}/import_cover/source", json={"source": exact}).json())["import_cover"]["source"] == exact
+
+
+def test_the_source_line_and_the_lead_in_do_not_touch_each_other(client):
+    client.put(f"{URL}/import_cover/lead-in", json={"lead_in": "Invented lead-in."})
+    both = by_key(client.put(f"{URL}/import_cover/source", json={"source": "Invented Bureau"}).json())["import_cover"]
+    assert (both["lead_in"], both["source"]) == ("Invented lead-in.", "Invented Bureau")
+    client.put(f"{URL}/import_cover/lead-in", json={"lead_in": ""})
+    assert by_key(client.get(f"/api/inputs/weekly/{WEEK.ending.isoformat()}").json())["import_cover"]["source"] == "Invented Bureau"
+
+
+@pytest.mark.parametrize("empty", ["", "   ", None])
+def test_an_empty_source_line_clears_it(client, empty):
+    client.put(f"{URL}/import_cover/source", json={"source": "Invented Bureau"})
+    r = client.put(f"{URL}/import_cover/source", json={"source": empty})
+    assert by_key(r.json())["import_cover"]["source"] == ""
+
+
+@pytest.mark.parametrize("value, message", [
+    ("x" * (chart_uploads.MAX_SOURCE + 1), "Shorten it by 1."),
+    ("Invented\nBureau", "one line"), ("Invented\r\nBureau", "one line"), ("Invented Bureau\n", "one line"),
+    ("Invented\u2028Bureau", "one line"),
+])
+def test_a_source_line_too_long_or_on_two_lines_is_refused_and_nothing_is_stored(client, tmp_path, value, message):
+    client.put(f"{URL}/import_cover/source", json={"source": "Invented Bureau"})
+    r = client.put(f"{URL}/import_cover/source", json={"source": value})
+    assert r.status_code == 422 and message in str(r.json())
+    assert chart_uploads.source(WEEK, "import_cover", tmp_path / "weekly") == "Invented Bureau"
+
+
+def test_the_source_line_refuses_an_unknown_slot(client):
+    assert client.put(f"{URL}/not_a_slot/source", json={"source": "Invented Bureau"}).status_code == 404
+
+
+def test_an_older_charts_json_without_the_source_still_loads(tmp_path):
+    root = tmp_path / "weekly"
+    folder = inputs.week_dir(WEEK, root) / "charts"
+    folder.mkdir(parents=True)
+    (folder / "charts.json").write_text('{"interbank": {"lead_in": "Invented lead-in."}}', encoding="utf-8")
+    slot = {c["key"]: c for c in chart_uploads.status(WEEK, root)}["interbank"]
+    assert (slot["lead_in"], slot["source"]) == ("Invented lead-in.", "")
+    assert chart_uploads.source(WEEK, "interbank", root) == ""
+
+
+def test_deleting_the_image_removes_the_source_and_replacing_it_keeps_the_source(client):
+    assert client.put(f"{URL}/interbank", content=png()).status_code == 200
+    client.put(f"{URL}/interbank/source", json={"source": "Invented Bureau"})
+    r = client.put(f"{URL}/interbank", content=png(3, 1))
+    assert by_key(r.json())["interbank"]["source"] == "Invented Bureau"
+    assert by_key(client.delete(f"{URL}/interbank").json())["interbank"]["source"] == ""
+
+
 def test_the_summary_lists_every_slot_with_its_state(client):
     client.put(f"{URL}/nasi_yield", content=png())
     charts = client.get(f"/api/inputs/weekly/{WEEK.ending.isoformat()}").json()["charts"]
@@ -173,6 +231,34 @@ def test_a_filled_slot_prints_its_lead_in_and_image_and_an_empty_one_keeps_the_p
     at = next(i for i, p in enumerate(doc.paragraphs) if p._p.xpath(".//w:drawing"))
     assert texts[at - 1] == "Invented lead-in for the P/E chart."
     assert placeholders(doc) == [f"[Chart to add: {CAPTIONS[1]}]"]
+
+
+def test_a_source_line_prints_under_the_uploaded_image_in_the_source_style(tmp_path):
+    review, charts = approved(tmp_path, workbook=False)
+    chart_uploads.store(WEEK, "nasi_pe", png(), tmp_path / "weekly")
+    chart_uploads.set_source(WEEK, "nasi_pe", "<i>Invented Bureau</i>", tmp_path / "weekly")
+    doc = exported(review, charts, tmp_path)
+    at = next(i for i, p in enumerate(doc.paragraphs) if p._p.xpath(".//w:drawing"))
+    line = doc.paragraphs[at + 1]
+    assert line.text == "Source: <i>Invented Bureau</i>"
+    assert (line.runs[0].font.size, line.runs[0].italic) == (Pt(9), False)
+    assert doc.paragraphs[at].paragraph_format.keep_with_next is True
+
+
+def test_an_empty_source_line_prints_nothing_under_the_uploaded_image(tmp_path):
+    review, charts = approved(tmp_path, workbook=False)
+    chart_uploads.store(WEEK, "nasi_pe", png(), tmp_path / "weekly")
+    doc = exported(review, charts, tmp_path)
+    at = next(i for i, p in enumerate(doc.paragraphs) if p._p.xpath(".//w:drawing"))
+    assert not doc.paragraphs[at + 1].text.startswith("Source:")
+
+
+def test_a_source_line_with_no_image_prints_nothing(tmp_path):
+    review, charts = approved(tmp_path, workbook=False)
+    chart_uploads.set_source(WEEK, "nasi_pe", "Invented Bureau", tmp_path / "weekly")
+    doc = exported(review, charts, tmp_path)
+    assert not [p.text for p in doc.paragraphs if "Invented Bureau" in p.text]
+    assert placeholders(doc)[0] == f"[Chart to add: {CAPTIONS[0]}]"
 
 
 def test_an_upload_wins_over_a_drawn_chart_and_a_blank_lead_in_prints_the_default_sentence(tmp_path):
