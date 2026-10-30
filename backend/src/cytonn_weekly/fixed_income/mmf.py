@@ -1,16 +1,13 @@
 """Money Market Fund yields table (~34 fund managers, effective annual rate, ranked).
 
-The real report credits this table to Business Daily.  The ranking and display
-are built and tested here; the FETCH is a stub, because no public, machine-readable
-Business Daily page carrying the table was found (checked 2026-10-02):
-businessdailyafrica.com's markets pages carry money-market coverage only as
-articles, mostly behind its PRIME paywall, and the ranked table appears to be a
-print / e-paper feature.  Scraping an article's prose for 34 figures would be a
-guess at a format that is not published as data.
+The analysts copy this table from the Daily Nation e-paper issue of the Friday or
+the last working day of the week (the investments team, 2026-10-30).  The ranking
+and display are built and tested here; the FETCH is a stub, because the tool has no
+login for the e-paper.  The weekly reads the table the analysts type, so only the
+Markets Reviews need this.
 
-What unblocks it: the exact Business Daily URL or e-paper page Cytonn's analysts
-copy the table from (and the access to it), so a parser can be written against
-a real sample.
+What unblocks it: a login to that e-paper, so a parser can be written against a
+real sample.
 """
 
 from __future__ import annotations
@@ -25,7 +22,7 @@ BLOCKED_REASON = (
     "The analysts copy the Money Market Fund Yields table from the Daily Nation e-paper issue of the Friday or the "
     "last working day of the week (the investments team, 2026-10-30), and the tool has no login for it."
 )
-UNBLOCK = "The exact Business Daily page or e-paper section (and access to it) the analysts take the table from."
+UNBLOCK = "A login to the Daily Nation e-paper the analysts copy the table from, and a real sample of that table."
 
 # Header and precision follow Cytonn Weekly #38.2026 (published 2026-09-27):
 # "Rank | Fund Manager | Effective Annual Rate", rates to 1 dp ("1 | Cytonn Money
@@ -44,7 +41,7 @@ class MmfYield:
 
 
 def fetch_mmf_yields(week_end: Optional[date] = None) -> list[MmfYield]:
-    # TODO: no public machine-readable source found; needs the exact Business Daily page, see UNBLOCK.
+    # TODO: the tool has no login for the Daily Nation e-paper; see UNBLOCK.
     raise NotImplementedError(BLOCKED_REASON)
 
 
