@@ -22,8 +22,8 @@ from typing import Any, Optional
 from cytonn_weekly.common.formatting import PCT, TEXT, format_rows
 
 BLOCKED_REASON = (
-    "The Money Market Fund Yields table's source line reads \"Business Daily\". No public, machine-readable "
-    "Business Daily source for it was found; the table appears in the print/e-paper edition and paywalled articles."
+    "The analysts copy the Money Market Fund Yields table from the Daily Nation e-paper issue of the Friday or the "
+    "last working day of the week (the investments team, 2026-10-30), and the tool has no login for it."
 )
 UNBLOCK = "The exact Business Daily page or e-paper section (and access to it) the analysts take the table from."
 

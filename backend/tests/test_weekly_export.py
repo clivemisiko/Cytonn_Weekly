@@ -154,7 +154,7 @@ def test_computed_paragraphs_tables_charts_and_marked_text_are_all_in_the_file(w
     assert len(doc.inline_shapes) == 2 and not [t for t in text if t.startswith("[Chart not drawn")]
     assert sum(t == "[Carried forward from the previous issue: edit before publishing]" for t in text) == 3
     assert any(t.startswith("[Not included: T-Bonds: recommended bidding range") for t in text)
-    assert "Source: Business Daily" in text and "Source: Central Bank of Kenya (CBK) Weekly Highlights" in text
+    assert "Source: Daily Nation" in text and "Source: Central Bank of Kenya (CBK) Weekly Highlights" in text
     assert "*Target Price as per Cytonn Analyst estimates" in text
     # tables are Word tables
     tables = {t.rows[0].cells[0].text + "|" + t.rows[0].cells[1].text: t for t in doc.tables}

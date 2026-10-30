@@ -30,7 +30,7 @@ Rules:
 
 * **Last week's form can start this week's** (``carry_forward``).  Every carried value is marked
   with the week it came from.  What changes slowly (the Eurobond issue list, year opens, targets,
-  DPS, shares, tangible book, remittances) is carried and used.  What changes every week (the
+  DPS, shares, tangible book, remittances, the fund table's source label) is carried and used.  What changes every week (the
   placements rate, the fund table, the P/E, the borrowing target and log, the interbank rates, the
   foreign positions) is carried but **not used until it is confirmed**: an unconfirmed value is
   read by no builder, so a draft can never rest on last week's figure by oversight.
@@ -79,10 +79,13 @@ MAX_PASTE = 40_000
 MAX_ROWS = 400
 MAX_NAME = 120
 MIN_FUNDS = 5   # the Top 5 average needs five funds
+MAX_LABEL = 60
+MMF_READ_FROM = "Daily Nation e-paper"   # the investments team, 2026-10-30
+MMF_SOURCE_DEFAULT = "Daily Nation"      # printed under the fund table; which name to print is not settled with the team
 
 # Carry-forward (the team's rule, 2026-10-12).  Slow-changing items carry from last week's form and are used as
 # they are; weekly-changing ones carry but must be confirmed before any builder reads them.
-SLOW_FIELDS = ("large_caps", "foreign_prior_year", "universe_month_end", "fiscal_year_start")
+SLOW_FIELDS = ("large_caps", "foreign_prior_year", "universe_month_end", "fiscal_year_start", "mmf_source")
 WEEKLY_FIELDS = ("placements", "pe", "pe_average", "dividend_yield", "dividend_yield_average", "borrowing_target")
 SLOW_TABLES = ("eurobond_issues", "eurobond_yields", "remittances", "universe", "borrowing_redemptions")
 WEEKLY_TABLES = ("mmf", "interbank", "borrowing_log", "foreign_history")
@@ -168,8 +171,11 @@ FIELD_LIST = (
     Field("cmmf_last_week", FI, "money_market", "Cytonn Money Market Fund yield, previous week", "Cytonn Money Market Fund",
           "Money Market Performance", "Optional. Left empty, the sentence gives this week's yield only. This week's yield is "
           "the Cytonn row of the fund table.", **_PCT),
-    Field("mmf_published", FI, "money_market", "Fund table published on", "Business Daily", "Money Market Performance",
+    Field("mmf_published", FI, "money_market", "Fund table published on", MMF_READ_FROM, "Money Market Performance",
           "The day's paper the fund table below is copied from.", kind=DATE),
+    Field("mmf_source", FI, "money_market", "Fund table source label", MMF_READ_FROM, "The source line under the fund table",
+          "The table is copied from the e-paper issue of that Friday, or of the last working day of the week. Funds the team "
+          "keeps its own rate for are typed like any other row.", kind=TEXT),
     Field("borrowing_target", FI, "borrowing", "Net domestic borrowing target for the fiscal year", "National Treasury budget",
           "Net domestic borrowing against the pro-rated target", "The full-year target. The pro-rated target is worked out.",
           unit="Kshs bn", lo=1, hi=5000),
@@ -201,7 +207,7 @@ FIELDS = {f.key: f for f in FIELD_LIST}
 
 _PRICE = dict(unit="Kshs", lo=0.01, hi=100_000, required=False)
 TABLE_LIST = (
-    Table("mmf", FI, "money_market", "Money market fund table", "Business Daily", "Money Market Performance and its fund table",
+    Table("mmf", FI, "money_market", "Money market fund table", MMF_READ_FROM, "Money Market Performance and its fund table",
           (Column("rank", "Rank", RANK), Column("fund", "Fund Manager", TEXT),
            Column("rate", "Effective Annual Rate", **_PCT)),
           "Paste the rows as the paper prints them: rank, fund, rate. Any number of funds. The Top 5 average is worked out "
@@ -273,6 +279,7 @@ TABLES = {t.key: t for t in TABLE_LIST}
 
 # The workbook reading each item comes from (the key its error is kept under), for the "why it is missing" wording.
 _READING = {"placements": "placements", "cmmf_last_week": "cmmf_last_week", "mmf_published": "mmf", "mmf": "mmf",
+            "mmf_source": "mmf_source",
             "interbank": "interbank", "eurobond_issues": "eurobonds", "eurobond_yields": "eurobonds",
             "remittances": "remittances", "borrowing_target": "borrowing", "borrowing_log": "borrowing",
             "fiscal_year_start": "borrowing", "borrowing_redemptions": "borrowing",
@@ -676,6 +683,10 @@ def clean_field(spec: Field, raw: Any, week: Week) -> Any:
     text = "" if raw is None else str(raw).strip()
     if not text:
         return None
+    if spec.kind == TEXT:
+        if len(text) > MAX_LABEL or "".join(str(raw).splitlines()) != str(raw):
+            raise InputError(f"{spec.label}: type one line of at most {MAX_LABEL} characters.")
+        return text
     value = clean_date(text, spec.label) if spec.kind == DATE else clean_number(text, spec, spec.label)
     _check_field(spec, value, week)
     return value
@@ -964,6 +975,8 @@ class Analyst:
 
     def wb_field(self, key: str) -> Any:
         """The uploaded workbook's cell for a field (a list of cells for the large-cap list), or None."""
+        if key == "mmf_source":
+            return None
         if key == "placements":
             return self._read(FI, key, fi_workbook.read_placements)
         if key == "cmmf_last_week":
@@ -1118,7 +1131,7 @@ class Analyst:
                     return None
                 first, last = wb["funds"][0]["rank"], wb["funds"][-1]["rate"]
                 return {**wb, "origin": f"analyst input from {fi_workbook.SOURCE_NAME} {first.ref}:{last.a1}, typed from "
-                                        "Business Daily"}
+                                        f"{table.source}"}
             published = self.field("mmf_published")
             if published is None or published.day is None:
                 self.incomplete["mmf"] = (f"The money market fund table is typed under \"{FORM}\", but the date it was "
@@ -1139,6 +1152,10 @@ class Analyst:
                     "origin": f"analyst input typed on the weekly form (money market fund table; source: {table.source})"}
 
         return self._once("mmf", load)
+
+    def mmf_source(self) -> str:
+        """The name printed on the fund table's source line."""
+        return self.form["fields"].get("mmf_source") or MMF_SOURCE_DEFAULT
 
     def interbank(self) -> list[dict[str, Any]]:
         """The daily interbank rows of the two weeks compared, oldest first: [{date, volume (or None), rate}]."""
@@ -1457,7 +1474,7 @@ def status(week: Week, root: Optional[Path] = None, section: Optional[str] = Non
                 "workbook_note": analyst.errors.get(_READING[spec.key]), "differences": differences.get(spec.key, []),
                 "carried": carried(spec.key, form["fields"].get(spec.key)),
                 "needs_confirmation": spec.key in form["unconfirmed"], "suggestable": spec.key in SUGGESTED_FIELDS,
-                "default": fiscal_year_start(week).isoformat() if spec.key == "fiscal_year_start" else None}
+                "default": {"fiscal_year_start": fiscal_year_start(week).isoformat(), "mmf_source": MMF_SOURCE_DEFAULT}.get(spec.key)}
 
     def table_view(table: Table) -> dict[str, Any]:
         rows = form["tables"].get(table.key)

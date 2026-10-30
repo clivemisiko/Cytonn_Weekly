@@ -277,7 +277,7 @@ def test_published_figures_are_clean_and_typed_ones_are_analyst_input(root):
     assert {i.status for i in items(review, "Kenya Shilling: Shilling")} == {"clean"}
     table = items(review, "Money Market Fund Yield for Fund Managers")
     assert len(table) == len(wh.FUNDS) and {i.status for i in table} == {"not_auto_verified"}
-    assert "typed from Business Daily" in table[0].detail and "'Money Market Performance'!S12:U18" in table[0].detail
+    assert "typed from Daily Nation e-paper" in table[0].detail and "'Money Market Performance'!S12:U18" in table[0].detail
     top5 = items(review, "Money Market Performance: Average yield of the Top 5")[0]
     assert top5.status == "not_auto_verified" and "(10.72%)" in top5.ref   # the five highest rates of this week's table
     assert items(review, "Cytonn Report: Kenya Eurobonds Performance: 02-Jan-26")[0].status == "not_auto_verified"   # workbook only
@@ -608,7 +608,7 @@ def test_the_real_workbook_reproduces_the_published_week(tmp_path):
     # of five named funds.  The difference is expected and is not tuned away.
     assert money["top5"] == "10.77%"
     assert len(by["mmf_table"]["rows"]) == 34 and by["mmf_table"]["title"].endswith("as published on 2nd October 2026")
-    assert by["mmf_table"]["source"]["name"] == "Business Daily"
+    assert by["mmf_table"]["source"]["name"] == "Daily Nation"
     liquidity = figures(by["liquidity"])
     assert (liquidity["rate_bps"], liquidity["volume_change"]) == ("0.04 bps", "34.4%")
     assert "liquidity in the money markets eased, with the average interbank rate decreasing by 0.04 bps to 8.8%" in by["liquidity"]["body_md"]
