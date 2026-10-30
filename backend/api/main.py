@@ -892,10 +892,7 @@ def create_app(
     @app.get("/api/export/weekly")
     def export_weekly_status(period: Optional[str] = Query(default=None, max_length=40)) -> dict:
         """Whether the week's report can be exported: every weekly section's state, and whether it is a dev-mode draft."""
-        normalized = weekly_period(period)
-        friday = week_ending_of(normalized)
-        missing = chart_uploads.missing(Week(friday) if friday else None, root)
-        return {**weekly_export.export_status(db_path, normalized), "charts_missing": missing}
+        return weekly_export.export_status(db_path, weekly_period(period), inputs_root=root)
 
     @app.post("/api/export/weekly")
     def export_weekly(period: Optional[str] = Query(default=None, max_length=40)) -> FileResponse:
