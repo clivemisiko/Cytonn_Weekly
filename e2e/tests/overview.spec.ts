@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { VARIANT, card, overviewUrl } from "./helpers";
+import { PERIOD, VARIANT, card, overviewUrl } from "./helpers";
 
 /**
  * The overview's layout: the report-status panel and its fold, and what a section card shows of the overview's payload.
@@ -155,4 +155,35 @@ test("T70 the export's dev-mode notice is in the feed right under the dev-mode n
   await page.reload();
   await expect(panel.getByRole("button", { name: "Show Report status" })).toBeVisible(); // still folded after a reload
   await expect(notice).toBeVisible();
+});
+
+test("T108 the weekly export's notices go when the picker switches to the Monthly and come back with the weekly", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.route(/\/api\/export\/weekly/, async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    const response = await route.fetch();
+    const body = (await response.json()) as Record<string, unknown>;
+    Object.assign(body, { charts_missing: 3, is_dev_draft: true, dev_mode_label: "DEV MODE DRAFT (stub): NOT FOR PUBLICATION OR CIRCULATION.", dev_sections: ["Fixed Income", "Equities"] });
+    await route.fulfill({ response, json: body });
+  });
+  await page.goto(overviewUrl());
+  const charts = page.getByText("3 charts have no image. The Word file will contain placeholders for them.");
+  const watermark = page.getByRole("alert").filter({ hasText: "The export carries a DEV MODE watermark" });
+  await expect(charts).toBeVisible();
+  await expect(watermark).toBeVisible();
+
+  // Through the picker, not a reload: a reload mounts the screen afresh and would hide a status left over from the weekly.
+  await page.getByLabel("Report type").selectOption("monthly");
+  await page.getByLabel("Period", { exact: true }).fill("Oct'2026");
+  await page.getByRole("button", { name: "Show sections" }).click();
+  await expect(page.getByText("Monthly, Oct'2026: 5 report sections.", { exact: false })).toBeVisible();
+  await expect(charts).toHaveCount(0);
+  await expect(watermark).toHaveCount(0);
+
+  await page.getByLabel("Report type").selectOption("weekly");
+  await page.getByLabel("Issue (optional)").fill(PERIOD);
+  await page.getByRole("button", { name: "Show sections" }).click();
+  await expect(card(page, "Focus of the Week")).toBeVisible();
+  await expect(charts).toBeVisible();
+  await expect(watermark).toBeVisible();
 });
