@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { PhCaretDown } from "@phosphor-icons/vue";
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "reka-ui";
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import PageGrid from "@/components/nav/PageGrid.vue";
 import { LINK } from "@/components/ui/button";
 import { exportChartsNote } from "@/lib/charts";
@@ -59,6 +59,17 @@ const groupOpen = ref(true);
 const exportStatus = ref<ExportStatus | null>(null);
 // The export's error, in the feed so it is seen with the Report status panel folded; "Show me" goes here.
 const exportError = ref<string | null>(null);
+// The screen stays mounted when the picker changes report, and ExportBar never clears what it sent when it unmounts.
+watch(
+  () => props.overview.report.type,
+  (type) => {
+    if (type !== "weekly") {
+      exportStatus.value = null;
+      exportError.value = null;
+    }
+  },
+  { immediate: true },
+);
 const groupLabel = computed(() => {
   const period = props.overview.report.period;
   return period.startsWith("Week ending ") ? `Week ending ${friendlyDate(period.slice(12))}` : period || "This week";
