@@ -325,7 +325,7 @@ def test_other_report_types_return_an_empty_list_for_now(client):
     for report_type in ("quarterly", "half_year", "annual", "companion"):
         r = client.get(f"/api/notable/{SECTION}", params={"report_type": report_type})
         assert r.status_code == 200 and r.json()["suggestions"] == [] and r.json()["failed_checks"] == 0
-    assert client.get(f"/api/notable/{SECTION}", params={"report_type": "monthly"}).status_code == 422
+    assert client.get(f"/api/notable/{SECTION}", params={"report_type": "fortnightly"}).status_code == 422
 
 
 # ---------------------------------------------------------------------------

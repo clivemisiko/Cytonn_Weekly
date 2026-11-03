@@ -41,6 +41,8 @@ class FakeConn:
         return self
 
     def fetchall(self):
+        if self.statements and "pg_constraint" in self.statements[-1][0]:
+            return []   # no report_type check in the catalog: the Monthly migration has nothing to widen
         return self.rows
 
     @contextlib.contextmanager
