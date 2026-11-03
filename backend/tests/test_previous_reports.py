@@ -49,7 +49,8 @@ def test_a_newer_run_in_review_or_rejected_takes_the_week_off_the_list(tmp_path)
     rejected = _week(db, "2026-10-09")
     _save(db, "equities", in_review, decision=None)          # a newer draft, undecided
     _save(db, "real_estate", rejected, decision="rejected")  # a newer draft, rejected
-    assert export.approved_weeks(db) == {"weeks": [], "next_week_ending": None}
+    out = export.approved_weeks(db)
+    assert out["weeks"] == [] and out["next_week_ending"] is None and out["default_week_ending"] is not None
 
 
 def test_the_list_is_newest_first_with_its_fields_and_the_week_after_the_latest(tmp_path):
