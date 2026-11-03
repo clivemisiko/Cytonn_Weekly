@@ -6,6 +6,7 @@ from api.main import create_app
 from cytonn_weekly.digital_payments import review_store
 from cytonn_weekly.report_sections import SECTIONS
 from cytonn_weekly.weekly import company_updates, export
+from cytonn_weekly.weekly.week import latest_friday
 from tests.review_helpers import LocalFakeProvider, make_review
 
 SLUGS = [spec.slug for spec in SECTIONS]
@@ -66,7 +67,7 @@ def test_the_list_is_newest_first_with_its_fields_and_the_week_after_the_latest(
     assert first["approved_at"] == max(review_store.load_review(s["run_id"], db_path=db).decided_at for s in first["sections"])
 
 
-def test_no_approved_week_leaves_the_default_alone(tmp_path):
+def test_no_fully_approved_week_has_no_next_week(tmp_path):
     db = tmp_path / "app.db"
     _week(db, "2026-10-02", skip=("company_updates",))
     assert export.approved_weeks(db)["next_week_ending"] is None
@@ -98,3 +99,34 @@ def test_the_route_returns_the_list_and_the_next_week(tmp_path):
     client = TestClient(create_app(db_path=db, load_dotenv=False))
     body = client.get("/api/previous/weekly").json()
     assert body["next_week_ending"] == "2026-10-09" and [w["period"] for w in body["weeks"]] == ["Week ending 2026-10-02"]
+    friday = latest_friday(date.today())
+    assert body["default_week_ending"] == max(date(2026, 10, 9), friday).isoformat()
+
+
+def test_no_approved_week_opens_on_the_latest_friday_and_is_never_null(tmp_path):
+    db = tmp_path / "app.db"
+    out = export.approved_weeks(db, today=date(2026, 10, 14))
+    assert out["next_week_ending"] is None and out["default_week_ending"] == "2026-10-09"
+    body = TestClient(create_app(db_path=db, load_dotenv=False)).get("/api/previous/weekly").json()
+    assert body["next_week_ending"] is None and body["default_week_ending"] == latest_friday(date.today()).isoformat()
+
+
+def test_the_week_after_the_latest_approved_wins_when_it_is_later_than_the_latest_friday(tmp_path):
+    db = tmp_path / "app.db"
+    _week(db, "2026-10-16")                                   # approved ahead of the calendar
+    out = export.approved_weeks(db, today=date(2026, 10, 12))  # latest Friday 9 Oct
+    assert out["next_week_ending"] == "2026-10-23" and out["default_week_ending"] == "2026-10-23"
+
+
+def test_an_older_approved_week_gives_the_latest_friday_so_a_skipped_week_is_not_reopened(tmp_path):
+    db = tmp_path / "app.db"
+    _week(db, "2026-10-02")
+    out = export.approved_weeks(db, today=date(2026, 10, 19))  # latest Friday 16 Oct; 9 Oct was skipped
+    assert out["next_week_ending"] == "2026-10-09" and out["default_week_ending"] == "2026-10-16"
+
+
+def test_the_latest_friday_approved_gives_the_friday_after(tmp_path):
+    db = tmp_path / "app.db"
+    _week(db, "2026-10-09")
+    out = export.approved_weeks(db, today=date(2026, 10, 9))   # a Friday: it is its own latest Friday
+    assert out["next_week_ending"] == "2026-10-16" and out["default_week_ending"] == "2026-10-16"

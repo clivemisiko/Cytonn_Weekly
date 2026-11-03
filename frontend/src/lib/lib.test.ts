@@ -67,7 +67,7 @@ describe("run steps", () => {
   });
 
   it("builds the overview address", () => {
-    expect(overviewHref("weekly", "")).toBe("/overview");
+    expect(overviewHref("weekly", "")).toBe("/overview?report=weekly"); // a bare /overview now opens the default week
     expect(overviewHref("weekly", "Week ending 2026-10-09", 12)).toBe("/overview?report=weekly&period=Week+ending+2026-10-09&review=12");
     expect(overviewHref("quarterly", "Q3'2026")).toBe("/overview?report=quarterly&period=Q3%272026");
   });

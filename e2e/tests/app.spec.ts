@@ -10,6 +10,8 @@ import { draftAnyway } from "./helpers";
 const WEEK = "2026-10-09";
 const PERIOD = `Week ending ${WEEK}`;
 const OVERVIEW = `/overview?report=weekly&period=${encodeURIComponent(PERIOD)}`;
+// Where a bare /overview lands: the API's default week, always labelled, written into the address.
+const DEFAULT_WEEK = /\/overview\?report=weekly&period=Week(%20|\+)ending(%20|\+)\d{4}-\d{2}-\d{2}$/;
 const DRAFT = `Draft the ${PERIOD} section`;
 const RUN_TIMEOUT = 8 * 60_000;
 
@@ -43,7 +45,7 @@ test("T01 landing page loads, with Home current and Back disabled", async ({ pag
   await expect(topbar(page).getByRole("link", { name: "Home" })).toHaveAttribute("aria-current", "page");
   await expect(topbar(page).getByRole("button", { name: "Back (this is the start screen)" })).toBeDisabled();
   await page.getByRole("link", { name: "Continue without signing in" }).click();
-  await expect(page).toHaveURL(/\/overview$/);
+  await expect(page).toHaveURL(DEFAULT_WEEK); // a bare /overview opens on a labelled week
   await expect(page.getByRole("heading", { name: "Coordinator review", level: 1 })).toBeVisible();
 });
 
@@ -154,7 +156,7 @@ test("T06 top bar stays in view after scrolling; Back goes to the section list, 
   // From a deep link to a run (one the API does not know): Back names the section list, Home goes to /.
   await page.goto("/runs/not-a-run");
   await topbar(page).getByRole("button", { name: "Back to all sections" }).click();
-  await expect(page).toHaveURL(/\/overview$/);
+  await expect(page).toHaveURL(DEFAULT_WEEK); // a bare /overview opens on a labelled week
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   await topbar(page).getByRole("link", { name: "Home" }).click();
   await expect(page).toHaveURL(/\/$/);
@@ -496,7 +498,7 @@ test("T15 a run the API no longer has says so and links to the overview", async 
   await expect(page.getByRole("heading", { name: "Draft run", level: 1 })).toBeVisible();
   await expect(page.getByText("This run is no longer available. If the draft finished, open the section from the overview.")).toBeVisible();
   await page.getByRole("link", { name: "Go to the overview" }).click();
-  await expect(page).toHaveURL(/\/overview$/);
+  await expect(page).toHaveURL(DEFAULT_WEEK); // a bare /overview opens on a labelled week
 });
 
 test("T16 keyboard: the skip link comes first, the theme group is one tab stop moved by arrow keys", async ({ page }) => {

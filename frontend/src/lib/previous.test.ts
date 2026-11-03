@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { APPROVED_BANNER, DEV_LABEL, NO_WEEKS, defaultReport, fullyApproved, weekRow } from "./previous";
+import { APPROVED_BANNER, DEV_LABEL, NO_WEEKS, defaultReport, fullyApproved, openingReport, weekRow } from "./previous";
 import type { LatestRun, Overview, PreviousWeek } from "./types";
 
 const SLUGS = ["company_updates", "fixed_income", "equities", "real_estate", "digital_payments", "focus"];
@@ -53,12 +53,15 @@ describe("the approved-week banner", () => {
 });
 
 describe("the overview's default week", () => {
-  it("is the week after the latest fully approved one", () => {
+  const weeks = { weeks: [], next_week_ending: null, default_week_ending: "2026-10-16" };
+
+  it("is the API's default week, labelled", async () => {
     expect(defaultReport("2026-10-16")).toEqual({ type: "weekly", period: "Week ending 2026-10-16", kind: null });
+    expect(await openingReport(() => Promise.resolve(weeks))).toEqual({ type: "weekly", period: "Week ending 2026-10-16", kind: null });
   });
 
-  it("stays the unlabelled weekly report when no week is approved", () => {
-    expect(defaultReport(null)).toEqual({ type: "weekly", period: "", kind: null });
+  it("falls back to the unlabelled weekly report when the route cannot be read", async () => {
+    expect(await openingReport(() => Promise.reject(new Error("unreachable")))).toEqual({ type: "weekly", period: "", kind: null });
   });
 });
 
