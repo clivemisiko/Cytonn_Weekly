@@ -909,6 +909,11 @@ def create_app(
         """Whether the week's report can be exported: every weekly section's state, and whether it is a dev-mode draft."""
         return weekly_export.export_status(db_path, weekly_period(period), inputs_root=root)
 
+    @app.get("/api/previous/weekly")
+    def previous_weekly() -> dict:
+        """Every fully approved weekly week, newest first, and the week the overview opens on after the latest of them."""
+        return weekly_export.approved_weeks(db_path)
+
     @app.post("/api/export/weekly")
     def export_weekly(period: Optional[str] = Query(default=None, max_length=40)) -> FileResponse:
         """Write the approved weekly report and return the .docx.  409, naming each section, unless all are approved.
