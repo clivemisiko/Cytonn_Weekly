@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { PhCheckCircle, PhInfo, PhWarning } from "@phosphor-icons/vue";
-import { computed } from "vue";
+import { computed, inject } from "vue";
 import { approveHint } from "@/lib/format";
+import { READ_ONLY } from "@/lib/previous";
 import type { Decision, Review } from "@/lib/types";
 import DecisionControls from "./DecisionControls.vue";
 import Notice from "./Notice.vue";
@@ -17,6 +18,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ close: [] }>();
 
+const readOnly = inject(READ_ONLY, false);
 const progress = computed(() => props.review.progress);
 const fraction = computed(() => (progress.value.total ? progress.value.resolved / progress.value.total : 0));
 </script>
@@ -73,7 +75,7 @@ const fraction = computed(() => (progress.value.total ? progress.value.resolved 
             </span>
           </span>
         </div>
-        <div class="basis-full lg:basis-auto">
+        <div v-if="!readOnly" class="basis-full lg:basis-auto">
           <DecisionControls :review="review" :deciding="deciding" :on-decide="onDecide" @close="emit('close')" />
         </div>
       </div>

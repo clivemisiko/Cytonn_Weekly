@@ -122,12 +122,9 @@ export function mergeEvents(have: RunEvent[], more: RunEvent[]): RunEvent[] {
 
 /** The overview of one report, optionally opening one saved review on it (how a finished run hands over). */
 export function overviewHref(type: ReportType, period: string, reviewId?: number | null): string {
-  const q = new URLSearchParams();
-  if (type !== "weekly" || period) {
-    q.set("report", type);
-    if (period) q.set("period", period);
-  }
+  // Always names the report: a bare /overview opens the default week, not the unlabelled weekly report.
+  const q = new URLSearchParams({ report: type });
+  if (period) q.set("period", period);
   if (reviewId != null) q.set("review", String(reviewId));
-  const search = q.toString();
-  return search ? `/overview?${search}` : "/overview";
+  return `/overview?${q.toString()}`;
 }

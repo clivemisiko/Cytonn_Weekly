@@ -405,6 +405,24 @@ export interface ExportStatus {
   charts_missing: number;
 }
 
+/** One fully approved weekly week (GET /api/previous/weekly). */
+export interface PreviousWeek {
+  period: string;
+  week_ending: string;
+  approved_at: string;
+  is_dev_draft: boolean;
+  can_export: boolean;
+  sections: { slug: string; title: string; run_id: number }[];
+}
+
+export interface PreviousWeeks {
+  weeks: PreviousWeek[];
+  /** The week after the latest fully approved one: where the overview opens. Null when none is approved. */
+  next_week_ending: string | null;
+  /** The week the overview opens on when the address names no report: never null. */
+  default_week_ending: string;
+}
+
 /** What a re-check from an uploaded file did: each changed figure old then new, and what was left as it was. */
 export interface FixResult {
   changes: { block: string; label: string; old: string; new: string }[];

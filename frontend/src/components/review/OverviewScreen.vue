@@ -3,9 +3,11 @@ import { PhCaretDown } from "@phosphor-icons/vue";
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "reka-ui";
 import { computed, ref } from "vue";
 import PageGrid from "@/components/nav/PageGrid.vue";
+import { LINK } from "@/components/ui/button";
 import { exportChartsNote } from "@/lib/charts";
 import { type SectionState, draftAgainOff, isDraftingThis, stateOf, useDraftingPoll } from "@/lib/drafting";
 import { friendlyDate, plural, reportName } from "@/lib/format";
+import { APPROVED_BANNER, fullyApproved } from "@/lib/previous";
 import { useShellRibbon } from "@/lib/shell";
 import type { AppConfig, ExportStatus, Overview, ReportChoice } from "@/lib/types";
 import DraftingBanner from "./DraftingBanner.vue";
@@ -96,6 +98,9 @@ const flagged = computed(() =>
         <Notice role="alert" data-problem class="font-medium">{{ exportError }}</Notice>
       </div>
       <DraftingBanner v-if="drafting" :drafting="drafting" />
+      <Notice v-if="fullyApproved(overview)" tone="info" role="status">
+        <span>{{ APPROVED_BANNER }} <RouterLink to="/previous" :class="LINK">Open Previous reports</RouterLink></span>
+      </Notice>
       <Notice v-if="overview.report.type === 'companion'" tone="info">
         Companion research reports ride inside a weekly issue as its Focus of the Week. Every section below is Cytonn’s own
         analysis, so none can be drafted yet; the weekly Focus of the Week can still draft a cited piece on the same topic.

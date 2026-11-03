@@ -12,6 +12,7 @@ import StartSkeleton from "@/components/review/StartSkeleton.vue";
 import Button from "@/components/ui/Button.vue";
 import * as api from "@/lib/api";
 import { BACK_HOME, type BackTarget, useBack } from "@/lib/nav";
+import { openingReport } from "@/lib/previous";
 import { shell, useShellActions, useShellHere } from "@/lib/shell";
 import type { AppConfig, Drafting, Overview, ReportChoice, ReportType, Review, SectionSummary } from "@/lib/types";
 
@@ -59,12 +60,10 @@ function sectionFromUrl(): string | null {
 
 /** The chosen report in the address bar, without a history entry. */
 function reportToUrl(next: ReportChoice, reviewId: number | null = null, sectionSlug: string | null = null) {
-  const query: Record<string, string> = {};
-  if (next.type !== "weekly" || next.period) {
-    query.report = next.type;
-    if (next.period) query.period = next.period;
-    if (next.kind) query.kind = next.kind;
-  }
+  // The report is always written, the unlabelled weekly one as ?report=weekly: an address with none opens the default week.
+  const query: Record<string, string> = { report: next.type };
+  if (next.period) query.period = next.period;
+  if (next.kind) query.kind = next.kind;
   if (reviewId !== null) {
     query.review = String(reviewId);
   } else if (sectionSlug !== null) {
@@ -127,7 +126,9 @@ const set = (next: Phase) => {
 };
 
 onMounted(async () => {
-  const wanted = reportFromUrl();
+  let wanted = reportFromUrl();
+  // No report in the address bar: open on the API's labelled default week (the unlabelled report if it cannot be read).
+  if (route.query.report === undefined) wanted = await openingReport(api.getPreviousWeeks);
   const reviewId = reviewFromUrl();
   const sectionSlug = sectionFromUrl();
   // The review named in the address bar, or the overview if it cannot be read. Closing it goes to its own report.
@@ -143,6 +144,7 @@ onMounted(async () => {
     }
   }
   if (sectionSlug) {
+    report.value = wanted;
     try {
       const startPhase = await fetchStart(sectionSlug);
       if (startPhase.name === "start") {

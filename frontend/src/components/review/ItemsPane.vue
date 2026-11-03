@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { PhCaretDown, PhCheckCircle } from "@phosphor-icons/vue";
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "reka-ui";
-import { computed, reactive, ref } from "vue";
+import { computed, inject, reactive, ref } from "vue";
 import Button from "@/components/ui/Button.vue";
 import { STATUS_META, STATUS_ORDER } from "@/lib/format";
+import { READ_ONLY } from "@/lib/previous";
 import type { Resolution, Review, Status } from "@/lib/types";
 import ReviewItemCard from "./ReviewItemCard.vue";
 
@@ -16,6 +17,7 @@ const props = defineProps<{
 
 type Filter = "all" | "unresolved" | "flagged" | "fix_needed";
 const filter = ref<Filter>("all");
+const readOnly = inject(READ_ONLY, false);
 
 const open = reactive<Record<Status, boolean>>({ flagged: true, not_auto_verified: true, clean: false });
 // Which cards show their evidence. Collapsed by default; Expand all / Collapse all act on every item with something to show.
@@ -184,7 +186,7 @@ const shared = computed(() => {
 
         <div v-if="status === 'clean'" class="flex flex-wrap items-center gap-x-4 gap-y-2 pt-3">
           <p class="text-xs text-muted-foreground">Checked with no flag. Listed so you can see full coverage.</p>
-          <Button size="sm" :disabled="locked || review.counts.clean.unresolved === 0" @click="onAcceptClean()">
+          <Button v-if="!readOnly" size="sm" :disabled="locked || review.counts.clean.unresolved === 0" @click="onAcceptClean()">
             Mark all clean as accepted ({{ review.counts.clean.unresolved }} unresolved)
           </Button>
         </div>

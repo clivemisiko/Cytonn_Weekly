@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from datetime import date
+from datetime import date, timedelta
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Optional, Union
@@ -63,11 +63,11 @@ from cytonn_weekly.digital_payments.summary import (
     footnote_links,
 )
 from cytonn_weekly.real_estate.review_run import layout as real_estate_layout
-from cytonn_weekly.report_sections import SECTIONS, SectionSpec, is_current, latest_runs
+from cytonn_weekly.report_sections import SECTIONS, SectionSpec, is_current, latest_runs, report_periods
 from cytonn_weekly.report_types import WEEKLY, week_ending_of
 from cytonn_weekly.weekly import chart_uploads
 from cytonn_weekly.weekly.summaries import section_summary
-from cytonn_weekly.weekly.week import Week, day_text, ordinal, week_for
+from cytonn_weekly.weekly.week import Week, day_text, latest_friday, ordinal, week_for
 
 DEV_LABEL = "DEV MODE DRAFT (local model): NOT FOR PUBLICATION OR CIRCULATION"
 WATERMARK = "DEV MODE DRAFT"
@@ -135,6 +135,34 @@ def require_all_approved(reviews: list[tuple[SectionSpec, Optional[CoordinatorRe
         raise ExportNotAllowed("The weekly report cannot be exported yet, because every section must be approved first. "
                                "Not approved yet: " + "; ".join(missing) + ". Approve those sections, then export again.")
     return [(spec, review) for spec, review in reviews if review is not None]
+
+
+def approved_weeks(db_path: Optional[Union[Path, str]], today: Optional[date] = None) -> dict[str, Any]:
+    """Every weekly period whose six sections' newest runs are all approved, newest week first, and the week after
+    the latest of them (``next_week_ending``, None when no week is fully approved). ``default_week_ending``, never
+    None, is the week the overview opens on: the later of that week and the latest Friday, or the latest Friday.
+
+    A week is a period label, grouped exactly as the export groups it (``weekly_reviews``); its week ending is the
+    one the export's chart uploads read (``export_week``)."""
+    weeks = []
+    for period in report_periods(db_path, WEEKLY):
+        reviews = weekly_reviews(db_path, period, today)
+        if any(_state(review) != APPROVED for _, review in reviews):
+            continue
+        weeks.append({
+            "period": period, "week_ending": export_week(period, reviews, today).ending.isoformat(),
+            "approved_at": max(review.decided_at or "" for _, review in reviews),
+            "is_dev_draft": any(is_dev_mode_review(review) for _, review in reviews),
+            "can_export": True,   # the export refuses only a week that is not fully approved
+            "sections": [{"slug": spec.slug, "title": HEADINGS.get(spec.slug, spec.title), "run_id": review.run_id}
+                         for spec, review in reviews],
+        })
+    weeks.sort(key=lambda w: (w["week_ending"], w["approved_at"]), reverse=True)
+    latest = date.fromisoformat(weeks[0]["week_ending"]) if weeks else None
+    after = latest + timedelta(days=7) if latest else None
+    friday = latest_friday(today or date.today())
+    return {"weeks": weeks, "next_week_ending": after.isoformat() if after else None,
+            "default_week_ending": max(after, friday).isoformat() if after else friday.isoformat()}
 
 
 def refuse_to_send(reviews: list[tuple[SectionSpec, CoordinatorReview]]) -> None:

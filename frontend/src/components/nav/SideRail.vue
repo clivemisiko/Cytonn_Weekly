@@ -6,6 +6,7 @@ import {
   PhCircleDashed,
   PhCircleHalf,
   PhCircleNotch,
+  PhClockCounterClockwise,
   PhLockSimple,
   PhSidebarSimple,
   PhSquaresFour,
@@ -13,13 +14,14 @@ import {
 } from "@phosphor-icons/vue";
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "reka-ui";
 import { computed, ref } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { LINK } from "@/components/ui/button";
 import { reportName } from "@/lib/format";
 import { mayLeave, useBackTarget } from "@/lib/nav";
 import { type RailSection, type RailState, shell } from "@/lib/shell";
 
 const router = useRouter();
+const route = useRoute();
 const back = useBackTarget();
 const open = ref(false); // the narrow strip expanded over the page
 const groupOpen = ref(true);
@@ -48,6 +50,12 @@ function openSection(s: RailSection) {
   if (!canOpen(s) || !mayLeave()) return;
   open.value = false;
   shell.opener.value?.(s.slug);
+}
+
+function toPrevious() {
+  if (route.path === "/previous" || !mayLeave()) return;
+  open.value = false;
+  void router.push("/previous");
 }
 
 function toOverview() {
@@ -116,6 +124,12 @@ const ITEM =
           <button type="button" :class="ITEM" :aria-current="atOverview ? 'page' : undefined" @click="toOverview">
             <PhSquaresFour weight="bold" class="size-5 shrink-0" aria-hidden="true" />
             <span :class="label">Overview</span>
+          </button>
+        </li>
+        <li>
+          <button type="button" :class="ITEM" :aria-current="route.path === '/previous' ? 'page' : undefined" @click="toPrevious">
+            <PhClockCounterClockwise weight="bold" class="size-5 shrink-0" aria-hidden="true" />
+            <span :class="label">Previous reports</span>
           </button>
         </li>
       </ul>

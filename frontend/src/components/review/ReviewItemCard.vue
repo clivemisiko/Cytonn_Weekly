@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { PhArrowSquareOut, PhCaretDown, PhPencilSimple } from "@phosphor-icons/vue";
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "reka-ui";
-import { computed, ref, watch } from "vue";
+import { computed, inject, ref, watch } from "vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import { KIND_LABELS, friendlyTime, pyRepr, resolutionKey } from "@/lib/format";
+import { READ_ONLY } from "@/lib/previous";
 import type { Flag, Resolution, Review, ReviewItem } from "@/lib/types";
 import EditSentence from "./EditSentence.vue";
 import FixFromFile from "./FixFromFile.vue";
@@ -23,6 +24,7 @@ const props = defineProps<{
 // the resolution controls stay, so triage needs no expansion.  ItemsPane's Expand all / Collapse all drive this.
 const open = defineModel<boolean>("open", { default: false });
 const serverNote = computed(() => props.item.resolution_note ?? "");
+const readOnly = inject(READ_ONLY, false);
 
 // What the control shows while its write is in flight, so a click answers at once.  Writes are
 // queued in order; only the newest write's completion clears this, so rapid clicks do not flicker.
@@ -164,7 +166,11 @@ const cells = (flag: Flag): [string, string][] => [
       </CollapsibleContent>
     </CollapsibleRoot>
 
-    <div class="flex flex-wrap items-center gap-2">
+    <p v-if="readOnly" class="text-xs text-muted-foreground [overflow-wrap:anywhere]">
+      <span class="font-semibold text-foreground">{{ item.resolution === "accept" ? "Accepted" : item.resolution === "fix_needed" ? "Fix needed" : "Unresolved" }}</span
+      ><template v-if="serverNote">. Note: {{ serverNote }}</template>
+    </p>
+    <div v-else class="flex flex-wrap items-center gap-2">
       <ResolutionControl :label="item.ref" :value="shown" :disabled="locked" @change="(next) => send(next)" />
       <FixFromFile :review="review" :item="item" />
       <EditSentence :review="review" :item="item" />

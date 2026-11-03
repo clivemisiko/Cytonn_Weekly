@@ -459,6 +459,16 @@ def latest_runs(db_path: Optional[Union[Path, str]] = None, report_type: str = W
     return {r["section"]: {k: r[k] for k in ("run_id", "run_date", "decision", "decided_at")} for r in rows}
 
 
+def report_periods(db_path: Optional[Union[Path, str]] = None, report_type: str = WEEKLY) -> list[str]:
+    """Every period label this report type has a saved review under."""
+    conn = db.open_db(db_path)
+    try:
+        rows = conn.execute("SELECT DISTINCT period FROM coordinator_reviews WHERE report_type = ?", (report_type,)).fetchall()
+    finally:
+        conn.close()
+    return [r["period"] for r in rows]
+
+
 def is_this_week(run_date: str, today: Optional[date] = None) -> bool:
     """A run from the last seven days counts as this week's (the report goes out weekly)."""
     today = today or date.today()
