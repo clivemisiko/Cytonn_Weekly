@@ -18,6 +18,8 @@ Orders are the real reports' own (CLAUDE.md, "Report types", records where each 
   Sub-Saharan Africa Region Review, Kenya Macro Economic Review, Fixed Income, Equities,
   Real Estate, Digital Payments.
 * annual: the same without Digital Payments, which first ran in May 2026, after FY'2025.
+* monthly: Company Updates, Fixed Income, Equities, Real Estate, Digital Payments, as the October
+  2026 Monthly (issue 897) orders them; no Focus of the Week.  Stage 1: every section is a stub.
 * companion: one per verified kind, each section of it a stub (periodic/companion.py).
 """
 
@@ -31,7 +33,7 @@ from typing import Any, Callable, Optional, Union
 from cytonn_weekly import db
 from cytonn_weekly.common.run_events import Observer
 from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview
-from cytonn_weekly.report_types import ANNUAL, COMPANION, HALF_YEAR, QUARTERLY, WEEKLY
+from cytonn_weekly.report_types import ANNUAL, COMPANION, HALF_YEAR, MONTHLY, QUARTERLY, WEEKLY
 
 
 @dataclass(frozen=True)
@@ -392,6 +394,99 @@ def _periodic_sections(report_type: str) -> tuple[SectionSpec, ...]:
 
 
 # ---------------------------------------------------------------------------
+# Cytonn Monthly
+# ---------------------------------------------------------------------------
+
+# Headings as printed in the October 2026 Monthly (issue 897), checked against 886 (August) and 881 (July) on 2026-11-03.
+# "optional" marks a part not in all three; a part in brackets has no heading of its own.
+_MONTHLY_SUBSECTIONS = {
+    "company_updates": ("Investment Updates:", "Hospitality Updates:"),
+    "fixed_income": (
+        "Money Markets, T-Bills Primary Auction:",
+        "T-bonds Primary Market (with the Bond Issuances table for the previous and the current month)",
+        "Secondary Bond Market:", "Money Market Performance: (with the money market fund table)", "Liquidity:",
+        "Kenya Eurobonds: (with its table)", "Kenya Shilling:", "Weekly Highlights",
+        "<Month> Inflation Highlight (with the Major Inflation Changes table)",
+        "Stanbic Bank’s <Month> Purchasing Manager’s Index (PMI) (optional: in 886)",
+        "Notable Monthly Highlights:", "[closing outlook paragraph]",
+    ),
+    "equities": (
+        "Market Performance:", "Universe of Coverage: (with its table)", "Weekly Highlights (optional: in 897 and 881)",
+        "[company notes with their own tables, optional: Quickmart PLC shareholder allocation update in 897, "
+        "Centum Investments Company PLC FY’2026 Financial Performance in 881]",
+        "Notable highlights for <month>: (881 heads it Notable Monthly Highlights)", "[closing outlook paragraph]",
+    ),
+    "real_estate": (
+        "Industry Report (with the Notable Industry Reports During the Month table; optional: not in 881)",
+        "Residential sector (optional: not in 881)", "Industrial sector (optional: in 897)",
+        "Hospitality Sector (optional: not in 886)", "Infrastructure Sector", "Land Sector (optional: in 897)",
+        "Mixed-Use Development Sector (optional: in 886)",
+        "Real Estate Investments Trusts (distribution and results tables, optional)", "REITs Weekly Performance",
+        "[an outlook line for each sector]",
+    ),
+    "digital_payments": (
+        "[four company highlights, each under its own headline]",
+        "Digital Payments Financial Results (with its table; optional: in 897)",
+        "Digital Payments Stock Performance (with its table: a previous month-end price column and m/m)",
+        "Notable highlights for <month>: (optional: in 897)", "[closing outlook paragraph]",
+    ),
+}
+
+# None of the three issues gives a chart a caption or alt text, so the titles are unknown and none is made up.
+_MONTHLY_CHARTS = {
+    "company_updates": ("No chart images in the October 2026 Monthly (issue 897)",),
+    "fixed_income": ("9 chart images in the October 2026 Monthly (issue 897); their titles are unknown: the issue gives "
+                     "them no caption or alt text",),
+    "equities": ("2 chart images in the October 2026 Monthly (issue 897); their titles are unknown. In 881 they follow "
+                 "the lead-in to the market's historical P/E and dividend yield charts",),
+    "real_estate": ("No chart images in the October 2026 Monthly (issue 897)",),
+    "digital_payments": ("No chart images in the October 2026 Monthly (issue 897)",),
+}
+
+# (slug, title, reason, open question, what already exists)
+_MONTHLY_STUBS = (
+    ("company_updates", "Company Updates",
+     "The weekly Company Updates records a reporting week (the latest Friday) on its review, so it cannot be reused "
+     "unchanged for a month.",
+     "Next stage: carry your pasted text verbatim under the month's period, as the Markets Reviews' Company Updates does.",
+     ("Company Updates from your pasted text, for the weekly and the Markets Reviews",)),
+    ("fixed_income", "Fixed Income",
+     "The monthly T-bill and T-bond averages, the two-month Bond Issuances table, the secondary market, liquidity and "
+     "the inflation table are not built for a month.",
+     "The fixed income team confirming which auctions count for the month (auction or value date) and how the month's "
+     "average yield is taken, where the month's liquidity figures come from, and which publication the secondary "
+     "market figures are read from.",
+     ("The weekly money market fund table, Eurobond table and shilling paragraphs",
+      "The Markets Reviews' Bond Issuances table, for any start and end date",
+      "The Markets Reviews' Major Inflation Changes table from KNBS's CPI release")),
+    ("equities", "Equities",
+     "The month's index moves and the month-start levels are not built.",
+     "A source for the index levels at the previous month-end, and the team confirming whether m/m runs from month-end "
+     "to month-end or to the report Friday.",
+     ("The weekly Universe of Coverage table, with its w/w, m/m and YTD columns",)),
+    ("real_estate", "Real Estate",
+     "The month round-up, the industry report table and the REIT results tables have no verified source.",
+     "The team naming the documents behind the industry report table and the REIT results tables, and whether they "
+     "appear every month.",
+     ("The NSE Ibuka REIT prices of the weekly",)),
+    ("digital_payments", "Digital Payments",
+     "The financial results table and the previous month-end price column have no confirmed source or metrics.",
+     "The team confirming which metrics and filings the Financial Results table uses and whether it runs every month, "
+     "and the date the previous month-end price and m/m are taken from.",
+     ("The weekly stock table and its four highlights",)),
+)
+
+
+def _monthly_sections() -> tuple[SectionSpec, ...]:
+    """Stage 1: the five sections, every one an explicit stub with its reason, open question and chart checklist."""
+    return tuple(
+        SectionSpec(slug=slug, title=title, available=False, reason=reason, unblock=unblock, built_parts=built,
+                    subsections=_MONTHLY_SUBSECTIONS[slug], charts=_MONTHLY_CHARTS[slug])
+        for slug, title, reason, unblock, built in _MONTHLY_STUBS
+    )
+
+
+# ---------------------------------------------------------------------------
 # Companion research reports
 # ---------------------------------------------------------------------------
 
@@ -417,7 +512,7 @@ def companion_kinds() -> list[dict[str, Any]]:
 # Lookup
 # ---------------------------------------------------------------------------
 
-_REGISTRY: dict[str, tuple[SectionSpec, ...]] = {WEEKLY: SECTIONS}
+_REGISTRY: dict[str, tuple[SectionSpec, ...]] = {WEEKLY: SECTIONS, MONTHLY: _monthly_sections()}
 
 
 def sections_for(report_type: str, kind: Optional[str] = None) -> tuple[SectionSpec, ...]:
