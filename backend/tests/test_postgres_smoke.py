@@ -1,4 +1,4 @@
-"""Stage P2 smoke test: the PostgreSQL path against a real server.  Four checks, and only these.
+"""Stage P2 smoke test: the PostgreSQL path against a real server.  Four checks, and the Monthly's check widening.
 
 Skipped unless CYTONN_TEST_DATABASE_URL is set, in the environment or in the repo-root .env (the environment wins, as
 everywhere).  Everything runs in a throwaway schema with a random name (cw_smoke_<hex>), created by the first use and
@@ -165,3 +165,27 @@ def test_a_notable_decision_is_saved_with_the_upsert_and_read_back(pg):
     assert list(again) == ["abc123"]
     assert (again["abc123"]["decision"], again["abc123"]["edited_headline"], again["abc123"]["dismiss_reason"]) == (
         "dismissed", None, "not_relevant")
+
+
+# (v) the Monthly: the report type check allows it, and a five-type check is widened in place ---------------------------------
+
+def test_the_report_type_check_allows_a_monthly_and_a_five_type_check_is_widened(pg):
+    database.init_db()
+    conn = database.connect()
+    try:
+        found = conn.execute(database.PG_FIND_REPORT_TYPE_CHECK, (SCHEMA,)).fetchall()
+        assert len(found) == 1 and "'monthly'" in found[0]["definition"]
+        with conn.transaction():
+            conn.execute(f"ALTER TABLE coordinator_reviews DROP CONSTRAINT \"{found[0]['conname']}\", ADD CONSTRAINT "
+                         "coordinator_reviews_report_type_check CHECK (report_type IN "
+                         "('weekly', 'quarterly', 'half_year', 'annual', 'companion'))")
+            database._allow_monthly_postgres(conn)
+            database._allow_monthly_postgres(conn)   # the second run finds 'monthly' and sends nothing
+        after = conn.execute(database.PG_FIND_REPORT_TYPE_CHECK, (SCHEMA,)).fetchall()
+        assert [r["conname"] for r in after] == ["coordinator_reviews_report_type_check"] and "'monthly'" in after[0]["definition"]
+    finally:
+        conn.close()
+    review = make_review()
+    review.report_type, review.period = "monthly", "Oct'2026"
+    run_id = rs.save_review(review)
+    assert (stored(run_id)["report_type"], stored(run_id)["period"]) == ("monthly", "Oct'2026")

@@ -422,6 +422,7 @@ def _apply_postgres_schema(conn: Db) -> None:
         with conn.transaction():
             conn.execute(f"SELECT pg_advisory_xact_lock({_SCHEMA_LOCK})")
             conn.run_script(_POSTGRES_SCHEMA_SQL.read_text(encoding="utf-8").replace("{schema}", f'"{conn.schema}"'))
+            _allow_monthly_postgres(conn)
         _schema_applied.add(key)
 
 
@@ -453,9 +454,11 @@ def init_db(db_path: Optional[Path | str] = None) -> None:
 # each with the exact ADD COLUMN clause.  SQLite's ADD COLUMN fills existing rows with the
 # default, so every review saved before report types existed reads back as a weekly review
 # with no period: exactly what it was.
+REPORT_TYPES_SQL = "('weekly', 'monthly', 'quarterly', 'half_year', 'annual', 'companion')"   # report_types.REPORT_TYPES
+REPORT_TYPE_CHECK = f"CHECK (report_type IN {REPORT_TYPES_SQL})"
+
 _ADDED_REVIEW_COLUMNS = (
-    ("report_type", "report_type TEXT NOT NULL DEFAULT 'weekly' "
-                    "CHECK (report_type IN ('weekly', 'quarterly', 'half_year', 'annual', 'companion'))"),
+    ("report_type", f"report_type TEXT NOT NULL DEFAULT 'weekly' {REPORT_TYPE_CHECK}"),
     ("period", "period TEXT NOT NULL DEFAULT ''"),
 )
 
@@ -471,7 +474,71 @@ def _migrate(conn: Db) -> None:
     for name, clause in _ADDED_REVIEW_COLUMNS:
         if name not in have:
             conn.execute(f"ALTER TABLE coordinator_reviews ADD COLUMN {clause}")
+    _allow_monthly_sqlite(conn)
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_coordinator_reviews_report "
         "ON coordinator_reviews (report_type, period, section, run_id)"
     )
+
+
+# report_type's CHECK, which gained 'monthly' on 2026-11-03.  Both migrations change nothing when it is already allowed, and
+# raise (rolling back, so the app does not start) when the table is not what they expect, rather than guess.
+_REPORT_TYPE_LIST = re.compile(r"report_type\s+IN\s*\([^)]*\)", re.I)
+_TABLE_NAME = re.compile(r'^CREATE TABLE\s+(?:IF NOT EXISTS\s+)?"?coordinator_reviews"?', re.I)   # SQLite keeps IF NOT EXISTS in the stored text
+
+PG_FIND_REPORT_TYPE_CHECK = (
+    "SELECT c.conname, pg_get_constraintdef(c.oid) AS definition FROM pg_constraint c "
+    "JOIN pg_class t ON t.oid = c.conrelid JOIN pg_namespace n ON n.oid = t.relnamespace "
+    "WHERE n.nspname = ? AND t.relname = 'coordinator_reviews' AND c.contype = 'c' "
+    "AND pg_get_constraintdef(c.oid) LIKE '%report_type%'"
+)
+
+
+def pg_widen_report_type_check(conname: str) -> str:
+    """The one statement that swaps the found CHECK for the six-type one: atomic, no table rewrite, existing rows validated."""
+    name = conname.replace('"', '""')
+    return (f'ALTER TABLE coordinator_reviews DROP CONSTRAINT IF EXISTS "{name}", '
+            f"ADD CONSTRAINT coordinator_reviews_report_type_check {REPORT_TYPE_CHECK}")
+
+
+def _allow_monthly_postgres(conn: Db) -> None:
+    """The CHECK is unnamed in schema_postgres.sql, so it is found in pg_constraint by what it checks, in this schema only.
+    No such check: nothing to widen, since nothing can refuse a monthly row.  More than one: raise rather than guess."""
+    rows = conn.execute(PG_FIND_REPORT_TYPE_CHECK, (conn.schema,)).fetchall()
+    if not rows:
+        return
+    if len(rows) > 1:
+        raise RuntimeError(f"coordinator_reviews has {len(rows)} CHECK constraints on report_type, expected one; "
+                           "widen it by hand")
+    if "'monthly'" in rows[0]["definition"]:
+        return
+    conn.execute(pg_widen_report_type_check(rows[0]["conname"]))
+
+
+def _allow_monthly_sqlite(conn: Db) -> None:
+    """SQLite cannot change a CHECK in place, so a table that does not allow 'monthly' is rebuilt from its own stored SQL with
+    the list widened: every column, row, index and run id kept, inside one savepoint.  The schema has no foreign keys,
+    triggers or views, and the existing migrations never touch the foreign_keys pragma, so neither does this."""
+    table = conn.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'coordinator_reviews'").fetchone()
+    if "'monthly'" in table["sql"]:
+        return
+    sql, found = _REPORT_TYPE_LIST.subn(f"report_type IN {REPORT_TYPES_SQL}", table["sql"])
+    sql, named = _TABLE_NAME.subn("CREATE TABLE coordinator_reviews_rebuild", sql, count=1)
+    if found != 1 or named != 1:
+        raise RuntimeError("coordinator_reviews: its report_type CHECK could not be found to widen; widen it by hand")
+    indexes = [r["sql"] for r in conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'coordinator_reviews' AND sql IS NOT NULL")]
+    columns = ", ".join(f'"{r["name"]}"' for r in conn.execute("PRAGMA table_info(coordinator_reviews)"))
+    seq = conn.execute("SELECT MAX(COALESCE((SELECT seq FROM sqlite_sequence WHERE name = 'coordinator_reviews'), 0), "
+                       "COALESCE((SELECT MAX(run_id) FROM coordinator_reviews), 0)) AS seq").fetchone()["seq"]
+    conn.execute("SAVEPOINT allow_monthly")
+    conn.execute(sql)
+    conn.execute(f"INSERT INTO coordinator_reviews_rebuild ({columns}) SELECT {columns} FROM coordinator_reviews")
+    conn.execute("DROP TABLE coordinator_reviews")
+    conn.execute("ALTER TABLE coordinator_reviews_rebuild RENAME TO coordinator_reviews")
+    for index in indexes:
+        conn.execute(index)
+    conn.execute("DELETE FROM sqlite_sequence WHERE name = 'coordinator_reviews'")
+    if seq:
+        conn.execute("INSERT INTO sqlite_sequence (name, seq) VALUES ('coordinator_reviews', ?)", (seq,))
+    conn.execute("RELEASE allow_monthly")

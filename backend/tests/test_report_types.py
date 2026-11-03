@@ -58,7 +58,7 @@ def test_periods_are_stored_normalized(report_type, typed, stored):
     ("weekly", "next week", "issue number"),
     ("weekly", "#60.2026", "issue number"),
     ("quarterly", "Q3", "not a quarter"),
-    ("monthly", "x", "unknown report type"),
+    ("fortnightly", "x", "unknown report type"),
 ])
 def test_periods_that_do_not_fit_are_refused_with_a_reason(report_type, typed, says):
     with pytest.raises(PeriodError, match=says):
@@ -102,7 +102,7 @@ def test_each_type_has_its_own_section_list_in_report_order():
     assert [s.slug for s in rs.sections_for("annual")] == MARKETS_REVIEW
     assert rs.sections_for("companion") == ()  # a companion report lists its sections once a kind is chosen
     with pytest.raises(KeyError):
-        rs.sections_for("monthly")
+        rs.sections_for("fortnightly")
 
 
 def test_the_same_slug_is_a_different_spec_per_type():

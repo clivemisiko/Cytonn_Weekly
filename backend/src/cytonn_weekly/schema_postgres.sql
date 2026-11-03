@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS coordinator_reviews (
     items_json    TEXT    NOT NULL,
     -- Which report this review belongs to (report_types.py): with period and section, the review's key.
     report_type   TEXT    NOT NULL DEFAULT 'weekly'
-                  CHECK (report_type IN ('weekly', 'quarterly', 'half_year', 'annual', 'companion')),
+                  CHECK (report_type IN ('weekly', 'monthly', 'quarterly', 'half_year', 'annual', 'companion')),
     -- Normalized period label ("Q3'2026", "H1'2026", "FY'2025", "Weekly #38.2026"); '' only for a weekly review with no label.
     period        TEXT    NOT NULL DEFAULT '',
     CHECK ((decision IS NULL) = (decided_at IS NULL))

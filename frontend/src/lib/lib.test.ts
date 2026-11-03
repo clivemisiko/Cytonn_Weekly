@@ -8,7 +8,7 @@ import { redraftNotes } from "./redraft";
 import { mergeEvents, overviewHref, stepLines } from "./run";
 import { THEME_SCRIPT } from "./theme-script";
 import { MAX_TOPIC, topicLength } from "./topic";
-import type { AnalystTable, AppConfig, Drafting, RunEvent, SectionSummary } from "./types";
+import { REPORT_TYPES, type AnalystTable, type AppConfig, type Drafting, type RunEvent, type SectionSummary } from "./types";
 
 const event = (seq: number, kind: RunEvent["kind"], label = "", extra: Partial<RunEvent> = {}): RunEvent => ({
   seq,
@@ -70,6 +70,11 @@ describe("run steps", () => {
     expect(overviewHref("weekly", "")).toBe("/overview?report=weekly"); // a bare /overview now opens the default week
     expect(overviewHref("weekly", "Week ending 2026-10-09", 12)).toBe("/overview?report=weekly&period=Week+ending+2026-10-09&review=12");
     expect(overviewHref("quarterly", "Q3'2026")).toBe("/overview?report=quarterly&period=Q3%272026");
+    expect(overviewHref("monthly", "Oct'2026")).toBe("/overview?report=monthly&period=Oct%272026"); // the apostrophe label kept
+  });
+
+  it("lists the Monthly among the report types, after the weekly", () => {
+    expect(REPORT_TYPES).toEqual(["weekly", "monthly", "quarterly", "half_year", "annual", "companion"]);
   });
 });
 

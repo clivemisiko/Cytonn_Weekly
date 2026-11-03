@@ -14,7 +14,7 @@ import * as api from "@/lib/api";
 import { BACK_HOME, type BackTarget, useBack } from "@/lib/nav";
 import { openingReport } from "@/lib/previous";
 import { shell, useShellActions, useShellHere } from "@/lib/shell";
-import type { AppConfig, Drafting, Overview, ReportChoice, ReportType, Review, SectionSummary } from "@/lib/types";
+import { type AppConfig, type Drafting, type Overview, REPORT_TYPES, type ReportChoice, type ReportType, type Review, type SectionSummary } from "@/lib/types";
 
 type Phase =
   | { name: "booting"; target?: "overview" | "review" | "start" }
@@ -24,7 +24,6 @@ type Phase =
   | { name: "review"; review: Review };
 
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err));
-const REPORT_TYPES: ReportType[] = ["weekly", "quarterly", "half_year", "annual", "companion"];
 const one = (value: LocationQuery[string] | undefined) => (Array.isArray(value) ? value[0] : value) ?? null;
 
 const route = useRoute();
