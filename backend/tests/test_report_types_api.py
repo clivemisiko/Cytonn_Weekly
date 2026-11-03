@@ -79,7 +79,7 @@ def test_the_overview_defaults_to_the_weekly_report_as_before(client):
     assert report["week_ending"] is None and report["suggested_week_ending"]   # no week named; a Friday is suggested
     assert [s["slug"] for s in body["sections"]] == ["company_updates", "fixed_income", "equities", "real_estate",
                                                      "digital_payments", "focus"]
-    assert [t["slug"] for t in body["report_types"]] == ["weekly", "quarterly", "half_year", "annual", "companion"]
+    assert [t["slug"] for t in body["report_types"]] == ["weekly", "monthly", "quarterly", "half_year", "annual", "companion"]
     assert len(body["companion_kinds"]) == 4
     assert client.get("/api/report-types").json()["report_types"] == body["report_types"]
 

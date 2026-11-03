@@ -782,3 +782,45 @@ def test_the_flag_adds_the_review_sentence_only_where_the_kind_is_not_already_sa
     assert macro == copied_from(892, "2026-10-04") + "; taken from the Kenya Macro Economic Review of issue 892, a Markets Review"
     twin = computed.carried_flag(computed.carried_block("o", "Outlook", "Text.", {**base, "kind": "review", "skipped": [893]})).message
     assert twin.count("Markets Review") == 1 and "not a weekly" not in twin
+
+
+# ---------------------------------------------------------------------------
+# A Cytonn Monthly that supplies the carried text is named in the flag; the issue chosen is the same as before
+# ---------------------------------------------------------------------------
+
+def monthly_sentence(issue_id, published):
+    return (f"; the text is from issue {issue_id}, the Cytonn Monthly of {published}, not a weekly; check that it speaks of this "
+            "week and not only of the month")
+
+
+@pytest.mark.parametrize("friday, used, published", [
+    (date(2026, 2, 6), 845, "2026-02-01"),    # the January Monthly
+    (date(2026, 9, 11), 886, "2026-09-06"),   # the August Monthly
+])
+def test_a_monthly_that_supplies_the_fixed_income_outlook_is_named_in_the_flag(root, friday, used, published):
+    review = build(root, fetchers=fetchers(previous_issue=previous_by_lookup(friday)))
+    carried = blocks(review)["outlook"]["carried_from"]
+    assert carried == {"issue_id": used, "url": f"https://cytonnreport.com/api/series/1/research-reports/{used}",
+                       "published": published, "kind": "monthly"}
+    assert outlook_flag(review) == copied_from(used, published) + monthly_sentence(used, published)
+    assert "Markets Review" not in outlook_flag(review)
+
+
+def test_a_monthly_that_supplies_the_equities_outlook_is_named_in_the_flag():
+    block = fiw._carried(previous_issue_for(date(2026, 2, 6)), "outlook", "Equities outlook (closing paragraph)",
+                         eqw.equities_outlook_text, ("equities",))
+    assert block["carried_from"]["kind"] == "monthly"
+    assert computed.carried_flag(block).message == copied_from(845, "2026-02-01") + monthly_sentence(845, "2026-02-01")
+
+
+def test_the_flag_words_a_monthly_and_a_monthly_after_a_skipped_twin():
+    base = {"issue_id": 897, "url": "u", "published": "2026-11-01", "kind": "monthly"}
+    alone = computed.carried_flag(computed.carried_block("o", "Outlook", "Text.", base)).message
+    assert alone == copied_from(897, "2026-11-01") + monthly_sentence(897, "2026-11-01")
+    undated = computed.carried_flag(computed.carried_block("o", "Outlook", "Text.", {**base, "published": None})).message
+    assert undated.endswith("; the text is from issue 897, the Cytonn Monthly, not a weekly; check that it speaks of this "
+                            "week and not only of the month")
+    twin = computed.carried_flag(computed.carried_block("o", "Outlook", "Text.", {**base, "skipped": [898]})).message
+    assert twin.endswith("the lookup skipped issue 898 on cytonnreport.com, a copy of this issue with its charts stripped; "
+                         "the text is from issue 897, a Cytonn Monthly")
+    assert twin.count("Cytonn Monthly") == 1 and "not a weekly" not in twin

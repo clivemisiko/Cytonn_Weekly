@@ -355,14 +355,25 @@ def snapshot(path):
 EXISTING_TABLES_SHA256 = "c652b66365634e9d460f7c5ea2982b19b3dda4b2dee61141820601c24e309886"
 
 
-def fingerprint(path) -> str:
+# The one deliberate change since: the Monthly report type was added to coordinator_reviews' report_type check (2026-11-03).
+MONTHLY_IN_CHECK = "'weekly', 'monthly', 'quarterly'"
+
+
+def fingerprint(path, without_monthly: bool = False) -> str:
     ddl, _, info = snapshot(path)
-    return hashlib.sha256(repr(([(t, n, tn, (s or "").replace("\r\n", "\n")) for t, n, tn, s in ddl], info)).encode()).hexdigest()
+
+    def sql(text):
+        text = (text or "").replace("\r\n", "\n")
+        return text.replace(MONTHLY_IN_CHECK, "'weekly', 'quarterly'") if without_monthly else text
+    return hashlib.sha256(repr(([(t, n, tn, sql(s)) for t, n, tn, s in ddl], info)).encode()).hexdigest()
 
 
 def test_the_definitions_of_the_existing_tables_are_exactly_what_they_were(tmp_path):
+    """Exactly as before, apart from the Monthly in the report type check."""
     sections.init_db(tmp_path / "fresh.db")
-    assert fingerprint(tmp_path / "fresh.db") == EXISTING_TABLES_SHA256
+    ddl, _, _ = snapshot(tmp_path / "fresh.db")
+    assert sum(MONTHLY_IN_CHECK in (s or "") for _, _, _, s in ddl) == 1
+    assert fingerprint(tmp_path / "fresh.db", without_monthly=True) == EXISTING_TABLES_SHA256
 
 
 def test_the_new_table_is_added_beside_the_others_and_changes_none_of_them(tmp_path):

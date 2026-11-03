@@ -529,3 +529,32 @@ test("T16 keyboard: the skip link comes first, the theme group is one tab stop m
   await page.keyboard.press("Tab"); // one tab stop: the next Tab leaves the group
   await expect(page.getByRole("radio", { name: /theme$/ }).and(page.locator(":focus"))).toHaveCount(0);
 });
+
+test("T107 the Monthly: five stub sections, each with its reason; a month a Markets Review covers is refused", async ({ page }) => {
+  await page.goto("/overview");
+  await page.getByLabel("Report type").selectOption("monthly");
+  const periodBox = page.getByLabel("Period", { exact: true });
+  await periodBox.fill("Sep'2026");
+  await page.getByRole("button", { name: "Show sections" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "September 2026 has no Cytonn Monthly: it is covered by the Q3 Markets Review." })).toBeVisible();
+  await expect(periodBox).toHaveAttribute("aria-invalid", "true");
+  await periodBox.fill("Oct'2026");
+  await page.getByRole("button", { name: "Show sections" }).click();
+  await expect(page.getByText("Monthly, Oct'2026: 5 report sections.", { exact: false })).toBeVisible();
+  expect(new URL(page.url()).searchParams.get("report")).toBe("monthly");
+  expect(new URL(page.url()).searchParams.get("period")).toBe("Oct'2026");
+  const reasons: [string, string][] = [
+    ["Company Updates", "The weekly Company Updates records a reporting week"],
+    ["Fixed Income", "The monthly T-bill and T-bond averages, the two-month Bond Issuances table"],
+    ["Equities", "The month's index moves and the month-start levels are not built."],
+    ["Real Estate", "The month round-up, the industry report table and the REIT results tables have no verified source."],
+    ["Digital Payments", "The financial results table and the previous month-end price column have no confirmed source or metrics."],
+  ];
+  for (const [title, reason] of reasons) {
+    const row = card(page, title);
+    await expect(row.getByText("Not available yet").first()).toBeVisible();
+    await expect(row.getByText(reason, { exact: false })).toBeVisible();
+    await expect(row.getByText("Unblocked by:")).toBeVisible();
+  }
+  await expect(card(page, "Focus of the Week")).toHaveCount(0);
+});
