@@ -6,6 +6,7 @@ import { lastSentence } from "@/lib/sentence";
 import { STATUS_ORDER, friendlyTime, weekRange } from "@/lib/format";
 import PageGrid from "@/components/nav/PageGrid.vue";
 import { weekOfReview } from "@/lib/notable";
+import { READ_ONLY } from "@/lib/previous";
 import { useReviewSession } from "@/lib/session";
 import { shell, useShellRibbon } from "@/lib/shell";
 import { isBlocksSection, type Review, type StatusCounts } from "@/lib/types";
@@ -20,10 +21,11 @@ import RejectedDraftNotes from "./RejectedDraftNotes.vue";
 import SentenceResult from "./SentenceResult.vue";
 import StatusBar from "./StatusBar.vue";
 
-const props = defineProps<{ initial: Review }>();
+const props = defineProps<{ initial: Review; readOnly?: boolean }>();
 const emit = defineEmits<{ close: []; open: [review: Review]; redraft: [slug: string] }>();
 // A card that fixed an item from a file hands the new review up, and the page shows it in this one's place.
 provide(OPEN_REVIEW, (next: Review) => emit("open", next));
+provide(READ_ONLY, props.readOnly ?? false);
 const recheck = computed(() => (lastRecheck.value?.runId === props.initial.run_id ? lastRecheck.value.result : null));
 const sentence = computed(() => (lastSentence.value?.runId === props.initial.run_id ? lastSentence.value.result : null));
 
@@ -115,7 +117,7 @@ function subline(c: StatusCounts): string {
         <DraftPane v-else :review="review" :section="review.section" />
         <!-- The analyst's worklist for this week: separate from the review above, which it never changes. -->
         <NotablePanel
-          v-if="week"
+          v-if="week && !readOnly"
           :key="`notable-${review.section_slug}-${week}`"
           :section="review.section_slug"
           :section-title="review.section_title"

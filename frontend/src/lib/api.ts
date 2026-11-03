@@ -9,6 +9,7 @@ import type {
   FixResult,
   Notable,
   Overview,
+  PreviousWeeks,
   RejectedDraftNotes,
   ReportChoice,
   Resolution,
@@ -303,6 +304,9 @@ const exportPath = (period: string) => `/api/export/weekly${period ? `?period=${
 
 /** Whether the week's report can be exported: every weekly section's state. */
 export const getExportStatus = (period: string) => request<ExportStatus>(exportPath(period));
+
+/** Every fully approved weekly week, newest first, and the week the overview opens on. */
+export const getPreviousWeeks = () => request<PreviousWeeks>("/api/previous/weekly");
 
 /** The approved weekly report as a Word file. The API refuses (409, naming each section) unless all are approved. */
 export const exportWeekly = async (period: string): Promise<{ blob: Blob; name: string }> => {

@@ -14,6 +14,7 @@ export const router = createRouter({
       beforeEnter: (to) => (OVERVIEW_PARAMS.some((name) => to.query[name] !== undefined) ? { path: "/overview", query: to.query, replace: true } : true),
     },
     { path: "/overview", component: () => import("./pages/OverviewPage.vue") },
+    { path: "/previous", component: () => import("./pages/PreviousReportsPage.vue") },
     {
       path: "/sections/:slug",
       redirect: (to) => ({ path: "/overview", query: { ...to.query, section: to.params.slug } }),

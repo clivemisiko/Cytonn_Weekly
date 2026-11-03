@@ -12,6 +12,7 @@ import StartSkeleton from "@/components/review/StartSkeleton.vue";
 import Button from "@/components/ui/Button.vue";
 import * as api from "@/lib/api";
 import { BACK_HOME, type BackTarget, useBack } from "@/lib/nav";
+import { defaultReport } from "@/lib/previous";
 import { shell, useShellActions, useShellHere } from "@/lib/shell";
 import type { AppConfig, Drafting, Overview, ReportChoice, ReportType, Review, SectionSummary } from "@/lib/types";
 
@@ -127,7 +128,15 @@ const set = (next: Phase) => {
 };
 
 onMounted(async () => {
-  const wanted = reportFromUrl();
+  let wanted = reportFromUrl();
+  // No report in the address bar: open on the week after the latest fully approved one (none approved: as before).
+  if (route.query.report === undefined) {
+    try {
+      wanted = defaultReport((await api.getPreviousWeeks()).next_week_ending);
+    } catch {
+      /* the overview read below says whether the API is reachable */
+    }
+  }
   const reviewId = reviewFromUrl();
   const sectionSlug = sectionFromUrl();
   // The review named in the address bar, or the overview if it cannot be read. Closing it goes to its own report.
