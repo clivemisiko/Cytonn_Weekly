@@ -203,7 +203,14 @@ def test_postgres_is_widened_once_and_left_alone_after():
     assert done.sent == [(db_module.PG_FIND_REPORT_TYPE_CHECK, ("public",))]
 
 
-@pytest.mark.parametrize("found", [[], [{"conname": "a", "definition": FIVE}, {"conname": "b", "definition": FIVE}]])
-def test_postgres_stops_rather_than_guess_when_the_check_is_not_one(found):
-    with pytest.raises(RuntimeError):
-        db_module._allow_monthly_postgres(FakePg(found))
+def test_postgres_stops_rather_than_guess_when_the_check_is_not_one():
+    two = FakePg([{"conname": "a", "definition": FIVE}, {"conname": "b", "definition": FIVE}])
+    with pytest.raises(RuntimeError, match="widen it by hand"):
+        db_module._allow_monthly_postgres(two)
+    assert two.sent == [(db_module.PG_FIND_REPORT_TYPE_CHECK, ("public",))]
+
+
+def test_postgres_with_no_report_type_check_sends_no_alter_and_carries_on():
+    none = FakePg([])
+    db_module._allow_monthly_postgres(none)
+    assert none.sent == [(db_module.PG_FIND_REPORT_TYPE_CHECK, ("public",))]

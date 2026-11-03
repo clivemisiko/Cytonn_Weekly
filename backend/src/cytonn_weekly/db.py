@@ -502,9 +502,12 @@ def pg_widen_report_type_check(conname: str) -> str:
 
 
 def _allow_monthly_postgres(conn: Db) -> None:
-    """The CHECK is unnamed in schema_postgres.sql, so it is found in pg_constraint by what it checks, in this schema only."""
+    """The CHECK is unnamed in schema_postgres.sql, so it is found in pg_constraint by what it checks, in this schema only.
+    No such check: nothing to widen, since nothing can refuse a monthly row.  More than one: raise rather than guess."""
     rows = conn.execute(PG_FIND_REPORT_TYPE_CHECK, (conn.schema,)).fetchall()
-    if len(rows) != 1:
+    if not rows:
+        return
+    if len(rows) > 1:
         raise RuntimeError(f"coordinator_reviews has {len(rows)} CHECK constraints on report_type, expected one; "
                            "widen it by hand")
     if "'monthly'" in rows[0]["definition"]:
