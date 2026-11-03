@@ -484,7 +484,7 @@ def _migrate(conn: Db) -> None:
 # report_type's CHECK, which gained 'monthly' on 2026-11-03.  Both migrations change nothing when it is already allowed, and
 # raise (rolling back, so the app does not start) when the table is not what they expect, rather than guess.
 _REPORT_TYPE_LIST = re.compile(r"report_type\s+IN\s*\([^)]*\)", re.I)
-_TABLE_NAME = re.compile(r'^CREATE TABLE\s+"?coordinator_reviews"?', re.I)
+_TABLE_NAME = re.compile(r'^CREATE TABLE\s+(?:IF NOT EXISTS\s+)?"?coordinator_reviews"?', re.I)   # SQLite keeps IF NOT EXISTS in the stored text
 
 PG_FIND_REPORT_TYPE_CHECK = (
     "SELECT c.conname, pg_get_constraintdef(c.oid) AS definition FROM pg_constraint c "
