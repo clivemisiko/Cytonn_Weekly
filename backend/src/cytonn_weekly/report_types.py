@@ -4,6 +4,9 @@ Verified against the published issues on cytonnreport.com (read 2026-10-05; see
 CLAUDE.md, "Report types"):
 
 * ``weekly``     -- the normal Cytonn Weekly, "#38.2026" (2026-09-27).
+* ``monthly``    -- "Cytonn Monthly - October 2026" (2026-11-01), a separate series that takes the weekly's
+                    Sunday slot.  Eight a year: the months that do not end a quarter, because the Q1, H1, Q3
+                    and annual Markets Reviews cover March, June, September and December (``MONTHS_COVERED_BY``).
 * ``quarterly``  -- "Cytonn Q1'2026 Markets Review" (2026-04-05) and "Cytonn Q3' 2026 Markets
                     Review" (2026-10-04).  Only Q1 and Q3 exist as quarterly reviews: the Q2
                     slot is the half-year review and the Q4 slot is the annual review.
@@ -30,16 +33,18 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from calendar import monthrange
 from datetime import date, timedelta
 from typing import Optional
 
 WEEKLY = "weekly"
+MONTHLY = "monthly"
 QUARTERLY = "quarterly"
 HALF_YEAR = "half_year"
 ANNUAL = "annual"
 COMPANION = "companion"
 
-REPORT_TYPES = (WEEKLY, QUARTERLY, HALF_YEAR, ANNUAL, COMPANION)
+REPORT_TYPES = (WEEKLY, MONTHLY, QUARTERLY, HALF_YEAR, ANNUAL, COMPANION)
 PERIODIC = (QUARTERLY, HALF_YEAR, ANNUAL)  # the Markets Reviews, which share one section set
 
 
@@ -55,6 +60,8 @@ class ReportTypeSpec:
 TYPES: dict[str, ReportTypeSpec] = {
     WEEKLY: ReportTypeSpec(
         WEEKLY, "Weekly", "Cytonn Weekly #38.2026 (27 Sept 2026)", "Weekly #39.2026", period_required=False),
+    MONTHLY: ReportTypeSpec(
+        MONTHLY, "Monthly", "Cytonn Monthly - October 2026 (1 Nov 2026)", "Oct'2026", period_required=True),
     QUARTERLY: ReportTypeSpec(
         QUARTERLY, "Quarterly Markets Review", "Cytonn Q3' 2026 Markets Review (4 Oct 2026)", "Q3'2026",
         period_required=True),
@@ -82,6 +89,41 @@ WEEK_ENDING_PREFIX = "Week ending "
 _QUARTER_RE = re.compile(r"^Q\s*([1-4])" + _APOS + r"(\d{4})$", re.I)
 _HALF_RE = re.compile(r"^H\s*([12])" + _APOS + r"(\d{4})$", re.I)
 _ANNUAL_RE = re.compile(r"^(?:FY" + _APOS + r")?(\d{4})$", re.I)
+_MONTH_RE = re.compile(r"^([a-z]+)\s*(?:['’‘`]|-|/|\s)\s*(\d{4})$", re.I)
+MONTH_NAMES = ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October",
+               "November", "December")   # spelled out, not calendar.month_name, which follows the locale
+
+# The months with no Cytonn Monthly, and the review that covers each (read from the issues, 2026-11-03; not yet confirmed
+# by the team).  Remove an entry to allow that month.
+MONTHS_COVERED_BY = {
+    3: ("the Q1 Markets Review", QUARTERLY),
+    6: ("the H1 Markets Review", HALF_YEAR),
+    9: ("the Q3 Markets Review", QUARTERLY),
+    12: ("the annual Markets Review", ANNUAL),
+}
+
+
+def _month_of(raw: str) -> Optional[tuple[int, int]]:
+    """(month, year) from "October 2026", "oct-2026", "Oct'2026" and the like; None if it is not a month and a year."""
+    m = _MONTH_RE.match(raw)
+    if not m:
+        return None
+    name = m.group(1).lower()
+    month = next((n for n, full in enumerate(MONTH_NAMES, 1) if name in (full.lower(), full[:3].lower())), None)
+    return (month, int(m.group(2))) if month else None
+
+
+def monthly_refusal(month: int, year: int) -> Optional[str]:
+    """Why a month has no Cytonn Monthly, or None if it has one."""
+    if month not in MONTHS_COVERED_BY:
+        return None
+    review, report_type = MONTHS_COVERED_BY[month]
+    return (f"{MONTH_NAMES[month - 1]} {year} has no Cytonn Monthly: it is covered by {review}. "
+            f"Choose {TYPES[report_type].title}.")
+
+
+def _monthly_label(month: int, year: int) -> str:
+    return f"{MONTH_NAMES[month - 1][:3]}'{year}"
 
 
 def normalize_period(report_type: str, period: Optional[str]) -> str:
@@ -106,6 +148,14 @@ def normalize_period(report_type: str, period: Optional[str]) -> str:
             raise PeriodError(f"{day.day} {day:%b %Y} is a {day.strftime('%A')}. A weekly report's week ends on a Friday, "
                                  "so choose a Friday.")
         return f"{WEEK_ENDING_PREFIX}{day.isoformat()}"
+    if report_type == MONTHLY:
+        found = _month_of(raw)
+        if found is None:
+            raise PeriodError(f"{raw!r} is not a month; write it as {spec.period_hint}")
+        refusal = monthly_refusal(*found)
+        if refusal:
+            raise PeriodError(refusal)
+        return _monthly_label(*found)
     if report_type in (WEEKLY, COMPANION):
         m = _WEEKLY_RE.match(raw)
         if not m or not 1 <= int(m.group(1)) <= 53:
@@ -148,6 +198,12 @@ def period_window(report_type: str, period: str) -> Optional[tuple[date, date]]:
     """First and last day the period covers, or None for a weekly-issue label (a rolling week)."""
     if report_type in (WEEKLY, COMPANION) or not period:
         return None
+    if report_type == MONTHLY:
+        found = _month_of(period)
+        if found is None:
+            raise PeriodError(f"{period!r} is not a normalized period label")
+        month, year = found
+        return date(year, month, 1), date(year, month, monthrange(year, month)[1])
     m = re.match(r"^(Q|H|FY)(\d)?'(\d{4})$", period)
     if not m:
         raise PeriodError(f"{period!r} is not a normalized period label")
@@ -161,6 +217,13 @@ def period_window(report_type: str, period: str) -> Optional[tuple[date, date]]:
     end_month = 3 * q
     end = date(year, 12, 31) if end_month == 12 else date(year, end_month + 1, 1) - timedelta(days=1)
     return start, end
+
+
+def monthly_week_ending(period: str) -> date:
+    """The Friday a Monthly's weekly parts end on: two days before the first Sunday on or after the month's last day,
+    the Sunday the Monthly goes out ("Oct'2026": Sunday 1 Nov 2026, so Friday 30 Oct 2026).  Not used by a builder yet."""
+    _, last = period_window(MONTHLY, period)
+    return last + timedelta(days=(6 - last.weekday()) % 7 - 2)
 
 
 def year_ago(period: str) -> str:
@@ -193,4 +256,8 @@ def suggested_period(report_type: str, today: date) -> str:
         return f"H1'{year}" if today > date(year, 6, 30) else f"H1'{year - 1}"
     if report_type == ANNUAL:
         return f"FY'{year - 1}"
+    if report_type == MONTHLY:
+        # The month before this one has ended; when it has no Monthly, the allowed month before it was already published.
+        month, year = (12, year - 1) if today.month == 1 else (today.month - 1, year)
+        return "" if monthly_refusal(month, year) else _monthly_label(month, year)
     return ""
