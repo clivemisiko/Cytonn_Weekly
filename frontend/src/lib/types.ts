@@ -419,6 +419,8 @@ export interface PreviousWeeks {
   weeks: PreviousWeek[];
   /** The week after the latest fully approved one: where the overview opens. Null when none is approved. */
   next_week_ending: string | null;
+  /** The week the overview opens on when the address names no report: never null. */
+  default_week_ending: string;
 }
 
 /** What a re-check from an uploaded file did: each changed figure old then new, and what was left as it was. */
