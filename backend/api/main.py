@@ -911,7 +911,7 @@ def create_app(
 
     @app.get("/api/previous/weekly")
     def previous_weekly() -> dict:
-        """Every fully approved weekly week, newest first, and the week the overview opens on after the latest of them."""
+        """Every fully approved weekly week, newest first, the week after the latest of them, and the week the overview opens on."""
         return weekly_export.approved_weeks(db_path)
 
     @app.post("/api/export/weekly")
