@@ -192,7 +192,7 @@ class TeamChartBody(BaseModel):
     use: bool
 
 
-ReportType = Literal["weekly", "quarterly", "half_year", "annual", "companion"]
+ReportType = Literal["weekly", "monthly", "quarterly", "half_year", "annual", "companion"]
 
 
 class DraftRequest(BaseModel):

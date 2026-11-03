@@ -13,7 +13,8 @@ export type ItemKind =
 
 // ---- Report types (report_types.py): which report a review belongs to ----
 
-export type ReportType = "weekly" | "quarterly" | "half_year" | "annual" | "companion";
+export const REPORT_TYPES = ["weekly", "monthly", "quarterly", "half_year", "annual", "companion"] as const;
+export type ReportType = (typeof REPORT_TYPES)[number];
 
 /** What the coordinator picked: a report type, its period label, and (companion reports only) which report. */
 export interface ReportChoice {
