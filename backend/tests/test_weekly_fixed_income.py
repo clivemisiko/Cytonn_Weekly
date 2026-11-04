@@ -241,6 +241,38 @@ def test_tbonds_reproduce_cbks_results_for_the_week(root):
     assert "FXD3/2019/015" in b["body_md"] and "FXD1/2019/020" in b["body_md"] and "FXD1/2018/015" not in b["body_md"]  # the switch is not a primary auction
 
 
+@pytest.mark.parametrize("bps, printed", [("-0.04", "0.04 bps"), ("0.04", "0.04 bps"), ("0.05", "0.1 bps"), ("0.3", "0.3 bps"),
+                                          ("-0.34", "0.3 bps"), ("12.26", "12.3 bps"), ("0.049", "0.05 bps"),
+                                          ("0.0", None), ("-0.0004", None)])
+def test_the_interbank_change_takes_one_decimal_two_when_one_prints_zero_and_none_when_two_do(bps, printed):
+    places = fiw.interbank_bps_places(computed.Decimal(bps))
+    assert (computed.show(computed.Decimal(bps), BPS, places) if places else None) == printed
+
+
+NOW_DAYS = ("2026-09-25", "2026-09-28", "2026-09-29", "2026-09-30", "2026-10-01")
+LAST_DAYS = ("2026-09-18", "2026-09-21", "2026-09-22", "2026-09-23", "2026-09-24")
+
+
+@pytest.mark.parametrize("now, last, printed, sentence", [
+    ("8.80", "8.70", "10.0 bps", "tightened, with the average interbank rate increasing by 10.0 bps to 8.8%."),
+    ("8.7504", "8.7500", "0.04 bps", "tightened, with the average interbank rate increasing by 0.04 bps to 8.8%."),
+    ("8.7500", "8.7500", "0.00 bps", "was unchanged, with the average interbank rate unchanged to 8.8%."),
+])
+def test_the_checker_matches_the_interbank_change_at_each_precision(tmp_path, now, last, printed, sentence):
+    from cytonn_weekly.weekly import analyst
+    inputs.store(WEEK, "cbk_bulletin", BULLETIN, "bulletin.pdf", tmp_path)   # no workbook: the typed rates are the only reading
+    text = "\n".join([f"{d} {last}" for d in LAST_DAYS] + [f"{d} {now}" for d in NOW_DAYS])
+    analyst.save_form(WEEK, {"tables": {"interbank": {"text": text}}}, tmp_path)
+    review = build(tmp_path)
+    liquidity = blocks(review)["liquidity"]
+    fig = next(f for f in liquidity["figures"] if f["key"] == "rate_bps")
+    assert fig["display"] == printed and fig["in_text"] == (printed != "0.00 bps")
+    assert sentence in liquidity["body_md"] and ("bps to" in liquidity["body_md"]) == fig["in_text"]
+    assert computed.check_figure_record(liquidity, fig)[0] == []
+    [item] = [i for i in review.review_items if "Average interbank rate change" in i.ref]
+    assert item.status == "not_auto_verified"     # typed rates: never clean, and no mismatch at either precision
+
+
 def test_liquidity_volumes_eurobonds_shilling_and_reserves_reproduce_the_published_week(root):
     by = blocks(build(root))
     liquidity = figures(by["liquidity"])

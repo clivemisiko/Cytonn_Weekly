@@ -48,7 +48,7 @@ from cytonn_weekly.common.computed import (
     pct_change,
     ratio_pct,
 )
-from cytonn_weekly.common.formatting import NUMBER, PCT, TEXT
+from cytonn_weekly.common.formatting import NUMBER, PCT, TEXT, round_half_up
 from cytonn_weekly.common.review import (
     build_review,
     check_section,
@@ -599,6 +599,12 @@ def money_market_blocks(inputs: WeeklyInputs, tbill_inputs: Optional[dict[str, d
 # 4. Liquidity
 # ---------------------------------------------------------------------------
 
+def interbank_bps_places(worked: Decimal) -> int:
+    """Decimals for the interbank rate change (the investments team, 2026-11-03): one, two when one prints 0.0,
+    and 0 when two print 0.00, which the sentence words as unchanged."""
+    return next((places for places in (1, 2) if round_half_up(worked, places) != 0), 0)
+
+
 def liquidity_block(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bulletin], week: Week,
                     warnings: list[str]) -> dict[str, Any]:
     title = "Liquidity"
@@ -635,11 +641,13 @@ def liquidity_block(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bullet
                    **{f"last_{i}": typed(r["rate"], WB, scale=100) for i, r in enumerate(days["last"])}}
         now_names = [k for k in rate_in if k.startswith("now_")]
         last_names = [k for k in rate_in if k.startswith("last_")]
-        # Two decimals: the average interbank rate moves by hundredths of a basis point week to week.
-        bps = figs.add("rate_bps", "Average interbank rate change", BPS, 2, rate_in,
-                       ["mul", ["sub", ["mean", *now_names], ["mean", *last_names]], 100])
+        bps_expr = ["mul", ["sub", ["mean", *now_names], ["mean", *last_names]], 100]
+        places = interbank_bps_places(evaluate(bps_expr, rate_in))
+        bps = figs.add("rate_bps", "Average interbank rate change", BPS, places or 2, rate_in, bps_expr)
         rate = figs.add("rate", "Average interbank rate", PLAIN_PCT, 1, {k: rate_in[k] for k in now_names}, ["mean", *now_names])
-        change = figs.value("rate_bps")
+        change = figs.value("rate_bps") if places else 0.0
+        if not places:
+            figs.hide("rate_bps")
         text.append(f"During the week, liquidity in the money markets {direction(change, 'tightened', 'eased', 'was unchanged')}, "
                     f"with the average interbank rate {direction(change, 'increasing', 'decreasing', 'unchanged')}"
                     + (f" by {bps}" if change else "") + f" to {rate}.")
