@@ -18,7 +18,9 @@ from cytonn_weekly.weekly.equities_workbook import VALUATION_SHEET
 # The "Average = x" the team puts on these charts is the mean of every point from here on, not just
 # the years the picture shows.  It is a named constant so it is one line to change.
 AVERAGE_FROM = date(2009, 1, 1)
-# The window the published NASI charts show: 5 years back from the newest point (confirmed by the team at Cytonn, 2026-10-21).
+# The window the picture shows, back from the newest point.  What is known: Ryan said the team usually shows five years, but
+# the published October 2026 charts start at Oct-19, which is seven.  The window rule is being changed on its own branch;
+# until then the value stays 5.
 NASI_WINDOW_YEARS = 5
 
 

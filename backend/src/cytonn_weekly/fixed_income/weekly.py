@@ -48,7 +48,7 @@ from cytonn_weekly.common.computed import (
     pct_change,
     ratio_pct,
 )
-from cytonn_weekly.common.formatting import NUMBER, PCT, TEXT
+from cytonn_weekly.common.formatting import NUMBER, PCT, TEXT, round_half_up
 from cytonn_weekly.common.review import (
     build_review,
     check_section,
@@ -107,21 +107,6 @@ NEED_BULLETIN = ("The CBK Weekly Bulletin for this week is not among this week's
 
 PLACEMENTS_FLAG = ("its source is unconfirmed: it was named as the CBK bulletin and then the NSE price list, and "
                    "neither carries it. Confirm the figure with the fixed income team")
-
-
-def target_flag(cell: Any) -> str:
-    """Why the target is flagged: both candidates named as far as the app knows them, and which one it used."""
-    if getattr(cell, "source", None) is not None:
-        used = f"{cell.value} bn, {typed_source(cell, WB)}"
-        other = getattr(cell, "other", None)
-        if other is not None:
-            used += f" (the uploaded {WB.lower()} holds {other.value} bn at {other.ref})"
-    else:
-        used = f"{cell.value} bn, read from the {WB.lower()} at {cell.ref}"
-    return ("the team has not confirmed which figure is the net domestic borrowing target. The app used " + used + ", "
-            "because it is the only target the app reads. The other candidate is the Budget workbook's 'Borrowings' "
-            "sheet, FY'2026/2027 domestic borrowing; the app does not read that workbook, so its file, cell and value "
-            "are not known here. Compare the two and confirm with the fixed income team")
 
 
 # "Yields at Issue" is not in the workbook's issue list.  These are the figures #38.2026 printed,
@@ -599,6 +584,12 @@ def money_market_blocks(inputs: WeeklyInputs, tbill_inputs: Optional[dict[str, d
 # 4. Liquidity
 # ---------------------------------------------------------------------------
 
+def interbank_bps_places(worked: Decimal) -> int:
+    """Decimals for the interbank rate change (the investments team, 2026-11-03): one, two when one prints 0.0,
+    and 0 when two print 0.00, which the sentence words as unchanged."""
+    return next((places for places in (1, 2) if round_half_up(worked, places) != 0), 0)
+
+
 def liquidity_block(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bulletin], week: Week,
                     warnings: list[str]) -> dict[str, Any]:
     title = "Liquidity"
@@ -635,11 +626,13 @@ def liquidity_block(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bullet
                    **{f"last_{i}": typed(r["rate"], WB, scale=100) for i, r in enumerate(days["last"])}}
         now_names = [k for k in rate_in if k.startswith("now_")]
         last_names = [k for k in rate_in if k.startswith("last_")]
-        # Two decimals: the average interbank rate moves by hundredths of a basis point week to week.
-        bps = figs.add("rate_bps", "Average interbank rate change", BPS, 2, rate_in,
-                       ["mul", ["sub", ["mean", *now_names], ["mean", *last_names]], 100])
+        bps_expr = ["mul", ["sub", ["mean", *now_names], ["mean", *last_names]], 100]
+        places = interbank_bps_places(evaluate(bps_expr, rate_in))
+        bps = figs.add("rate_bps", "Average interbank rate change", BPS, places or 2, rate_in, bps_expr)
         rate = figs.add("rate", "Average interbank rate", PLAIN_PCT, 1, {k: rate_in[k] for k in now_names}, ["mean", *now_names])
-        change = figs.value("rate_bps")
+        change = figs.value("rate_bps") if places else 0.0
+        if not places:
+            figs.hide("rate_bps")
         text.append(f"During the week, liquidity in the money markets {direction(change, 'tightened', 'eased', 'was unchanged')}, "
                     f"with the average interbank rate {direction(change, 'increasing', 'decreasing', 'unchanged')}"
                     + (f" by {bps}" if change else "") + f" to {rate}.")
@@ -1138,10 +1131,10 @@ def _borrowing_sentence(figs: Figures, flows: dict[str, dict], net_expr: list, t
     if net_second is not None:
         figs.items[-1]["second"] = net_second
     prorated = figs.add("prorated_target", "Pro-rated net domestic borrowing target (Kshs bn)", PLAIN, 1, target, prorated_expr,
-                        flag=target_flag(target_cell), note=f"{days} days from {fy_start.isoformat()} to the latest auction's "
-                                                f"value date, {as_at.isoformat()}, over a 364-day year.{start_note}")
+                        note=f"{days} days from {fy_start.isoformat()} to the latest auction's "
+                             f"value date, {as_at.isoformat()}, over a 364-day year.{start_note}")
     ratio = figs.add("ratio", "Net borrowing as a share of the pro-rated target", PLAIN_PCT, 1, {**flows, **target},
-                     ["mul", ["div", net_expr, prorated_expr], 100], flag=target_flag(target_cell))
+                     ["mul", ["div", net_expr, prorated_expr], 100])
     return (f"The government is at {ratio} of its pro-rated net domestic borrowing target of Kshs {prorated} bn, with a net "
             f"borrowing position of Kshs {net} bn (inclusive of T-bills).")
 
