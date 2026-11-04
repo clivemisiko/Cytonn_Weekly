@@ -82,7 +82,7 @@ MAX_NAME = 120
 MIN_FUNDS = 5   # the Top 5 average needs five funds
 MAX_LABEL = 60
 MMF_READ_FROM = "Daily Nation e-paper"   # the investments team, 2026-10-30
-MMF_SOURCE_DEFAULT = "Daily Nation"      # printed under the fund table; which name to print is not settled with the team
+MMF_SOURCE_DEFAULT = "Daily Nation"      # printed under the fund table: the Daily Nation e-paper (Ryan, 2026-10-19)
 
 # Carry-forward (the team's rule, 2026-10-12).  Slow-changing items carry from last week's form and are used as
 # they are; weekly-changing ones carry but must be confirmed before any builder reads them.

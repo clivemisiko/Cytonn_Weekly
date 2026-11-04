@@ -106,7 +106,8 @@ LARGE_CAP_TICKERS = {"safaricom": "SCOM", "equity group": "EQTY", "kcb": "KCB", 
 LARGE_CAP_FLAG = ("check the names: this sentence names the biggest movers among the team's large-cap list, which is the "
                   "equities team's stated rule, but the published issues have not always followed it (they have named EABL, "
                   "which is not on the list, and passed over bigger movers)")
-PE_FLAG = "typed from Bloomberg's NASI P/E, which the tool cannot read (login pending)"
+PE_FLAG = ("typed from Bloomberg's NASI P/E. The Bloomberg login exists, but whether the licence allows scripted retrieval "
+           "is not settled, so the tool does not read it and the P/E stays a typed number")
 
 PEG_TEXT = ("A PEG ratio greater than 1.0x indicates the market may be overvalued while a PEG ratio less than 1.0x indicates "
             "that the market is undervalued.")
