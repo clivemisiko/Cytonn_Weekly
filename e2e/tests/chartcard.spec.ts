@@ -76,7 +76,7 @@ test("T78 a complete workbook: both charts are drawn, with the picture, the fact
 
   const facts = card.getByLabel("What the chart rests on");
   // September is "Sep" or "Sept" depending on the browser's locale data; the app formats dates by that.
-  for (const [label, value] of [["Points read", "60"], ["Window", "Up to 5 years"], ["Newest point", /25 Sept? 2026/], ["Last value", "8.0x"], ["Average", "points since"]] as [string, string | RegExp][]) {
+  for (const [label, value] of [["Points read", "60"], ["Window", / to 25 Sept? 2026/], ["Newest point", /25 Sept? 2026/], ["Last value", "8.0x"], ["Average", "points since"]] as [string, string | RegExp][]) {
     await expect(facts.locator("div", { hasText: label }).first()).toContainText(value);
   }
   await expect(card.getByText(/^From the analyst workbook, not verified \(Equities workbook, 'NASI-PE & Dividend Yield'!B8:B67\)\.$/)).toBeVisible();

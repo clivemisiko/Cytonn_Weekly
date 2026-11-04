@@ -5,19 +5,22 @@ from typing import Optional
 from urllib.parse import urlparse
 
 from docx.enum.style import WD_STYLE_TYPE
+from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import nsdecls, qn
 from docx.shared import Pt, RGBColor
 
+from cytonn_weekly.common import report_theme as theme
+
 # The look of the published issue #41.2026 (its PDF, checked 2026-10-28): Calibri, black, justified body; headings and
-# table titles bold and underlined; table headers on the green band sampled from its tables (006C5B) in white.
-BLACK = RGBColor(0x00, 0x00, 0x00)
+# chart titles bold and underlined; table colours from the theme.
+BLACK = RGBColor.from_string(theme.BLACK.lstrip("#"))
 DARK_GREY = RGBColor(0x59, 0x59, 0x59)
-WHITE = RGBColor(0xFF, 0xFF, 0xFF)
-HEADER_FILL = "006C5B"
-FONT = "Calibri"
+WHITE = RGBColor.from_string(theme.WHITE.lstrip("#"))
+HEADER_FILL = theme.HEADER_FILL.lstrip("#")
+FONT = theme.TABLE_FONT
 LINK_BLUE = RGBColor(0x05, 0x63, 0xC1)
 HYPERLINK_STYLE = "Hyperlink"
 
@@ -82,16 +85,120 @@ def small_line(doc, text: str, *, color: RGBColor = DARK_GREY, italic: bool = Fa
     return p
 
 
-def shade_header(cell) -> None:
-    """The green header band, its text white and bold."""
+def shade(cell, fill: str, text: str, bold: Optional[bool] = None) -> None:
+    """Fill a cell and colour its runs ("#RRGGBB"); ``bold`` None leaves each run's weight as it is."""
+    tc_pr = cell._tc.get_or_add_tcPr()
+    for old in tc_pr.findall(qn("w:shd")):
+        tc_pr.remove(old)
     shd = OxmlElement("w:shd")
     shd.set(qn("w:val"), "clear")
     shd.set(qn("w:color"), "auto")
-    shd.set(qn("w:fill"), HEADER_FILL)
-    cell._tc.get_or_add_tcPr().append(shd)
+    shd.set(qn("w:fill"), fill.lstrip("#"))
+    tc_pr.append(shd)
     for para in cell.paragraphs:
         for run in para.runs:
-            run.bold, run.font.color.rgb = True, WHITE
+            run.font.color.rgb = RGBColor.from_string(text.lstrip("#"))
+            if bold is not None:
+                run.bold = bold
+
+
+def shade_header(cell) -> None:
+    """The green header band, its text white and bold."""
+    shade(cell, theme.HEADER_FILL, theme.HEADER_TEXT, bold=True)
+
+
+def _cell_text(cell, text: str, bold: bool, centred: bool):
+    cell.text = text    # one paragraph holding one run
+    para = cell.paragraphs[0]
+    run = para.runs[0]
+    run.font.size, run.bold, run.font.name = Pt(theme.TABLE_TEXT_PT), bold, theme.TABLE_FONT
+    para.alignment = WD_ALIGN_PARAGRAPH.CENTER if centred else WD_ALIGN_PARAGRAPH.LEFT
+    para.paragraph_format.space_after = Pt(0)
+    return para
+
+
+def _row_look(values: list) -> Optional[tuple[str, str]]:
+    """(fill, text colour) of a body row, or None for a row with the header look."""
+    label = str(values[0] or "")
+    if label in theme.HEADER_LOOK_ROWS:
+        return None
+    if label in theme.CHANGE_ROWS:
+        return theme.SUMMARY_FILL, theme.CHANGE_TEXT
+    if label in theme.SUMMARY_ROWS or any(str(v or "").startswith(theme.CYTONN_ROW_PREFIX) for v in values):
+        return theme.SUMMARY_FILL, theme.SUMMARY_TEXT
+    return theme.BODY_FILL, theme.BODY_TEXT
+
+
+def _hold(row, keep_with_next: bool) -> None:
+    """A row never splits across pages; with ``keep_with_next`` it stays on the page of what follows it."""
+    row._tr.get_or_add_trPr().append(OxmlElement("w:cantSplit"))
+    for cell in row.cells:
+        for para in cell.paragraphs:
+            para.paragraph_format.keep_with_next = keep_with_next
+
+
+def report_table(doc, grid: list[list], header_rows: int = 1, title: Optional[str] = None, keep_last: bool = False):
+    """A table in the published look: the title as one merged row, then ``grid``, its first ``header_rows`` rows the header.
+
+    Every row stays whole and on the page of the row after it, so a table that fits a page is never split; the last
+    row is kept with what follows only with ``keep_last`` (a source line under the table)."""
+    table = doc.add_table(rows=0, cols=len(grid[0]))
+    table.style = "Table Grid"
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    thin_borders(table)
+    if title:
+        cells = table.add_row().cells
+        merged = cells[0].merge(cells[-1]) if len(cells) > 1 else cells[0]
+        _cell_text(merged, title, bold=True, centred=True)
+        shade_header(merged)
+    heads = [str(h) for h in grid[header_rows - 1]] if header_rows else []
+    names = {c for c, head in enumerate(heads) if head in theme.NAME_COLUMNS}
+    rating = {c for c, head in enumerate(heads) if any(word in head.lower() for word in theme.RATING_COLUMNS)}
+    for r, values in enumerate(grid):
+        cells = table.add_row().cells
+        look = _row_look(values) if r >= header_rows else None
+        for c, value in enumerate(values):
+            text = "" if value is None else str(value)
+            _cell_text(cells[c], text, bold=look is None, centred=look is None or c not in names)
+            if look is None:
+                shade_header(cells[c])
+            elif look[0] == theme.BODY_FILL and text in theme.RECOMMENDATION_FILLS:
+                shade(cells[c], theme.RECOMMENDATION_FILLS[text], theme.RECOMMENDATION_TEXT)
+            elif look[0] == theme.BODY_FILL and c in rating:
+                shade(cells[c], theme.RATING_FILL, theme.BODY_TEXT)
+            else:
+                shade(cells[c], *look)
+    rows = table.rows
+    for n, row in enumerate(rows):
+        _hold(row, keep_with_next=keep_last or n < len(rows) - 1)
+    return table
+
+
+def keep_together(paragraphs: list) -> None:
+    """Lines under a table: each stays on the page of the next; the last lets go."""
+    for n, para in enumerate(paragraphs):
+        para.paragraph_format.keep_with_next = n < len(paragraphs) - 1
+
+
+def thin_borders(table) -> None:
+    """Thin single black lines round and inside the table."""
+    tbl_pr = table._tbl.tblPr
+    for old in tbl_pr.findall(qn("w:tblBorders")):
+        tbl_pr.remove(old)
+    borders = OxmlElement("w:tblBorders")
+    for side in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        edge = OxmlElement(f"w:{side}")
+        edge.set(qn("w:val"), "single")
+        edge.set(qn("w:sz"), str(theme.BORDER_EIGHTHS_PT))
+        edge.set(qn("w:space"), "0")
+        edge.set(qn("w:color"), theme.BORDER.lstrip("#"))
+        borders.append(edge)
+    # The schema orders tblPr's children; tblBorders comes before these.
+    after = next((c for c in tbl_pr if c.tag in {qn(t) for t in ("w:shd", "w:tblLayout", "w:tblCellMar", "w:tblLook")}), None)
+    if after is None:
+        tbl_pr.append(borders)
+    else:
+        after.addprevious(borders)
 
 
 def executive_summary(doc, heading: str, items: list[tuple[str, str]]) -> None:

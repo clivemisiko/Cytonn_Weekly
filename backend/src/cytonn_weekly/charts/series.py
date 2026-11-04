@@ -280,18 +280,14 @@ def _read_stated(book: Workbook, sheet: Sheet, head: Cell, first: int, vcol: int
 # The window, the average and the checks
 # ---------------------------------------------------------------------------
 
-def _years_back(day: date, years: int) -> date:
-    try:
-        return day.replace(year=day.year - years)
-    except ValueError:    # 29 February in a year that has none
-        return day.replace(year=day.year - years, day=28)
+def window_start(series: ChartSeries) -> date:
+    """The first of the week-ending date's month, the spec's years earlier: the same for every week of a month."""
+    return series.week_ending.replace(year=series.week_ending.year - series.spec.window_years, day=1)
 
 
 def windowed(series: ChartSeries) -> tuple[Point, ...]:
-    """The points the picture shows: the spec's years back from the newest point."""
-    if not series.points:
-        return ()
-    start = _years_back(series.points[-1].day, series.spec.window_years)
+    """The points the picture shows: from ``window_start``, or from the first point when the series starts later."""
+    start = window_start(series)
     return tuple(p for p in series.points if p.day >= start)
 
 

@@ -10,6 +10,9 @@ REPORT_PACKAGES = ("cytonn_weekly.weekly", "cytonn_weekly.fixed_income", "cytonn
                    "cytonn_weekly.periodic")
 
 
+THEME_IMPORT = "from cytonn_weekly.common import report_theme as theme"
+
+
 def test_the_shared_module_imports_no_report_type_package_and_holds_no_weekly_wording():
     source = inspect.getsource(wl)
     imported = []
@@ -18,10 +21,11 @@ def test_the_shared_module_imports_no_report_type_package_and_holds_no_weekly_wo
             imported += [a.name for a in node.names]
         elif isinstance(node, ast.ImportFrom):
             imported.append(node.module or "")
-    assert imported and all(m in ("__future__", "re", "typing", "urllib.parse") or m == "docx" or m.startswith("docx.")
-                             for m in imported), imported
+    assert imported and all(m in ("__future__", "re", "typing", "urllib.parse", "cytonn_weekly.common") or m == "docx"
+                             or m.startswith("docx.") for m in imported), imported
     assert not any(m.startswith(REPORT_PACKAGES) for m in imported)
-    assert "weekly" not in source.lower()
+    assert source.count(THEME_IMPORT) == 1   # the shared theme, the only package of this project it imports
+    assert "weekly" not in source.replace(THEME_IMPORT, "").lower()
 
 
 def test_the_executive_summary_leaves_out_a_section_with_no_summary():
