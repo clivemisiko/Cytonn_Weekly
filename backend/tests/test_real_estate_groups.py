@@ -119,8 +119,9 @@ def test_the_export_prints_groups_as_heading_2_and_lettered_stories_as_heading_3
                   "a. Infrastructure: a development", "a. Commercial office, retail and industrial: a development"]
     text = [p.text for p in paras]
     reits = text.index(f"IV. {REITS_GROUP}")
-    assert text[reits + 1] == "REITs weekly performance"            # the table's own title line, under its group
-    assert any(t.startswith("Source: ") for t in text[reits:])
+    assert text[reits + 1].startswith("Source: ")      # the table, its title in its own first row, then its source line
+    table = paras[reits]._parent.tables[-1]
+    assert table.rows[0].cells[0].text == "REITs weekly performance" and len({c._tc for c in table.rows[0].cells}) == 1
     assert reits > max(text.index(h) for h in h3)
 
 

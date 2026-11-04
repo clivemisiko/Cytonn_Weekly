@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from typing import Optional
 
 from cytonn_weekly.weekly.equities_workbook import VALUATION_SHEET
 
@@ -36,6 +37,9 @@ class ChartSpec:
     ceiling_days: int               # no point is dated later than this many days after the Friday
     quoted: tuple[tuple[str, str], ...]   # (what the draft quotes, its figure key in the section): ("point", "pe")
     decimals: int = 1               # display precision of the quoted figures, as the report prints them
+    name: str = ""                  # the published chart's own name, after "Cytonn Report: "
+    y_top: Optional[int] = None     # the y axis runs from 0 to this; None: the next multiple of y_step above the data
+    y_step: int = 2
     min_points: int = 52            # a year of weekly points; fewer is not a chart
 
     @property
@@ -51,6 +55,7 @@ NASI_PE = ChartSpec(
     sheet=VALUATION_SHEET, header="Price to Earnings", unit="multiple", window_years=NASI_WINDOW_YEARS,
     newest_not_before_days=0, ceiling_days=0,
     quoted=(("point", "pe"), ("average", "pe_average")),
+    name="NASI P/E", y_top=19,
 )
 NASI_YIELD = ChartSpec(
     id="nasi_yield",
@@ -59,6 +64,7 @@ NASI_YIELD = ChartSpec(
     sheet=VALUATION_SHEET, header="Dividend Yield", unit="pct", window_years=NASI_WINDOW_YEARS,
     newest_not_before_days=0, ceiling_days=0,
     quoted=(("point", "dividend_yield"), ("average", "dividend_yield_average")),
+    name="NASI Dividend Yield",
 )
 
 SPECS = {s.id: s for s in (NASI_PE, NASI_YIELD)}

@@ -11,13 +11,15 @@ from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import nsdecls, qn
 from docx.shared import Pt, RGBColor
 
+from cytonn_weekly.common import report_theme as theme
+
 # The look of the published issue #41.2026 (its PDF, checked 2026-10-28): Calibri, black, justified body; headings and
-# table titles bold and underlined; table headers on the green band sampled from its tables (006C5B) in white.
-BLACK = RGBColor(0x00, 0x00, 0x00)
+# chart titles bold and underlined; table colours from the theme.
+BLACK = RGBColor.from_string(theme.BLACK.lstrip("#"))
 DARK_GREY = RGBColor(0x59, 0x59, 0x59)
-WHITE = RGBColor(0xFF, 0xFF, 0xFF)
-HEADER_FILL = "006C5B"
-FONT = "Calibri"
+WHITE = RGBColor.from_string(theme.WHITE.lstrip("#"))
+HEADER_FILL = theme.HEADER_FILL.lstrip("#")
+FONT = theme.TABLE_FONT
 LINK_BLUE = RGBColor(0x05, 0x63, 0xC1)
 HYPERLINK_STYLE = "Hyperlink"
 
@@ -82,16 +84,47 @@ def small_line(doc, text: str, *, color: RGBColor = DARK_GREY, italic: bool = Fa
     return p
 
 
-def shade_header(cell) -> None:
-    """The green header band, its text white and bold."""
+def shade(cell, fill: str, text: str, bold: Optional[bool] = None) -> None:
+    """Fill a cell and colour its runs ("#RRGGBB"); ``bold`` None leaves each run's weight as it is."""
+    tc_pr = cell._tc.get_or_add_tcPr()
+    for old in tc_pr.findall(qn("w:shd")):
+        tc_pr.remove(old)
     shd = OxmlElement("w:shd")
     shd.set(qn("w:val"), "clear")
     shd.set(qn("w:color"), "auto")
-    shd.set(qn("w:fill"), HEADER_FILL)
-    cell._tc.get_or_add_tcPr().append(shd)
+    shd.set(qn("w:fill"), fill.lstrip("#"))
+    tc_pr.append(shd)
     for para in cell.paragraphs:
         for run in para.runs:
-            run.bold, run.font.color.rgb = True, WHITE
+            run.font.color.rgb = RGBColor.from_string(text.lstrip("#"))
+            if bold is not None:
+                run.bold = bold
+
+
+def shade_header(cell) -> None:
+    """The green header band, its text white and bold."""
+    shade(cell, theme.HEADER_FILL, theme.HEADER_TEXT, bold=True)
+
+
+def thin_borders(table) -> None:
+    """Thin single black lines round and inside the table."""
+    tbl_pr = table._tbl.tblPr
+    for old in tbl_pr.findall(qn("w:tblBorders")):
+        tbl_pr.remove(old)
+    borders = OxmlElement("w:tblBorders")
+    for side in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        edge = OxmlElement(f"w:{side}")
+        edge.set(qn("w:val"), "single")
+        edge.set(qn("w:sz"), str(theme.BORDER_EIGHTHS_PT))
+        edge.set(qn("w:space"), "0")
+        edge.set(qn("w:color"), theme.BORDER.lstrip("#"))
+        borders.append(edge)
+    # The schema orders tblPr's children; tblBorders comes before these.
+    after = next((c for c in tbl_pr if c.tag in {qn(t) for t in ("w:shd", "w:tblLayout", "w:tblCellMar", "w:tblLook")}), None)
+    if after is None:
+        tbl_pr.append(borders)
+    else:
+        after.addprevious(borders)
 
 
 def executive_summary(doc, heading: str, items: list[tuple[str, str]]) -> None:
