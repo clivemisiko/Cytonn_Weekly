@@ -103,6 +103,14 @@ FOOTNOTES = ("*Target Price as per Cytonn Analyst estimates", "**Upside/ (Downsi
 LARGE_CAP_TICKERS = {"safaricom": "SCOM", "equity group": "EQTY", "kcb": "KCB", "co-operative": "COOP", "absa bank": "ABSA",
                      "standard chartered": "SCBK", "i&m holdings": "IMH", "stanbic": "SBIC", "dtbk": "DTK", "ncba": "NCBA",
                      "hfcb group": "HFCK"}
+# 'Gainers & Losers' tickers as the paragraphs print them (the October 2026 Monthly and the Q3'2026 review), and the
+# two that KCB IB's report lists under another ticker.
+SHEET_NAMES = {"SCOM": "Safaricom", "EQTY": "Equity", "COOP": "Co-op Bank", "BAMB": "Bamburi", "SCBK": "Standard Chartered Bank",
+               "STANBIC": "Stanbic"}
+BANK_NAMES = {**SHEET_NAMES, "DTBK": "DTB-K"}
+KCB_TICKERS = {"DTBK": "DTK", "STANBIC": "SBIC"}
+# The banks among the twelve; to be confirmed with Ryan on 5 Nov 2026.
+BANKS = ("EQTY", "KCB", "COOP", "ABSA", "SCBK", "DTBK", "NCBA", "STANBIC")
 LARGE_CAP_FLAG = ("check the names: this sentence names the biggest movers among the team's large-cap list, which is the "
                   "equities team's stated rule, but the published issues have not always followed it (they have named EABL, "
                   "which is not on the list, and passed over bigger movers)")
@@ -151,6 +159,18 @@ def _typed_sources(inputs: WeeklyInputs, *cells: Any) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # Sources gathered once
 # ---------------------------------------------------------------------------
+
+@dataclass
+class Mover:
+    """One large cap's week: its change, the inputs and expression it is worked out from, and KCB's reading if any."""
+
+    ticker: str
+    name: str
+    change: Any
+    inputs: dict[str, dict[str, Any]]
+    expr: Optional[list] = None
+    second: Optional[dict[str, Any]] = None
+
 
 @dataclass
 class Market:
@@ -372,62 +392,134 @@ def banking_block(m: Market) -> dict[str, Any]:
     moved = figs.value("banking_wow")
     text = (f"During the week, the banking sector index {direction(moved, 'increased', 'decreased', 'was unchanged')} by {change} to "
             f"{now} from {was} recorded the previous week.")
+    notes = []
+    gainers, losers = [], []
+    if m.inputs.equities_book is None:
+        notes.append(f"No stocks are named: they come from the {WB.lower()}'s '{equities_workbook.GAINERS_SHEET}' sheet, and "
+                     "the workbook is not among this week's inputs.")
+    else:
+        try:
+            gainers, losers = ranked([x for x in sheet_movers(m) if x.ticker in BANKS])
+        except WorkbookError as exc:
+            notes.append(f"No stocks are named: {exc}.")
+    if gainers or losers:
+        down = moved < 0 if moved else len(losers) >= len(gainers)
+        lead_word, (a, b), other_word, other = attribution(figs, gainers, losers, down, "bank_move", names=BANK_NAMES)
+        text += f" This is attributable to {lead_word} recorded by large cap stocks such as {a} of {b}."
+        if other:
+            text += (f" The performance was however {'supported' if lead_word == 'losses' else 'weighed down'} by "
+                     f"{other_word} recorded by large-cap stocks such as {other[0]} of {other[1]}.")
     return computed_block("banking", title, text, figs.items,
-                          sources=[{"name": nse_price_list.SOURCE_NAME, "url": nse_price_list.BASE}, {"name": WB}])
+                          sources=[{"name": nse_price_list.SOURCE_NAME, "url": nse_price_list.BASE}, {"name": WB}], notes=notes)
 
 
 # ---------------------------------------------------------------------------
 # Large caps
 # ---------------------------------------------------------------------------
 
-def large_caps_block(m: Market) -> dict[str, Any]:
-    title = "Market Performance: large-cap movers"
-    report = m.inputs.kcb_weekly
-    if report is None:
-        return unavailable_block("large_caps", title, *NEED_KCB_WEEKLY)
-    form = m.inputs.analyst
-    names = form.field("large_caps")
-    if not names:
-        return unavailable_block("large_caps", title, *form.why(analyst.EQ, ["large_caps"]))
-    src = f"{kcb.SOURCE_NAME} weekly report, {report.report_date.isoformat()}"
-    movers, unknown = [], []
-    for cell in names:
-        name = " ".join(str(cell.value).split())
-        ticker = LARGE_CAP_TICKERS.get(name.lower())
-        stock = report.securities.get(ticker) if ticker else None
-        if stock is None:
-            unknown.append(name)
-            continue
-        movers.append((stock["change_pct"], name, ticker))
-    losers = sorted((x for x in movers if x[0] < 0), key=lambda x: x[0])[:3]
-    gainers = sorted((x for x in movers if x[0] > 0), key=lambda x: -x[0])[:3]
-    if not losers and not gainers:
-        return unavailable_block("large_caps", title, "None of the listed large caps moved over the week in KCB IB's weekly "
-                                 "report, or none could be matched to a ticker.", "Check the large-cap list.")
-    figs = Figures()
+def sheet_movers(m: Market) -> list[Mover]:
+    """The twelve large caps' weeks from the workbook's 'Gainers & Losers' prices, with KCB IB's change as each one's
+    second reading.  WorkbookError, naming the sheet and the date, if the sheet cannot give them."""
+    week, report = m.week, m.inputs.kcb_weekly
+    rows = equities_workbook.read_gainers_losers(m.inputs.equities_book, [week.ending, week.previous_friday])
+    src = f"{kcb.SOURCE_NAME} weekly report, {report.report_date.isoformat()}" if report else ""
+    out = []
+    for ticker, cells in rows:
+        inputs = {"now": typed(cells[week.ending], WB), "last_week": typed(cells[week.previous_friday], WB)}
+        expr = pct_change("now", "last_week")
+        stock = report.securities.get(KCB_TICKERS.get(ticker, ticker)) if report else None
+        second = second_reading(stock["change_pct"], src) if stock else None
+        out.append(Mover(ticker, SHEET_NAMES.get(ticker, ticker), evaluate(expr, inputs), inputs, expr, second))
+    return out
 
-    def listed(group: list[tuple[float, str, str]]) -> tuple[str, str]:
-        shown = [figs.add(f"move_{t}", f"{n} week-on-week change", PLAIN_PCT, 1, {"change": published(v, src)},
-                          flag=LARGE_CAP_FLAG if not figs.items else "") for v, n, t in group]
-        return join_names([n for _, n, _ in group]), join_names(shown) + (" respectively" if len(group) > 1 else "")
 
-    nasi = next((f["value"] for f in (indices_block(m).get("figures") or []) if f["key"] == "nasi_wow"), None)
-    down = (nasi < 0) if nasi is not None else len(losers) >= len(gainers)
-    lead, other = (losers, gainers[:2]) if down else (gainers, losers[:2])
+def ranked(movers: list[Mover]) -> tuple[list[Mover], list[Mover]]:
+    """(up to three gainers, up to three losers).  A change of exactly zero is neither; a tie on the unrounded change
+    keeps the order given (the sheet's row order), because the sort is stable."""
+    gainers = sorted((x for x in movers if x.change > 0), key=lambda x: -x.change)[:3]
+    losers = sorted((x for x in movers if x.change < 0), key=lambda x: x.change)[:3]
+    return gainers, losers
+
+
+def attribution(figs: Figures, gainers: list[Mover], losers: list[Mover], down: bool, prefix: str, flag: str = "",
+                names: Optional[dict[str, str]] = None) -> tuple[str, tuple[str, str], str, Optional[tuple[str, str]]]:
+    """(lead word, (lead names, their changes), other word, (other names, their changes) or None), the losses leading
+    when ``down``; an empty lead group swaps with the other."""
+    lead, other = (losers, gainers) if down else (gainers, losers)
     lead_word, other_word = ("losses", "gains") if down else ("gains", "losses")
     if not lead:
         lead, other, lead_word, other_word = other, [], other_word, lead_word
-    a, b = listed(lead)
+
+    def listed(group: list[Mover]) -> tuple[str, str]:
+        shown = []
+        for x in group:
+            shown.append(figs.add(f"{prefix}_{x.ticker}", f"{x.name} week-on-week change", PLAIN_PCT, 1, x.inputs, x.expr,
+                                  flag=flag if not figs.items else ""))
+            if x.second:
+                figs.items[-1]["second"] = x.second
+        printed = [(names or {}).get(x.ticker, x.name) for x in group]
+        return join_names(printed), join_names(shown) + (" respectively" if len(group) > 1 else "")
+
+    return lead_word, listed(lead), other_word, listed(other) if other else None
+
+
+def large_caps_block(m: Market) -> dict[str, Any]:
+    title = "Market Performance: large-cap movers"
+    form = m.inputs.analyst
+    report = m.inputs.kcb_weekly
+    names: list[Any] = []
+    unknown: list[str] = []
+    if m.inputs.equities_book is not None:
+        try:
+            movers = sheet_movers(m)
+        except WorkbookError as exc:
+            return unavailable_block("large_caps", title, f"{WB}: {exc}.",
+                                     f"The {WB.lower()} with its '{equities_workbook.GAINERS_SHEET}' sheet updated for the "
+                                     f"week. {UPLOAD}")
+        flag = ""
+        sources = [{"name": f"{WB}, '{equities_workbook.GAINERS_SHEET}'"}]
+        notes = [f"The large caps and their prices are read from the {WB.lower()}'s '{equities_workbook.GAINERS_SHEET}' "
+                 "sheet (the investments team's rule): up to three rises and up to three falls."]
+        if report:
+            sources.append({"name": f"{kcb.SOURCE_NAME} weekly report, {report.report_date.isoformat()}"})
+        else:
+            notes.append("KCB IB's weekly report is not among this week's inputs, so no change has a second reading.")
+    else:
+        if report is None:
+            return unavailable_block("large_caps", title, *NEED_KCB_WEEKLY)
+        names = form.field("large_caps")
+        if not names:
+            return unavailable_block("large_caps", title, *form.why(analyst.EQ, ["large_caps"]))
+        src = f"{kcb.SOURCE_NAME} weekly report, {report.report_date.isoformat()}"
+        movers = []
+        for cell in names:
+            name = " ".join(str(cell.value).split())
+            ticker = LARGE_CAP_TICKERS.get(name.lower())
+            stock = report.securities.get(ticker) if ticker else None
+            if stock is None:
+                unknown.append(name)
+                continue
+            movers.append(Mover(ticker, name, stock["change_pct"], {"change": published(stock["change_pct"], src)}))
+        flag, sources = LARGE_CAP_FLAG, [{"name": src}]
+        notes = [f"No {WB.lower()} is among this week's inputs, so the movers are picked from the large-cap list by KCB IB's "
+                 f"week-on-week changes, not from the workbook's '{equities_workbook.GAINERS_SHEET}' sheet.",
+                 f"The large-cap list is the one typed under \"{analyst.FORM}\"." if analyst.is_typed(names[0]) else
+                 "The large-cap list is read from the equities workbook ('Market PE & Dividend Yield')."]
+    gainers, losers = ranked(movers)
+    if not losers and not gainers:
+        return unavailable_block("large_caps", title, "None of the large caps moved over the week, or none could be matched "
+                                 "to a ticker.", "Check the large-cap list.")
+    figs = Figures()
+    nasi = next((f["value"] for f in (indices_block(m).get("figures") or []) if f["key"] == "nasi_wow"), None)
+    down = (nasi < 0) if nasi is not None else len(losers) >= len(gainers)
+    lead_word, (a, b), other_word, other = attribution(figs, gainers, losers, down, "move", flag)
     text = (f"The equities market performance was mainly driven by {lead_word} recorded by large-cap stocks such as {a} of {b}.")
     if other:
-        c, d = listed(other)
-        text += (f" However, the performance was {'supported' if down else 'weighed down'} by {other_word} recorded by "
-                 f"large-cap stocks such as {c} of {d}.")
-    notes = [f"The large-cap list is the one typed under \"{analyst.FORM}\"." if analyst.is_typed(names[0]) else
-             "The large-cap list is read from the equities workbook ('Market PE & Dividend Yield')."]
+        text += (f" However, the performance was {'supported' if lead_word == 'losses' else 'weighed down'} by {other_word} "
+                 f"recorded by large-cap stocks such as {other[0]} of {other[1]}.")
     if unknown:
         notes.append(f"Not matched to a ticker in KCB's report and left out: {join_names(unknown)}.")
-    return computed_block("large_caps", title, text, figs.items, sources=[{"name": src}] + _typed_sources(m.inputs, *names),
+    return computed_block("large_caps", title, text, figs.items, sources=sources + _typed_sources(m.inputs, *names),
                           notes=notes)
 
 
