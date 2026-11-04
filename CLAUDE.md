@@ -106,6 +106,17 @@ docker compose down
 - **Tests** are not in the runtime image: `docker build --target test -t cytonn-api-test backend`, then `docker run --rm --network none cytonn-api-test` (no `.env`, no data folder, no network; the PostgreSQL smoke tests are deselected).
 - **Never run `docker compose config` without `--quiet` or `--no-env-resolution`:** it expands `env_file` and prints the database URL with its password.
 
+### Run locally with Docker (SQLite)
+
+`docker-compose.local.yml` (2026-11-04) runs the stack on SQLite on this machine only: `CYTONN_REQUIRE_POSTGRES=0`, `CYTONN_DATABASE_URL` forced empty (`environment` beats `env_file`), and `/app/data` on the named volume `cytonn_local_data` instead of the bind mount, so the real `backend/data` and its `app.db` are never touched. Compose never loads it on its own and `deploy/deploy.sh` names its files, so the droplet still requires PostgreSQL.
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.local.yml down
+```
+
+**Never put the hosted database URL in the local `.env`.** The override blanks it for the container, but a native run reads `.env` directly and would write to the hosted database.
+
 ### Local model speed settings (development only)
 
 Four opt-in environment variables shorten a local (Ollama) draft. They are read in one place, `read_local_settings()` in `digital_payments/providers/local_provider.py`, when a provider is created, and `LocalProvider` and `LocalNarrativeProvider` both use them. The Anthropic provider never reads them. Unset, empty or blank means the default, which is the behaviour before they existed (the requests are pinned by `backend/tests/fixtures/local_provider_requests_before.json`).
