@@ -12,8 +12,8 @@ from matplotlib import font_manager
 from matplotlib.font_manager import FontProperties
 from PIL import Image
 
-from cytonn_weekly.charts.draw import FONT, alt_text, average_label, render_png, subtitle
-from cytonn_weekly.charts.series import average, read_series, windowed
+from cytonn_weekly.charts.draw import FONT, alt_text, average_label, render_png, subtitle, ticks
+from cytonn_weekly.charts.series import ChartSeries, average, read_series, windowed
 from cytonn_weekly.charts.specs import NASI_PE, NASI_YIELD
 from tests.chart_helpers import FRIDAY, book, day
 
@@ -43,7 +43,7 @@ def test_the_picture_is_6_by_3_inches_at_200_dpi_and_not_blank():
 
 def test_navy_draws_the_line_and_light_blue_only_fills_under_it():
     _, px = pixels(render_png(series(weeks=400)))
-    assert sum(1 for p in px if p == NAVY_RGB) > 500                   # the series and average lines, and the label
+    assert sum(1 for p in px if p == NAVY_RGB) > 500                   # the series line and the average label
     assert sum(1 for p in px if near(p, FILL_RGB)) > 10_000            # the area under the line
     assert not any(near(p, SKY_RGB, tol=2) for p in px)                # never at full strength: no light blue text or line
 
@@ -101,14 +101,44 @@ def test_the_figure_shows_the_specs_window_the_line_the_fill_and_the_average():
     fig = figure(s)
     ax = fig.axes[0]
     left, right = (num2date(x).date() for x in ax.get_xlim())
-    assert (left, right) == (shown[0].day, shown[-1].day)                    # the window, not every point read
+    assert (left, right) == (date(2019, 10, 1), shown[-1].day)               # opens on the first tick, not every point read
+    assert left < shown[0].day < date(2019, 10, 8)
     line, level = ax.get_lines()
     assert to_hex(line.get_color()) == NAVY.lower() and len(line.get_xdata()) == len(shown)
-    assert to_hex(level.get_color()) == AVERAGE_RED.lower() == "#c00000" and level.get_linestyle() == "--"
+    assert to_hex(level.get_color()) == AVERAGE_RED.lower() == "#ff0000" and level.get_linestyle() == "--"
     label = next(t for t in ax.texts if t.get_text().strip() == average_label(s, a))
-    assert to_hex(label.get_color()) == AVERAGE_RED.lower()                  # the label shares the average line's red
+    assert to_hex(label.get_color()) == NAVY.lower() != AVERAGE_RED.lower()  # only the dashed line is red
     assert float(level.get_ydata()[0]) == float(a.value)                      # the line sits at the average since 2009
     fills = [c for c in ax.collections if isinstance(c, PolyCollection)]
     assert len(fills) == 1 and to_hex(fills[0].get_facecolor()[0], keep_alpha=False) == SKY.lower()
     texts = [t.get_text().strip() for t in ax.texts + fig.texts]
     assert average_label(s, a) in texts and subtitle(a) in texts
+
+
+def tick_labels(week_ending):
+    return [f"{d:%b-%y}" for d in ticks(ChartSeries(NASI_PE, week_ending, "B", (), (), None))]
+
+
+def test_the_ticks_run_every_third_month_from_the_window_start_month_to_the_report_month():
+    labels = tick_labels(date(2026, 10, 23))
+    assert (labels[0], labels[1], labels[2], labels[-1], len(labels)) == ("Oct-19", "Jan-20", "Apr-20", "Oct-26", 29)
+    assert all(label[:3] in ("Jan", "Apr", "Jul", "Oct") for label in labels)
+    assert tick_labels(date(2026, 10, 30)) == labels                   # the same for every week of the month
+    nov = tick_labels(date(2026, 11, 6))
+    assert (nov[0], nov[1], nov[-1], len(nov)) == ("Nov-19", "Feb-20", "Nov-26", 29)
+    jan = tick_labels(date(2027, 1, 8))
+    assert (jan[0], jan[1], jan[-1], len(jan)) == ("Jan-20", "Apr-20", "Jan-27", 29)
+
+
+def test_the_figure_prints_the_ticks_vertically_and_none_overlaps_or_runs_off_the_picture():
+    from cytonn_weekly.charts.draw import figure
+
+    fig = figure(series(weeks=931))
+    ax = fig.axes[0]
+    fig.canvas.draw()
+    shown = [t for t in ax.get_xticklabels() if t.get_text()]
+    assert [t.get_text() for t in shown] == tick_labels(FRIDAY) and len(shown) == 29
+    assert all(t.get_rotation() == 90 for t in shown)
+    boxes = [t.get_window_extent(fig.canvas.get_renderer()) for t in shown]
+    assert all(a.x1 <= b.x0 for a, b in zip(boxes, boxes[1:]))
+    assert min(b.y0 for b in boxes) >= 0 and min(b.x0 for b in boxes) >= 0 and max(b.x1 for b in boxes) <= fig.bbox.width

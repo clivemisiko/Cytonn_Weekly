@@ -14,15 +14,15 @@ from datetime import date
 from typing import Optional
 
 from matplotlib.backends.backend_agg import FigureCanvasAgg
-from matplotlib.dates import DateFormatter, MonthLocator
+from matplotlib.dates import DateFormatter
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 
-from cytonn_weekly.charts.series import Average, ChartSeries, average, windowed
+from cytonn_weekly.charts.series import Average, ChartSeries, average, window_start, windowed
 from cytonn_weekly.common.formatting import MULTIPLE, PCT, fmt_value
 
-NAVY = "#013660"          # the series line
-AVERAGE_RED = "#C00000"   # the average line and its label (placeholder red: check against the published chart)
+NAVY = "#013660"          # the series line and the average label
+AVERAGE_RED = "#FF0000"   # the dashed average line only, pure red as the published chart draws it
 SKY = "#6FC3FF"           # the area under the series only: never text, never a line that carries meaning
 AXES = "#5B6B7A"          # axes, ticks, tick labels and the subtitle
 FONT = "DejaVu Sans"      # bundled with matplotlib
@@ -58,6 +58,17 @@ def alt_text(series: ChartSeries, avg: Optional[Average]) -> str:
     return text
 
 
+def ticks(series: ChartSeries) -> list[date]:
+    """The first of the window-start month, then every third month, up to the report month (as the published chart)."""
+    day, last = window_start(series), series.week_ending.replace(day=1)
+    out = []
+    while day <= last:
+        out.append(day)
+        month = day.month + 2
+        day = day.replace(year=day.year + month // 12, month=month % 12 + 1)
+    return out
+
+
 def render_png(series: ChartSeries) -> bytes:
     """The chart as PNG bytes.  Only a drawn series (``series.drawn``) is rendered."""
     out = io.BytesIO()
@@ -83,20 +94,22 @@ def figure(series: ChartSeries) -> Figure:
     fig.subplots_adjust(left=0.09, right=0.98, top=0.86, bottom=0.13)
     ax = fig.add_subplot()
     ax.set_ylim(floor, high + pad)
-    ax.set_xlim(xs[0], xs[-1])
+    marks = ticks(series)
+    ax.set_xlim(marks[0] if series.points[0].day < marks[0] else xs[0], xs[-1])   # the axis opens on the first tick when the series reaches back to it
     ax.fill_between(xs, ys, floor, color=SKY, alpha=0.35, linewidth=0)
     ax.plot(xs, ys, color=NAVY, linewidth=1.6)
     if avg is not None:
         ax.axhline(level, color=AVERAGE_RED, linewidth=1.1, linestyle=(0, (5, 3)))
-        ax.text(xs[0], level, " " + average_label(series, avg), color=AVERAGE_RED, fontsize=8, fontfamily=FONT,
+        ax.text(xs[0], level, " " + average_label(series, avg), color=NAVY, fontsize=8, fontfamily=FONT,
                 va="bottom", ha="left")
         fig.text(0.09, 0.92, subtitle(avg), color=AXES, fontsize=8, fontfamily=FONT, ha="left", va="center")
 
     unit = series.spec.unit
-    ax.xaxis.set_major_locator(MonthLocator(bymonth=(1, 7)))
+    ax.set_xticks(marks)
     ax.xaxis.set_major_formatter(DateFormatter("%b-%y"))
     ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:.1f}{'%' if unit == 'pct' else 'x'}"))
     ax.tick_params(colors=AXES, labelcolor=AXES, labelsize=7, labelfontfamily=FONT)
+    ax.tick_params(axis="x", labelrotation=90, labelsize=6)    # 6 pt, not 7: at 7 the vertical labels run 4 px past the foot of the picture
     for side in ("top", "right"):
         ax.spines[side].set_visible(False)
     for side in ("left", "bottom"):
