@@ -109,14 +109,12 @@ PLACEMENTS_FLAG = ("its source is unconfirmed: it was named as the CBK bulletin 
                    "neither carries it. Confirm the figure with the fixed income team")
 
 
-# "Yields at Issue" is not in the workbook's issue list.  These are the figures #38.2026 printed,
-# by column; that table's fixed rows are known to be stale or shifted, so every one needs the
-# fixed income analysts' confirmation, and the row is flagged until they give it.  A yield typed
-# under "Weekly analyst inputs" replaces the figure here, as an analyst input.
-YIELDS_AT_ISSUE = {"2018_10y": 7.3, "2018_30y": 8.3, "2019_12y": 6.2, "2021_13y": 10.4, "2024_7y": 9.9}
-YIELDS_AT_ISSUE_NOTE = ("Not confirmed: \"Yields at Issue\" is not in the workbook's issue list. These are the figures "
-                        "printed in Cytonn Weekly #38.2026, whose fixed rows are known to be stale or shifted. "
-                        "Confirm each with the fixed income analysts before accepting.")
+# "Yields at Issue" is not in the workbook's issue list.  These are the yields in the Eurobond table of
+# the Cytonn Monthly of October 2026, keyed by (issue year, maturity year), never by the tenor label,
+# which differs between the report and the workbook (the 2021 issue: "13-year" and "12-yr").  A yield
+# typed under "Weekly analyst inputs" replaces the figure here, as an analyst input.
+YIELDS_AT_ISSUE = {(2018, 2028): 7.3, (2018, 2048): 8.3, (2019, 2032): 7.9, (2021, 2034): 6.2, (2024, 2031): 10.4}
+YIELDS_AT_ISSUE_SOURCE = "the Eurobond table of the Cytonn Monthly of October 2026"
 # The curve is described as it is printed: the 2028 bond is "the 10-year Eurobond issued in 2018".
 EUROBOND_NAMES = {"2018_10y": "10-year Eurobond issued in 2018", "2018_30y": "30-year Eurobond issued in 2018",
                   "2019_12y": "12-year Eurobond issued in 2019", "2021_13y": "13-year Eurobond issued in 2021",
@@ -690,7 +688,7 @@ def eurobond_blocks(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bullet
         return [unavailable_block("eurobonds", title, "Neither the CBK Weekly Bulletin nor the fixed income workbook for this "
                                   f"week is among this week's inputs, and no Eurobond yields are typed under \"{analyst.FORM}\".",
                                   f"The bulletin or the workbook. {UPLOAD}")]
-    issues = [{"key": spec[0], "head": spec[1], "maturity": spec[5], "series": s}
+    issues = [{"key": spec[0], "head": spec[1], "maturity": spec[5], "bond": (int(spec[1][0]), spec[5]), "series": s}
               for spec, s in zip(fi_workbook.EUROBOND_ISSUES, series_list)]
     # The table's days: the last six trading days up to the week's Thursday that any source has.
     known = {r["date"] for r in (bulletin.market if bulletin else [])}
@@ -813,19 +811,24 @@ def eurobond_blocks(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bullet
     # (the workbook's, or the one typed on the form).
     detail_rows = []
     typed_cells = []
+    no_yield = []
+    any_typed_yield = False
     for it in issues:
         s = it["series"]
         issue = s.issue if s is not None else None
         at_issue = s.yield_at_issue if s is not None else None
         row: dict[str, Any] = {"issue": f"{it['head'][0]} {it['head'][1]}", "amount_bn": None, "years": None, "_origin": ANALYST}
         if at_issue is not None:
+            any_typed_yield = True
             row["yield_at_issue"] = at_issue.number
             row["_note"] = (f"Not auto-verified: the yield at issue is an {at_issue.source}. The amount and years to maturity "
                             "are worked out again from the issue list; the typed values are not checked.")
         else:
-            row.update({"yield_at_issue": YIELDS_AT_ISSUE.get(it["key"]), "_note": YIELDS_AT_ISSUE_NOTE,
-                        "incomplete": {"yield_at_issue": "not confirmed by the analysts (printed in #38.2026, whose fixed rows "
-                                                         "are stale)"}})
+            row["yield_at_issue"] = YIELDS_AT_ISSUE.get(it["bond"])
+            if row["yield_at_issue"] is None:
+                no_yield.append(row["issue"])
+            row["_note"] = (f"Not auto-verified: the yield at issue is from {YIELDS_AT_ISSUE_SOURCE}. The amount and years to "
+                            "maturity are worked out again from the issue list; the typed values are not checked.")
         typed_cells += [at_issue] + list((issue or {}).values())
         if issue is not None and issue["amount_before"].number is not None and issue["maturity"].day is not None:
             row["amount_mn"] = issue["amount_before"].number
@@ -834,7 +837,7 @@ def eurobond_blocks(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bullet
             row["years"] = float(evaluate(["div", "days_to_maturity", 365], row))
         detail_rows.append(row)
     on_form = any(analyst.is_typed(c) for c in typed_cells)
-    if any(r["amount_bn"] is not None or "incomplete" not in r for r in detail_rows):
+    if any_typed_yield or any(r["amount_bn"] is not None for r in detail_rows):
         details = table_block(
             "eurobonds_issues", "Kenya Eurobonds: amount issued, years to maturity and yield at issue",
             [{"key": "issue", "label": "Issue", "fmt": TEXT},
@@ -849,6 +852,12 @@ def eurobond_blocks(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bullet
         # Reviewed here row by row; the Word export prints these rows inside the performance table, as the issue does.
         details["export"] = False
         blocks.append(details)
+        if no_yield:
+            blocks.append(unavailable_block(
+                "eurobond_yield_at_issue", f"{title}: yield at issue",
+                f"No yield at issue is stored or typed for: {', '.join(no_yield)}. It is left blank, never taken from another bond.",
+                f"Type it under \"{analyst.FORM}\", Eurobond issues, or add it to YIELDS_AT_ISSUE in fixed_income/weekly.py "
+                "from a published Cytonn table."))
     else:
         warnings.append("Kenya Eurobonds: the Amount Issued, Years to Maturity and Yields at Issue rows are left out; they need "
                         f"the Eurobond issues, typed under \"{analyst.FORM}\" or in the {WB.lower()}'s issue list.")

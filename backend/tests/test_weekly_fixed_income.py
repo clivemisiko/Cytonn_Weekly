@@ -302,6 +302,56 @@ def test_liquidity_volumes_eurobonds_shilling_and_reserves_reproduce_the_publish
         "14,930.0", "15,042.0", "6.1", "0.7%")
 
 
+# The yields at issue in the Eurobond table of the Cytonn Monthly of October 2026, by the report's column head.
+MONTHLY_YIELDS_AT_ISSUE = {"2018 10-year issue": "7.3%", "2018 30-year issue": "8.3%", "2019 12-year issue": "7.9%",
+                           "2021 13-year issue": "6.2%", "2024 7-year issue": "10.4%"}
+
+
+def yields_at_issue(review):
+    return {r["issue"]: r["yield_at_issue"] for r in blocks(review)["eurobonds_issues"]["rows"]}
+
+
+def test_each_eurobond_gets_its_own_yield_at_issue(root):
+    review = build(root)
+    assert yields_at_issue(review) == MONTHLY_YIELDS_AT_ISSUE
+    grid = blocks(review)["eurobonds_table"]["export_grid"]
+    assert next(r for r in grid if r[0] == "Yields at Issue")[1:] == ["7.3%", "8.3%", "7.9%", "6.2%", "10.4%"]
+    assert "eurobond_yield_at_issue" not in blocks(review)
+
+
+def test_the_yield_at_issue_follows_the_bond_when_columns_move_or_are_renamed(root, monkeypatch):
+    from cytonn_weekly.weekly import fi_workbook
+    specs = {s[0]: s for s in fi_workbook.EUROBOND_ISSUES}
+    # The 2021 issue renamed as the workbook heads it ("12-yr"), the order reversed, and a column inserted
+    # (read from the 2024 issue's workbook column, so the synthetic workbook has it).
+    renamed = ("2021_12y", ("2021", "12-year issue")) + specs["2021_13y"][2:]
+    inserted = ("2025_11y", ("2025", "11-year issue")) + specs["2024_7y"][2:5] + (2036,) + specs["2024_7y"][6:]
+    order = (specs["2024_7y"], inserted, renamed, specs["2019_12y"], specs["2018_30y"], specs["2018_10y"])
+    monkeypatch.setattr(fi_workbook, "EUROBOND_ISSUES", order)
+    monkeypatch.setitem(fiw.EUROBOND_NAMES, "2021_12y", "12-year Eurobond issued in 2021")
+    monkeypatch.setitem(fiw.EUROBOND_NAMES, "2025_11y", "11-year Eurobond issued in 2025")
+    review = build(root)
+    by, got = blocks(review), yields_at_issue(review)
+    assert got == {"2024 7-year issue": "10.4%", "2025 11-year issue": "-", "2021 12-year issue": "6.2%",
+                   "2019 12-year issue": "7.9%", "2018 30-year issue": "8.3%", "2018 10-year issue": "7.3%"}
+    missing = by["eurobond_yield_at_issue"]
+    assert missing["kind"] == "unavailable" and "2025 11-year issue" in missing["reason"]
+
+
+def test_a_bond_with_no_stored_yield_at_issue_is_unavailable_and_named(root, monkeypatch):
+    monkeypatch.delitem(fiw.YIELDS_AT_ISSUE, (2019, 2032), raising=False)
+    review = build(root)
+    got = yields_at_issue(review)
+    assert got["2019 12-year issue"] == "-"      # never a neighbour's value
+    assert {k: v for k, v in got.items() if k != "2019 12-year issue"} == {
+        k: v for k, v in MONTHLY_YIELDS_AT_ISSUE.items() if k != "2019 12-year issue"}
+    missing = blocks(review)["eurobond_yield_at_issue"]
+    assert missing["kind"] == "unavailable" and "2019 12-year issue" in missing["reason"]
+    assert "2021" not in missing["reason"] and "2018" not in missing["reason"]
+    [item] = items(review, "Kenya Eurobonds: yield at issue")
+    assert item.status == "flagged"
+
+
 def test_published_figures_are_clean_and_typed_ones_are_analyst_input(root):
     review = build(root)
     assert {i.status for i in items(review, "Money Markets, T-Bills Primary Auction:")} == {"clean"}
@@ -326,7 +376,8 @@ def test_what_the_spec_says_to_flag_is_flagged(root):
     placements = flagged["Money Market Performance: 3-month bank placements (9.5%)"]
     assert "its source is unconfirmed" in placements.detail[0].message
     assert not any(ref.startswith("Net domestic borrowing against the pro-rated target: Pro-rated") for ref in flagged)
-    assert sum(1 for ref in flagged if "amount issued, years to maturity and yield at issue" in ref) == 5   # Yields at Issue
+    # The yields at issue are the October 2026 Monthly's, per bond: no longer flagged as unconfirmed.
+    assert not any("amount issued, years to maturity and yield at issue" in ref for ref in flagged)
     assert any(ref == "T-Bonds: recommended bidding range (the analysts' recommendation) (not available yet)" for ref in flagged)
     assert {"Kenya Shilling: what pressures the shilling (carried forward)", "Rates and outlook (closing paragraph) (carried forward)"} <= set(flagged)
     assert not review.is_approvable
