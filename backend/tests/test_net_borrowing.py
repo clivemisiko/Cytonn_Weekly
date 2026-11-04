@@ -459,7 +459,7 @@ def test_without_a_workbook_or_a_typed_log_the_sentence_is_worked_out_from_cbk(t
     assert net.context["note"] == ("20 CBK results from 2026-07-01 to 2026-10-05 (14 Treasury bill auctions, 6 Treasury bond "
                                    "auctions): accepted amounts less redemptions. No switch auction is counted.")
     target = by_ref["Net domestic borrowing against the pro-rated target: Pro-rated net domestic borrowing target (Kshs bn) (242.5)"]
-    assert target.status == "flagged" and target.context["note"] == (
+    assert target.status == "not_auto_verified" and target.context["note"] == (   # typed target: never clean, no longer flagged
         "96 days from 2026-07-01 to the latest auction's value date, 2026-10-05, over a 364-day year.")
     # the switches found are a note on the part and on the log, for information: never a review item, never a flag
     listed = ("Switch auctions found, excluded by rule: 15-07-2026 (Kshs 7,954.71 mn), 26-08-2026 (Kshs 21,816.46 mn), "

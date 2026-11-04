@@ -325,21 +325,21 @@ def test_what_the_spec_says_to_flag_is_flagged(root):
     flagged = {i.ref: i for i in review.review_items if i.status == "flagged"}
     placements = flagged["Money Market Performance: 3-month bank placements (9.5%)"]
     assert "its source is unconfirmed" in placements.detail[0].message
-    target = next(i for ref, i in flagged.items() if ref.startswith("Net domestic borrowing against the pro-rated target: Pro-rated"))
-    message = target.detail[0].message
-    assert "has not confirmed which figure is the net domestic borrowing target" in message
-    assert "The app used" in message and "Budget workbook's 'Borrowings' sheet" in message
+    assert not any(ref.startswith("Net domestic borrowing against the pro-rated target: Pro-rated") for ref in flagged)
     assert sum(1 for ref in flagged if "amount issued, years to maturity and yield at issue" in ref) == 5   # Yields at Issue
     assert any(ref == "T-Bonds: recommended bidding range (the analysts' recommendation) (not available yet)" for ref in flagged)
     assert {"Kenya Shilling: what pressures the shilling (carried forward)", "Rates and outlook (closing paragraph) (carried forward)"} <= set(flagged)
     assert not review.is_approvable
 
 
-def test_the_target_flag_names_the_cell_it_used_and_the_one_it_did_not_read():
-    from cytonn_weekly.weekly.workbook import Cell
-    msg = fiw.target_flag(Cell(919.36, "Government Borrowing", 40, 3))
-    assert "919.36 bn" in msg and "Government Borrowing" in msg and "C40" in msg and "only target the app reads" in msg
-    assert "does not read that workbook" in msg and "not known here" in msg
+def test_the_settled_target_is_not_flagged_and_stays_not_auto_verified(root):
+    # The team confirmed the target (Exchequer releases, 2026-11-03): no flag, but a typed figure is never clean.
+    review = build(root)
+    b = blocks(review)["borrowing"]
+    assert not any(f.get("flag") for f in b["figures"] if f["key"] in ("prorated_target", "ratio"))
+    for label in ("Pro-rated net domestic borrowing target", "Net borrowing as a share of the pro-rated target"):
+        [item] = [i for i in items(review, "Net domestic borrowing against the pro-rated target:") if label in i.ref]
+        assert item.status == "not_auto_verified"
 
 
 def test_the_borrowing_sentence_is_worked_out_and_never_says_ahead(root):

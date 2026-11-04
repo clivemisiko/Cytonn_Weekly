@@ -515,8 +515,9 @@ def test_the_form_is_read_and_saved_through_the_api(client, tmp_path):
 # ---------------------------------------------------------------------------
 
 NEXT = Week(date(2026, 10, 9))
-SLOW = {"large_caps", "foreign_prior_year", "universe_month_end", "fiscal_year_start", "eurobond_issues", "eurobond_yields", "remittances", "universe", "cmmf_last_week"}
-WEEKLY = {"placements", "pe", "pe_average", "dividend_yield", "dividend_yield_average", "borrowing_target", "mmf", "interbank",
+SLOW = {"large_caps", "foreign_prior_year", "universe_month_end", "fiscal_year_start", "borrowing_target", "eurobond_issues", "eurobond_yields",
+        "remittances", "universe", "cmmf_last_week"}
+WEEKLY = {"placements", "pe", "pe_average", "dividend_yield", "dividend_yield_average", "mmf", "interbank",
           "borrowing_log", "foreign_history"}
 
 
@@ -582,28 +583,25 @@ def test_a_carried_weekly_value_is_read_by_no_builder_until_it_is_confirmed(last
     waiting = inputs.WeeklyInputs(NEXT, last_week)
     form = waiting.analyst
     assert form.field("placements") is None and form.field("pe") is None and form.mmf() is None and form.interbank() == []
-    assert form.borrowing()["target_bn"] is None and form.foreign_history() == []
+    assert form.borrowing()["target_bn"].number == 910.0 and form.foreign_history() == []
     assert form.field("large_caps") and form.universe() is not None and any(form.eurobonds())      # slow ones are used at once
     borrowing = fi.fiw.borrowing_blocks(waiting, NEXT, None, [])[0]
     assert borrowing["kind"] == "unavailable" and borrowing["reason"] == (
-        "Net domestic borrowing target for the fiscal year is carried from the week ending 2026-10-02 and has not been "
-        "confirmed for this week. Auction log for the fiscal year is carried from the week ending 2026-10-02 and has not been "
+        "Auction log for the fiscal year is carried from the week ending 2026-10-02 and has not been "
         "confirmed for this week. CBK's auction results could not be fetched from centralbank.go.ke.")
     assert borrowing["unblock"] == "Complete or confirm it under \"Weekly analyst inputs\" on the start screen and draft again."
-    # with CBK's results the log is not needed: only the target still waits
+    # with CBK's results the log is not needed, and the carried target is used at once (it is a slow field)
     from tests.test_net_borrowing import RELEASES
     settled = RELEASES + [dict(r, value_date="2026-10-12") for r in RELEASES if (r["value_date"], r["kind"]) == ("2026-10-05", "tbill")]
     with_cbk = fi.fiw.borrowing_blocks(inputs.WeeklyInputs(NEXT, last_week), NEXT, {"releases": settled, "warnings": []}, [])
-    assert [b["kind"] for b in with_cbk] == ["unavailable"] and with_cbk[0]["reason"] == (
-        "Net domestic borrowing target for the fiscal year is carried from the week ending 2026-10-02 and has not been "
-        "confirmed for this week.")
+    assert with_cbk[0]["kind"] == "computed" and "of its pro-rated net domestic borrowing target" in with_cbk[0]["body_md"]
     # confirming a value as it stands, or typing over it, makes it this week's
-    save_week(last_week, NEXT, confirm=["borrowing_target", "pe"], fields={"placements": "9.25"})
+    save_week(last_week, NEXT, confirm=["pe"], fields={"placements": "9.25"})
     form = inputs.WeeklyInputs(NEXT, last_week).analyst
     assert form.field("borrowing_target").number == 910.0 and form.field("pe").number == 8.0 and form.field("placements").number == 0.0925
     assert item("pe", last_week, NEXT)["needs_confirmation"] is False and item("pe", last_week, NEXT)["carried"]["from"] == "2026-10-02"
     assert item("placements", last_week, NEXT)["carried"] is None            # typed over: no longer a carried value
-    assert {u["key"] for u in analyst.status(NEXT, last_week)["unconfirmed"]} == WEEKLY - {"borrowing_target", "pe", "placements"}
+    assert {u["key"] for u in analyst.status(NEXT, last_week)["unconfirmed"]} == WEEKLY - {"pe", "placements"}
     with pytest.raises(InputError, match="nothing waits to be confirmed for 'pe'"):
         save_week(last_week, NEXT, confirm=["pe"])
 

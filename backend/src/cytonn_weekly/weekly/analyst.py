@@ -30,8 +30,9 @@ Rules:
 
 * **Last week's form can start this week's** (``carry_forward``).  Every carried value is marked
   with the week it came from.  What changes slowly (the Eurobond issue list, year opens, targets,
-  DPS, shares, tangible book, remittances, the fund table's source label) is carried and used.  What changes every week (the
-  placements rate, the fund table, the P/E, the borrowing target and log, the interbank rates, the
+  DPS, shares, tangible book, remittances, the fund table's source label, the net domestic borrowing target) is carried
+  and used.  What changes every week (the
+  placements rate, the fund table, the P/E, the borrowing log, the interbank rates, the
   foreign positions) is carried but **not used until it is confirmed**: an unconfirmed value is
   read by no builder, so a draft can never rest on last week's figure by oversight.
 * **A running total can be suggested, never assumed** (equities/weekly.running_total_suggestions):
@@ -85,8 +86,8 @@ MMF_SOURCE_DEFAULT = "Daily Nation"      # printed under the fund table; which n
 
 # Carry-forward (the team's rule, 2026-10-12).  Slow-changing items carry from last week's form and are used as
 # they are; weekly-changing ones carry but must be confirmed before any builder reads them.
-SLOW_FIELDS = ("large_caps", "foreign_prior_year", "universe_month_end", "fiscal_year_start", "mmf_source")
-WEEKLY_FIELDS = ("placements", "pe", "pe_average", "dividend_yield", "dividend_yield_average", "borrowing_target")
+SLOW_FIELDS = ("large_caps", "foreign_prior_year", "universe_month_end", "fiscal_year_start", "mmf_source", "borrowing_target")
+WEEKLY_FIELDS = ("placements", "pe", "pe_average", "dividend_yield", "dividend_yield_average")
 SLOW_TABLES = ("eurobond_issues", "eurobond_yields", "remittances", "universe", "borrowing_redemptions")
 WEEKLY_TABLES = ("mmf", "interbank", "borrowing_log", "foreign_history")
 # Of the Universe of Coverage's columns, the ones that carry: prices do not (this Friday's is KCB IB's, last
@@ -176,8 +177,10 @@ FIELD_LIST = (
     Field("mmf_source", FI, "money_market", "Fund table source label", MMF_READ_FROM, "The source line under the fund table",
           "The table is copied from the e-paper issue of that Friday, or of the last working day of the week. Funds the team "
           "keeps its own rate for are typed like any other row.", kind=TEXT),
-    Field("borrowing_target", FI, "borrowing", "Net domestic borrowing target for the fiscal year", "National Treasury budget",
-          "Net domestic borrowing against the pro-rated target", "The full-year target. The pro-rated target is worked out.",
+    Field("borrowing_target", FI, "borrowing", "Net domestic borrowing target for the fiscal year",
+          "Exchequer releases (National Treasury)", "Net domestic borrowing against the pro-rated target",
+          "The full-year target from the Exchequer releases. It changes only when the National Treasury issues revised "
+          "estimates: type the revised figure then. Typed once, it is carried forward. The pro-rated target is worked out.",
           unit="Kshs bn", lo=1, hi=5000),
     Field("fiscal_year_start", FI, "borrowing", "Fiscal year starts on", "National Treasury (Kenya's fiscal year)",
           "Net domestic borrowing against the pro-rated target", "Optional: 1 July is used when this is empty. The net borrowing "
