@@ -140,8 +140,10 @@ def test_table_6_levels_meet_the_workbook_and_ocr_levels_confirmed_only_by_the_w
     assert "read by OCR from NSE daily price list of 2026-10-02" in nse10.detail and "no published second source" in nse10.detail
     banking = items(review, "Market Performance: Banking Sector index:")
     assert {i.status for i in banking} == {"not_auto_verified"}
-    assert blocks(review)["banking"]["body_md"] == ("During the week, the banking sector index decreased by 1.0% to 300.0 from "
-                                                    "303.0 recorded the previous week.")
+    assert blocks(review)["banking"]["body_md"] == (
+        "During the week, the banking sector index decreased by 1.0% to 300.0 from 303.0 recorded the previous week. This is "
+        "attributable to losses recorded by large cap stocks such as NCBA, Standard Chartered Bank and Equity of 2.2%, 1.5% "
+        "and 1.4% respectively.")
 
 
 def test_an_ocr_level_with_nothing_to_compare_or_that_disagrees_is_flagged(tmp_path, text_pdfs):
@@ -178,18 +180,6 @@ def test_afx_confirms_the_ocr_indices_only_while_its_page_is_the_fridays(root, m
     monkeypatch.setattr(eqw.afx, "parse_as_of", lambda html: "2026-10-05T16:00:00+03:00")
     assert items(build(root, today=date(2026, 10, 3), fetchers=with_afx),
                  "Market Performance: NSE 10 week-on-week change")[0].status == "not_auto_verified"   # the page is not the Friday's
-
-
-def test_the_large_cap_sentence_follows_the_teams_rule_and_is_always_flagged(root):
-    review = build(root)
-    b = blocks(review)["large_caps"]
-    assert b["body_md"] == (
-        "The equities market performance was mainly driven by losses recorded by large-cap stocks such as I&M Holdings, NCBA "
-        "and HFCB Group of 2.9%, 2.2% and 1.6% respectively. However, the performance was supported by gains recorded by "
-        "large-cap stocks such as Safaricom of 0.3%.")
-    assert "EABL" not in b["body_md"]   # EABL moved, but it is not on the workbook's large-cap list
-    flagged = [i for i in items(review, "Market Performance: large-cap movers:") if i.status == "flagged"]
-    assert len(flagged) == 1 and flagged[0].detail[0].message.startswith("I&M Holdings week-on-week change: check the names")
 
 
 def test_turnover_is_each_days_kes_over_that_days_cbk_rate(root):
@@ -364,8 +354,10 @@ def test_the_real_inputs_reproduce_the_published_week(real_root):
         "During the week, the equities market was on a downward trajectory, with NSE 20, NSE 25, NSE 10 and NASI losing by "
         "0.9%, 0.9%, 0.7% and 0.5%, respectively, taking the YTD performance to gains of 39.2%, 37.7%, 36.8% and 32.0% for "
         "NSE 10, NSE 20, NSE 25 and NASI respectively.")
-    assert by["banking"]["body_md"] == ("During the week, the banking sector index decreased by 1.3% to 289.6 from 293.5 recorded "
-                                        "the previous week.")
+    assert by["banking"]["body_md"] == (
+        "During the week, the banking sector index decreased by 1.3% to 289.6 from 293.5 recorded the previous week. This is "
+        "attributable to losses recorded by large cap stocks such as NCBA, Standard Chartered Bank and Equity of 2.2%, 1.5% "
+        "and 1.4% respectively.")
     assert by["turnover"]["body_md"] == ("During the week, equities turnover decreased by 51.0% to USD 17.5 mn from USD 35.8 mn "
                                          "recorded the previous week, taking the YTD total turnover to USD 3,053.1 mn.")
     # The issue printed the previous week's net buying as USD 0.5 mn; the workbook's 0.570927 rounds to 0.6.
@@ -384,13 +376,12 @@ def test_the_real_inputs_reproduce_the_published_week(real_root):
 
 
 def test_the_large_cap_rule_against_the_two_printed_sentences(real_root):
-    """The team's rule (the biggest movers on the workbook's list) does not reproduce either printed sentence."""
+    """The team's rule ('Gainers & Losers') names the stocks the Q3'2026 review printed: NCBA, Standard Chartered Bank
+    and Equity (2.2%, 1.5%, 1.4%), and EABL among the gainers."""
     text = blocks(build(real_root, boxes=PUBLISHED_BOXES))["large_caps"]["body_md"]
-    assert text == ("The equities market performance was mainly driven by losses recorded by large-cap stocks such as I&M Holdings, "
-                    "NCBA and HFCB Group of 2.9%, 2.2% and 1.6% respectively. However, the performance was supported by gains "
-                    "recorded by large-cap stocks such as Safaricom of 0.3%.")
-    # The Q3'2026 review printed NCBA, Standard Chartered Bank and Equity (2.2%, 1.5%, 1.4%), passing over I&M (2.9%) and HF
-    # (1.6%), and named EABL among the gainers, which is not on the workbook's list.  Hence the standing "check the names" flag.
+    assert text == ("The equities market performance was mainly driven by losses recorded by large-cap stocks such as NCBA, "
+                    "Standard Chartered Bank and Equity of 2.2%, 1.5% and 1.4% respectively. However, the performance was "
+                    "supported by gains recorded by large-cap stocks such as EABL and Safaricom of 0.8% and 0.3% respectively.")
 
 
 # #38.2026's Universe of Coverage table (week ending 25 September 2026), as published on cytonnreport.com (issue 891).

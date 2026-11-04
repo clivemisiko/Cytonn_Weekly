@@ -178,9 +178,11 @@ CHART_TITLES = tuple(spec.title for spec in SPECS.values())
 def same_print(by_workbook, by_form):
     """The two runs print the same thing; returns the items whose review status differs.
 
-    The one designed difference is the charts: they are drawn from the workbook's history, which the form does
-    not hold, so with only the form each is an unavailable part naming the workbook.  That is asserted here and
-    then the charts are left out of the comparison.
+    The designed differences are the charts, drawn from the workbook's history, which the form does not hold (with
+    only the form each is an unavailable part naming the workbook), and the large-cap movers, picked from the
+    workbook's 'Gainers & Losers' prices, which the form does not hold either (with only the form they are picked
+    from the typed list by KCB's changes, and the banking paragraph names no stocks).  Both are asserted here and
+    then left out of the comparison.
     """
     a, b = wh.printed(by_workbook), wh.printed(by_form)
     a_charts = [x for x in a["blocks"] if x["id"].startswith("chart_")]
@@ -190,6 +192,22 @@ def same_print(by_workbook, by_form):
         assert {x["kind"] for x in b_charts} == {"chart"} and {x["reason"] for x in b_charts} == {eq.eqw.NEED_WORKBOOK_FOR_CHARTS[0]}
         a = {**a, "blocks": [x for x in a["blocks"] if x not in a_charts], "items": [i for i in a["items"] if not i[0].startswith(CHART_TITLES)]}
         b = {**b, "blocks": [x for x in b["blocks"] if x not in b_charts], "items": [i for i in b["items"] if not i[0].startswith(CHART_TITLES)]}
+    by_a, by_b = {x["id"]: x for x in a["blocks"]}, {x["id"]: x for x in b["blocks"]}
+    if "large_caps" in by_a and by_a["large_caps"].get("body_md"):
+        movers = "Market Performance: large-cap movers"
+        named = {f[1] for f in by_a["banking"]["figures"] if f[0].startswith("bank_move_")}
+        assert by_b["large_caps"]["body_md"] != by_a["large_caps"]["body_md"]
+        assert by_a["banking"]["body_md"].startswith(by_b["banking"]["body_md"] + " This is attributable to ")
+        assert not any(f[0].startswith("bank_move_") for f in by_b["banking"]["figures"])
+        summary = a["summary"].replace(by_a["large_caps"]["body_md"], by_b["large_caps"]["body_md"]).replace(
+            by_a["banking"]["body_md"], by_b["banking"]["body_md"])
+        banking = {**by_a["banking"], "body_md": by_b["banking"]["body_md"],
+                   "figures": [f for f in by_a["banking"]["figures"] if not f[0].startswith("bank_move_")]}
+        a = {**a, "summary": summary,
+             "blocks": [banking if x["id"] == "banking" else x for x in a["blocks"] if x["id"] != "large_caps"],
+             "items": [i for i in a["items"] if not i[0].startswith(movers) and i[0].split(": ")[-1].split(" (")[0] not in named]}
+        b = {**b, "blocks": [x for x in b["blocks"] if x["id"] != "large_caps"],
+             "items": [i for i in b["items"] if not i[0].startswith(movers)]}
     assert [x["id"] for x in a["blocks"]] == [x["id"] for x in b["blocks"]]
     for x, y in zip(a["blocks"], b["blocks"]):
         assert x == y, x["id"]
