@@ -20,6 +20,9 @@ LEGEND_LOC = "lower center"
 
 # Word tables, as the table cells of cytonnreport.com issues 862 to 892 print them (checked 2026-11-04)
 TABLE_FONT = "Calibri"
+TABLE_TEXT_PT = 9                      # measured in the published PDF
+NAME_COLUMNS = ("Company", "Fund Manager")   # left-aligned; every other column is centred
+HEADER_LOOK_ROWS = ("Amount Issued (USD)", "Years to Maturity", "Yields at Issue")   # the Eurobond table's fixed rows
 HEADER_FILL, HEADER_TEXT = GREEN, WHITE
 BODY_FILL, BODY_TEXT = WHITE, BLACK
 SUMMARY_FILL, SUMMARY_TEXT = YELLOW, BLACK

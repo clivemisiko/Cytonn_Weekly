@@ -12,12 +12,14 @@ from __future__ import annotations
 
 import io
 import logging
+from bisect import bisect_right
 from datetime import date
 from functools import cache
 from typing import Optional
 
 from matplotlib import font_manager
 from matplotlib.backends.backend_agg import FigureCanvasAgg
+from matplotlib.dates import date2num
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
@@ -88,6 +90,38 @@ def ticks(series: ChartSeries) -> list[date]:
     return out
 
 
+LABEL_GAP_PT = 2    # between the average line and its label
+
+
+def _place_average_label(fig, ax, label, xs: list[date], ys: list[float], level: float) -> None:
+    """Put the label where, across its own width, the series is furthest from the average line, on the series' side.
+
+    Every start point is tried; the points just outside the label's width are counted too, so a segment entering
+    its width is never missed."""
+    # ponytail: O(n * width) scan over about 365 weekly points; fine for weekly charts, a sliding window if series grow.
+    renderer = fig.canvas.get_renderer()
+    width = label.get_window_extent(renderer).width
+    pts = [tuple(map(float, p)) for p in ax.transData.transform(list(zip(date2num(xs), ys)))]
+    px = [p[0] for p in pts]
+    line = float(ax.transData.transform((0, level))[1])
+    right = ax.get_window_extent(renderer).x1
+    best = None
+    for i, x0 in enumerate(px):
+        if x0 + width > right:
+            break
+        span = [p[1] for p in pts[max(i - 1, 0):bisect_right(px, x0 + width) + 1]]
+        above, below = min(span) - line, line - max(span)
+        gap, side = (above, "above") if above >= below else (below, "below")
+        if best is None or gap > best[0]:
+            best = (gap, i, side)
+    if best is None:
+        return
+    _, i, side = best
+    label.xy = (xs[i], level)
+    label.xyann = (0, LABEL_GAP_PT if side == "above" else -LABEL_GAP_PT)
+    label.set_va("bottom" if side == "above" else "top")
+
+
 def render_png(series: ChartSeries) -> bytes:
     """The chart as PNG bytes.  Only a drawn series (``series.drawn``) is rendered."""
     out = io.BytesIO()
@@ -126,8 +160,9 @@ def figure(series: ChartSeries) -> Figure:
     ax.plot(xs, ys, color=theme.CHART_LINE, linewidth=theme.CHART_LINE_PT)
     if avg is not None:
         ax.axhline(level, color=theme.AVERAGE_LINE, linewidth=theme.AVERAGE_LINE_PT, linestyle=(0, (5, 3)))
-        ax.annotate(" " + average_label(series, avg), (xs[0], level), xytext=(0, 2), textcoords="offset points",
-                    va="bottom", ha="left", **text)   # 2 pt up, clear of the dashes
+        label = ax.annotate(" " + average_label(series, avg), (xs[0], level), xytext=(0, LABEL_GAP_PT),
+                            textcoords="offset points", va="bottom", ha="left", **text)
+        _place_average_label(fig, ax, label, xs, ys, level)
     unit = _fmt(series.spec.unit)
     last = series.points[-1]
     ax.annotate(fmt_value(last.value, unit, series.spec.decimals), (xs[-1], ys[-1]), xytext=(4, 0), textcoords="offset points",

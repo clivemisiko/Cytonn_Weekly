@@ -3,7 +3,9 @@ text colours and borders.  Invented series and invented table rows only."""
 
 import io
 import re
+from datetime import date
 
+import pytest
 from docx import Document
 from matplotlib.colors import to_hex
 from PIL import Image
@@ -174,6 +176,152 @@ def test_recommendation_and_outlook_cells_carry_the_published_fills():
     assert recs == {"Buy": ("00FF00", {"000000"}), "Accumulate": ("ED7D31", {"000000"}), "Hold": ("A6A6A6", {"000000"}),
                     "Lighten": ("0070C0", {"000000"}), "Sell": ("FF0000", {"000000"})}
     assert {cell_look(r.cells[3])[0] for r in plain.rows[2:7]} == {"F5F5F5"}
+
+
+CENTER, LEFT = 1, 0     # WD_ALIGN_PARAGRAPH.CENTER, .LEFT
+
+
+def mmf_block():
+    columns = [{"key": "rank", "label": "Rank", "fmt": "text"}, {"key": "fund", "label": "Fund Manager", "fmt": "text"},
+               {"key": "rate", "label": "Effective Annual Rate", "fmt": "pct"}]
+    rows = [{"rank": "1", "fund": "Cytonn Money Market Fund", "rate": "11.0%"}, {"rank": "2", "fund": "Invented Fund", "rate": "10.0%"}]
+    return {"kind": "table", "title": "Money Market Fund Yield for Fund Managers", "columns": columns, "rows": rows,
+            "source": {"name": "Daily Nation"}}
+
+
+def euro_block():
+    grid = [["", "2018", "2024"], ["Tenor", "10-year issue", "7-year issue"], ["Amount Issued (USD)", "1.0 bn", "1.5 bn"],
+            ["Years to Maturity", "1.3", "4.3"], ["Yields at Issue", "7.3%", "10.4%"], ["01-Oct-26", "7.6%", "8.3%"],
+            ["Weekly Change", "(0.1%)", "(0.3%)"]]
+    return {"kind": "table", "title": "Cytonn Report: Kenya Eurobonds Performance", "columns": [], "rows": [],
+            "export_grid": grid, "notes": ["Changes are in percentage points."], "source": {"name": "CBK"}}
+
+
+def exported(*blocks):
+    doc = Document()
+    wl.apply_report_look(doc)
+    for b in blocks:
+        export._add_table_block(doc, b)
+    return doc
+
+
+def align(cell):
+    return cell.paragraphs[0].alignment
+
+
+def test_titles_headers_and_values_are_centred_and_only_names_stay_left():
+    plain, mmf, euro = exported(table_block(), mmf_block(), euro_block()).tables
+    for table, headers in ((plain, 2), (mmf, 2), (euro, 6)):     # title + header rows (and the Eurobond's fixed rows)
+        for row in table.rows[:headers]:
+            assert {align(c) for c in row.cells} == {CENTER}, row.cells[0].text
+    for row in plain.rows[2:]:
+        assert align(row.cells[0]) == LEFT and {align(c) for c in row.cells[1:]} == {CENTER}   # Company stays left
+    for row in mmf.rows[2:]:
+        assert [align(c) for c in row.cells] == [CENTER, LEFT, CENTER]       # Rank and the rate centred, the fund left
+    for row in euro.rows[6:]:
+        assert {align(c) for c in row.cells} == {CENTER}                     # the date column and the values
+
+
+def test_the_eurobond_fixed_rows_take_the_header_look():
+    euro = exported(euro_block()).tables[0]
+    by_label = {r.cells[0].text: r for r in euro.rows}
+    for label in ("Amount Issued (USD)", "Years to Maturity", "Yields at Issue"):
+        assert {cell_look(c) for c in by_label[label].cells} == {("006C5B", frozenset({"FFFFFF"}), True)}, label
+    assert cell_look(by_label["01-Oct-26"].cells[1])[:2] == ("FFFFFF", frozenset({"000000"}))
+    assert cell_look(by_label["Weekly Change"].cells[1])[:2] == ("FFFF00", frozenset({"FF0000"}))
+
+
+def test_table_text_is_9_pt_with_bold_titles_and_headers():
+    for table in exported(table_block(), mmf_block(), euro_block()).tables:
+        sizes = {run.font.size.pt for row in table.rows for c in row.cells for run in c.paragraphs[0].runs}
+        assert sizes == {9.0}
+        assert all(run.bold for c in table.rows[0].cells for run in c.paragraphs[0].runs)
+
+
+def keeps(table):
+    return [all(p.paragraph_format.keep_with_next for c in row.cells for p in c.paragraphs) for row in table.rows]
+
+
+def test_every_row_stays_whole_and_the_table_stays_with_its_source_line():
+    doc = exported(mmf_block(), euro_block())
+    for table in doc.tables:
+        assert all("<w:cantSplit/>" in row._tr.xml for row in table.rows)
+        assert all(keeps(table))       # every row, the last too: a source line follows, and it keeps with the table
+    lines = [p for p in doc.paragraphs if p.text]
+    notes = [p for p in lines if p.text in ("Changes are in percentage points.", "Source: CBK")]
+    assert [p.paragraph_format.keep_with_next for p in notes] == [True, False]   # the last line under a table lets go
+    alone = Document()
+    wl.report_table(alone, [["Company", "Price"], ["A", "1.0"], ["B", "2.0"]])  # nothing under it
+    assert keeps(alone.tables[0]) == [True, True, False]
+
+
+def test_the_digital_payments_summary_table_uses_the_theme():
+    from review_helpers import make_review
+
+    from cytonn_weekly.digital_payments import summary as sm
+
+    review = make_review()
+    item = next(it for it in review.section["items"] if it["kind"] == "stock_table")
+    doc = Document()
+    sm._add_table(doc, item["rows"], review.section["outlook"].get("stats") or {})
+    table = doc.tables[0]
+    assert {cell_look(c) for c in table.rows[0].cells} == {("006C5B", frozenset({"FFFFFF"}), True)}
+    assert {align(c) for c in table.rows[0].cells} == {CENTER}
+    average = table.rows[-1]
+    assert average.cells[0].text == "Average" and {cell_look(c)[:2] for c in average.cells} == {("FFFF00", frozenset({"000000"}))}
+    body = table.rows[1]
+    assert cell_look(body.cells[0])[:2] == ("FFFFFF", frozenset({"000000"}))
+    assert align(body.cells[0]) == LEFT and {align(c) for c in body.cells[1:]} == {CENTER}
+    assert {run.font.size.pt for row in table.rows for c in row.cells for run in c.paragraphs[0].runs} == {9.0}
+    assert re.search(r'<w:insideH w:val="single" w:sz="4" w:space="0" w:color="000000"/>', table._tbl.tblPr.xml)
+    assert all("<w:cantSplit/>" in row._tr.xml for row in table.rows)
+
+
+# --- the average label never sits on the line ------------------------------------------------------------------
+
+def label_clearance(fig):
+    """Pixels between the "Average = ..." label's box and the series line nearest it (the line's own width taken off)."""
+    import numpy as np
+    from matplotlib.dates import date2num
+
+    fig.canvas.draw()
+    ax = fig.axes[0]
+    label = next(t for t in ax.texts if t.get_text().strip().startswith("Average = "))
+    box = label.get_window_extent(fig.canvas.get_renderer())
+    line = ax.get_lines()[0]
+    xs = np.asarray(date2num(line.get_xdata()), dtype=float)
+    ys = np.asarray(line.get_ydata(), dtype=float)
+    dense_x = np.linspace(xs[0], xs[-1], 20_000)
+    pts = ax.transData.transform(np.column_stack([dense_x, np.interp(dense_x, xs, ys)]))
+    inside = pts[(pts[:, 0] >= box.x0) & (pts[:, 0] <= box.x1)]
+    half = line.get_linewidth() * fig.dpi / 72 / 2
+    gaps = np.where(inside[:, 1] > box.y1, inside[:, 1] - box.y1,
+                    np.where(inside[:, 1] < box.y0, box.y0 - inside[:, 1], -1.0))
+    return float(gaps.min()) - half
+
+
+@pytest.mark.parametrize("spec", [NASI_YIELD, NASI_PE])
+def test_the_average_label_is_clear_of_the_line_on_the_real_30_october_series(spec):
+    from cytonn_weekly.weekly.workbook import Workbook
+    from tests.weekly_helpers import sample
+
+    s = read_series(Workbook(sample("Equities Workbook 30.10.2026.vf (1).xlsx"), "Equities workbook"), spec, date(2026, 10, 30))
+    assert s.drawn
+    assert label_clearance(draw.figure(s)) > 0
+
+
+def test_the_average_label_is_clear_of_an_invented_line_that_crosses_it():
+    assert label_clearance(draw.figure(series())) > 0
+
+
+# --- the image the API runs in ------------------------------------------------------------------------------------
+
+def test_the_image_installs_carlito_beside_the_opencv_libraries():
+    from cytonn_weekly import paths
+
+    docker = (paths.BACKEND_ROOT / "Dockerfile").read_text(encoding="utf-8")
+    line = next(ln for ln in docker.splitlines() if "apt-get install" in ln)
+    assert "--no-install-recommends" in line and {"libgl1", "libglib2.0-0", "fonts-crosextra-carlito"} <= set(line.split())
 
 
 def test_tables_have_thin_black_borders_and_calibri_text():

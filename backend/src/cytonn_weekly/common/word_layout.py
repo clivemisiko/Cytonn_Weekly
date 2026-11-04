@@ -5,6 +5,7 @@ from typing import Optional
 from urllib.parse import urlparse
 
 from docx.enum.style import WD_STYLE_TYPE
+from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.oxml import OxmlElement, parse_xml
@@ -104,6 +105,79 @@ def shade(cell, fill: str, text: str, bold: Optional[bool] = None) -> None:
 def shade_header(cell) -> None:
     """The green header band, its text white and bold."""
     shade(cell, theme.HEADER_FILL, theme.HEADER_TEXT, bold=True)
+
+
+def _cell_text(cell, text: str, bold: bool, centred: bool):
+    cell.text = text    # one paragraph holding one run
+    para = cell.paragraphs[0]
+    run = para.runs[0]
+    run.font.size, run.bold, run.font.name = Pt(theme.TABLE_TEXT_PT), bold, theme.TABLE_FONT
+    para.alignment = WD_ALIGN_PARAGRAPH.CENTER if centred else WD_ALIGN_PARAGRAPH.LEFT
+    para.paragraph_format.space_after = Pt(0)
+    return para
+
+
+def _row_look(values: list) -> Optional[tuple[str, str]]:
+    """(fill, text colour) of a body row, or None for a row with the header look."""
+    label = str(values[0] or "")
+    if label in theme.HEADER_LOOK_ROWS:
+        return None
+    if label in theme.CHANGE_ROWS:
+        return theme.SUMMARY_FILL, theme.CHANGE_TEXT
+    if label in theme.SUMMARY_ROWS or any(str(v or "").startswith(theme.CYTONN_ROW_PREFIX) for v in values):
+        return theme.SUMMARY_FILL, theme.SUMMARY_TEXT
+    return theme.BODY_FILL, theme.BODY_TEXT
+
+
+def _hold(row, keep_with_next: bool) -> None:
+    """A row never splits across pages; with ``keep_with_next`` it stays on the page of what follows it."""
+    row._tr.get_or_add_trPr().append(OxmlElement("w:cantSplit"))
+    for cell in row.cells:
+        for para in cell.paragraphs:
+            para.paragraph_format.keep_with_next = keep_with_next
+
+
+def report_table(doc, grid: list[list], header_rows: int = 1, title: Optional[str] = None, keep_last: bool = False):
+    """A table in the published look: the title as one merged row, then ``grid``, its first ``header_rows`` rows the header.
+
+    Every row stays whole and on the page of the row after it, so a table that fits a page is never split; the last
+    row is kept with what follows only with ``keep_last`` (a source line under the table)."""
+    table = doc.add_table(rows=0, cols=len(grid[0]))
+    table.style = "Table Grid"
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    thin_borders(table)
+    if title:
+        cells = table.add_row().cells
+        merged = cells[0].merge(cells[-1]) if len(cells) > 1 else cells[0]
+        _cell_text(merged, title, bold=True, centred=True)
+        shade_header(merged)
+    heads = [str(h) for h in grid[header_rows - 1]] if header_rows else []
+    names = {c for c, head in enumerate(heads) if head in theme.NAME_COLUMNS}
+    rating = {c for c, head in enumerate(heads) if any(word in head.lower() for word in theme.RATING_COLUMNS)}
+    for r, values in enumerate(grid):
+        cells = table.add_row().cells
+        look = _row_look(values) if r >= header_rows else None
+        for c, value in enumerate(values):
+            text = "" if value is None else str(value)
+            _cell_text(cells[c], text, bold=look is None, centred=look is None or c not in names)
+            if look is None:
+                shade_header(cells[c])
+            elif look[0] == theme.BODY_FILL and text in theme.RECOMMENDATION_FILLS:
+                shade(cells[c], theme.RECOMMENDATION_FILLS[text], theme.RECOMMENDATION_TEXT)
+            elif look[0] == theme.BODY_FILL and c in rating:
+                shade(cells[c], theme.RATING_FILL, theme.BODY_TEXT)
+            else:
+                shade(cells[c], *look)
+    rows = table.rows
+    for n, row in enumerate(rows):
+        _hold(row, keep_with_next=keep_last or n < len(rows) - 1)
+    return table
+
+
+def keep_together(paragraphs: list) -> None:
+    """Lines under a table: each stays on the page of the next; the last lets go."""
+    for n, para in enumerate(paragraphs):
+        para.paragraph_format.keep_with_next = n < len(paragraphs) - 1
 
 
 def thin_borders(table) -> None:

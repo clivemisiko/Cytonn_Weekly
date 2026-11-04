@@ -32,7 +32,6 @@ from pathlib import Path
 from typing import Any, Optional, Union
 
 from docx import Document
-from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import parse_xml
 from docx.shared import Inches, Pt, RGBColor
@@ -40,16 +39,14 @@ from docx.shared import Inches, Pt, RGBColor
 from cytonn_weekly import paths
 from cytonn_weekly.charts import store as chart_store
 from cytonn_weekly.charts.block import PROVENANCE, team_chart_chosen
-from cytonn_weekly.common import report_theme as theme
 from cytonn_weekly.common.word_layout import (
     add_hyperlink,
     add_linked_text,
     apply_report_look,
     executive_summary,
-    shade,
-    shade_header,
+    keep_together,
+    report_table,
     small_line,
-    thin_borders,
     title,
     title_line,
 )
@@ -217,75 +214,27 @@ def _add_text(doc, body_md: str) -> None:
             add_hyperlink(p, url, url).font.size = Pt(9)
 
 
-def _cell_text(cell, text: str, bold: bool):
-    cell.text = text    # one paragraph holding one run
-    para = cell.paragraphs[0]
-    run = para.runs[0]
-    run.font.size, run.bold, run.font.name = Pt(8), bold, theme.TABLE_FONT
-    para.paragraph_format.space_after = Pt(0)
-    return para
-
-
-def _row_look(values: list[Any]) -> tuple[str, str]:
-    """(fill, text colour) of a body row: a change row, a summary row, Cytonn's own row, or a plain one."""
-    label = str(values[0] or "")
-    if label in theme.CHANGE_ROWS:
-        return theme.SUMMARY_FILL, theme.CHANGE_TEXT
-    if label in theme.SUMMARY_ROWS or any(str(v or "").startswith(theme.CYTONN_ROW_PREFIX) for v in values):
-        return theme.SUMMARY_FILL, theme.SUMMARY_TEXT
-    return theme.BODY_FILL, theme.BODY_TEXT
-
-
-def _add_grid(doc, grid: list[list[str]], header_rows: int = 1, numeric_from: int = 1, title: Optional[str] = None) -> None:
-    table = doc.add_table(rows=0, cols=len(grid[0]))
-    table.style = "Table Grid"
-    table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    thin_borders(table)
-    if title:
-        cells = table.add_row().cells
-        merged = cells[0].merge(cells[-1]) if len(cells) > 1 else cells[0]
-        _cell_text(merged, title, bold=True)
-        shade_header(merged)
-    rating = {c for c, head in enumerate(grid[header_rows - 1] if header_rows else [])
-              if any(word in str(head).lower() for word in theme.RATING_COLUMNS)}
-    for r, values in enumerate(grid):
-        cells = table.add_row().cells
-        look = _row_look(values) if r >= header_rows else None
-        for c, value in enumerate(values):
-            text = "" if value is None else str(value)
-            para = _cell_text(cells[c], text, bold=r < header_rows)
-            para.alignment = WD_ALIGN_PARAGRAPH.RIGHT if c >= numeric_from and r >= header_rows else WD_ALIGN_PARAGRAPH.LEFT
-            if look is None:
-                shade_header(cells[c])
-            elif look[0] == theme.BODY_FILL and text in theme.RECOMMENDATION_FILLS:
-                shade(cells[c], theme.RECOMMENDATION_FILLS[text], theme.RECOMMENDATION_TEXT)
-            elif look[0] == theme.BODY_FILL and c in rating:
-                shade(cells[c], theme.RATING_FILL, theme.BODY_TEXT)
-            else:
-                shade(cells[c], *look)
-
-
-def _source_line(doc, source: dict[str, Any]) -> None:
+def _source_line(doc, source: dict[str, Any]):
     if source and source.get("name"):
-        small_line(doc, f"Source: {source['name']}")
+        return small_line(doc, f"Source: {source['name']}")
+    return None
 
 
 def _add_table_block(doc, block: dict[str, Any]) -> None:
+    source = block.get("source") or {}
+    failed = [r for r in block.get("source_rows", []) if r.get("error")]
+    under = (block.get("footnotes") or []) + (block.get("notes") or []) + failed + ([1] if source.get("name") else [])
     if block.get("export_grid"):
-        _add_grid(doc, block["export_grid"], header_rows=2, title=block["title"])
+        report_table(doc, block["export_grid"], header_rows=2, title=block["title"], keep_last=bool(under))
     else:
         columns = block["columns"]
-        numeric = next((n for n, c in enumerate(columns) if c.get("fmt", "text") != "text"), len(columns))
         grid = [[c["label"] for c in columns]] + [[row.get(c["key"], "") for c in columns] for row in block.get("rows", [])]
-        _add_grid(doc, grid, numeric_from=numeric, title=block["title"])
-    for note in block.get("footnotes") or []:
-        small_line(doc, note)
-    for note in block.get("notes") or []:
-        small_line(doc, note, italic=True)
-    _source_line(doc, block.get("source") or {})
-    failed = [r for r in block.get("source_rows", []) if r.get("error")]
-    for r in failed:
-        small_line(doc, f"{r.get(block['key_field'])}: {r['error']}", color=_RED, italic=True)
+        report_table(doc, grid, title=block["title"], keep_last=bool(under))
+    lines = [small_line(doc, note) for note in block.get("footnotes") or []]
+    lines += [small_line(doc, note, italic=True) for note in block.get("notes") or []]
+    lines += [p for p in [_source_line(doc, source)] if p is not None]
+    lines += [small_line(doc, f"{r.get(block['key_field'])}: {r['error']}", color=_RED, italic=True) for r in failed]
+    keep_together(lines)
 
 
 def _mark(doc, text: str):
@@ -463,7 +412,7 @@ def _add_digital_payments(doc, section: dict[str, Any]) -> None:
             average = _average_row(outlook.get("stats") or {})
             if average:
                 grid.append(average)
-            _add_grid(doc, grid, numeric_from=2)
+            report_table(doc, grid, keep_last=True)
             small_line(doc, "Source: Yahoo Finance. Forward P/E is based on analyst consensus forward earnings estimates.")
     text = outlook.get("text") or (outlook.get("text_md") or "").strip("*")
     if text:
