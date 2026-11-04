@@ -169,7 +169,35 @@ LARGE_CAPS = ["Safaricom", "Equity Group", "KCB", "Co-operative", "ABSA Bank", "
               "Stanbic", "DTBK", "NCBA", "HFCB Group"]
 
 
-def equities_workbook_bytes(week: Week = WEEK, updated: bool = True) -> bytes:
+# 'Gainers & Losers': the twelve large caps in the sheet's order and invented week-on-week moves (%).  The ten KCB's
+# synthetic weekly report also lists move as LARGE_CAP_MOVES says, so KCB's reading agrees with each of them.
+GAINERS_LOSERS = {"SCOM": 0.27, "EABL": 0.79, "EQTY": -1.40, "KCB": -1.07, "COOP": -0.54, "BAT": -0.50, "BAMB": 0.0,
+                  "ABSA": -1.05, "SCBK": -1.54, "DTBK": -0.13, "NCBA": -2.23, "STANBIC": -0.71}
+
+
+def gainers_losers_sheet(wb: Any, week: Week = WEEK, moves: Optional[dict[str, float]] = None,
+                         days: Optional[list[date]] = None) -> None:
+    """The sheet as the team lays it out: a 2016 block at B2:C17, the names in P from row 3, one price column per date
+    in row 2 (each price 100, and 100 plus the move on the report Friday), then the w/w column and a stray 2018 date."""
+    moves = GAINERS_LOSERS if moves is None else moves
+    days = [week.previous.previous_friday, week.previous_friday, week.ending] if days is None else days
+    ws = wb.create_sheet("Gainers & Losers")
+    for row, (name, value) in enumerate([("Gainers", None), ("NBK", 0.14), ("BRIT", 0.103)] + [(None, None)] * 6
+                                        + [("Losers", None), ("KEGN", -0.091), ("PAFR", -0.075)], start=2):
+        ws.cell(row, 2, name)
+        ws.cell(row, 3, value)
+    for col, day in enumerate(days, start=17):
+        ws.cell(2, col, dt(day))
+        for row, move in enumerate(moves.values(), start=3):
+            ws.cell(row, col, 100.0 + move if day == week.ending else 100.0)
+    ws.cell(2, 17 + len(days), "w/w")
+    ws.cell(2, 40, dt(date(2018, 7, 19)))
+    for row, ticker in enumerate(moves, start=3):
+        ws.cell(row, 16, ticker)
+        ws.cell(row, 40, 1.0)
+
+
+def equities_workbook_bytes(week: Week = WEEK, updated: bool = True, gainers_losers: Optional[dict[str, float]] = None) -> bytes:
     """A workbook laid out like the equities team's.  ``updated=False`` leaves this week's rows out."""
     wb = XlsxWorkbook()
     wb.remove(wb.active)
@@ -230,6 +258,7 @@ def equities_workbook_bytes(week: Week = WEEK, updated: bool = True) -> bytes:
                "Div-Market Cap Weighted", "P/E-Market Cap Weighted", None, None, None, None, "Year Open"])
     for name in LARGE_CAPS:
         ws.append([name, 1.0, 2.0, 30.0, None, None, 1000, None, None, None, None, None, None, None, name, 20.0])
+    gainers_losers_sheet(wb, week, gainers_losers, None if updated else [week.previous.previous_friday, week.previous_friday])
 
     ws = wb.create_sheet("Universe of Coverage")
     month_end = week.ending.replace(day=1) - timedelta(days=1)
