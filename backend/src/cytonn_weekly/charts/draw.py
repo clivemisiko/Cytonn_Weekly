@@ -21,7 +21,8 @@ from matplotlib.ticker import FuncFormatter
 from cytonn_weekly.charts.series import Average, ChartSeries, average, windowed
 from cytonn_weekly.common.formatting import MULTIPLE, PCT, fmt_value
 
-NAVY = "#013660"          # the series line, the average line and its label
+NAVY = "#013660"          # the series line
+AVERAGE_RED = "#C00000"   # the average line and its label (placeholder red: check against the published chart)
 SKY = "#6FC3FF"           # the area under the series only: never text, never a line that carries meaning
 AXES = "#5B6B7A"          # axes, ticks, tick labels and the subtitle
 FONT = "DejaVu Sans"      # bundled with matplotlib
@@ -86,8 +87,8 @@ def figure(series: ChartSeries) -> Figure:
     ax.fill_between(xs, ys, floor, color=SKY, alpha=0.35, linewidth=0)
     ax.plot(xs, ys, color=NAVY, linewidth=1.6)
     if avg is not None:
-        ax.axhline(level, color=NAVY, linewidth=1.1, linestyle=(0, (5, 3)))
-        ax.text(xs[0], level, " " + average_label(series, avg), color=NAVY, fontsize=8, fontfamily=FONT,
+        ax.axhline(level, color=AVERAGE_RED, linewidth=1.1, linestyle=(0, (5, 3)))
+        ax.text(xs[0], level, " " + average_label(series, avg), color=AVERAGE_RED, fontsize=8, fontfamily=FONT,
                 va="bottom", ha="left")
         fig.text(0.09, 0.92, subtitle(avg), color=AXES, fontsize=8, fontfamily=FONT, ha="left", va="center")
 

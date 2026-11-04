@@ -76,8 +76,8 @@ def test_the_average_label_and_subtitle_print_the_average_from_2009_not_only_the
 def test_the_window_comes_from_the_spec():
     s = series(weeks=931)
     shown = windowed(s)
-    assert NASI_PE.window_years == 5 and shown[-1].day == FRIDAY
-    assert date(2021, 10, 2) <= shown[0].day < date(2021, 10, 9)        # five years back from the newest point
+    assert NASI_PE.window_years == 7 and shown[-1].day == FRIDAY
+    assert date(2019, 10, 1) <= shown[0].day < date(2019, 10, 8)        # the first of the week's month, seven years back
 
 
 def test_the_alt_text_is_built_from_the_caption_and_says_what_is_shown():
@@ -94,17 +94,19 @@ def test_the_figure_shows_the_specs_window_the_line_the_fill_and_the_average():
     from matplotlib.colors import to_hex
     from matplotlib.dates import num2date
 
-    from cytonn_weekly.charts.draw import NAVY, SKY, figure
+    from cytonn_weekly.charts.draw import AVERAGE_RED, NAVY, SKY, figure
 
     s = series(weeks=931, stated=(12.95, 0.05295))
     shown, a = windowed(s), average(s)
     fig = figure(s)
     ax = fig.axes[0]
     left, right = (num2date(x).date() for x in ax.get_xlim())
-    assert (left, right) == (shown[0].day, shown[-1].day)                    # five years, not every point read
+    assert (left, right) == (shown[0].day, shown[-1].day)                    # the window, not every point read
     line, level = ax.get_lines()
     assert to_hex(line.get_color()) == NAVY.lower() and len(line.get_xdata()) == len(shown)
-    assert to_hex(level.get_color()) == NAVY.lower() and level.get_linestyle() == "--"
+    assert to_hex(level.get_color()) == AVERAGE_RED.lower() == "#c00000" and level.get_linestyle() == "--"
+    label = next(t for t in ax.texts if t.get_text().strip() == average_label(s, a))
+    assert to_hex(label.get_color()) == AVERAGE_RED.lower()                  # the label shares the average line's red
     assert float(level.get_ydata()[0]) == float(a.value)                      # the line sits at the average since 2009
     fills = [c for c in ax.collections if isinstance(c, PolyCollection)]
     assert len(fills) == 1 and to_hex(fills[0].get_facecolor()[0], keep_alpha=False) == SKY.lower()

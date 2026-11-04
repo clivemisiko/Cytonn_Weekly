@@ -99,9 +99,10 @@ def test_a_drawn_block_holds_metadata_and_the_hashes_of_its_files_only():
     assert json.loads(files["nasi_yield"]["json"])["points"][-1][3] == "5.0%"
 
 
-def test_the_window_is_five_years_and_the_average_still_covers_everything_since_2009():
+def test_the_window_is_seven_years_from_the_months_first_and_the_average_still_covers_everything_since_2009():
     pe = make(weeks=400)[0][0]
-    assert pe["window"]["years"] == 5 and pe["window"]["last"] == FRIDAY.isoformat()
+    assert pe["window"]["years"] == 7 and pe["window"]["last"] == FRIDAY.isoformat()
+    assert "2019-10-01" <= pe["window"]["first"] < "2019-10-08"
     assert pe["window"]["points"] < pe["average"]["count"] == 400
 
 

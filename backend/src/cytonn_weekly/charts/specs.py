@@ -18,10 +18,9 @@ from cytonn_weekly.weekly.equities_workbook import VALUATION_SHEET
 # The "Average = x" the team puts on these charts is the mean of every point from here on, not just
 # the years the picture shows.  It is a named constant so it is one line to change.
 AVERAGE_FROM = date(2009, 1, 1)
-# The window the picture shows, back from the newest point.  What is known: Ryan said the team usually shows five years, but
-# the published October 2026 charts start at Oct-19, which is seven.  The window rule is being changed on its own branch;
-# until then the value stays 5.
-NASI_WINDOW_YEARS = 5
+# The window the picture shows (Ryan, 3 Nov 2026): it follows the month the report is in and is fixed within that month,
+# starting on the first of that month this many years earlier.  The October 2026 published charts start at Oct-19.
+NASI_WINDOW_YEARS = 7
 
 
 @dataclass(frozen=True)
@@ -32,7 +31,7 @@ class ChartSpec:
     sheet: str                      # verbatim from the workbook (some end in a space)
     header: str                     # the label above the dates; the values are in the next column
     unit: str                       # "multiple" (10.0x), or "pct": stored as a fraction and formatted as a percentage
-    window_years: int               # how many years back from the newest point the picture shows
+    window_years: int               # the picture starts on the first of the week's month, this many years earlier
     newest_not_before_days: int     # freshness: the newest point is dated this many days after the week's Friday or later
     ceiling_days: int               # no point is dated later than this many days after the Friday
     quoted: tuple[tuple[str, str], ...]   # (what the draft quotes, its figure key in the section): ("point", "pe")

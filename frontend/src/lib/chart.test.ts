@@ -46,7 +46,7 @@ describe("chart card facts", () => {
   it("lists points, window, newest date, last value and the average with what it covers", () => {
     expect(chartFacts(drawn)).toEqual([
       { label: "Points read", value: "60" },
-      { label: "Window", value: "Up to 5 years, 8 Oct 2021 to 2 Oct 2026" },
+      { label: "Window", value: "8 Oct 2021 to 2 Oct 2026" },
       { label: "Newest point", value: "2 Oct 2026" },
       { label: "Last value", value: "10.0x" },
       { label: "Average", value: "13.0x, 60 points since 15 Aug 2025" },
