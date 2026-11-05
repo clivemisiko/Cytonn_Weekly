@@ -34,6 +34,7 @@ export const PLACEMENT = {
   draft_discarded: "dialog",
   draft_sections_not_approved: "dialog",
   draft_input_invalid: "inline",
+  draft_sections_required: "inline",
   draft_failed: "dialog",
   review_already_decided: "dialog",
   review_not_decidable: "dialog",

@@ -281,7 +281,10 @@ def build_focus_review(topic: str, provider: Optional[NarrativeProvider] = None,
                          today=today, on_event=on_event)
     model_calls += len(searched)
     drafted = {p["brief_id"]: p for p in draft["pieces"]}
+    skipped = draft.get("skipped", {})
     if not drafted:
+        if skipped and len(skipped) == len(searched):   # every section had a reason of its own (no sources supplied)
+            raise LookupError(next(iter(skipped.values())))
         raise LookupError(f"no sourced material found for the topic {topic!r}; try a more specific topic or other section titles")
 
     blocks: list[dict[str, Any]] = []
@@ -291,7 +294,8 @@ def build_focus_review(topic: str, provider: Optional[NarrativeProvider] = None,
         if piece:
             blocks.append(narrative_block(f"focus_section_{i + 1}", {**piece, **head, "analyst_note": ANALYST_ADDS}))
         else:
-            blocks.append({**unavailable_block(f"focus_section_{i + 1}", title, f"Nothing qualifying was found for \"{title}\".",
+            reason = skipped.get(f"focus_section_{i + 1}") or f"Nothing qualifying was found for \"{title}\"."
+            blocks.append({**unavailable_block(f"focus_section_{i + 1}", title, reason,
                                                "Write the section by hand, or draft again with other section titles."),
                            "role": "section", "numeral": ROMAN[i], "group_heading": heading(i, title)})
     if closing:

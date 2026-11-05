@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import time
 from datetime import date
 from types import SimpleNamespace as NS
 
@@ -13,6 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.cms_publish import local_pieces, publish_report
+from api.main import SECTIONS_REQUIRED as SECTIONS_REQUIRED_TEXT
 from api.main import create_app, failure_message, provider_problem
 from api.serialize import is_dev_draft
 from cytonn_weekly import env
@@ -164,8 +166,9 @@ def test_a_narrative_piece_has_claims_links_and_flags_as_a_local_one_does_and_dr
     assert res.claims == [{"text": "Mortgage lending paid $5 million", "url": URL, "title": "Release", "cited_text": ""}]
     assert res.links == [{"anchor": "Mortgage lending", "url": URL}]
     assert UNSEEN not in res.paragraph_md and "more" in res.paragraph
-    assert any("claim cited a URL not in the search results; dropped" in w for w in res.warnings)
-    assert any("link to " + UNSEEN in w for w in res.warnings)
+    assert any("claim cited a URL not in the supplied sources; dropped" in w for w in res.warnings)
+    assert any("link to " + UNSEEN + " was not in the supplied sources; unlinked" in w for w in res.warnings)
+    assert not any("search results" in w for w in res.warnings)
     assert "Bedrock provider: claims carry no cited_text" in " ".join(res.warnings)
     assert f"Written by Amazon Bedrock ({MODEL}) from the supplied sources." in res.warnings
     assert not any("Exa" in w for w in res.warnings) and res.search_scope == bp.SCOPE_SUPPLIED
@@ -419,3 +422,115 @@ def test_a_failure_that_is_not_a_bedrock_error_is_not_swallowed_by_the_mapping(a
         pass
     with pytest.raises(Oops):
         narrative(FakeBedrock(error=Oops())).draft_piece(BRIEF, start=START, end=TODAY, today=TODAY)
+
+
+# --- leftovers from step 2a: reasons, wording, mode, model, Focus titles -----------------------------------------
+
+TITLES = "Overview of the topic\nMarket performance\nRisks"   # typed, with no closing part
+
+
+def test_a_focus_section_with_no_sources_says_so_instead_of_nothing_qualifying(aws, monkeypatch):
+    monkeypatch.setattr(bp, "sources_for", lambda subject, week_end: [dict(PAGE)] if subject == "Market performance" else [])
+    review = focus_review(narrative(), sections=TITLES)
+    reasons = {b["title"]: b["reason"] for b in review.section["blocks"] if b["kind"] == "unavailable" and b["role"] == "section"}
+    assert reasons == {"Overview of the topic": bp.NO_SOURCES, "Risks": bp.NO_SOURCES}
+    assert "Nothing qualifying" not in json.dumps(review.section["blocks"])
+
+
+def test_a_focus_with_no_sources_anywhere_stops_with_the_no_sources_sentence(aws, monkeypatch):
+    monkeypatch.setattr(bp, "sources_for", lambda subject, week_end: [])
+    client = FakeBedrock()
+    with pytest.raises(LookupError) as stopped:
+        focus_review(narrative(client), sections=TITLES)
+    assert str(stopped.value) == bp.NO_SOURCES and client.calls == []
+
+
+def test_a_provider_with_no_reason_of_its_own_keeps_the_nothing_qualifying_wording(aws):
+    class Quiet(NarrativeProvider):
+        def draft_piece(self, brief, *, start, end, today):
+            from cytonn_weekly.digital_payments.providers.base import HighlightResult
+            return HighlightResult(company=brief.label, search_scope=None, ir_domain="", drafted_by="x:y", no_story=True)
+
+        def complete(self, system, prompt, *, max_tokens):
+            return ""
+
+    out = draft_pieces([BRIEF], 1, provider=Quiet(), today=TODAY)
+    assert "skipped" not in out and out["warnings"][0].startswith("Mortgage lending: nothing qualifying found for the")
+
+
+def test_the_shared_warnings_keep_the_search_results_wording_unless_a_provider_names_its_material():
+    reply = json.dumps({"is_genuine_announcement": True, "reasoning": "", "headline": "H", "paragraph": f"A [b]({UNSEEN}) c.",
+                        "claims": [{"claim": "c", "url": UNSEEN}]})
+    local = []
+    res = drafting.piece_from_reply(reply, BRIEF, "web", [dict(PAGE)], [], who="m", label="l", drafted_by="x:y")
+    assert f"link to {UNSEEN} was not in the search results; unlinked" in res.warnings
+    assert f"claim cited a URL not in the search results; dropped: {UNSEEN}" in res.warnings
+    res = drafting.piece_from_reply(reply, BRIEF, "supplied", [dict(PAGE)], local, who="m", label="l", drafted_by="x:y",
+                                    where="supplied sources")
+    assert f"claim cited a URL not in the supplied sources; dropped: {UNSEEN}" in res.warnings
+
+
+def test_a_bedrock_draft_is_never_marked_dev_but_a_local_one_still_is(aws):
+    review = focus_review(bp.BedrockNarrativeProvider(client=FakeBedrock()), sections=TITLES)
+    assert not is_dev_draft(review) and not is_dev_mode_review(review) and not list(local_pieces(review.section))
+    local = focus_review(None, sections=TITLES)   # the suite's fake provider
+    for b in local.section["blocks"]:
+        if b["kind"] == "narrative":
+            b["drafted_by"] = "local:phi4-mini"
+    assert is_dev_draft(local) and is_dev_mode_review(local)
+
+
+def test_the_config_calls_bedrock_production_and_the_run_check_accepts_it(aws, tmp_path):
+    client = TestClient(create_app(db_path=tmp_path / "a.db", load_dotenv=False))
+    cfg = client.get("/api/config").json()
+    assert (cfg["provider"], cfg["dev_mode"], cfg["spends_api_budget"], cfg["provider_problem"]) == ("bedrock", False, True, None)
+    body = {"section": "focus", "topic": "Eurobonds", "sections": TITLES}
+    asked_for_another = client.post("/api/runs", json={**body, "provider": "anthropic"})
+    assert asked_for_another.status_code == 409
+    assert asked_for_another.json()["problems"][0]["code"] == "draft_mode_changed"
+    company = {"section": "company_updates", "text": "Investment Updates: demo."}
+    for named in ("bedrock", " Bedrock "):   # the screen sends the provider it showed; case and spaces are not a mismatch
+        started = client.post("/api/runs", json={**company, "provider": named})
+        assert started.status_code == 202
+        for _ in range(200):   # let the worker finish, so the next one is not refused as already running
+            if client.get(f"/api/runs/{started.json()['run_id']}").json()["status"] != "running":
+                break
+            time.sleep(0.05)
+
+
+def test_focus_with_bedrock_needs_typed_titles_and_says_so_before_anything_starts(aws, tmp_path):
+    client = TestClient(create_app(db_path=tmp_path / "a.db", load_dotenv=False))
+    for route, body in (("/api/runs", {"section": "focus", "topic": "Eurobonds"}),
+                        ("/api/sections/focus/draft", {"topic": "Eurobonds", "sections": "  \n "})):
+        r = client.post(route, json=body)
+        assert r.status_code == 409 and r.json()["detail"] == SECTIONS_REQUIRED_TEXT
+        assert r.json()["problems"][0]["code"] == "draft_sections_required"
+    assert client.get("/api/sections").json()["drafting"] is None   # nothing took the slot
+
+
+def test_typed_titles_pass_that_check_and_the_other_providers_never_make_it(aws, monkeypatch, tmp_path):
+    client = TestClient(create_app(db_path=tmp_path / "a.db", load_dotenv=False))
+    # Past the titles check the next refusal is the provider check, so these never start a draft.
+    typed = client.post("/api/runs", json={"section": "focus", "topic": "Eurobonds", "sections": TITLES, "provider": "local"})
+    assert typed.json()["problems"][0]["code"] == "draft_mode_changed"
+    for provider in ("anthropic", "local"):
+        monkeypatch.setenv("CYTONN_LLM_PROVIDER", provider)
+        r = client.post("/api/runs", json={"section": "focus", "topic": "Eurobonds", "provider": "bedrock"})
+        assert r.json()["problems"][0]["code"] == "draft_mode_changed"   # not draft_sections_required
+
+
+def test_one_setting_chooses_the_model_and_the_startup_line_names_the_one_used(aws, monkeypatch, caplog, tmp_path):
+    monkeypatch.setenv("CYTONN_LLM_MODEL", "claude-sonnet-5-5")   # the Anthropic path's setting
+    monkeypatch.setenv("BEDROCK_MODEL_ID", "us.anthropic.claude-haiku-4-5")
+    assert narrative().model == bp.model_id() == "us.anthropic.claude-haiku-4-5"
+    monkeypatch.delenv("BEDROCK_MODEL_ID")
+    assert narrative().model == MODEL   # CYTONN_LLM_MODEL is never read on this path, even with nothing else set
+    with caplog.at_level(logging.WARNING):
+        create_app(db_path=tmp_path / "a.db", load_dotenv=False)
+    line = next(r.getMessage() for r in caplog.records if "Amazon Bedrock" in r.getMessage())
+    assert f"model {MODEL} (from the default, BEDROCK_MODEL_ID is not set)" in line
+    assert "CYTONN_LLM_MODEL is set and is ignored on this path; only BEDROCK_MODEL_ID chooses the model." in line
+    monkeypatch.setenv("BEDROCK_MODEL_ID", " us.anthropic.claude-haiku-4-5 ")
+    monkeypatch.delenv("CYTONN_LLM_MODEL")
+    line = bp.startup_line()
+    assert "model us.anthropic.claude-haiku-4-5 (from BEDROCK_MODEL_ID)" in line and "ignored" not in line

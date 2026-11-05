@@ -121,6 +121,9 @@ DISCARDED_AS_STUCK = (
 )
 
 PROVIDERS = ("anthropic", "bedrock", "local")
+SECTIONS_REQUIRED = (
+    "With Amazon Bedrock the model searches nothing, so it cannot propose the section titles from the topic alone. Type "
+    "the section titles for this Focus (one a line, up to 8), supply the pages to read for each, then start the draft.")
 
 
 def configured_provider() -> str:
@@ -456,6 +459,8 @@ def create_app(
                 titles = tuple(clean_sections(body.sections))   # over MAX_SECTIONS or MAX_SECTION_TITLE is refused, never cut
             except ValueError as exc:
                 raise ProblemError(422, str(exc), "draft_input_invalid")
+        if spec.needs_topic and not titles and configured_provider() == "bedrock":
+            raise ProblemError(409, SECTIONS_REQUIRED, "draft_sections_required")
         if spec.needs_text and not (body.text and body.text.strip()):
             raise ProblemError(422, f"Paste the text for {spec.title} first, then start the draft.", "draft_text_missing")
         ctx = DraftContext(report_type=report_type, period=period, topic=topic, sections=titles, text=body.text, db_path=db_path,

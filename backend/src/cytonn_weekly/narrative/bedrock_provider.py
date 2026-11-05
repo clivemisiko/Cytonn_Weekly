@@ -41,6 +41,7 @@ MAX_TOKENS = 4096
 OUTLOOK_MAX_TOKENS = 800
 DRAFT_TOOL = "submit_draft"  # a client-side function tool, used only to get the reply as JSON; not a server tool
 SCOPE_SUPPLIED = "supplied"
+WHERE_SUPPLIED = "supplied sources"   # how a warning names the material the model was shown
 
 RECREATE = "Changes to .env reach the api container only when it is recreated (docker compose up -d --force-recreate api)."
 REGION_MISSING = (f"Drafting with Amazon Bedrock needs an AWS region, and none is set. Set {REGION_VARS[0]} (us-east-1 for the "
@@ -66,6 +67,8 @@ def region() -> str:
 
 
 def model_id() -> str:
+    """The one setting that chooses the model on this path: BEDROCK_MODEL_ID, else the default.  CYTONN_LLM_MODEL
+    (the Anthropic path's) is never read here, so setting it changes nothing for a Bedrock draft."""
     return _clean(MODEL_ENV_VAR) or DEFAULT_MODEL
 
 
@@ -103,8 +106,11 @@ def startup_line() -> str:
     """One log line saying which AWS variables are set.  Names only, never a value."""
     names = (*REGION_VARS, BEARER_VAR, *KEY_VARS, TOKEN_VAR)
     on = [n for n in names if _clean(n)]
-    line = (f"Drafting with Amazon Bedrock ({model_id()}). AWS variables set: {', '.join(on) or 'none'}; "
-            f"not set: {', '.join(n for n in names if n not in on) or 'none'}.")
+    chosen = f"{MODEL_ENV_VAR}" if _clean(MODEL_ENV_VAR) else f"the default, {MODEL_ENV_VAR} is not set"
+    line = (f"Drafting with Amazon Bedrock, model {model_id()} (from {chosen}). AWS variables set: "
+            f"{', '.join(on) or 'none'}; not set: {', '.join(n for n in names if n not in on) or 'none'}.")
+    if _clean("CYTONN_LLM_MODEL"):
+        line += f" CYTONN_LLM_MODEL is set and is ignored on this path; only {MODEL_ENV_VAR} chooses the model."
     if _clean(BEARER_VAR) and any(map(_clean, (*KEY_VARS, TOKEN_VAR))):
         line += f" Both a bearer token and access keys are set; {BEARER_VAR} is the one used."
     return line
@@ -225,6 +231,7 @@ class BedrockProvider(_Chat, DraftingProvider):
         results = sources_for(company, end)
         if not results:
             empty.draft_warnings = [f"{company}: {NO_SOURCES}"]
+            empty.reason = NO_SOURCES
             return empty
         warnings: list[str] = []
         raw = self._chat(
@@ -232,7 +239,8 @@ class BedrockProvider(_Chat, DraftingProvider):
              {"role": "user", "content": results_message(company, results, "Supplied sources")}],
             RESPONSE_SCHEMA)
         res = highlight_from_reply(raw, company, ir_domain, SCOPE_SUPPLIED, list(aliases or [company]), results,
-                                   warnings, who=self.WHO, label=self.LABEL, drafted_by=self.drafted_by)
+                                   warnings, who=self.WHO, label=self.LABEL, drafted_by=self.drafted_by,
+                                   where=WHERE_SUPPLIED)
         if res is None:
             empty.draft_warnings = warnings
             return empty
@@ -257,6 +265,7 @@ class BedrockNarrativeProvider(_Chat, NarrativeProvider):
         results = sources_for(brief.label, end)
         if not results:
             empty.draft_warnings = [f"{brief.label}: {NO_SOURCES}"]
+            empty.reason = NO_SOURCES
             return empty
         warnings: list[str] = []
         raw = self._chat(
@@ -264,7 +273,7 @@ class BedrockNarrativeProvider(_Chat, NarrativeProvider):
              {"role": "user", "content": results_message(brief.label, results, "Supplied sources")}],
             RESPONSE_SCHEMA, brief.max_tokens)
         res = piece_from_reply(raw, brief, SCOPE_SUPPLIED, results, warnings,
-                               who=self.WHO, label=self.LABEL, drafted_by=self.drafted_by)
+                               who=self.WHO, label=self.LABEL, drafted_by=self.drafted_by, where=WHERE_SUPPLIED)
         if res is None:
             empty.draft_warnings = warnings
             return empty

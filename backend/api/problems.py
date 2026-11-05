@@ -40,6 +40,7 @@ PROBLEMS: dict[str, tuple[str, Optional[str]]] = {
     "draft_discarded": ("The draft was replaced", "start-draft"),
     "draft_sections_not_approved": ("Other sections are not approved yet", "start-draft"),
     "draft_input_invalid": ("This input cannot be drafted: check what you typed", "start-draft"),
+    "draft_sections_required": ("Type the section titles before you start the draft", "start-draft"),
     "draft_failed": ("The draft stopped", "start-draft"),
     "review_already_decided": ("This section was already decided", "review-status-bar"),
     "review_not_decidable": ("The decision was not recorded", "review-status-bar"),

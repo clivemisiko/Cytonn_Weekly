@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Optional, Sequence
 
 from cytonn_weekly.digital_payments.providers.base import (
     BODY_WORDS,
@@ -19,6 +19,11 @@ if TYPE_CHECKING:
     from cytonn_weekly.narrative.base import NarrativeBrief
 
 CONTEXT_CHARS_PER_RESULT = 3000  # enough text per result to draft from
+WHERE_SEARCHED = "search results"   # how a warning names the material the model was shown; Bedrock says "supplied sources"
+
+# Turns one claim from the model's reply into the claim dict kept in the draft (url, title, cited_text and any extra
+# keys), or None after adding its reason to the warning list.  Given the claim, the sources by URL and the warnings.
+ClaimReader = Callable[[dict[str, Any], dict[str, dict[str, Any]], list[str]], Optional[dict[str, Any]]]
 
 HIGHLIGHT_SYSTEM = f"""\
 You help draft one "Weekly Highlights" item for the Digital Payments section of a \
@@ -68,13 +73,18 @@ RESPONSE_SCHEMA = {
 }
 
 
-def results_message(subject: str, results: list[dict[str, Any]], heading: str = "Search results") -> str:
-    """The user message: each source as a numbered block.  The text of each is cut at CONTEXT_CHARS_PER_RESULT."""
+def results_message(subject: str, results: list[dict[str, Any]], heading: str = "Search results",
+                    limit: int = CONTEXT_CHARS_PER_RESULT) -> str:
+    """The user message: each source as a numbered block.  The text of each is cut at ``limit``.
+
+    A result with an ``id`` (a saved source) is headed "Source" and names its id, which the reply cites; one without
+    (a search result) is headed "Result", exactly as before."""
     blocks = []
     for i, r in enumerate(results, 1):
-        text = " ".join((r.get("text") or "").split())[:CONTEXT_CHARS_PER_RESULT]
+        text = " ".join((r.get("text") or "").split())[:limit]
+        head = f"[Source {i}]\nSource id: {r['id']}" if r.get("id") else f"[Result {i}]"
         blocks.append(
-            f"[Result {i}]\nTitle: {r.get('title') or '(no title)'}\n"
+            f"{head}\nTitle: {r.get('title') or '(no title)'}\n"
             f"URL: {r.get('url')}\nPublished: {r.get('publishedDate') or 'n/a'}\nText: {text}"
         )
     return f"Company: {subject}\n\n{heading}:\n\n" + "\n\n".join(blocks)
@@ -108,11 +118,38 @@ headline and paragraph empty and claims an empty list.
 Reply with JSON only."""
 
 
+def _claims(out: dict[str, Any], by_url: dict[str, dict[str, Any]], hl: list[str], where: str,
+            read_claim: Optional[ClaimReader]) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+    """The reply's claims that cite a given source, and the distinct citations they make."""
+    claims: list[dict[str, Any]] = []
+    citations: list[dict[str, str]] = []
+    for c in out.get("claims") or []:
+        if read_claim:
+            claim = read_claim(c, by_url, hl)
+        else:
+            url, text = (c.get("url") or "").strip(), strip_links((c.get("claim") or "").strip())
+            if url not in by_url:
+                hl.append(f"claim cited a URL not in the {where}; dropped: {url or '(empty)'}")
+                continue
+            claim = {"text": text, "url": url, "title": by_url[url].get("title") or "", "cited_text": ""} if text else None
+        if not claim:
+            continue
+        claims.append(claim)
+        cite = {k: claim[k] for k in ("url", "title", "cited_text")}
+        if cite not in citations:
+            citations.append(cite)
+    return claims, citations
+
+
 def highlight_from_reply(
     raw: str, company: str, ir_domain: str, scope: str, aliases: Sequence[str],
     results: list[dict[str, Any]], warnings: list[str], *, who: str, label: str, drafted_by: str,
+    where: str = WHERE_SEARCHED, read_claim: Optional[ClaimReader] = None,
 ) -> Optional[HighlightResult]:
-    """A Digital Payments highlight from the model's JSON reply, kept only where it cites the given results."""
+    """A Digital Payments highlight from the model's JSON reply, kept only where it cites the given results.
+
+    ``where`` names the material in warnings; ``read_claim`` replaces how a claim is read and checked (Bedrock's
+    quote check) and, when given, the "no cited_text" warning is not made, because its claims carry one."""
     try:
         out = json.loads(raw)
     except json.JSONDecodeError:
@@ -139,7 +176,7 @@ def highlight_from_reply(
         if url in by_url:
             links.append({"anchor": anchor, "url": url})
             return m.group(0)
-        hl_warnings.append(f"link to {url} was not in the search results; unlinked")
+        hl_warnings.append(f"link to {url} was not in the {where}; unlinked")
         return anchor
 
     body_md = LINK_RE.sub(_keep, paragraph_md)
@@ -148,19 +185,7 @@ def highlight_from_reply(
         warnings.append(f"{company}: discarded a story that is not about the company ({headline!r})")
         return None
 
-    claims: list[dict[str, str]] = []
-    citations: list[dict[str, str]] = []
-    for c in out.get("claims") or []:
-        url, text = (c.get("url") or "").strip(), strip_links((c.get("claim") or "").strip())
-        if url not in by_url:
-            hl_warnings.append(f"claim cited a URL not in the search results; dropped: {url or '(empty)'}")
-            continue
-        if not text:
-            continue
-        cite = {"url": url, "title": by_url[url].get("title") or "", "cited_text": ""}
-        claims.append({"text": text, **cite})
-        if cite not in citations:
-            citations.append(cite)
+    claims, citations = _claims(out, by_url, hl_warnings, where, read_claim)
 
     n = word_count(body)
     if not BODY_WORDS[0] <= n <= BODY_WORDS[1]:
@@ -171,7 +196,7 @@ def highlight_from_reply(
         hl_warnings.append("no inline source hyperlink in the body")
     if not claims:
         hl_warnings.append("no cited claims recorded for this highlight")
-    else:
+    elif not read_claim:
         hl_warnings.append(f"{label}: claims carry no cited_text (model-mapped URLs only, not provider-cited spans)")
     for link in links:
         published = by_url[link["url"]].get("publishedDate")
@@ -187,7 +212,7 @@ def highlight_from_reply(
 
 def piece_from_reply(
     raw: str, brief: NarrativeBrief, scope: str, results: list[dict[str, Any]], warnings: list[str],
-    *, who: str, label: str, drafted_by: str,
+    *, who: str, label: str, drafted_by: str, where: str = WHERE_SEARCHED, read_claim: Optional[ClaimReader] = None,
 ) -> Optional[HighlightResult]:
     """A narrative piece from the model's JSON reply, kept only where it cites the given results."""
     try:
@@ -217,31 +242,21 @@ def piece_from_reply(
         if m.group(2) in by_url:
             links.append({"anchor": m.group(1), "url": m.group(2)})
             return m.group(0)
-        hl.append(f"link to {m.group(2)} was not in the search results; unlinked")
+        hl.append(f"link to {m.group(2)} was not in the {where}; unlinked")
         return m.group(1)
 
     body_md = LINK_RE.sub(keep, paragraph_md)
     body = strip_links(body_md)
-    claims, citations = [], []
-    for c in out.get("claims") or []:
-        url, text = (c.get("url") or "").strip(), strip_links((c.get("claim") or "").strip())
-        if url not in by_url:
-            hl.append(f"claim cited a URL not in the search results; dropped: {url or '(empty)'}")
-            continue
-        if text:
-            cite = {"url": url, "title": by_url[url].get("title") or "", "cited_text": ""}
-            claims.append({"text": text, **cite})
-            if cite not in citations:
-                citations.append(cite)
+    claims, citations = _claims(out, by_url, hl, where, read_claim)
     n = word_count(body)
     if not brief.words[0] <= n <= brief.words[1]:
         hl.append(f"body is {n} words, outside {brief.words[0]}-{brief.words[1]}")
     if brief.opener and not body.startswith(brief.opener):
         hl.append(f'body does not open with "{brief.opener}"')
-    if claims:
-        hl.append(f"{label}: claims carry no cited_text (model-mapped URLs only)")
-    else:
+    if not claims:
         hl.append("no cited claims recorded for this piece")
+    elif not read_claim:
+        hl.append(f"{label}: claims carry no cited_text (model-mapped URLs only)")
     return HighlightResult(
         company=brief.label, search_scope=scope, ir_domain=", ".join(brief.preferred_domains),
         drafted_by=drafted_by, headline=headline, paragraph=body, paragraph_md=body_md,

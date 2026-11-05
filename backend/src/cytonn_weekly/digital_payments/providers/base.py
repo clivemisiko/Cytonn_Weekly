@@ -86,6 +86,8 @@ class HighlightResult:
     ``warnings`` belong to this highlight; ``draft_warnings`` are provider-level
     notes (e.g. a discarded off-topic story) that go to the section's warnings.
     ``drafted_by`` identifies provider + model, e.g. "anthropic:claude-sonnet-5-5".
+    ``reason`` is why there is no story when the provider knows a plainer reason than "nothing qualifying" (Bedrock with
+    no sources supplied); empty otherwise, and a caller shows it in place of the generic sentence.
     """
 
     company: str
@@ -102,6 +104,7 @@ class HighlightResult:
     citations: list[dict[str, str]] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     draft_warnings: list[str] = field(default_factory=list)
+    reason: str = ""
 
 
 @dataclass
