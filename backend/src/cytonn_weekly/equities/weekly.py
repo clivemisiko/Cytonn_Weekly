@@ -65,6 +65,7 @@ from cytonn_weekly.weekly.prose import (
     Fallbacks,
     Figures,
     direction,
+    fetch_week_bulletin,
     fallback_notices,
     join_names,
     note_fallback,
@@ -216,14 +217,14 @@ def _year_open(fetchers: Fetchers, inputs: WeeklyInputs, year: int, on_event: Op
 
 def _afx_changes(fetchers: Fetchers, week: Week, today: date, on_event: Optional[Observer]) -> Optional[dict[str, dict[str, float]]]:
     """afx's one-week and year-to-date changes, only while its page is still the Friday's close."""
-    if not week.ending <= today <= week.ending + timedelta(days=2):
+    if not week.as_at <= today <= week.ending + timedelta(days=2):
         return None   # afx shows the latest close only; by Monday's close it is no longer this week's
     page = try_fetch(on_event, afx.SOURCE_NAME, fetchers.afx_page)
     if page is None:
         return None
     html = page.decode("utf-8", errors="replace")
     as_of = afx.parse_as_of(html)
-    if not as_of or as_of[:10] != week.ending.isoformat():
+    if not as_of or as_of[:10] != week.as_at.isoformat():
         return None
     keys = {"NASI": "nasi", "NSE25": "nse_25", "NSE20": "nse_20", "NSE10": "nse_10", "BANKING": "banking"}
     out = {}
@@ -260,7 +261,7 @@ def _rates(fetchers: Fetchers, inputs: WeeklyInputs, bulletin: Optional[cbk_bull
 def _level(m: Market, key: str, when: str) -> Optional[dict[str, Any]]:
     """One index level as an input: ``when`` is "today", "last_week" or "year_open"."""
     week = m.week
-    day = {"today": week.ending, "last_week": week.previous_friday, "year_open": m.year_open_day}[when]
+    day = {"today": week.as_at, "last_week": week.previous_as_at, "year_open": m.year_open_day}[when]
     cell = (m.typed_indices or {}).get(key, {}).get(when)
     typed_reading = typed_second(cell, WB)
     # CBK first (Table 6 covers the Friday before to the Thursday, so never this Friday), then KCB IB, then the price list.
@@ -275,11 +276,11 @@ def _level(m: Market, key: str, when: str) -> Optional[dict[str, Any]]:
             note_fallback(m.fallbacks, name, source, day, why, link)
 
     kcb_weekly = m.inputs.kcb_weekly
-    if when != "year_open" and kcb_weekly is not None and key in kcb_weekly.indicators and kcb_weekly.report_date == week.ending \
-            and kcb_weekly.previous_date == week.previous_friday:
+    if when != "year_open" and kcb_weekly is not None and key in kcb_weekly.indicators and kcb_weekly.report_date in week.report_dates \
+            and kcb_weekly.previous_date in week.previous.report_dates:
         value = kcb_weekly.indicators[key]["current" if when == "today" else "previous"]
         fell_back(f"{kcb.SOURCE_NAME} weekly report")
-        return published(value, f"{kcb.SOURCE_NAME} weekly report, {week.ending.isoformat()}", second=typed_reading, decimals=2)
+        return published(value, f"{kcb.SOURCE_NAME} weekly report, {kcb_weekly.report_date.isoformat()}", second=typed_reading, decimals=2)
     daily = m.inputs.kcb_daily.get(day) if day else None
     if when != "year_open" and daily is not None and key in daily.indicators:
         fell_back(f"{kcb.SOURCE_NAME} daily report")
@@ -367,8 +368,8 @@ def banking_block(m: Market) -> dict[str, Any]:
     change = figs.add("banking_wow", "Banking Sector index week-on-week change", PLAIN_PCT, 1, {"today": today, "last_week": last},
                       pct_change("today", "last_week"))
     figs.items[-1]["second"] = _afx_second(m, "banking", "wow")
-    now = figs.add("banking_level", "Banking Sector index, Friday", PLAIN, 1, {"today": today})
-    was = figs.add("banking_previous", "Banking Sector index, previous Friday", PLAIN, 1, {"last_week": last})
+    now = figs.add("banking_level", f"Banking Sector index, {m.week.as_at:%A}", PLAIN, 1, {"today": today})
+    was = figs.add("banking_previous", f"Banking Sector index, previous {m.week.previous_as_at:%A}", PLAIN, 1, {"last_week": last})
     moved = figs.value("banking_wow")
     text = (f"During the week, the banking sector index {direction(moved, 'increased', 'decreased', 'was unchanged')} by {change} to "
             f"{now} from {was} recorded the previous week.")
@@ -498,7 +499,7 @@ def turnover_block(m: Market) -> dict[str, Any]:
         figs.items[-1]["second"] = {"value": series.total.number, "source": f"analyst input from {WB} {series.total.ref}", "decimals": 1}
     text = f"During the week, equities turnover stood at USD {now} mn"
     p_inputs, p_expr, p_missing = _usd_week(m, week.previous, lambda d: _day_turnover(m, d), "last_")
-    if p_inputs is None and series is not None and len(series.history) >= 2 and series.history[-2][0] == week.previous_friday:
+    if p_inputs is None and series is not None and len(series.history) >= 2 and series.history[-2][0] in week.previous.report_dates:
         # The previous week's own days are not all in this week's inputs: its typed weekly row is used instead.
         row = equities_workbook.read_turnover(book, week.previous).total
         if row is not None:
@@ -515,7 +516,7 @@ def turnover_block(m: Market) -> dict[str, Any]:
         ytd = figs.add("turnover_ytd", "Year-to-date equities turnover (USD mn)", PLAIN, 1, {"ytd": typed(running, WB)})
         text += f", taking the YTD total turnover to USD {ytd} mn"
     text += "."
-    notes = ["Each day's equities turnover in KES is divided by that day's CBK rate; Monday to Friday."]
+    notes = [f"Each day's equities turnover in KES is divided by that day's CBK rate; {week.days_note()}."]
     if running is None:
         notes.append(f"The year-to-date total is left out: it is the analysts' running total, which is neither typed under "
                      f"\"{analyst.FORM}\" nor in an {WB.lower()} updated for this week.")
@@ -527,7 +528,7 @@ def turnover_block(m: Market) -> dict[str, Any]:
 
 def _day_flow(m: Market, day: date) -> Optional[dict[str, Any]]:
     report = m.inputs.kcb_weekly
-    if report is not None and report.report_date == m.week.ending:
+    if report is not None and report.report_date in m.week.report_dates:
         flow = report.daily_foreign_flows.get(day.strftime("%A"))
         if flow is not None:
             daily = m.inputs.kcb_daily.get(day)
@@ -574,10 +575,10 @@ def foreign_block(m: Market) -> dict[str, Any]:
     if series is not None and series.total is not None:
         figs.items[-1]["second"] = {"value": series.total.number, "source": f"analyst input from {WB} {series.total.ref}", "decimals": 1}
     value = figs.value("net_flow")
-    notes = ["Each day's net foreign flow in KES is divided by that day's CBK rate; Monday to Friday."]
+    notes = [f"Each day's net foreign flow in KES is divided by that day's CBK rate; {week.days_note()}."]
     earlier = form.foreign_history()   # the analysts' weekly sums before this week: (the Friday, USD mn, its cell)
     on_form = any(analyst.is_typed(c) for _, _, c in earlier)
-    previous = earlier[-1] if earlier and earlier[-1][0] == week.previous_friday else None
+    previous = earlier[-1] if earlier and earlier[-1][0] in week.previous.report_dates else None
     if previous is None:
         text = f"During the week, foreign investors recorded a {_position(value)} position of USD {net} mn"
         notes.append(f"The previous week and the streak are left out: they come from the analysts' weekly sums, typed under "
@@ -616,11 +617,11 @@ def foreign_block(m: Market) -> dict[str, Any]:
         text += f", taking the YTD foreign {_position(running.number)} position to USD {ytd} mn"
         prior = form.field("foreign_prior_year")
         if prior is not None:
-            was_year = figs.add("net_flow_prior_year", f"Foreign net position recorded in {week.ending.year - 1} (USD mn)", PLAIN, 1,
+            was_year = figs.add("net_flow_prior_year", f"Foreign net position recorded in {week.as_at.year - 1} (USD mn)", PLAIN, 1,
                                 {"prior_year": typed(prior, WB)},
                                 note=("Typed on the weekly form." if analyst.is_typed(prior) else
                                       "The running total on the last weekly row before the workbook's count restarted for this year."))
-            text += f", compared to a {_position(prior.number)} position of USD {was_year} mn recorded in {week.ending.year - 1}"
+            text += f", compared to a {_position(prior.number)} position of USD {was_year} mn recorded in {week.as_at.year - 1}"
     text += "."
     return computed_block("foreign", title, text, figs.items,
                           sources=[{"name": f"{kcb.SOURCE_NAME} weekly report"}, {"name": cbk_rates.SOURCE_NAME, "url": cbk_rates.PAGE}]
@@ -705,12 +706,12 @@ def universe_block(m: Market, warnings: list[str]) -> dict[str, Any]:
     labels = {c.key: c.label.lower() for c in analyst.TABLES["universe"].columns}
     columns = [
         {"key": "company", "label": "Company", "fmt": TEXT},
-        {"key": "last_price", "label": f"Price as at {week.previous_friday.strftime('%d/%m/%Y')}", "fmt": PRICE, "decimals": 1},
-        {"key": "price", "label": f"Price as at {week.ending.strftime('%d/%m/%Y')}", "fmt": PRICE, "decimals": 1},
+        {"key": "last_price", "label": f"Price as at {week.previous_as_at.strftime('%d/%m/%Y')}", "fmt": PRICE, "decimals": 1},
+        {"key": "price", "label": f"Price as at {week.as_at.strftime('%d/%m/%Y')}", "fmt": PRICE, "decimals": 1},
         {"key": "wow", "label": "w/w change", "fmt": PCT, "decimals": 1, "expr": pct_change("price", "last_price")},
         {"key": "mom", "label": "m/m change", "fmt": PCT, "decimals": 1, "expr": pct_change("price", "month_end_price")},
         {"key": "ytd", "label": "YTD Change", "fmt": PCT, "decimals": 1, "expr": pct_change("price", "year_open")},
-        {"key": "year_open", "label": f"Year Open {week.ending.year}", "fmt": PRICE, "decimals": 1},
+        {"key": "year_open", "label": f"Year Open {week.as_at.year}", "fmt": PRICE, "decimals": 1},
         {"key": "target", "label": "Target Price*", "fmt": PRICE, "decimals": 1},
         {"key": "dividend_yield", "label": "Dividend Yield***", "fmt": PCT, "decimals": 1, "expr": ["mul", ["div", "dps", "price"], 100]},
         {"key": "upside", "label": "Upside/ Downside**", "fmt": PCT, "decimals": 1, "expr": _UPSIDE},
@@ -771,7 +772,7 @@ def universe_block(m: Market, warnings: list[str]) -> dict[str, Any]:
     rows.sort(key=lambda r: -(r.get("upside") if r.get("upside") is not None else float("-inf")))
     block = table_block("universe_of_coverage", title, columns, rows, "company", "company",
                         {"name": f"{analyst.FORM}, Universe of Coverage" if data["typed"] else f"{WB}, '{equities_workbook.UNIVERSE_SHEET}'",
-                         "url": None, "as_of": week.ending.isoformat()})
+                         "url": None, "as_of": week.as_at.isoformat()})
     block["row_origin"] = ANALYST
     block["second_sources"] = seconds   # a typed price or target that differs from the uploaded workbook's
     block["footnotes"] = list(FOOTNOTES)
@@ -779,7 +780,7 @@ def universe_block(m: Market, warnings: list[str]) -> dict[str, Any]:
     block["notes"] = [f"m/m change is against the close of {data['month_end'].strftime('%d/%m/%Y')}, "
                       + ("the month-end date typed on the form." if typed_base else
                          "the previous month's last price column in the workbook.")]
-    if (week.ending.replace(day=1) - data["month_end"]).days > 5:
+    if (week.as_at.replace(day=1) - data["month_end"]).days > 5:
         warnings.append(f"Universe of Coverage: the m/m base is the {data['month_end'].isoformat()} close, which is "
                         "not the previous month's last trading day; check the m/m column.")
     return block
@@ -813,7 +814,7 @@ def running_total_suggestions(inputs: WeeklyInputs, usd_rates: Callable[[], dict
             ("turnover_ytd", _day_turnover, "equities turnover (KCB IB's daily reports and the CBK bulletin's Table 6)"),
             ("foreign_ytd", _day_flow, "net foreign flows (KCB IB's weekly report)")):
         label = analyst.FIELDS[key].label
-        if week.previous_friday.year != week.ending.year:
+        if week.previous_as_at.year != week.as_at.year:
             out[key] = {"reason": f"{label}: the running total restarts with the year, so last week's is not carried into it. "
                                   "Type this week's total, the year so far, yourself."}
             continue
@@ -878,14 +879,15 @@ def build_equities_weekly_review(
     today = today or date.today()
     week = week_for(week_ending, today)
     inputs = inputs or WeeklyInputs(week, inputs_root)
+    week = week.with_as_at(inputs.week.as_at_set)   # the as-at date the coordinator set for the week, if any
     fetchers = fetchers or Fetchers()
     problems: list[str] = []
-    warnings: list[str] = []
+    warnings: list[str] = [week.holiday_note] if week.holiday_note else []
     notices: list[dict[str, Any]] = []   # the bulletin's refused tables as fields; their sentences are in ``warnings`` too
 
     bulletin = inputs.bulletin
     if bulletin is None:
-        fetched = try_fetch(on_event, "CBK Weekly Bulletin", fetchers.bulletin, week.ending, problems=problems)
+        fetched = try_fetch(on_event, "CBK Weekly Bulletin", fetch_week_bulletin, fetchers.bulletin, week, problems=problems)
         if fetched is not None:
             try:
                 bulletin = cbk_bulletin.parse_bulletin(fetched[0])
@@ -897,16 +899,16 @@ def build_equities_weekly_review(
     typed_indices = None
     if inputs.equities_book is not None:
         try:
-            typed_indices = equities_workbook.read_indices(inputs.equities_book, week.ending.year)
+            typed_indices = equities_workbook.read_indices(inputs.equities_book, week.as_at.year)
         except WorkbookError as exc:
             warnings.append(f"Index levels in the workbook were not read: {exc}")
     boxes: dict[date, nse_price_list.IndexBox] = {}
-    for day in (week.ending, week.previous_friday):
+    for day in (week.as_at, week.previous_as_at):
         box = _box(fetchers, inputs, day, on_event, problems)
         if box is not None:
             boxes[day] = box
             warnings += [f"NSE daily price list of {day.isoformat()}: {p}" for p in box.problems]
-    year_open_day, year_box = _year_open(fetchers, inputs, week.ending.year, on_event, problems)
+    year_open_day, year_box = _year_open(fetchers, inputs, week.as_at.year, on_event, problems)
     if year_open_day is not None and year_box is not None:
         boxes[year_open_day] = year_box
     market = Market(week=week, inputs=inputs, bulletin=bulletin,
@@ -924,7 +926,7 @@ def build_equities_weekly_review(
 
     valuation = valuation_block(market)
     quoted = {f["key"]: f["display"] for f in valuation.get("figures", [])}   # what the draft prints beside the charts
-    charts, chart_files = chart_blocks(inputs.equities_book, WB, week.ending, quoted, NEED_WORKBOOK_FOR_CHARTS, on_event)
+    charts, chart_files = chart_blocks(inputs.equities_book, WB, week.as_at, quoted, NEED_WORKBOOK_FOR_CHARTS, on_event)
     blocks: list[dict[str, Any]] = [indices_block(market), large_caps_block(market), banking_block(market),
                                     turnover_block(market), foreign_block(market), valuation, *charts,
                                     universe_block(market, warnings)]

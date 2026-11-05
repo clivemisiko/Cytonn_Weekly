@@ -446,8 +446,13 @@ export interface WeeklyInputs {
   week_ending: string;
   monday: string;
   previous_friday: string;
+  /** The day the week's figures are as at: the Friday, the last trading day when it was closed, or the day set by hand. */
+  as_at: string;
+  previous_as_at: string;
+  /** Set when the Friday was a market holiday or the as-at day was chosen by hand. */
+  holiday_note: string | null;
   slots: InputSlot[];
-  notes: { bidding_range?: string; previous_issue?: string };
+  notes: { bidding_range?: string; previous_issue?: string; as_at?: string };
   max_bytes: number;
   charts: ChartUpload[];
   chart_max_bytes: number;

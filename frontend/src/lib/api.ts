@@ -246,7 +246,7 @@ export const removeInput = (weekEnding: string, storedName: string) =>
 export const fetchBulletin = (weekEnding: string) =>
   request<WeeklyInputs>(`${inputsPath(weekEnding)}/cbk_bulletin/fetch`, { method: "POST" }, UPLOAD_TIMEOUT_MS);
 
-export const saveInputNotes = (weekEnding: string, notes: { bidding_range?: string; previous_issue?: string }) =>
+export const saveInputNotes = (weekEnding: string, notes: { bidding_range?: string; previous_issue?: string; as_at?: string }) =>
   request<WeeklyInputs>(`${inputsPath(weekEnding)}/notes`, { method: "PUT", body: JSON.stringify(notes) });
 
 const chartPath = (weekEnding: string, key: string) => `${inputsPath(weekEnding)}/charts/${encodeURIComponent(key)}`;

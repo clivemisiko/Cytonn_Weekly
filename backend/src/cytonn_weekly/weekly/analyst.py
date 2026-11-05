@@ -603,9 +603,9 @@ def _check_table(table: Table, rows: list[dict[str, str]], week: Week, errors: l
                 errors.append(f"{name}, {labels[r['row']]}: give the date and at least one yield, or leave the row empty")
                 continue
             day = date.fromisoformat(r["date"])
-            if r["row"] == "year_open" and not (day.year == week.ending.year and day.month == 1 and day.day <= 8):
+            if r["row"] == "year_open" and not (day.year == week.as_at.year and day.month == 1 and day.day <= 8):
                 errors.append(f"{name}, {labels[r['row']]}: {r['date']} is not in the first week of January "
-                              f"{week.ending.year}")
+                              f"{week.as_at.year}")
             if r["row"] == "month_open" and not ((day.year, day.month) == (week.thursday.year, week.thursday.month)
                                                  and day.day <= 7 and day <= week.thursday):
                 errors.append(f"{name}, {labels[r['row']]}: {r['date']} is not in the first week of "
@@ -667,9 +667,9 @@ def _check_field(spec: Field, value: Any, week: Week) -> None:
                              "week's auction settles. Type the first day of the current fiscal year, or leave it empty "
                              "for 1 July.")
     if spec.key == "universe_month_end":
-        day, month_start = date.fromisoformat(value), week.ending.replace(day=1)
+        day, month_start = date.fromisoformat(value), week.as_at.replace(day=1)
         if not month_start - timedelta(days=31) <= day < month_start:
-            raise InputError(f"{spec.label}: {day_text(day)} is not in the month before {week.ending.strftime('%B %Y')}. "
+            raise InputError(f"{spec.label}: {day_text(day)} is not in the month before {week.as_at.strftime('%B %Y')}. "
                              "Type the last trading day of the previous month.")
 
 
@@ -849,7 +849,7 @@ def carry_forward(week: Week, root: Optional[Path] = None) -> dict[str, Any]:
         raw = last["fields"].get(key)
         if raw is None or key in form["fields"]:
             continue
-        if key == "foreign_prior_year" and last_week.ending.year != week.ending.year:
+        if key == "foreign_prior_year" and last_week.as_at.year != week.as_at.year:
             continue
         try:
             take("fields", key, clean_field(FIELDS[key], raw, week), key in WEEKLY_FIELDS)
@@ -1002,7 +1002,7 @@ class Analyst:
             return series.ytd if series else None
         if key == "foreign_prior_year":
             series = self.wb_foreign()
-            return equities_workbook.prior_year_total(series, self.week.ending.year) if series else None
+            return equities_workbook.prior_year_total(series, self.week.as_at.year) if series else None
         if key in ("pe", "pe_average", "dividend_yield", "dividend_yield_average"):
             return self.wb_valuation().get(key)
         if key == "universe_month_end":
@@ -1025,7 +1025,7 @@ class Analyst:
                 return [{"row": s.key, "amount_mn": s.issue["amount_before"], "maturity": s.issue["maturity"]}
                         for s in series if s.issue is not None] or None
             last = week.thursday
-            days = sorted({d for s in series for d in s.yields if d.year == week.ending.year and d <= last})
+            days = sorted({d for s in series for d in s.yields if d.year == week.as_at.year and d <= last})
             rows = []
             year_open = next((d for d in days if d.month == 1 and d.day <= 8), None)
             month_open = next((d for d in days if (d.year, d.month) == (last.year, last.month) and d.day <= 7), None)
@@ -1293,10 +1293,10 @@ class Analyst:
         """The company's price in KCB IB's weekly report for this Friday, or None (no report, or a name with no ticker)."""
         report = self.inputs.kcb_weekly
         ticker = COVERAGE_TICKERS.get(_key(company))
-        if report is None or ticker is None or report.report_date != self.week.ending:
+        if report is None or ticker is None or report.report_date not in self.week.report_dates:
             return None
         price = (report.securities.get(ticker) or {}).get("price")
-        return None if price is None else Reading(price, f"KCB IB weekly report of {self.week.ending.isoformat()}, {ticker}")
+        return None if price is None else Reading(price, f"KCB IB weekly report of {report.report_date.isoformat()}, {ticker}")
 
     def friday_price(self, company: Any) -> Any:
         """This week's Friday price as stored: typed, else KCB IB's, else the uploaded workbook's.  None if in none."""
