@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { API, DRAFT, PERIOD, VARIANT, openStart } from "./helpers";
+import { API, DRAFT, VARIANT, openStart } from "./helpers";
 
 // The Sources panel of a Bedrock draft. Runs only on the "bedrock" start of the test API (E2E_VARIANT=bedrock, see
 // e2e/serve_e2e.py): the provider is Bedrock with invented settings, the model is a fake client that quotes the first

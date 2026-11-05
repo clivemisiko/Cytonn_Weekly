@@ -233,6 +233,9 @@ class _Chat:
             logger.warning("Bedrock call failed: %s (aws error %r, HTTP %s)", type(exc).__name__, _kind(exc),
                            getattr(exc, "status_code", None))
             raise BedrockError(problem_for(exc, self.model, region())) from None
+        usage = getattr(resp, "usage", None)   # at WARNING so it shows with no logging set up; counts only, never text
+        logger.warning("Bedrock request %d: %s, %s input tokens, %s output tokens, stop reason %s", self.requests, self.model,
+                       getattr(usage, "input_tokens", "unknown"), getattr(usage, "output_tokens", "unknown"), resp.stop_reason)
         if schema:   # a reply cut off at max_tokens is half a JSON object: "" is read as invalid JSON and discarded
             call = next((b for b in resp.content if b.type == "tool_use"), None)
             return json.dumps(call.input) if call is not None and resp.stop_reason != "max_tokens" else ""

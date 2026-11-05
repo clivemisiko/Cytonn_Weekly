@@ -205,6 +205,25 @@ def test_a_reply_cut_off_at_the_token_limit_is_discarded_with_a_warning(aws):
     assert res.no_story and any("Bedrock model returned invalid JSON" in w for w in res.draft_warnings)
 
 
+def test_each_request_logs_its_number_and_token_counts_and_nothing_else(aws, caplog):
+    class Counted(FakeBedrock):
+        def create(self, **kw):
+            resp = super().create(**kw)
+            resp.usage = NS(input_tokens=1234, output_tokens=56)
+            return resp
+
+    with caplog.at_level(logging.WARNING, logger=bp.logger.name):
+        narrative(Counted()).draft_piece(BRIEF, start=START, end=TODAY, today=TODAY)
+    lines = [r.getMessage() for r in caplog.records if "Bedrock request" in r.getMessage()]
+    assert lines == [f"Bedrock request 1: {bp.model_id()}, 1234 input tokens, 56 output tokens, stop reason tool_use"]
+
+
+def test_a_reply_with_no_usage_still_logs_the_request(aws, caplog):
+    with caplog.at_level(logging.WARNING, logger=bp.logger.name):
+        narrative(FakeBedrock()).draft_piece(BRIEF, start=START, end=TODAY, today=TODAY)
+    assert any("unknown input tokens, unknown output tokens" in r.getMessage() for r in caplog.records)
+
+
 def test_a_digital_payments_review_is_a_production_draft_with_the_brief_caps(aws):
     client = FakeBedrock()
     provider = bp.BedrockProvider(client=client)
