@@ -1,7 +1,8 @@
 """Chooses the narrative provider from the same CYTONN_LLM_PROVIDER switch Digital Payments uses.
 
     (unset) / "anthropic"  -> AnthropicNarrativeProvider, the production default
-    "bedrock"              -> BedrockNarrativeProvider (Claude on Amazon Bedrock + Exa), production
+    "bedrock"              -> BedrockNarrativeProvider (Claude on Amazon Bedrock; sources supplied by the coordinator
+                              or fetched in code from approved sites; no search service), production
     "local"                -> LocalNarrativeProvider (Ollama + Exa), development only
 
 "local" prints the same conspicuous DEV MODE banner as the Digital Payments

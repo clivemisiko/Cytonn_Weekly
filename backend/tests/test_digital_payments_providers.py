@@ -278,6 +278,7 @@ def test_a_key_too_short_to_hide_shows_none_of_itself():
 
 
 def test_keys_the_environment_and_dot_env_disagree_on_are_named_once_each(monkeypatch, tmp_path):
+    monkeypatch.setenv("CYTONN_LLM_PROVIDER", "local")   # the Exa key is checked only for the local provider
     dot_env = tmp_path / ".env"
     for name in env.API_KEYS:
         monkeypatch.delenv(name, raising=False)
@@ -315,6 +316,7 @@ def test_keys_the_environment_and_dot_env_disagree_on_are_named_once_each(monkey
 def test_the_api_logs_the_override_once_at_start_and_keeps_the_environments_key(monkeypatch, tmp_path, caplog):
     from api.main import create_app
 
+    monkeypatch.setenv("CYTONN_LLM_PROVIDER", "local")
     dot_env = tmp_path / ".env"
     write_env(dot_env, EXA_API_KEY=KEY_IN_FILE)
     monkeypatch.setattr(env, "ENV_FILE", dot_env)

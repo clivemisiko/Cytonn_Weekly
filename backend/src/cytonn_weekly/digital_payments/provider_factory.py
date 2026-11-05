@@ -1,11 +1,12 @@
 """Chooses the drafting provider from the CYTONN_LLM_PROVIDER environment variable.
 
     (unset) / "anthropic"  -> AnthropicProvider, the production default
-    "bedrock"              -> BedrockProvider (Claude on Amazon Bedrock + Exa), production
+    "bedrock"              -> BedrockProvider (Claude on Amazon Bedrock; sources supplied by the coordinator
+                              or fetched in code from approved sites; no search service), production
     "local"                -> LocalProvider (Ollama + Exa), development only
 
 Selecting "local" prints a conspicuous warning on every call, because its
-output must never be published.  Local-only options (ignored by "anthropic"):
+output must never be published.  Local-only options (ignored by the other providers):
 
     CYTONN_LOCAL_MODEL=<ollama model>  model to draft with (default phi4-mini),
                                        e.g. gemma4:26b-a4b-it-qat for an A/B run

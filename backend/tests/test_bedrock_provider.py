@@ -1,10 +1,13 @@
+import ast
+import inspect
 import json
 import logging
+import os
+import re
 from datetime import date
 from types import SimpleNamespace as NS
 
 import anthropic
-import httpx
 import httpx2
 import pytest
 from fastapi.testclient import TestClient
@@ -12,15 +15,19 @@ from fastapi.testclient import TestClient
 from api.cms_publish import local_pieces, publish_report
 from api.main import create_app, failure_message, provider_problem
 from api.serialize import is_dev_draft
+from cytonn_weekly import env
 from cytonn_weekly.digital_payments.delivery import is_dev_mode_review
 from cytonn_weekly.digital_payments.provider_factory import get_provider
+from cytonn_weekly.digital_payments.providers import drafting
 from cytonn_weekly.digital_payments.providers.anthropic_provider import AnthropicProvider
-from cytonn_weekly.digital_payments.providers.base import SCOPE_IR
-from cytonn_weekly.digital_payments.providers.local_provider import LocalSettings
+from cytonn_weekly.digital_payments.providers.base import DraftingProvider
+from cytonn_weekly.digital_payments.providers.local_provider import EXA_KEY_MISSING, LocalProvider
 from cytonn_weekly.narrative import bedrock_provider as bp
 from cytonn_weekly.narrative.anthropic_provider import AnthropicNarrativeProvider
-from cytonn_weekly.narrative.base import NarrativeBrief
+from cytonn_weekly.narrative.base import NarrativeBrief, NarrativeProvider
+from cytonn_weekly.narrative.drafter import draft_pieces
 from cytonn_weekly.narrative.factory import get_narrative_provider
+from cytonn_weekly.narrative.local_provider import LocalNarrativeProvider
 from tests.review_helpers import make_review
 from tests.section_helpers import TODAY, focus_review
 
@@ -32,8 +39,10 @@ BRIEF = NarrativeBrief(id="lending", section="Real Estate", label="Mortgage lend
                        preferred_domains=("centralbank.go.ke",))
 # Values have spaces on purpose: they can never be mistaken for, or be, a real credential.
 SECRETS = {"AWS_ACCESS_KEY_ID": "not a real key id", "AWS_SECRET_ACCESS_KEY": "not a real secret",
-           "AWS_SESSION_TOKEN": "not a real session token", "AWS_BEARER_TOKEN_BEDROCK": "not a real bearer token",
-           "EXA_API_KEY": "not a real exa key"}
+           "AWS_SESSION_TOKEN": "not a real session token", "AWS_BEARER_TOKEN_BEDROCK": "not a real bearer token"}
+PAGE = {"url": URL, "title": "Release", "text": "Visa paid $5 million for a thing. Loans rose 8.75% in 2026.",
+        "publishedDate": "2026-09-29"}
+SEAM_AS_SHIPPED = bp.sources_for   # before any test replaces it
 
 
 @pytest.fixture
@@ -43,21 +52,15 @@ def aws(monkeypatch):
     monkeypatch.setenv("AWS_REGION", "us-east-1")
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", SECRETS["AWS_ACCESS_KEY_ID"])
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", SECRETS["AWS_SECRET_ACCESS_KEY"])
-    monkeypatch.setenv("EXA_API_KEY", SECRETS["EXA_API_KEY"])
-    for name in ("BEDROCK_MODEL_ID", "AWS_DEFAULT_REGION", "AWS_SESSION_TOKEN", "AWS_BEARER_TOKEN_BEDROCK"):
+    for name in ("BEDROCK_MODEL_ID", "AWS_DEFAULT_REGION", "AWS_SESSION_TOKEN", "AWS_BEARER_TOKEN_BEDROCK", "EXA_API_KEY"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(bp, "boto3_installed", lambda: True)
 
 
-def exa(seen=None, results=None):
-    def handler(request):
-        if seen is not None:
-            seen.append(json.loads(request.content))
-        found = results if results is not None else [
-            {"url": URL, "title": "Release", "text": "Visa paid $5 million for a thing. Loans rose 8.75% in 2026.",
-             "publishedDate": "2026-09-29"}]
-        return httpx.Response(200, json={"results": found})
-    return httpx.Client(transport=httpx.MockTransport(handler))
+@pytest.fixture(autouse=True)
+def pages(monkeypatch):
+    """One supplied page for every subject, standing in for step 2b; the tests of the empty seam put the real one back."""
+    monkeypatch.setattr(bp, "sources_for", lambda subject, week_end: [dict(PAGE)])
 
 
 TEXT = {"propose the section titles": "Overview of the topic\nMarket performance\nRisks\nRecommendations and Conclusion",
@@ -88,7 +91,7 @@ class FakeBedrock:
 
 
 def narrative(client=None, **kw):
-    return bp.BedrockNarrativeProvider(client=client or FakeBedrock(), exa_api_key="k", http_client=exa(), **kw)
+    return bp.BedrockNarrativeProvider(client=client or FakeBedrock(), **kw)
 
 
 def api_error(cls, status, kind, message="RAW LIBRARY TEXT"):
@@ -115,18 +118,47 @@ def test_the_model_is_bedrock_model_id_with_the_sonnet_profile_as_default(aws, m
 
 def test_the_ollama_speed_settings_have_no_say_over_a_bedrock_draft(aws, monkeypatch):
     monkeypatch.setenv("CYTONN_LOCAL_MAX_SEARCH_RESULTS", "1")
-    many = [{"url": f"{URL}/{i}", "title": str(i), "text": "x"} for i in range(3)]
+    monkeypatch.setenv("CYTONN_LOCAL_RESULT_CHARS", "500")
+    monkeypatch.setattr(bp, "sources_for", lambda subject, week_end: [
+        {"url": f"{URL}/{i}", "title": str(i), "text": "word " * 400, "publishedDate": ""} for i in range(3)])
     client = FakeBedrock()
-    p = bp.BedrockNarrativeProvider(client=client, exa_api_key="k", http_client=exa(results=many))
+    p = bp.BedrockNarrativeProvider(client=client)
     p.draft_piece(BRIEF, start=START, end=TODAY, today=TODAY)
-    assert p.settings == LocalSettings() and client.calls[0]["messages"][-1]["content"].count("[Result") == 3
+    sent = client.calls[0]["messages"][-1]["content"]
+    assert not hasattr(p, "settings") and sent.count("[Result") == 3 and len(sent) > 3 * 1900
+
+
+# --- independent of the local providers and of Exa -------------------------------------------------
+
+def _imports(module):
+    names = set()
+    for node in ast.walk(ast.parse(inspect.getsource(module))):
+        if isinstance(node, ast.ImportFrom):
+            names.add(node.module or "")
+            names.update(f"{node.module}.{a.name}" for a in node.names)
+        elif isinstance(node, ast.Import):
+            names.update(a.name for a in node.names)
+    return names
+
+
+def test_the_bedrock_module_does_not_import_the_local_providers_and_does_not_mention_exa():
+    for module in (bp, drafting):
+        assert not [n for n in _imports(module) if "local_provider" in n], module.__name__
+        assert not re.search(r"\bexa\b|EXA_|exa_", inspect.getsource(module), re.IGNORECASE), module.__name__
+
+
+def test_the_bedrock_providers_do_not_subclass_either_local_provider():
+    for cls, base in ((bp.BedrockProvider, DraftingProvider), (bp.BedrockNarrativeProvider, NarrativeProvider)):
+        assert issubclass(cls, base)
+        assert not issubclass(cls, (LocalProvider, LocalNarrativeProvider))
+        assert not any(c.__module__.endswith("local_provider") for c in cls.__mro__)
 
 
 # --- a draft ---------------------------------------------------------------------------
 
 def test_a_narrative_piece_has_claims_links_and_flags_as_a_local_one_does_and_drops_what_it_was_not_shown(aws):
-    seen, client = [], FakeBedrock()
-    p = bp.BedrockNarrativeProvider(client=client, exa_api_key="k", http_client=exa(seen))
+    client = FakeBedrock()
+    p = bp.BedrockNarrativeProvider(client=client)
     res = p.draft_piece(BRIEF, start=START, end=TODAY, today=TODAY)
     assert res.drafted_by == f"bedrock:{MODEL}" and not res.no_story
     assert res.claims == [{"text": "Mortgage lending paid $5 million", "url": URL, "title": "Release", "cited_text": ""}]
@@ -135,8 +167,8 @@ def test_a_narrative_piece_has_claims_links_and_flags_as_a_local_one_does_and_dr
     assert any("claim cited a URL not in the search results; dropped" in w for w in res.warnings)
     assert any("link to " + UNSEEN in w for w in res.warnings)
     assert "Bedrock provider: claims carry no cited_text" in " ".join(res.warnings)
-    assert f"Searched with Exa, written by Amazon Bedrock ({MODEL})." in res.warnings
-    assert seen[0]["includeDomains"] == ["centralbank.go.ke"]          # the preferred pass first, as locally
+    assert f"Written by Amazon Bedrock ({MODEL}) from the supplied sources." in res.warnings
+    assert not any("Exa" in w for w in res.warnings) and res.search_scope == bp.SCOPE_SUPPLIED
 
 
 def test_the_call_is_a_forced_client_side_function_with_no_server_tool_and_no_continuation(aws):
@@ -145,8 +177,10 @@ def test_the_call_is_a_forced_client_side_function_with_no_server_tool_and_no_co
     call = client.calls[0]
     assert call["model"] == MODEL and call["max_tokens"] == bp.MAX_TOKENS == 4096
     assert call["tool_choice"] == {"type": "tool", "name": bp.DRAFT_TOOL}
-    assert [t["name"] for t in call["tools"]] == [bp.DRAFT_TOOL] and "type" not in call["tools"][0]
-    assert call["messages"][0]["role"] == "user" and "Search results" in call["messages"][0]["content"]
+    assert [t["name"] for t in call["tools"]] == [bp.DRAFT_TOOL] == ["submit_draft"] and "type" not in call["tools"][0]
+    assert call["messages"][0]["role"] == "user" and "Supplied sources:" in call["messages"][0]["content"]
+    assert "search results" not in call["system"] and "Search results" not in call["messages"][0]["content"]
+    assert set(call) == {"model", "max_tokens", "messages", "system", "tools", "tool_choice"}   # no other tool or option
     assert "web_search" not in json.dumps(call) and len(client.calls) == 1
 
 
@@ -157,13 +191,13 @@ def test_a_reply_cut_off_at_the_token_limit_is_discarded_with_a_warning(aws):
 
 def test_a_digital_payments_review_is_a_production_draft_with_the_brief_caps(aws):
     client = FakeBedrock()
-    provider = bp.BedrockProvider(client=client, exa_api_key="k", http_client=exa())
+    provider = bp.BedrockProvider(client=client)
     review = make_review(provider)
     highlights = [i for i in review.section["items"] if i.get("kind") == "highlight"]
     assert highlights and {i["drafted_by"] for i in highlights} == {f"bedrock:{MODEL}"}
     assert review.section["outlook"]["drafted_by"] == f"bedrock:{MODEL}"
     assert not is_dev_draft(review) and not is_dev_mode_review(review) and not list(local_pieces(review.section))
-    assert highlights[0]["search_scope"] == SCOPE_IR
+    assert highlights[0]["search_scope"] == bp.SCOPE_SUPPLIED
     plain = [c for c in client.calls if "tools" not in c]
     assert [c["max_tokens"] for c in plain] == [800]                       # the outlook, as on the Anthropic path
     assert all(c["max_tokens"] == 4096 for c in client.calls if "tools" in c)
@@ -172,13 +206,12 @@ def test_a_digital_payments_review_is_a_production_draft_with_the_brief_caps(aws
 # --- the Focus structure ------------------------------------------------------------------
 
 def test_the_focus_structure_runs_through_bedrock_with_the_caps_and_is_not_a_dev_draft(aws):
-    client, seen = FakeBedrock(), []
-    provider = bp.BedrockNarrativeProvider(client=client, exa_api_key="k", http_client=exa(seen))
+    client = FakeBedrock()
+    provider = bp.BedrockNarrativeProvider(client=client)
     review = focus_review(provider)
     assert review.section["outline"]["source"] == "proposed"
     assert [c["max_tokens"] for c in client.calls] == [300, 2000, 2000, 2000, 2000, 600]   # outline, 3 sections, conclusion, lead
     assert review.section["api_requests"] == 6 and review.section["pieces_found"] == review.section["pieces_expected"]
-    assert len(seen) <= 3 * 2                                                # at most two searches a section, five is the cap
     drafted = {b["drafted_by"] for b in review.section["blocks"] if b["kind"] == "narrative"}
     assert drafted == {f"bedrock:{MODEL}"}
     assert not is_dev_draft(review) and not is_dev_mode_review(review) and not list(local_pieces(review.section))
@@ -201,7 +234,7 @@ def test_the_real_client_posts_to_the_inference_profile_with_the_bearer_token():
 
     client = anthropic.AnthropicBedrock(aws_region="us-east-1", api_key="bearer not real", max_retries=0,
                                         http_client=httpx2.Client(transport=httpx2.MockTransport(handler)))
-    p = bp.BedrockNarrativeProvider(client=client, exa_api_key="k", http_client=exa())
+    p = bp.BedrockNarrativeProvider(client=client)
     assert p._chat([{"role": "system", "content": "s"}, {"role": "user", "content": "u"}], {"type": "object"}, 77) == '{"a": 1}'
     assert seen["url"] == f"https://bedrock-runtime.us-east-1.amazonaws.com/model/{MODEL}/invoke"
     assert seen["auth"] == "Bearer bearer not real" and "model" not in seen["body"]
@@ -232,7 +265,6 @@ def test_the_complete_set_up_has_no_problem_and_is_not_dev_mode(aws, tmp_path):
     (["AWS_REGION"], bp.REGION_MISSING),
     (["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"], bp.CREDENTIALS_MISSING),
     (["AWS_SECRET_ACCESS_KEY"], bp.CREDENTIALS_MISSING),
-    (["EXA_API_KEY"], bp.EXA_MISSING),
 ])
 def test_a_missing_part_is_a_plain_409_before_anything_is_fetched_and_a_bearer_token_stands_for_the_keys(
         aws, monkeypatch, tmp_path, remove, says):
@@ -276,7 +308,7 @@ def test_startup_names_which_aws_variables_are_set_and_never_a_value(aws, monkey
     assert len(lines) == 1
     assert ("AWS variables set: AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN; "
             "not set: AWS_DEFAULT_REGION, AWS_BEARER_TOKEN_BEDROCK.") in lines[0]
-    assert not any(v in caplog.text for v in SECRETS.values())
+    assert "Exa" not in lines[0] and not any(v in caplog.text for v in SECRETS.values())
     monkeypatch.setenv("AWS_BEARER_TOKEN_BEDROCK", SECRETS["AWS_BEARER_TOKEN_BEDROCK"])
     assert "AWS_BEARER_TOKEN_BEDROCK is the one used" in bp.startup_line()
 
@@ -286,6 +318,62 @@ def test_no_warning_is_logged_for_another_provider(monkeypatch, caplog, tmp_path
     with caplog.at_level(logging.WARNING):
         create_app(db_path=tmp_path / "a.db", load_dotenv=False)
     assert "Amazon Bedrock" not in caplog.text
+
+
+# --- no Exa for Bedrock; Exa still required locally -------------------------------------------------
+
+def test_bedrock_variables_without_an_exa_key_are_no_problem(aws, tmp_path):
+    assert "EXA_API_KEY" not in os.environ
+    assert bp.env_problem() is None and provider_problem() is None
+    cfg = TestClient(create_app(db_path=tmp_path / "a.db", load_dotenv=False)).get("/api/config").json()
+    assert cfg["provider_problem"] is None
+
+
+def test_a_bedrock_draft_is_not_refused_for_a_missing_exa_key_and_a_local_draft_still_is(aws, monkeypatch, tmp_path):
+    client = TestClient(create_app(db_path=tmp_path / "a.db", load_dotenv=False))
+    assert "EXA_API_KEY" not in os.environ and provider_problem() is None
+    monkeypatch.setenv("CYTONN_LLM_PROVIDER", "local")
+    assert provider_problem() == EXA_KEY_MISSING
+    for r in (client.post("/api/sections/equities/draft"), client.post("/api/runs", json={"section": "equities"})):
+        assert r.status_code == 409 and r.json()["detail"] == EXA_KEY_MISSING
+    assert client.get("/api/sections").json()["drafting"] is None            # the slot was never taken
+
+
+def test_an_exa_key_override_is_reported_for_the_local_provider_only(monkeypatch, tmp_path):
+    dot_env = tmp_path / ".env"
+    dot_env.write_text("EXA_API_KEY=file-key-0000000000000000\n", encoding="utf-8")
+    monkeypatch.setenv("EXA_API_KEY", "shell-key-1111111111111111")
+    for provider, reported in (("bedrock", False), ("anthropic", False), ("local", True)):
+        monkeypatch.setenv("CYTONN_LLM_PROVIDER", provider)
+        assert bool(env.key_override_warnings(dot_env)) is reported, provider
+
+
+# --- the source seam ---------------------------------------------------------------------------------
+
+def test_the_seam_as_shipped_returns_no_sources():
+    assert SEAM_AS_SHIPPED("Mortgage lending", TODAY) == []
+
+
+def test_with_no_sources_a_piece_is_unavailable_with_the_plain_sentence_and_nothing_is_called(aws, monkeypatch):
+    monkeypatch.setattr(bp, "sources_for", SEAM_AS_SHIPPED)
+    assert bp.NO_SOURCES == "No sources were supplied for this piece, so nothing was drafted. Supply the pages to read."
+    client = FakeBedrock()
+    res = narrative(client).draft_piece(BRIEF, start=START, end=TODAY, today=TODAY)
+    assert res.no_story and res.paragraph == "" and res.draft_warnings == [f"{BRIEF.label}: {bp.NO_SOURCES}"]
+    assert client.calls == []                                                # no Bedrock call, and no search of any kind
+    hl = bp.BedrockProvider(client=client).find_highlight("Visa", "investor.visa.com", start=START, end=TODAY, today=TODAY)
+    assert hl.no_story and hl.draft_warnings == [f"Visa: {bp.NO_SOURCES}"] and client.calls == []
+    drafted = draft_pieces([BRIEF], 1, provider=narrative(client), today=TODAY)
+    assert drafted["pieces"] == [] and drafted["shortfall"] == 1
+    assert f"{BRIEF.label}: {bp.NO_SOURCES}" in drafted["warnings"] and client.calls == []
+
+
+def test_the_seam_is_asked_for_the_subject_and_the_end_of_the_report_week(aws, monkeypatch):
+    asked = []
+    monkeypatch.setattr(bp, "sources_for", lambda subject, week_end: asked.append((subject, week_end)) or [dict(PAGE)])
+    narrative().draft_piece(BRIEF, start=START, end=TODAY, today=TODAY)
+    bp.BedrockProvider(client=FakeBedrock()).find_highlight("Visa", "investor.visa.com", start=START, end=TODAY, today=TODAY)
+    assert asked == [("Mortgage lending", TODAY), ("Visa", TODAY)]
 
 
 # --- when Bedrock fails --------------------------------------------------------------------------
@@ -315,7 +403,6 @@ FAILURES = [
 def test_each_failure_is_one_plain_sentence_with_no_library_text_and_no_secret(aws, monkeypatch, caplog, error, words):
     for name, value in SECRETS.items():
         monkeypatch.setenv(name, value)
-    monkeypatch.setenv("AWS_BEARER_TOKEN_BEDROCK", SECRETS["AWS_BEARER_TOKEN_BEDROCK"])
     with caplog.at_level(logging.DEBUG), pytest.raises(bp.BedrockError) as raised:
         narrative(FakeBedrock(error=error)).draft_piece(BRIEF, start=START, end=TODAY, today=TODAY)
     sentence = str(raised.value)
@@ -332,11 +419,3 @@ def test_a_failure_that_is_not_a_bedrock_error_is_not_swallowed_by_the_mapping(a
         pass
     with pytest.raises(Oops):
         narrative(FakeBedrock(error=Oops())).draft_piece(BRIEF, start=START, end=TODAY, today=TODAY)
-
-
-def test_a_missing_exa_key_stops_the_search_with_its_own_sentence(aws, monkeypatch):
-    monkeypatch.delenv("EXA_API_KEY")
-    p = bp.BedrockNarrativeProvider(client=FakeBedrock(), http_client=exa())
-    with pytest.raises(Exception) as raised:
-        p.draft_piece(BRIEF, start=START, end=TODAY, today=TODAY)
-    assert str(raised.value) == bp.EXA_MISSING and "EXA_API_KEY" in bp.EXA_MISSING

@@ -4,13 +4,27 @@ import importlib.util
 import json
 import logging
 import os
-from typing import Any, Optional
+from datetime import date
+from typing import Any, Optional, Sequence
 
 import anthropic
 
-from cytonn_weekly.digital_payments.providers import local_provider as dp_local
-from cytonn_weekly.digital_payments.providers.base import HighlightResult
-from cytonn_weekly.narrative.local_provider import LocalNarrativeProvider
+from cytonn_weekly.digital_payments.providers.base import (
+    OUTLOOK_SYSTEM,
+    DraftingProvider,
+    HighlightResult,
+    OutlookResult,
+    outlook_user_message,
+)
+from cytonn_weekly.digital_payments.providers.drafting import (
+    HIGHLIGHT_SYSTEM,
+    RESPONSE_SCHEMA,
+    highlight_from_reply,
+    narrative_system,
+    piece_from_reply,
+    results_message,
+)
+from cytonn_weekly.narrative.base import NarrativeBrief, NarrativeProvider
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +40,7 @@ TOKEN_VAR = "AWS_SESSION_TOKEN"
 MAX_TOKENS = 4096
 OUTLOOK_MAX_TOKENS = 800
 DRAFT_TOOL = "submit_draft"  # a client-side function tool, used only to get the reply as JSON; not a server tool
+SCOPE_SUPPLIED = "supplied"
 
 RECREATE = "Changes to .env reach the api container only when it is recreated (docker compose up -d --force-recreate api)."
 REGION_MISSING = (f"Drafting with Amazon Bedrock needs an AWS region, and none is set. Set {REGION_VARS[0]} (us-east-1 for the "
@@ -35,8 +50,7 @@ CREDENTIALS_MISSING = ("Drafting with Amazon Bedrock needs AWS credentials, and 
                        "A role or profile on the host is not looked for.")
 BOTO3_MISSING = (f"Signing Bedrock requests with access keys needs boto3, which is not installed in this build. Use {BEARER_VAR}, "
                  "or rebuild the image from the current pyproject.toml.")
-EXA_MISSING = (f"Web search needs {dp_local.EXA_KEY_ENV_VAR}, and none is set (in .env or the environment). Drafting with Amazon "
-               f"Bedrock searches with Exa and only writes from what it finds. Add the key to .env. {RECREATE}")
+NO_SOURCES = "No sources were supplied for this piece, so nothing was drafted. Supply the pages to read."
 
 
 class BedrockError(RuntimeError):
@@ -59,6 +73,16 @@ def boto3_installed() -> bool:
     return importlib.util.find_spec("boto3") is not None
 
 
+def sources_for(subject: str, week_end: date) -> list[dict[str, str]]:
+    """The pages a piece is written from: dicts with url, title, text and publishedDate (the shape of a search result).
+
+    The one place Bedrock gets its material. It is code, never the model: no search, no fetch tool, no open web.
+    ponytail: returns nothing until step 2b, which reads the coordinator's supplied pages and fetches from the approved
+    sites. With nothing, a piece is unavailable and says so. ``subject`` is a brief's label or a company name.
+    """
+    return []
+
+
 def env_problem() -> Optional[str]:
     """Why a Bedrock draft cannot start, or None.  Checked before a draft takes the slot or fetches anything.
 
@@ -72,8 +96,6 @@ def env_problem() -> Optional[str]:
             return CREDENTIALS_MISSING
         if not boto3_installed():
             return BOTO3_MISSING
-    if not _clean(dp_local.EXA_KEY_ENV_VAR):
-        return EXA_MISSING
     return None
 
 
@@ -81,7 +103,7 @@ def startup_line() -> str:
     """One log line saying which AWS variables are set.  Names only, never a value."""
     names = (*REGION_VARS, BEARER_VAR, *KEY_VARS, TOKEN_VAR)
     on = [n for n in names if _clean(n)]
-    line = (f"Drafting with Amazon Bedrock ({model_id()}); search by Exa. AWS variables set: {', '.join(on) or 'none'}; "
+    line = (f"Drafting with Amazon Bedrock ({model_id()}). AWS variables set: {', '.join(on) or 'none'}; "
             f"not set: {', '.join(n for n in names if n not in on) or 'none'}.")
     if _clean(BEARER_VAR) and any(map(_clean, (*KEY_VARS, TOKEN_VAR))):
         line += f" Both a bearer token and access keys are set; {BEARER_VAR} is the one used."
@@ -139,16 +161,15 @@ def problem_for(exc: BaseException, model: str, aws_region: str) -> str:
             f"{f', HTTP {status}' if status else ''}). See the server log.")
 
 
-class _Bedrock:
-    """The chat call, for either local provider: Claude on Bedrock in place of Ollama."""
+class _Chat:
+    """The one call both providers make: Claude on Bedrock, no tool but the forced reply function."""
 
     WHO = "Bedrock model"
     LABEL = "Bedrock provider"
 
-    def __init__(self, client: Any = None, model: Optional[str] = None, **kwargs: Any):
-        super().__init__(model=model or model_id(), **kwargs)  # type: ignore[call-arg]
+    def __init__(self, client: Any = None, model: Optional[str] = None):
+        self.model = model or model_id()
         self.drafted_by = f"bedrock:{self.model}"
-        self.settings = dp_local.LocalSettings()  # the dev speed settings (CYTONN_LOCAL_*) are for Ollama only
         self._client = client
         self.requests = 0   # Bedrock calls made; the Focus review shows it
 
@@ -161,15 +182,6 @@ class _Bedrock:
             # boto3's chain signs the request with AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_SESSION_TOKEN.
             self._client = anthropic.AnthropicBedrock(aws_region=region())
         return self._client
-
-    def _ensure_model(self) -> None:
-        return None   # no local model to find
-
-    def _exa_key(self) -> str:
-        key = self._exa_api_key or _clean(dp_local.EXA_KEY_ENV_VAR)
-        if not key:
-            raise dp_local.SearchKeyError(EXA_MISSING)
-        return key
 
     def _chat(self, messages: list[dict[str, str]], schema: Optional[dict] = None, max_tokens: Optional[int] = None) -> str:
         system = "\n\n".join(m["content"] for m in messages if m["role"] == "system")
@@ -193,21 +205,73 @@ class _Bedrock:
             return json.dumps(call.input) if call is not None and resp.stop_reason != "max_tokens" else ""
         return "".join(b.text for b in resp.content if b.type == "text")
 
-    def _noted(self, res: HighlightResult) -> HighlightResult:
-        if not res.no_story:
-            res.warnings.append(f"Searched with Exa, written by Amazon Bedrock ({self.model}).")
-        return res
+    def _written_by(self) -> str:
+        return f"Written by Amazon Bedrock ({self.model}) from the supplied sources."
 
 
-class BedrockProvider(_Bedrock, dp_local.LocalProvider):
+def _supplied(system: str) -> str:
+    return system.replace("search results", "supplied sources")
+
+
+class BedrockProvider(_Chat, DraftingProvider):
     """Digital Payments highlights and outlook."""
 
-    def find_highlight(self, *args: Any, **kwargs: Any) -> HighlightResult:
-        return self._noted(super().find_highlight(*args, **kwargs))
+    def find_highlight(
+        self, company: str, ir_domain: str, *, start: date, end: date, today: date,
+        aliases: Optional[Sequence[str]] = None, style_examples: str = "",
+    ) -> HighlightResult:
+        empty = HighlightResult(company=company, search_scope=None, ir_domain=ir_domain,
+                                drafted_by=self.drafted_by, no_story=True)
+        results = sources_for(company, end)
+        if not results:
+            empty.draft_warnings = [f"{company}: {NO_SOURCES}"]
+            return empty
+        warnings: list[str] = []
+        raw = self._chat(
+            [{"role": "system", "content": _supplied(HIGHLIGHT_SYSTEM.replace("{company}", company))},
+             {"role": "user", "content": results_message(company, results, "Supplied sources")}],
+            RESPONSE_SCHEMA)
+        res = highlight_from_reply(raw, company, ir_domain, SCOPE_SUPPLIED, list(aliases or [company]), results,
+                                   warnings, who=self.WHO, label=self.LABEL, drafted_by=self.drafted_by)
+        if res is None:
+            empty.draft_warnings = warnings
+            return empty
+        res.warnings.append(self._written_by())
+        res.draft_warnings = warnings
+        return res
+
+    def draft_outlook(self, table_stats: dict[str, Any], highlights: list[dict[str, Any]]) -> OutlookResult:
+        text = self._chat(
+            [{"role": "system", "content": OUTLOOK_SYSTEM},
+             {"role": "user", "content": outlook_user_message(table_stats, highlights)}],
+            max_tokens=OUTLOOK_MAX_TOKENS).strip()
+        return OutlookResult(text=text, stats=table_stats, drafted_by=self.drafted_by)
 
 
-class BedrockNarrativeProvider(_Bedrock, LocalNarrativeProvider):
+class BedrockNarrativeProvider(_Chat, NarrativeProvider):
     """Every other section's pieces, and the Focus outline, lead and conclusion."""
 
-    def draft_piece(self, *args: Any, **kwargs: Any) -> HighlightResult:
-        return self._noted(super().draft_piece(*args, **kwargs))
+    def draft_piece(self, brief: NarrativeBrief, *, start: date, end: date, today: date) -> HighlightResult:
+        empty = HighlightResult(company=brief.label, search_scope=None, ir_domain=", ".join(brief.preferred_domains),
+                                drafted_by=self.drafted_by, no_story=True)
+        results = sources_for(brief.label, end)
+        if not results:
+            empty.draft_warnings = [f"{brief.label}: {NO_SOURCES}"]
+            return empty
+        warnings: list[str] = []
+        raw = self._chat(
+            [{"role": "system", "content": _supplied(narrative_system(brief))},
+             {"role": "user", "content": results_message(brief.label, results, "Supplied sources")}],
+            RESPONSE_SCHEMA, brief.max_tokens)
+        res = piece_from_reply(raw, brief, SCOPE_SUPPLIED, results, warnings,
+                               who=self.WHO, label=self.LABEL, drafted_by=self.drafted_by)
+        if res is None:
+            empty.draft_warnings = warnings
+            return empty
+        res.warnings.append(self._written_by())
+        res.draft_warnings = warnings
+        return res
+
+    def complete(self, system: str, prompt: str, *, max_tokens: int) -> str:
+        messages = [{"role": "system", "content": system}, {"role": "user", "content": prompt}]
+        return self._chat(messages, max_tokens=max_tokens).strip()
