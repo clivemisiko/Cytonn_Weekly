@@ -27,17 +27,23 @@ What differs from the real API, all of it set here and nothing in the backend ch
 
 E2E_VARIANT starts it in another state, for the tests that need one:
 - "no-key": the provider is "anthropic" with no API key, so every drafting section shows a provider problem;
-- "stale":  a draft that has held the slot for six seconds counts as stuck.
+- "stale":  a draft that has held the slot for six seconds counts as stuck;
+- "bedrock": the provider is "bedrock" with invented AWS settings, so the screens show the Sources panel. Narrative drafting
+  runs the real Bedrock provider over a fake client (no AWS call) that quotes the first sentence of the first saved source
+  it is shown, plus one claim whose quote is not in the page; "approved site" fetches are answered by one fixed page and
+  every refusal is the real one. Nothing is searched, fetched or sent anywhere.
 
 The weekly Fixed Income and Equities drafts, and the suggested running totals, still read CBK's and
 cytonnreport.com's public pages, as the demo instance does.
 """
 import os
+import re
 import shutil
 import sys
 import time
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
 REPO = Path(__file__).resolve().parents[1]
 BACKEND = REPO / "backend"
@@ -47,6 +53,35 @@ PRISTINE = Path(os.environ.get("E2E_PRISTINE", REAL / "demo-e2e" / "pristine")).
 PORT = int(os.environ.get("E2E_API_PORT", "8011"))
 VARIANT = os.environ.get("E2E_VARIANT", "")
 FAILURE = "E2E: the Ibuka summary could not be fetched (a deliberate failure for the tests)."
+ARTICLE = (b"<html><head><title>E2E fetched statement</title><meta property=\"article:published_time\" content=\"2026-10-08T08:00:00+03:00\">"
+           b"</head><body><h1>E2E fetched statement</h1><p>" + b"The invented regulator said private sector credit grew by 8.75% in the year to September 2026, "
+           b"compared with 6.1% a year earlier, and that lending to households rose faster than lending to firms. " * 3 + b"</p></body></html>")
+LEAD = {"propose the section titles": "Overview of the topic\nMarket performance\nRisks\nRecommendations and Conclusion",
+        "closing part": "The sections show steady demand. Investors may weigh these points against their own mandate.",
+        "opening paragraph": "This report covers the market and its risks."}
+
+
+class BedrockClient:
+    """``client.messages.create`` for the "bedrock" variant: quotes the first sentence of the first source it is shown (a valid
+    claim), and adds a second claim whose quote is that sentence with words added, which is in no page (it must be dropped)."""
+
+    def __init__(self):
+        self.messages = self
+
+    def create(self, **kw):
+        if "tools" not in kw:
+            said = next((v for k, v in LEAD.items() if k in kw.get("system", "")), "The market gained USD 2 billion.")
+            return SimpleNamespace(stop_reason="end_turn", content=[SimpleNamespace(type="text", text=said)])
+        shown = kw["messages"][-1]["content"]
+        sid = re.search(r"Source id: (\w+)", shown).group(1)
+        url = re.search(r"URL: (\S+)", shown).group(1)
+        title = re.search(r"Title: (.*)", shown).group(1)
+        quote = re.search(r"Text: (.*)", shown).group(1).split(". ")[0].rstrip(".")
+        reply = {"is_genuine_announcement": True, "reasoning": "e2e", "headline": f"{title} headline",
+                 "paragraph": f"During the week, [{title}]({url}) {quote}.",
+                 "claims": [{"text": f"{quote}.", "quote": quote, "source_id": sid},
+                            {"text": f"{quote} and then some.", "quote": f"{quote} and then some", "source_id": sid}]}
+        return SimpleNamespace(stop_reason="tool_use", content=[SimpleNamespace(type="tool_use", input=reply)])
 HOLD = DATA / "e2e-hold"
 FIXTURES = BACKEND / "tests" / "fixtures" / "sources"
 
@@ -94,13 +129,17 @@ def prepare(data: Path = DATA, pristine: Path = PRISTINE) -> Path:
 def main() -> None:
     if DATA == REAL or REAL not in DATA.parents or DATA.parent.name != "demo-e2e":
         raise SystemExit(f"refusing to run the tests on {DATA}: the data folder must be backend/data/demo-e2e/<name>")
-    if VARIANT not in ("", "no-key", "stale"):
+    if VARIANT not in ("", "no-key", "stale", "bedrock"):
         raise SystemExit(f"unknown E2E_VARIANT {VARIANT!r}")
     DB_PATH = prepare(DATA, PRISTINE)  # explicit, so a test can point main() at a scratch folder
 
     os.environ["CYTONN_DATA_DIR"] = str(DATA)
     os.environ["CYTONN_WEB_ORIGINS"] = os.environ.get("E2E_WEB_ORIGINS", "http://127.0.0.1:5183")
-    os.environ["CYTONN_LLM_PROVIDER"] = "anthropic" if VARIANT == "no-key" else "local"
+    os.environ["CYTONN_LLM_PROVIDER"] = {"no-key": "anthropic", "bedrock": "bedrock"}.get(VARIANT, "local")
+    if VARIANT == "bedrock":   # invented settings, with spaces so they can never be a real credential; no AWS call is ever made
+        os.environ.update(AWS_REGION="us-east-1", AWS_ACCESS_KEY_ID="e2e not a key id", AWS_SECRET_ACCESS_KEY="e2e not a secret")
+        for name in ("BEDROCK_MODEL_ID", "AWS_DEFAULT_REGION", "AWS_SESSION_TOKEN", "AWS_BEARER_TOKEN_BEDROCK"):
+            os.environ.pop(name, None)
     os.environ["ANTHROPIC_API_KEY"] = ""  # set and empty: the environment beats .env, so no real key is ever read
     os.environ["EXA_API_KEY"] = "e2e"  # the fake provider never searches
     sys.path.insert(0, str(BACKEND))
@@ -124,11 +163,25 @@ def main() -> None:
             self.bad_figure = "bad figure" in brief.label + brief.focus   # a Focus section's label is its title; the topic is in `focus`
             return super().draft_piece(brief, **kw)
 
-    drafter.get_narrative_provider = lambda: _E2EProvider()
+    from cytonn_weekly.common import sources as source_store  # noqa: E402
+    from cytonn_weekly.common.http import Reply  # noqa: E402
+    from cytonn_weekly.narrative import bedrock_provider  # noqa: E402
+
+    narrative_provider = (lambda: bedrock_provider.BedrockNarrativeProvider(client=BedrockClient())) if VARIANT == "bedrock" else (
+        lambda: _E2EProvider())
+    if VARIANT == "bedrock":
+        bedrock_provider.boto3_installed = lambda: True   # keys are never used: the client above is fake
+
+    def fetch_source(url, subject, end, root=None):
+        """The real fetch with its real refusals, over one fixed page instead of a network."""
+        return source_store.fetch_page(url, subject, end, root=root, resolve=lambda host: ["93.184.216.34"],
+                                       http_get=lambda u, max_bytes: Reply(200, {"content-type": "text/html; charset=utf-8"}, ARTICLE))
+
+    drafter.get_narrative_provider = narrative_provider
     from cytonn_weekly.focus import review_run as focus  # noqa: E402
     from tests.section_helpers import previous_issue  # noqa: E402
 
-    focus.get_narrative_provider = lambda: _E2EProvider()
+    focus.get_narrative_provider = narrative_provider
     focus._default_previous = previous_issue()   # the Focus disclaimer, from a fixed issue instead of cytonnreport.com
 
     def _fail(**_):
@@ -160,7 +213,7 @@ def main() -> None:
         return saved.read_bytes(), f"https://e2e.invalid/uploads/weekly_bulletin/{saved.name}"
 
     print(f"E2E instance: data folder {paths.DATA_DIR}, port {PORT}, variant {VARIANT or 'default'}", flush=True)
-    app = create_app(DB_PATH, load_dotenv=False, fetch_bulletin=fetch_bulletin, notable_registry=notable_demo.REGISTRY,
+    app = create_app(DB_PATH, load_dotenv=False, fetch_bulletin=fetch_bulletin, notable_registry=notable_demo.REGISTRY, fetch_source=fetch_source,
                      **({"draft_stale_after": 6} if VARIANT == "stale" else {}))
     verify_isolated(DB_PATH, DATA)  # fail closed, before anything is served
     uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="warning")
