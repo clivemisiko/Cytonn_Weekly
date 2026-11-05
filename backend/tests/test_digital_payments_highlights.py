@@ -119,29 +119,26 @@ def test_priority_order_honored_when_all_five_have_news():
     assert any("Circle: not searched" in w for w in d["warnings"])
 
 
-def test_circle_does_not_fill_in_while_any_priority_company_released():
+def test_lower_priority_company_fills_in_when_a_higher_one_has_no_news():
     news = all_ir_news(companies=["Visa", "American Express", "PayPal", "Circle"])
-    client = NewsClient(news)
-    d = dh.draft_highlights(provider=AnthropicProvider(client=client), today=TODAY)
-    assert [h["company"] for h in d["highlights"]] == ["Visa", "American Express", "PayPal"]
-    assert d["shortfall"] == 1
-    assert ("Circle", "ir") not in client.scopes()
+    d = dh.draft_highlights(provider=AnthropicProvider(client=NewsClient(news)), today=TODAY)
+    assert [h["company"] for h in d["highlights"]] == ["Visa", "American Express", "PayPal", "Circle"]
+    assert d["shortfall"] == 0
     assert any("Mastercard: no story found" in w for w in d["warnings"])
-    assert any("Circle: not searched (3 of the 4 priority companies released" in w for w in d["warnings"])
+
+
+def test_three_priority_stories_plus_one_filler():
+    client = NewsClient(all_ir_news(companies=["Visa", "Mastercard", "PayPal", "Circle"]))
+    d = dh.draft_highlights(provider=AnthropicProvider(client=client), today=TODAY)
+    assert {c for c, _ in client.scopes()} >= set(PRIORITY[:4])   # all four priority companies were searched
+    assert [h["company"] for h in d["highlights"]] == ["Visa", "Mastercard", "PayPal", "Circle"] and d["shortfall"] == 0
+    assert not any("only" in w and "of 4" in w for w in d["warnings"])
 
 
 def test_every_priority_company_that_released_appears():
     for released in (["Visa"], ["Mastercard", "PayPal"], ["Visa", "Mastercard", "American Express", "PayPal"]):
-        d = dh.draft_highlights(provider=AnthropicProvider(client=NewsClient(all_ir_news(companies=released + ["Circle"]))), today=TODAY)
+        d = dh.draft_highlights(provider=AnthropicProvider(client=NewsClient(all_ir_news(companies=released))), today=TODAY)
         assert [h["company"] for h in d["highlights"]] == released
-
-
-def test_circle_is_considered_only_when_none_of_the_four_released():
-    client = NewsClient(all_ir_news(companies=["Circle"]))
-    d = dh.draft_highlights(provider=AnthropicProvider(client=client), today=TODAY)
-    assert [h["company"] for h in d["highlights"]] == ["Circle"]
-    assert {c for c, _ in client.scopes()} == set(PRIORITY)
-    assert any("Circle: considered because none of the 4 priority companies released" in w for w in d["warnings"])
 
 
 def test_a_priority_search_that_found_but_discarded_a_result_cannot_be_confirmed():
@@ -170,7 +167,7 @@ def test_block_and_global_payments_are_never_searched_or_used():
     d = dh.draft_highlights(provider=AnthropicProvider(client=client), today=TODAY)
     assert [h["company"] for h in d["highlights"]] == ["Visa"]
     searched = {c for c, _ in client.scopes()}
-    assert searched == set(PRIORITY[:4])  # Block / Global Payments never requested; Circle not needed once Visa released
+    assert searched == set(PRIORITY)  # Block / Global Payments never requested
     assert all("Block" not in h["body"] and "Global Payments" not in h["body"] for h in d["highlights"])
     assert any("not about the company" in w and "Mastercard" in w for w in d["warnings"])
 
@@ -231,7 +228,7 @@ def test_no_story_anywhere_tries_ir_then_web_then_moves_on():
     client = NewsClient(all_ir_news(companies=["Mastercard", "American Express", "PayPal", "Circle"]))
     d = dh.draft_highlights(provider=AnthropicProvider(client=client), today=TODAY)
     assert client.scopes()[:2] == [("Visa", "ir"), ("Visa", "web")]
-    assert [h["company"] for h in d["highlights"]] == ["Mastercard", "American Express", "PayPal"]
+    assert [h["company"] for h in d["highlights"]] == ["Mastercard", "American Express", "PayPal", "Circle"]
     assert any("Visa: no story found" in w for w in d["warnings"])
 
 

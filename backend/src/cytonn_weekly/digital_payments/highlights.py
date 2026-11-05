@@ -111,7 +111,7 @@ def draft_highlights(
     company's own investor relations site first, and the open web only if that
     returned no story.  The first four companies (Visa, Mastercard, American
     Express, PayPal) are always all searched and each one with a release
-    appears; Circle is searched only when none of those four released.
+    appears; any slots left up to 4 are filled from the other companies.
 
     ``provider`` defaults to ``get_provider()`` (CYTONN_LLM_PROVIDER, default
     Anthropic).
@@ -159,17 +159,16 @@ def draft_highlights(
             highlights.append(_highlight_item(res))
             emit(on_event, PIECE_FINISHED, company["name"], detail=res.headline)
 
-    # The team's rule (5 Nov): the priority companies are all checked and any that released appears;
-    # the others are considered only when none of the priority companies released.
+    # The team's rule (5 Nov): the priority companies are all searched and any that released appears;
+    # the slots left up to N_HIGHLIGHTS are filled from the other companies, in order.
     for company in HIGHLIGHT_COMPANIES[:N_PRIORITY]:
         search(company, True)
     for company in HIGHLIGHT_COMPANIES[N_PRIORITY:]:
-        if highlights:
+        if len(highlights) == N_HIGHLIGHTS:
             warnings.append(
-                f"{company['name']}: not searched ({len(highlights)} of the {N_PRIORITY} priority companies released this week)"
+                f"{company['name']}: not searched ({N_HIGHLIGHTS} higher-priority highlights already found)"
             )
         else:
-            warnings.append(f"{company['name']}: considered because none of the {N_PRIORITY} priority companies released this week")
             search(company, False)
 
     shortfall = N_HIGHLIGHTS - len(highlights)

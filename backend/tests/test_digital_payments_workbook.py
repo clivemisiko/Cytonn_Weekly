@@ -270,16 +270,39 @@ def test_review_flags_a_year_open_that_is_not_the_fetched_close():
     assert any(w.startswith("Global Payments Inc: Year Open is 56.00 in the workbook") and "is 75.53" in w for w in warned)
 
 
-# ---- the team's real 30 October file, read only; skipped when it is not there ------------------------------------------
+# ---- the team's two real 30 October files, read only; each test names its file and skips when it is absent -----------
 
-def test_real_file_by_name():
-    data = sample("Digital_Payments_workbook_30-10-2026_v4.xlsx")
-    book = _read(data)
+V3 = "Digital_Payments_workbook_30-10-2026_v3.xlsx"   # the original: Coinbase and Global Payments swapped, Year Open 77.02
+V4 = "Digital_Payments_workbook_30-10-2026_v4.xlsx"   # the corrected file
+
+
+def _real(name):
+    return _read(sample(name))
+
+
+def _same_by_name_results(book):
     gpn, coin = book.row("global payments"), book.row("coinbase global")
     assert (round_half_up(gpn.ttm_pe, 1), round_half_up(gpn.forward_pe, 1)) == (Decimal("-26.9"), Decimal("6.0"))
     assert (round_half_up(coin.ttm_pe, 1), round_half_up(coin.forward_pe, 1)) == (Decimal("-38.4"), Decimal("47.5"))
     assert (round_half_up(book.average_ttm, 1), round_half_up(book.average_forward, 1)) == (Decimal("22.8"), Decimal("21.3"))
-    assert gpn.year_open == Decimal("75.53")
-    assert dpw.year_open_warnings(book, _fixture_rows()) == []
-    # the rows of this file line up on both sheets (the swap has been fixed at the source), so the saved cells agree
-    assert book.warnings == [] and book.blank_quarters == ["Earnings!G11", "Earnings!I11", "Earnings!I8"]
+    assert book.blank_quarters == ["Earnings!G11", "Earnings!I11", "Earnings!I8"]
+
+
+def test_real_v3_swapped_file_gives_the_swap_warning_and_the_year_open_warning():
+    book = _real(V3)
+    _same_by_name_results(book)
+    text = " ".join(book.warnings)
+    assert "Global Payments Inc: the workbook's TTM P/E ('Stock Performance'!I9)" in text
+    assert "so the workbook's P/E for Global Payments Inc uses another company's earnings" in text
+    assert "Coinbase Global: the workbook's forward P/E ('Stock Performance'!J10)" in text
+    assert "Average: the workbook's TTM P/E average" in text
+    assert book.row("global payments").year_open == Decimal("77.02")
+    year = dpw.year_open_warnings(book, _fixture_rows())
+    assert len(year) == 1 and year[0].startswith("Global Payments Inc: Year Open is 77.02") and "is 75.53" in year[0]
+
+
+def test_real_v4_corrected_file_gives_neither_warning():
+    book = _real(V4)
+    _same_by_name_results(book)
+    assert book.row("global payments").year_open == Decimal("75.53")
+    assert book.warnings == [] and dpw.year_open_warnings(book, _fixture_rows()) == []
