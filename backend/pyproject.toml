@@ -37,7 +37,7 @@ test = ["pytest==9.1.1", "pytest-xdist==3.8.0"]  # installed in the Docker image
 where = ["src"]
 
 [tool.setuptools.package-data]
-cytonn_weekly = ["schema.sql", "schema_postgres.sql"]  # the database schemas, read by db.open_db()
+cytonn_weekly = ["schema.sql", "schema_postgres.sql", "weekly/market_closures.json"]  # the database schemas, read by db.open_db()
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -99,10 +99,21 @@ def _as_of(ctx: DraftContext) -> dict[str, Any]:
     return {} if ctx.week_ending is None else {"today": ctx.week_ending}
 
 
+def _table_as_at(ctx: DraftContext) -> dict[str, Any]:
+    """``as_at`` for a Digital Payments table, only in a week whose Friday was a market holiday (or whose as-at date was set)."""
+    if ctx.week_ending is None:
+        return {}
+    from cytonn_weekly.weekly.inputs import WeeklyInputs
+    from cytonn_weekly.weekly.week import Week
+
+    as_at = WeeklyInputs(Week(ctx.week_ending), ctx.inputs_root).week.as_at
+    return {} if as_at == ctx.week_ending else {"as_at": as_at}
+
+
 def _digital_payments(ctx: DraftContext) -> CoordinatorReview:
     from cytonn_weekly.digital_payments.review_run import build_digital_payments_review
 
-    return build_digital_payments_review(**_as_of(ctx), **_observer(ctx))
+    return build_digital_payments_review(**_as_of(ctx), **_table_as_at(ctx), **_observer(ctx))
 
 
 def _company_updates(ctx: DraftContext) -> CoordinatorReview:

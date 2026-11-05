@@ -44,7 +44,7 @@ KCB_WEEKLY = "kcb_weekly"
 CBK_BULLETIN = "cbk_bulletin"
 NSE_YIELD_CURVE = "nse_yield_curve"
 
-NOTE_KEYS = ("bidding_range", "previous_issue")
+NOTE_KEYS = ("bidding_range", "previous_issue", "as_at")
 MAX_NOTE = 2000
 
 
@@ -165,11 +165,11 @@ def identify(slot: Slot, data: bytes, week: Week) -> dict[str, Any]:
         if slot.slug == EQUITIES_WORKBOOK:
             read = equities_workbook_date(equities_workbook.open_equities_workbook(data, slot.title))
             # its date: the newest Friday its P/E series has a row for
-            return _found(read, read == week.ending, "equities_workbook.xlsx", "")
+            return _found(read, read in week.report_dates, "equities_workbook.xlsx", "")
         if slot.slug == FI_WORKBOOK:
             read = fi_workbook_date(fi_workbook.open_fi_workbook(data, slot.title))
             # its date: the date its money market fund table is published on
-            return _found(read, read == week.ending, "fi_workbook.xlsx", "")
+            return _found(read, read in week.report_dates, "fi_workbook.xlsx", "")
         if slot.slug in (KCB_DAILY, KCB_WEEKLY):
             report = kcb.parse_kcb_pdf(data)
             wanted = kcb.DAILY if slot.slug == KCB_DAILY else kcb.WEEKLY
@@ -180,17 +180,17 @@ def identify(slot: Slot, data: bytes, week: Week) -> dict[str, Any]:
             if slot.slug == KCB_DAILY:
                 if report.report_date not in week.trading_days:
                     raise InputError(f"{slot.title}: the report itself prints the date {day_text(report.report_date)}. This week "
-                                     f"needs reports for {day_text(week.monday)} to {day_text(week.ending)}. The date is "
+                                     f"needs reports for {day_text(week.monday)} to {day_text(week.as_at)}. The date is "
                                      "read from inside the report, not from the file name, so renaming the file does "
                                      "not change it. Upload the reports for those days, or choose the week this "
                                      "report belongs to.")
                 return _found(report.report_date, True, f"kcb_daily_{report.report_date.isoformat()}.pdf",
                               "; ".join(report.problems))
-            return _found(report.report_date, report.report_date == week.ending, "kcb_weekly.pdf",
+            return _found(report.report_date, report.report_date in week.report_dates, "kcb_weekly.pdf",
                           "; ".join(report.problems))
         if slot.slug == CBK_BULLETIN:
             bulletin = cbk_bulletin.parse_bulletin(data)
-            return _found(bulletin.issue_date, bulletin.issue_date == week.ending, "cbk_bulletin.pdf",
+            return _found(bulletin.issue_date, bulletin.issue_date in week.report_dates, "cbk_bulletin.pdf",
                           "; ".join(bulletin.problems), bulletin.notices)
         if slot.slug == NSE_YIELD_CURVE:
             curve = nse_yield_curve.parse_yield_curve(data)
@@ -270,6 +270,12 @@ def write_notes(week: Week, notes: dict[str, Optional[str]], root: Optional[Path
         if key not in NOTE_KEYS:
             raise InputError(f"unknown note {key!r}")
         text = " ".join((value or "").split())
+        if key == "as_at" and text:
+            try:
+                Week(week.ending, date.fromisoformat(text))
+            except ValueError as exc:
+                raise InputError(str(exc) if "weekday" in str(exc) or "holiday" in str(exc)
+                                 else "As-at date: type it as YYYY-MM-DD, e.g. 2026-12-24.")
         if len(text) > MAX_NOTE:
             raise InputError(f"{key.replace('_', ' ').capitalize()}: {len(text)} characters typed and the limit is {MAX_NOTE}. "
                              f"Shorten it by {len(text) - MAX_NOTE}.")
@@ -290,6 +296,8 @@ def _file_view(entry: dict[str, Any]) -> dict[str, Any]:
 
 def status(week: Week, root: Optional[Path] = None) -> dict[str, Any]:
     """What the panel shows: per slot, what was received, the date read from it, and whether it is this week's."""
+    notes = read_notes(week, root)
+    week = week.with_as_at(date.fromisoformat(notes["as_at"]) if "as_at" in notes else None)
     manifest = read_manifest(week, root)
     folder = week_dir(week, root)
     present = {name: e for name, e in manifest.items() if (folder / name).is_file()}
@@ -312,7 +320,8 @@ def status(week: Week, root: Optional[Path] = None) -> dict[str, Any]:
         slots.append(view)
     from cytonn_weekly.weekly import chart_uploads
     return {"week_ending": week.ending.isoformat(), "monday": week.monday.isoformat(),
-            "previous_friday": week.previous_friday.isoformat(), "slots": slots, "notes": read_notes(week, root),
+            "previous_friday": week.previous_friday.isoformat(), "as_at": week.as_at.isoformat(),
+            "previous_as_at": week.previous_as_at.isoformat(), "holiday_note": week.holiday_note, "slots": slots, "notes": notes,
             "max_bytes": MAX_BYTES, "charts": chart_uploads.status(week, root), "chart_max_bytes": chart_uploads.MAX_BYTES}
 
 
@@ -327,6 +336,9 @@ class WeeklyInputs:
         self.week = week
         self.root = root
         self._cache: dict[str, Any] = {}
+        typed = self.notes.get("as_at")   # the as-at date the coordinator set for the week, if any
+        if typed:
+            self.week = week.with_as_at(date.fromisoformat(typed))
 
     def _path(self, name: str) -> Optional[Path]:
         path = week_dir(self.week, self.root) / name

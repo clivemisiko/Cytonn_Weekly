@@ -130,7 +130,7 @@ def read_mmf_table(book: Workbook, week: Week) -> dict[str, Any]:
         published = datetime.strptime(f"{m.group(1)} {m.group(2)} {m.group(3)}", "%d %B %Y").date() if m else None
     except ValueError:
         published = None
-    if published != week.ending:
+    if published not in week.report_dates:
         shown = f"dated {published.day} {published:%b %Y}" if published else f"has a date that cannot be read ({title.value!r})"
         raise WorkbookError(f"The money market fund table in the fixed income workbook is {shown}; this week needs "
                             f"{week.ending.day} {week.ending:%b %Y}. The workbook is not yet updated for this week: "

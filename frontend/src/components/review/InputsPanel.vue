@@ -41,6 +41,7 @@ const refusedFiles = ref<string[]>([]);
 const picked = ref(props.week);
 const bidding = ref("");
 const previous = ref("");
+const asAt = ref("");
 const notFriday = computed(() =>
   picked.value && weekdayOf(picked.value) !== "Friday" ? `${friendlyDate(picked.value)} is a ${weekdayOf(picked.value)}. A weekly report's week ends on a Friday, so choose a Friday.` : null,
 );
@@ -52,6 +53,7 @@ function show(next: WeeklyInputs) {
   status.value = next;
   bidding.value = next.notes.bidding_range ?? "";
   previous.value = next.notes.previous_issue ?? "";
+  asAt.value = next.notes.as_at ?? "";
 }
 
 onMounted(() => {
@@ -107,7 +109,7 @@ const saveLeadIn = (key: string, text: string) => act(() => api.saveChartLeadIn(
 const saveChartSource = (key: string, text: string) => act(() => api.saveChartSource(props.week, key, text));
 const fetchBulletin = () => act(() => api.fetchBulletin(props.week));
 
-function saveNote(key: "bidding_range" | "previous_issue", value: string) {
+function saveNote(key: "bidding_range" | "previous_issue" | "as_at", value: string) {
   if ((status.value?.notes[key] ?? "") === value.trim()) return;
   void act(() => api.saveInputNotes(props.week, { [key]: value }));
 }
@@ -157,6 +159,30 @@ function saveNote(key: "bidding_range" | "previous_issue", value: string) {
         Week ending <span class="font-mono font-semibold">{{ friendlyDate(status.week_ending) }}</span>: Monday
         <span class="font-mono">{{ friendlyDate(status.monday) }}</span> to Friday.
       </p>
+      <Notice v-if="status.holiday_note" tone="warn" role="status" data-testid="holiday-note">{{ status.holiday_note }}</Notice>
+      <details :open="!!status.holiday_note || undefined" class="text-sm">
+        <summary class="cursor-pointer font-semibold">Figures as at a different day (optional)</summary>
+        <div class="mt-2 space-y-1">
+          <label for="as-at" class="eyebrow block">As-at date</label>
+          <input
+            id="as-at"
+            v-model="asAt"
+            type="date"
+            :min="status.monday"
+            :max="status.week_ending"
+            :disabled="locked"
+            :class="[FIELD, 'font-mono']"
+            aria-describedby="as-at-hint"
+            @change="saveNote('as_at', asAt)"
+          />
+          <p id="as-at-hint" class="text-xs text-muted-foreground">
+            Prices, rates and the week-on-week moves are taken as at this day. Left empty, it is the last trading day of
+            the week: the Friday, or the day before when the market was closed (currently
+            <span class="font-mono">{{ friendlyDate(status.as_at) }}</span>, against
+            <span class="font-mono">{{ friendlyDate(status.previous_as_at) }}</span> the week before).
+          </p>
+        </div>
+      </details>
       <ul>
         <InputSlot
           v-for="slot in status.slots"

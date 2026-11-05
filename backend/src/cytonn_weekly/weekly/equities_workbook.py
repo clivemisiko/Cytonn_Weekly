@@ -199,17 +199,17 @@ def _series_average(book: Workbook, sheet: Sheet, stated: Cell) -> Optional[tupl
 def read_valuation(book: Workbook, week: Week) -> dict[str, Any]:
     """The Friday's market P/E and dividend yield, their historical averages and the sheet's PEG."""
     sheet = book.sheet(VALUATION_SHEET)
-    row = sheet.row_for_date(week.ending, 1)
+    row = sheet.row_for_date(week.as_at, 1)
     if row is None:
-        raise not_updated(VALUATION_SHEET, week.ending)
+        raise not_updated(VALUATION_SHEET, week.as_at)
     avg = sheet.find("average", cols=range(1, 2), rows=range(1, row), what="'AVERAGE' row")
     out: dict[str, Any] = {
-        "pe": sheet.number(row, 2, f"market P/E for {week.ending.isoformat()}"),
-        "dividend_yield": sheet.number(row, 4, f"dividend yield for {week.ending.isoformat()}"),
+        "pe": sheet.number(row, 2, f"market P/E for {week.as_at.isoformat()}"),
+        "dividend_yield": sheet.number(row, 4, f"dividend yield for {week.as_at.isoformat()}"),
         "pe_average": sheet.number(avg.row, 2, "average P/E"),
         "dividend_yield_average": sheet.number(avg.row, 4, "average dividend yield"),
     }
-    prev = sheet.row_for_date(week.previous_friday, 1)
+    prev = sheet.row_for_date(week.previous_as_at, 1)
     out["previous_pe"] = sheet.cell(prev, 2) if prev else None
     out["pe_average_recomputed"] = _series_average(book, sheet, out["pe_average"])
     out["dividend_yield_average_recomputed"] = _series_average(book, sheet, out["dividend_yield_average"])
@@ -291,17 +291,17 @@ def read_universe(book: Workbook, week: Week) -> dict[str, Any]:
     """
     sheet = book.sheet(UNIVERSE_SHEET)
     prices = _price_columns(sheet)
-    if week.ending not in prices:
-        raise WorkbookError(f"'{UNIVERSE_SHEET}' has no 'Price as at {week.ending.strftime('%d/%m/%Y')}' column: "
+    if week.as_at not in prices:
+        raise WorkbookError(f"'{UNIVERSE_SHEET}' has no 'Price as at {week.as_at.strftime('%d/%m/%Y')}' column: "
                             "workbook not yet updated for this week")
-    if week.previous_friday not in prices:
-        raise WorkbookError(f"'{UNIVERSE_SHEET}' has no 'Price as at {week.previous_friday.strftime('%d/%m/%Y')}' column")
-    month_start = week.ending.replace(day=1)
+    if week.previous_as_at not in prices:
+        raise WorkbookError(f"'{UNIVERSE_SHEET}' has no 'Price as at {week.previous_as_at.strftime('%d/%m/%Y')}' column")
+    month_start = week.as_at.replace(day=1)
     earlier = [d for d in prices if d < month_start]
     if not earlier:
         raise WorkbookError(f"'{UNIVERSE_SHEET}' has no price column before {month_start.isoformat()} for the m/m change")
     month_end = max(earlier)
-    this_col = prices[week.ending]
+    this_col = prices[week.as_at]
 
     def right_of(label_test, what: str) -> int:
         found = [c for c in sheet.find_all(label_test, rows=range(HEADER_ROW, HEADER_ROW + 1)) if c.col > this_col]
@@ -309,7 +309,7 @@ def read_universe(book: Workbook, week: Week) -> dict[str, Any]:
             raise WorkbookError(f"'{UNIVERSE_SHEET}' has no {what} column to the right of the week's price column")
         return min(found, key=lambda c: c.col).col
 
-    year = week.ending.year
+    year = week.as_at.year
     cols = {
         "year_open": right_of(f"year open {year}", f"'Year Open {year}'"),
         "target": right_of(lambda s: s.startswith("target price"), "'Target Price'"),
@@ -324,11 +324,11 @@ def read_universe(book: Workbook, week: Week) -> dict[str, Any]:
         if not isinstance(name, str) or not name.strip():
             break
         row = {"company": sheet.cell(r, company_col), "price": sheet.cell(r, this_col),
-               "last_price": sheet.cell(r, prices[week.previous_friday]), "month_end_price": sheet.cell(r, prices[month_end])}
+               "last_price": sheet.cell(r, prices[week.previous_as_at]), "month_end_price": sheet.cell(r, prices[month_end])}
         row.update({key: sheet.cell(r, col) for key, col in cols.items()})
         companies.append(row)
     if not companies:
         raise WorkbookError(f"'{UNIVERSE_SHEET}' lists no companies under its 'Company' header")
     return {"companies": companies, "month_end": month_end, "week_ending": week.ending,
-            "previous_friday": week.previous_friday,
+            "previous_friday": week.previous_friday, "as_at": week.as_at, "previous_as_at": week.previous_as_at,
             "month_end_cell": Cell(month_end, sheet.name, HEADER_ROW, prices[month_end])}
