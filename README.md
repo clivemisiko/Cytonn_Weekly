@@ -138,7 +138,7 @@ Then open http://127.0.0.1:5173 (the API is at http://127.0.0.1:8000), the same 
 
 ## Drafting provider (Digital Payments)
 
-`CYTONN_LLM_PROVIDER` picks who drafts the Weekly Highlights and outlook: `anthropic` (default, production) or `local` (development only, prints a NOT FOR PUBLICATION warning).
+`CYTONN_LLM_PROVIDER` picks who drafts the Weekly Highlights and outlook: `anthropic` (default, production), `bedrock` (production: Claude on Amazon Bedrock, searching with Exa; see `.env.example` for its variables) or `local` (development only, prints a NOT FOR PUBLICATION warning).
 
 Local mode uses Ollama for drafting and Exa (`EXA_API_KEY`) for search:
 
