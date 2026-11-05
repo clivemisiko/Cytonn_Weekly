@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { PhArrowSquareOut, PhCaretDown, PhPencilSimple } from "@phosphor-icons/vue";
+import { PhArrowSquareOut, PhCaretDown, PhPencilSimple, PhWarning } from "@phosphor-icons/vue";
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "reka-ui";
 import { computed, inject, ref, watch } from "vue";
 import Textarea from "@/components/ui/Textarea.vue";
+import { sourceTextUrl } from "@/lib/api";
 import { KIND_LABELS, friendlyTime, pyRepr, resolutionKey } from "@/lib/format";
 import { READ_ONLY } from "@/lib/previous";
+import { NOT_ON_LIST, claimSource } from "@/lib/sources";
 import type { Flag, Resolution, Review, ReviewItem } from "@/lib/types";
 import EditSentence from "./EditSentence.vue";
 import FixFromFile from "./FixFromFile.vue";
@@ -69,6 +71,8 @@ function noteKey(event: KeyboardEvent) {
 
 const chipKey = computed(() => resolutionKey(shown.value));
 const ctx = computed(() => props.item.context);
+// A claim quoted from a supplied source: the host, the date and the verified quote are shown, and so is a host off the approved list.
+const source = computed(() => claimSource(ctx.value));
 const hasDetail = computed(() => props.item.status === "flagged" || props.item.status === "not_auto_verified" || Object.keys(ctx.value).length > 0);
 const safeUrl = computed(() => (ctx.value.url && /^https?:\/\//.test(ctx.value.url) ? ctx.value.url : null));
 const flags = computed<Flag[]>(() => (props.item.status === "flagged" && Array.isArray(props.item.detail) ? props.item.detail : []));
@@ -91,6 +95,9 @@ const cells = (flag: Flag): [string, string][] => [
       <SeverityPill :kind="item.status" />
       <span class="text-sm font-semibold">{{ item.ref }}</span>
       <span class="text-xs text-muted-foreground">{{ KIND_LABELS[item.kind] ?? item.kind }}</span>
+      <span v-if="source?.offList" class="inline-flex items-center gap-1 text-xs font-medium text-warn-fg">
+        <PhWarning weight="bold" class="size-3.5" aria-hidden="true" />{{ NOT_ON_LIST }}
+      </span>
       <span v-if="ctx.edited_at" class="inline-flex items-center gap-1 text-xs font-medium">
         <PhPencilSimple weight="bold" class="size-3.5" aria-hidden="true" />Edited by you, {{ friendlyTime(ctx.edited_at) }}
       </span>
@@ -148,7 +155,21 @@ const cells = (flag: Flag): [string, string][] => [
           {{ ctx.title || safeUrl }}<PhArrowSquareOut weight="bold" class="ml-1 inline size-4 align-[-3px]" aria-hidden="true" />
         </a>
       </p>
-      <p v-if="ctx.cited_text" class="text-xs text-muted-foreground">Cited text: “{{ ctx.cited_text }}”</p>
+      <dl v-if="source" data-testid="claim-source" class="grid gap-x-3 gap-y-1 text-sm @min-[28rem]:grid-cols-[6rem_1fr]">
+        <dt class="eyebrow">Source</dt>
+        <dd class="min-w-0 [overflow-wrap:anywhere]">
+          <span class="font-mono">{{ source.host }}</span> · {{ source.date }}
+          <span v-if="source.offList" class="font-medium text-warn-fg"> · {{ NOT_ON_LIST }}</span>
+        </dd>
+        <dt class="eyebrow">Quote</dt>
+        <dd class="min-w-0 [overflow-wrap:anywhere]">“{{ source.quote }}” <span class="text-xs text-muted-foreground">(checked word for word against the saved text)</span></dd>
+        <dt class="eyebrow">Saved copy</dt>
+        <dd class="min-w-0 text-xs text-muted-foreground [overflow-wrap:anywhere]">
+          {{ source.origin === "fetched" ? "Fetched" : "Pasted" }} {{ source.savedAt }} · fingerprint <span class="font-mono">{{ source.fingerprint }}</span> ·
+          <a :href="sourceTextUrl(source.id)" target="_blank" rel="noopener noreferrer" class="text-link underline decoration-link/40 underline-offset-2 hover:decoration-link">View saved text</a>
+        </dd>
+      </dl>
+      <p v-else-if="ctx.cited_text" class="text-xs text-muted-foreground">Cited text: “{{ ctx.cited_text }}”</p>
       <div v-if="inputs.length > 0" class="space-y-1">
         <p class="eyebrow">Worked out from</p>
         <ul class="space-y-1 text-xs">
