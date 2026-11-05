@@ -60,6 +60,7 @@ from pydantic import BaseModel, Field
 
 from cytonn_weekly.charts import store as chart_store
 from cytonn_weekly.charts.block import set_team_chart
+from cytonn_weekly.common import sources as source_store
 from cytonn_weekly.common.run_events import RUN_STARTED, describe, redact, review_counts, safe_describe, user_message
 from cytonn_weekly.digital_payments import review_run, review_store
 from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview, rejected_draft_notes
@@ -85,6 +86,7 @@ from cytonn_weekly.report_sections import (
     sections_for,
     spec_for,
 )
+from cytonn_weekly.source_pieces import pieces_for
 from cytonn_weekly.report_types import (
     COMPANION,
     REPORT_TYPES,
@@ -224,6 +226,21 @@ class DraftRequest(BaseModel):
     kind: Optional[str] = Field(default=None, max_length=40)
 
 
+class SourceBody(BaseModel):
+    """One source for one piece of one section.  With no ``text`` and no ``date`` the page at ``url`` is fetched; with them
+    the pasted text is kept.  ``sections`` is the Focus's typed titles, which name its pieces."""
+
+    section: str = Field(max_length=40)
+    subject: str = Field(max_length=200)
+    report_type: ReportType = WEEKLY
+    period: Optional[str] = Field(default=None, max_length=40)
+    sections: Optional[str] = Field(default=None, max_length=4000)
+    url: str = Field(max_length=2000)
+    date: Optional[str] = Field(default=None, max_length=20)
+    text: Optional[str] = Field(default=None, max_length=1_000_000)   # source_store.from_paste judges the length, in words
+    title: Optional[str] = Field(default=None, max_length=300)
+
+
 class InputNotes(BaseModel):
     """What the coordinator types beside the week's files.  A field left out is kept; blank clears it."""
 
@@ -302,6 +319,8 @@ def create_app(
     fetch_usd_rates: Callable[[], dict] = cbk_rates.fetch_usd_rates,
     notable_registry: Optional[Mapping[str, Sequence[Detector]]] = None,
     charts_root: Optional[Union[Path, str]] = None,
+    sources_root: Optional[Union[Path, str]] = None,
+    fetch_source: Callable[..., source_store.SourceText] = source_store.fetch_page,
 ) -> FastAPI:
     """Build the app.  ``db_path`` defaults to data/app.db; tests pass a temp file.
 
@@ -314,6 +333,8 @@ def create_app(
     (tests pass a fake, so none reaches CBK).  ``export_root`` is where exported weekly reports
     are written (default: under the data directory).  ``charts_root`` is where each saved review's chart files are
     kept, ``<run_id>/<chart_id>.png`` and ``.json`` (default: under the data directory; charts/store.py).
+    ``sources_root`` is where the sources a Bedrock draft is written from are kept (default: under the data directory;
+    common/sources.py) and ``fetch_source`` how one is fetched (tests pass a fake, so none reaches a site).
 
     ``notable_registry`` is where the "Notable this week" detectors come from (section slug -> detectors).  Left out it is
     the real registry, which is empty: the real app shows no suggestion.  Only a caller that passes one, as the end-to-end
@@ -963,6 +984,120 @@ def create_app(
         if not weekly_inputs.remove(week, stored_name, root):
             raise HTTPException(404, f"no stored input {stored_name!r} for the week ending {week.ending.isoformat()}")
         return weekly_inputs.status(week, root)
+
+
+    # -- the sources a Bedrock draft is written from --------------------------
+
+    sources_dir = Path(sources_root) if sources_root is not None else None
+
+    def refuse_while_drafting() -> None:
+        """A draft reads the saved sources as it goes, so none may change under it.  The slot is one draft at a time across
+        every section, so this refuses while any draft holds it (a stuck one, past the stale limit, does not count).
+        ponytail: not narrowed to the section being drafted; do that if a long draft of another section gets in the way."""
+        held = draft_slot.status()
+        if held and not held["stale"]:
+            raise HTTPException(409, f"{held['title']} is being drafted right now, so sources cannot be added or removed until "
+                                     "it finishes. Wait for it, then try again.")
+
+    def source_piece(section: str, subject: str, report_type: str, period: Optional[str], typed: Optional[str]):
+        """(the section's spec, the normalized period, the piece) a source is for, or a plain refusal (404, 422)."""
+        period, _ = chosen_report(report_type, period, None)
+        spec = spec_for(report_type, section)
+        if spec is None:
+            raise HTTPException(404, f"no section {section!r} in the {TYPES[report_type].title}")
+        if not spec.available or not uses_provider(spec):
+            raise HTTPException(422, f"{spec.title} is not written from sources, so there is nothing to supply for it.")
+        try:
+            titles = clean_sections(typed) if spec.needs_topic and typed and typed.strip() else []
+            pieces = pieces_for(report_type, period, section, sections=titles or ([subject] if spec.needs_topic else []),
+                                today=date.today())
+        except ValueError as exc:
+            raise HTTPException(422, str(exc))
+        if pieces is None:
+            raise HTTPException(422, f"{spec.title} has no pieces to supply sources for.")
+        key = source_store.subject_key(subject)
+        piece = next((p for p in pieces if source_store.subject_key(p.subject) == key), None)
+        if piece is None:
+            if spec.needs_topic:
+                raise HTTPException(422, f"{subject!r} is not a section title you typed, or it is the closing part, which is "
+                                         "written from the other sections and takes no sources.")
+            raise HTTPException(422, f"{subject!r} is not a piece of {spec.title}. Its pieces are: "
+                                     f"{', '.join(p.subject for p in pieces) or 'none yet'}.")
+        return spec, period, piece
+
+    def source_meta(piece, items: list[source_store.SourceText]) -> dict:
+        return {"subject": piece.subject, "end": piece.end.isoformat(),
+                "week_end": latest_friday(piece.end).isoformat(), "sources": [s.meta() for s in items]}
+
+    @app.get("/api/sources")
+    def list_sources(
+        section: str = Query(max_length=40),
+        report_type: ReportType = Query(default=WEEKLY),
+        period: Optional[str] = Query(default=None, max_length=40),
+        subject: Optional[str] = Query(default=None, max_length=200),
+        sections: Optional[str] = Query(default=None, max_length=4000),
+    ) -> dict:
+        """The pieces of one section (or the one named by ``subject``) with the sources saved for each.  ``sections`` is the
+        Focus's typed titles, which are what name its pieces."""
+        spec, period, first = source_piece(section, subject, report_type, period, sections) if subject else (None, None, None)
+        if spec is None:
+            period, _ = chosen_report(report_type, period, None)
+            spec = spec_for(report_type, section)
+            if spec is None:
+                raise HTTPException(404, f"no section {section!r} in the {TYPES[report_type].title}")
+            if not spec.available or not uses_provider(spec):
+                return {"section": section, "title": spec.title, "uses_sources": False, "pieces": [],
+                        "approved_sites": list(source_store.APPROVED_SITES)}
+            try:
+                titles = clean_sections(sections) if spec.needs_topic and sections and sections.strip() else []
+                found = pieces_for(report_type, period, section, sections=titles, today=date.today()) or []
+            except ValueError as exc:
+                raise HTTPException(422, str(exc))
+        else:
+            found = [first]
+        try:
+            pieces = [source_meta(p, source_store.list_for(p.subject, p.end, sources_dir)) for p in found]
+        except source_store.SourceError as exc:
+            raise HTTPException(409, str(exc))
+        return {"section": section, "title": spec.title, "uses_sources": True, "pieces": pieces,
+                "approved_sites": list(source_store.APPROVED_SITES)}
+
+    @app.post("/api/sources")
+    def add_source(body: SourceBody) -> dict:
+        """Keep one source for a piece: with no ``text`` and no ``date`` the page at ``url`` is fetched (approved sites only);
+        with them, the pasted text is kept as it is, under the address and date given.  422 with the reason if it is refused."""
+        spec, period, piece = source_piece(body.section, body.subject, body.report_type, body.period, body.sections)
+        refuse_while_drafting()
+        pasted = bool((body.text or "").strip() or (body.date or "").strip())
+        try:
+            if pasted:
+                added = source_store.from_paste(body.url, body.date or "", body.text or "", piece.subject, piece.end,
+                                                title=body.title or "", root=sources_dir)
+            else:
+                added = fetch_source(body.url, piece.subject, piece.end, root=sources_dir)
+            items = source_store.list_for(piece.subject, piece.end, sources_dir)
+        except source_store.SourceError as exc:
+            raise HTTPException(422, str(exc))
+        return {"source": added.meta(), **source_meta(piece, items)}
+
+    @app.get("/api/sources/{source_id}/text")
+    def source_text(source_id: str) -> Response:
+        """The saved text of one source, as plain text: what the model was shown and what its quotes are checked against."""
+        try:
+            src = source_store.get(source_id, sources_dir)
+        except source_store.SourceError as exc:
+            raise HTTPException(409, str(exc))
+        if src is None:
+            raise HTTPException(404, f"no saved source {source_id!r}")
+        return Response(src.text, media_type="text/plain; charset=utf-8",
+                        headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+
+    @app.delete("/api/sources/{source_id}")
+    def delete_source(source_id: str) -> dict:
+        refuse_while_drafting()
+        if not source_store.remove(source_id, sources_dir):
+            raise HTTPException(404, f"no saved source {source_id!r}")
+        return {"removed": source_id}
 
     # -- writes -----------------------------------------------------------
 
