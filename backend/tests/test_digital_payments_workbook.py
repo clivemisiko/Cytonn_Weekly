@@ -9,7 +9,8 @@ from openpyxl import Workbook as XlsxWorkbook
 
 from cytonn_weekly.common.formatting import round_half_up
 from cytonn_weekly.digital_payments import workbook as dpw
-from cytonn_weekly.digital_payments.review_run import build_digital_payments_review
+from cytonn_weekly.digital_payments.coordinator_review import ACCEPT, FIX_NEEDED, WORKBOOK_QUARTER
+from cytonn_weekly.digital_payments.review_run import build_digital_payments_review, workbook_pe
 from datetime import date
 
 from cytonn_weekly.weekly import inputs
@@ -110,7 +111,7 @@ def test_by_name_figures_are_the_hand_worked_ones():
     assert round_half_up(gpn.ttm_pe, 1) == Decimal("-3.6") and round_half_up(gpn.forward_pe, 1) == Decimal("1.4")
     assert round_half_up(book.row("visa").ttm_pe, 1) == Decimal("12.5") and book.row("visa").forward_pe == Decimal(5)
     assert book.price_date.isoformat() == "2026-10-30"
-    assert book.warnings == [] and book.blank_quarters == []
+    assert book.warnings == [] and book.blank == []
 
 
 def test_a_negative_pe_stays_in_the_average_and_only_the_seven_are_averaged():
@@ -192,18 +193,6 @@ def test_the_average_needs_all_seven_companies():
         _read(out.getvalue())
 
 
-def test_a_blank_quarter_counts_as_zero_as_in_excel_and_is_listed():
-    from openpyxl import load_workbook
-
-    book = load_workbook(io.BytesIO(_build()))
-    book["Earnings"]["H4"] = None   # Visa's Q2'26
-    out = io.BytesIO()
-    book.save(out)
-    read = _read(out.getvalue())
-    assert read.blank_quarters == ["Earnings!H4"]
-    assert read.row("visa").ttm_pe == Decimal(100) / 6   # three quarters of 2
-
-
 # ---- the weekly inputs slot ------------------------------------------------------------------------------------------
 
 def test_the_upload_slot_reads_the_date_and_hands_the_workbook_to_the_review(tmp_path):
@@ -251,10 +240,11 @@ def test_year_open_that_could_not_be_fetched_is_said_not_skipped():
 
 # ---- the review ------------------------------------------------------------------------------------------------------
 
-def _review(workbook):
+def _review(workbook, search=None):
     rows = [src_row("V", "Visa"), src_row("GPN", "Global Payments")]
     rows[1]["ytd_open"] = 75.529999
-    return build_digital_payments_review(provider=FakeProvider(), today=TODAY, fetch_table=lambda today: rows, workbook=workbook)
+    return build_digital_payments_review(provider=FakeProvider(), today=TODAY, fetch_table=lambda today: rows, workbook=workbook,
+                                         search=search or (lambda quarter, domains: []))
 
 
 def test_review_shows_the_workbook_warnings_and_without_a_workbook_has_none_of_them():
@@ -284,8 +274,9 @@ def _same_by_name_results(book):
     gpn, coin = book.row("global payments"), book.row("coinbase global")
     assert (round_half_up(gpn.ttm_pe, 1), round_half_up(gpn.forward_pe, 1)) == (Decimal("-26.9"), Decimal("6.0"))
     assert (round_half_up(coin.ttm_pe, 1), round_half_up(coin.forward_pe, 1)) == (Decimal("-38.4"), Decimal("47.5"))
-    assert (round_half_up(book.average_ttm, 1), round_half_up(book.average_forward, 1)) == (Decimal("22.8"), Decimal("21.3"))
-    assert book.blank_quarters == ["Earnings!G11", "Earnings!I11", "Earnings!I8"]
+    # PayPal's TTM P/E waits on its blank Q3'26, so the TTM Average covers the other six; the forward Average still has all seven
+    assert (round_half_up(book.average_ttm, 1), round_half_up(book.average_forward, 1)) == (Decimal("24.3"), Decimal("21.3"))
+    assert sorted(q.ref for q in book.blank) == ["Earnings!G11", "Earnings!I11", "Earnings!I8"]
 
 
 def test_real_v3_swapped_file_gives_the_swap_warning_and_the_year_open_warning():
@@ -296,6 +287,7 @@ def test_real_v3_swapped_file_gives_the_swap_warning_and_the_year_open_warning()
     assert "so the workbook's P/E for Global Payments Inc uses another company's earnings" in text
     assert "Coinbase Global: the workbook's forward P/E ('Stock Performance'!J10)" in text
     assert "Average: the workbook's TTM P/E average" in text
+    assert "left out, because their TTM P/E is unavailable: Paypal Holdings" in text
     assert book.row("global payments").year_open == Decimal("77.02")
     year = dpw.year_open_warnings(book, _fixture_rows())
     assert len(year) == 1 and year[0].startswith("Global Payments Inc: Year Open is 77.02") and "is 75.53" in year[0]
@@ -305,4 +297,213 @@ def test_real_v4_corrected_file_gives_neither_warning():
     book = _real(V4)
     _same_by_name_results(book)
     assert book.row("global payments").year_open == Decimal("75.53")
-    assert book.warnings == [] and dpw.year_open_warnings(book, _fixture_rows()) == []
+    assert not any("another company's earnings" in w or "TTM P/E ('Stock" in w and "worked out" in w for w in book.warnings)
+    assert dpw.year_open_warnings(book, _fixture_rows()) == []
+
+
+# ---- a blank quarter is never zero --------------------------------------------------------------------------------------
+
+def _blank(data, *cells):
+    from openpyxl import load_workbook
+
+    book = load_workbook(io.BytesIO(data))
+    for cell in cells:
+        book["Earnings"][cell] = None
+    out = io.BytesIO()
+    book.save(out)
+    return out.getvalue()
+
+
+def _with_results(data, rows):
+    """Add a Financial Results sheet laid out like the team's: (title, prior-year net income, current net income) per company."""
+    from openpyxl import load_workbook
+
+    book = load_workbook(io.BytesIO(data))
+    sheet = book.create_sheet("Financial Results")
+    sheet.append(["Cytonn Report: Digital Payments Financial Results"])
+    sheet.append(["Company", "Metric", "Prior Year (2025)", "Current (2026)", "y/y Change"])
+    for title, prior, current in rows:
+        sheet.append([title, "Net revenue (USD bn)", 9, 10, 0.1])
+        sheet.append([None, "Net income (USD bn)", prior, current, None])
+    out = io.BytesIO()
+    book.save(out)
+    return out.getvalue()
+
+
+VISA_H4 = "Earnings!H4"   # Visa's Q2'26, which its TTM P/E reads
+PAGE = ("Visa Inc. Announces Fiscal Second Quarter 2026 Results. GAAP net income in the quarter was $2.5 billion, up 3% "
+        "from a year ago. Net revenue was $9.1 billion.")
+URL = "https://investor.visa.com/news/q2-2026"
+ORDINALS = ("first", "second", "third", "fourth")
+
+
+def _search(pages, seen=None):
+    def search(quarter, domains):
+        if seen is not None:
+            seen.append((quarter.ref, domains))
+        return pages
+    return search
+
+
+def _fills(data, search=None):
+    book = dpw.open_dp_workbook(data)
+    fills, reasons = dpw.fill_blanks(book, TODAY, search)
+    return dpw.read_dp_workbook(book, fills, reasons), fills
+
+
+def _visa_pe(table):
+    return next(r for r in table["rows"] if r["key"] == "visa")["ttm_pe"]
+
+
+def test_a_blank_quarter_is_never_zero_and_is_listed_with_company_label_and_cell():
+    read = _read(_blank(_build(), "H4"))
+    assert [(q.company, q.label, q.ref) for q in read.blank] == [("Visa", "Q2'26", VISA_H4)]
+    visa = read.row("visa")
+    assert visa.ttm_pe is None and visa.filled_ttm is None   # not 100/6, the sum of three quarters of 2
+    assert "Q2'26 (Earnings!H4) is blank" in visa.reason
+    assert any(w.startswith("Visa: TTM P/E unavailable") and "never counted as zero" in w for w in read.warnings)
+
+
+def test_a_blank_quarter_is_filled_from_the_financial_results_sheet_and_waits_for_acceptance():
+    data = _with_results(_blank(_build(), "H4"), [("Visa (Q2)", 2, 2.5), ("Mastercard (Q2)", 3, 3.5)])
+    read, fills = _fills(data)
+    (fill,) = fills
+    assert (fill.value, fill.source, fill.fetched) == (Decimal("2.5"), "'Financial Results'!D4", TODAY.isoformat())
+    assert "Visa (Q2): Net income (USD bn) 2.5" in fill.quoted
+    visa = read.row("visa")
+    assert visa.ttm_pe is None and visa.filled_ttm == Decimal(100) / Decimal("8.5") and visa.needs == (VISA_H4,)
+    assert "USD 2.5 bn was found in 'Financial Results'!D4" in visa.reason
+    rows = [r.as_dict() for r in read.rows]
+    assert _visa_pe(dpw.pe_table(rows)) is None
+    accepted = dpw.pe_table(rows, {VISA_H4})
+    assert _visa_pe(accepted) == Decimal(100) / Decimal("8.5") and accepted["left_out"] == []
+
+
+def test_a_blank_quarter_found_by_search_is_a_review_item_with_its_citation_until_accepted():
+    seen = []
+    review = _review(dpw.open_dp_workbook(_blank(_build(), "H4")), search=_search([{"url": URL, "text": PAGE}], seen))
+    assert seen == [(VISA_H4, ["investor.visa.com", "sec.gov"])]
+    (item,) = [i for i in review.review_items if i.kind == WORKBOOK_QUARTER]
+    assert item.context == {"company": "Visa", "cell": VISA_H4, "quarter": "Q2'26", "value": "2.5", "source": URL,
+                            "fetched": TODAY.isoformat(),
+                            "quoted": "GAAP net income in the quarter was $2.5 billion, up 3% from a year ago."}
+    assert URL in item.detail and "$2.5 billion" in item.detail and "stays unavailable until you accept" in item.detail
+    assert any(URL in w and "accept it in the review" in w for w in review.section["warnings"])
+    assert item.resolution is None and not review.is_approvable
+    assert _visa_pe(workbook_pe(review)) is None   # before acceptance
+    item.resolve(FIX_NEEDED)
+    assert _visa_pe(workbook_pe(review)) is None
+    item.resolve(ACCEPT)
+    assert _visa_pe(workbook_pe(review)) == Decimal(100) / Decimal("8.5")
+
+
+@pytest.mark.parametrize("page, why", [
+    ({"url": URL, "text": PAGE, "figure": "$2.9 billion"}, "is not in the page text"),   # the backend's number is not on the page
+    ({"url": URL, "text": PAGE + " Net income was $2.7 billion on an adjusted basis."}, "more than one net income figure"),
+    ({"url": URL, "text": "Visa announces a new partnership. Net income was $2.5 billion."}, "does not say it covers Q2'26"),
+    ({"url": "https://example.com/visa", "text": PAGE}, "is not an investor relations or SEC page"),
+])
+def test_a_figure_that_is_not_verbatim_in_an_ir_or_sec_page_is_rejected(page, why):
+    read, fills = _fills(_blank(_build(), "H4"), _search([page]))
+    assert fills == [] and read.row("visa").ttm_pe is None and read.row("visa").filled_ttm is None
+    assert why in read.row("visa").reason
+
+
+def test_a_figure_the_backend_claims_is_accepted_only_when_it_is_in_the_page_text():
+    read, fills = _fills(_blank(_build(), "H4"), _search([{"url": URL, "text": PAGE, "figure": "$2.5 billion"}]))
+    assert [f.value for f in fills] == [Decimal("2.5")] and read.row("visa").filled_ttm is not None
+
+
+def test_a_figure_in_millions_is_converted():
+    page = "Visa reports second quarter 2026 results. Net income was $2,512 million for the quarter."
+    _, fills = _fills(_blank(_build(), "H4"), _search([{"url": URL, "text": page}]))
+    assert [f.value for f in fills] == [Decimal("2.512")]
+
+
+@pytest.mark.parametrize("search", [None, _search([]), lambda q, d: 1 / 0])
+def test_with_no_source_anywhere_the_pe_is_unavailable_with_a_reason_and_never_computed(search):
+    read, fills = _fills(_blank(_build(), "H4"), search)
+    visa = read.row("visa")
+    assert fills == [] and visa.ttm_pe is None and visa.filled_ttm is None and visa.needs == ()
+    assert "Q2'26 (Earnings!H4) is blank and Financial Results has no Q2'26 net income for it and " in visa.reason
+    # accepting a cell that was never filled changes nothing
+    assert _visa_pe(dpw.pe_table([r.as_dict() for r in read.rows], {VISA_H4})) is None
+
+
+def test_the_average_leaves_out_a_company_without_a_pe_and_names_it():
+    read, _ = _fills(_blank(_build(cached=_by_name_cached()), "H4"))
+    others = [0, 2, 3, 4, 5, GPN]
+    assert read.average_ttm == sum(_ttm(i) for i in others) / 6 and [x["company"] for x in read.left_out] == ["Visa"]
+    text = [w for w in read.warnings if w.startswith("Average: the workbook's TTM P/E average")]
+    assert text and "left out, because their TTM P/E is unavailable: Visa" in text[0] and "6 companies" in text[0]
+
+
+def test_the_average_says_what_was_left_out_even_when_the_workbooks_own_average_agrees():
+    from openpyxl import load_workbook
+
+    book = load_workbook(io.BytesIO(_blank(_build(), "H4")))
+    book["Stock Performance"]["I13"] = float(sum(_ttm(i) for i in [0, 2, 3, 4, 5, GPN]) / 6)
+    out = io.BytesIO()
+    book.save(out)
+    read, _ = _fills(out.getvalue())
+    assert [w for w in read.warnings if w.startswith("Average: the TTM P/E average covers 6 of the seven companies")]
+
+
+def test_the_window_warning_fires_when_financial_results_is_a_quarter_ahead_and_not_otherwise():
+    ahead = _fills(_with_results(_build(), [("Visa (Q3)", 2, 3)]))[0]   # Earnings stops at Q2'26
+    assert ("Visa: the TTM window may be one quarter behind: its latest quarter on Earnings is Q2'26 "
+            "but Financial Results has Q3'26.") in ahead.warnings
+    assert not any("window" in w for w in _fills(_with_results(_build(), [("Visa (Q2)", 2, 3)]))[0].warnings)
+    assert not any("window" in w for w in _fills(_build())[0].warnings)   # no Financial Results sheet at all
+
+
+def test_a_filled_quarter_counts_as_the_latest_for_the_window_warning():
+    data = _with_results(_blank(_build(), "H4"), [("Visa (Q2)", 2, 2.5)])
+    assert not any("window" in w for w in _fills(data)[0].warnings)
+
+
+def test_the_real_v4_blank_quarter_is_filled_from_financial_results_and_waits_for_acceptance():
+    read, fills = _fills(sample(V4), _search([]))
+    (fill,) = fills
+    assert (fill.quarter.company, fill.quarter.ref, fill.value, fill.source) == (
+        "Paypal Holdings", "Earnings!I8", Decimal("1.073"), "'Financial Results'!D11")
+    assert read.row("paypal").ttm_pe is None and round_half_up(read.row("paypal").filled_ttm, 1) == Decimal("10.6")
+    assert "Wise PLC: TTM P/E unavailable" in " ".join(read.warnings)
+    assert [x["company"] for x in read.left_out] == ["Paypal Holdings"] and round_half_up(read.average_ttm, 1) == Decimal("24.3")
+    text = " ".join(read.warnings)
+    assert "American Express: the TTM window may be one quarter behind: its latest quarter on Earnings is Q2'26 but Financial Results has Q3'26." in text
+    assert "Visa: the TTM window may be one quarter behind: its latest quarter on Earnings is Q3'26 but Financial Results has Q4'26." in text
+
+
+def _blank_in_xml(raw, ref):
+    """The workbook with one Earnings cell emptied in the XML, so every other cell keeps the value Excel saved
+    (an openpyxl round trip would drop the saved value of every formula cell)."""
+    src, out = zipfile.ZipFile(io.BytesIO(raw)), io.BytesIO()
+    with zipfile.ZipFile(out, "w") as dst:
+        for item in src.infolist():
+            body = src.read(item.filename)
+            if item.filename == "xl/worksheets/sheet2.xml":
+                text, n = re.subn(rf'<c r="{ref}"( s="\d+")?><v>[^<]*</v></c>', r'<c r="%s"\1/>' % ref, body.decode())
+                assert n == 1
+                body = text.encode()
+            dst.writestr(item, body)
+    return out.getvalue()
+
+
+def test_a_real_v4_copy_with_one_more_quarter_blanked_is_found_by_search_or_left_unavailable():
+    raw = sample(V4)
+    book = dpw.open_dp_workbook(raw)
+    stock = book.sheet("Stock Performance")
+    row = next(r for r in range(1, stock.max_row + 1) if stock.value(r, 1) == "Mastercard")
+    ref = re.search(r"Earnings!\$?([A-Z]+\d+)", book.formula(stock.cell(row, 9))).group(1)
+    blanked = _blank_in_xml(raw, ref)
+    none_found, fills = _fills(blanked, _search([]))
+    assert [f.quarter.company for f in fills] == ["Paypal Holdings"]
+    assert none_found.row("mastercard").ttm_pe is None and none_found.row("mastercard").filled_ttm is None
+    assert sorted(x["company"] for x in none_found.left_out) == ["Mastercard", "Paypal Holdings"]
+    q = next(q for q in none_found.blank if q.company == "Mastercard")
+    page = (f"Mastercard Incorporated reports {ORDINALS[int(q.label[1]) - 1]} quarter {2000 + int(q.label[-2:])} results. "
+            "Net income was $3.9 billion for the quarter.")
+    found, fills = _fills(blanked, _search([{"url": "https://investor.mastercard.com/news/x", "text": page}]))
+    assert [(f.quarter.company, f.value) for f in fills if f.quarter.company == "Mastercard"] == [("Mastercard", Decimal("3.9"))]
+    assert found.row("mastercard").ttm_pe is None and found.row("mastercard").filled_ttm is not None
