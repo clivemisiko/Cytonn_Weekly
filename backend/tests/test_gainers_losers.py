@@ -1,5 +1,6 @@
 import io
 from datetime import date
+from decimal import Decimal
 
 import pytest
 from openpyxl import Workbook as XlsxWorkbook
@@ -41,7 +42,7 @@ def moves(**changed):
 # ---------------------------------------------------------------------------
 
 def test_columns_are_found_by_their_date_never_the_2016_block_or_the_stray_older_date():
-    rows = equities_workbook.read_gainers_losers(sheet_only(), [WEEK.ending, WEEK.previous_friday])
+    rows = equities_workbook.read_gainers_losers(sheet_only(), WEEK)
     assert [t for t, _ in rows] == list(wh.GAINERS_LOSERS)            # P3:P14, not B2:C17
     scom = rows[0][1]
     assert (scom[WEEK.ending].ref, scom[WEEK.ending].value) == ("'Gainers & Losers'!S3", 100.27)
@@ -50,17 +51,25 @@ def test_columns_are_found_by_their_date_never_the_2016_block_or_the_stray_older
 
 def test_a_column_inserted_between_the_weeks_gives_the_same_result():
     days = [WEEK.previous.previous_friday, WEEK.previous_friday, date(2026, 9, 30), WEEK.ending]
-    rows = equities_workbook.read_gainers_losers(sheet_only(days), [WEEK.ending, WEEK.previous_friday])
-    plain = equities_workbook.read_gainers_losers(sheet_only(), [WEEK.ending, WEEK.previous_friday])
+    rows = equities_workbook.read_gainers_losers(sheet_only(days), WEEK)
+    plain = equities_workbook.read_gainers_losers(sheet_only(), WEEK)
     assert [(t, {d: c.value for d, c in cells.items()}) for t, cells in rows] == \
            [(t, {d: c.value for d, c in cells.items()}) for t, cells in plain]
     assert rows[0][1][WEEK.ending].a1 == "T3"
 
 
+def test_the_as_at_day_replaces_the_fridays_column_and_comes_first():
+    days = [WEEK.previous.previous_friday, WEEK.previous_friday, date(2026, 9, 30), WEEK.ending]
+    rows = equities_workbook.read_gainers_losers(sheet_only(days), WEEK, as_at=date(2026, 9, 30))
+    assert list(rows[0][1]) == [date(2026, 9, 30), WEEK.previous_friday]
+    assert rows[0][1][date(2026, 9, 30)].a1 == "S3"
+    assert list(equities_workbook.read_gainers_losers(sheet_only(), WEEK)[0][1]) == [WEEK.ending, WEEK.previous_friday]
+
+
 def test_a_date_that_appears_twice_is_refused():
     days = [WEEK.previous_friday, WEEK.previous_friday, WEEK.ending]
     with pytest.raises(WorkbookError, match=r"'Gainers & Losers' has 2 columns dated 2026-09-25 in row 2 \(Q2, R2\)"):
-        equities_workbook.read_gainers_losers(sheet_only(days), [WEEK.ending, WEEK.previous_friday])
+        equities_workbook.read_gainers_losers(sheet_only(days), WEEK)
 
 
 def test_a_missing_date_column_makes_the_part_unavailable_naming_the_sheet_and_the_date(root):
@@ -109,10 +118,10 @@ def test_a_change_of_exactly_zero_is_neither_and_no_gains_drops_the_however_clau
 
 
 def test_ties_go_by_the_unrounded_change_then_the_sheets_row_order(root):
-    # SCOM and EABL tie exactly (row order: SCOM first); KCB's 0.94 prints 0.9 like theirs but is the larger rise
+    # SCOM and EABL tie exactly (alphabetical by printed name: EABL first); KCB's 0.94 prints 0.9 like theirs but is the larger rise
     text = with_moves(root, moves(SCOM=0.86, EABL=0.86, KCB=0.94))["large_caps"]["body_md"]
     assert text.endswith("However, the performance was supported by gains recorded by large-cap stocks such as KCB, "
-                         "Safaricom and EABL of 0.9%, 0.9% and 0.9% respectively.")
+                         "EABL and Safaricom of 0.9%, 0.9% and 0.9% respectively.")
 
 
 def test_the_banking_paragraph_names_only_banks_when_the_index_falls(root):
@@ -129,9 +138,51 @@ def test_the_banking_paragraph_leads_with_the_gains_when_the_index_rises(root):
     by = with_moves(root, moves(KCB=0.88, DTBK=-3.76), fetchers=fetchers(boxes))
     assert by["banking"]["body_md"].endswith(
         "This is attributable to gains recorded by large cap stocks such as KCB of 0.9%. The performance was however weighed "
-        "down by losses recorded by large-cap stocks such as DTB-K, NCBA and Standard Chartered Bank of 3.8%, 2.2% and 1.5% "
-        "respectively.")
-    assert "such as DTBK" in by["large_caps"]["body_md"]          # the market paragraph keeps its own name for DTBK
+        "down by losses recorded by large-cap stocks such as Diamond Trust Bank of Kenya, NCBA and Standard Chartered Bank of "
+        "3.8%, 2.2% and 1.5% respectively.")
+    assert "such as Diamond Trust Bank of Kenya, NCBA" in by["large_caps"]["body_md"]       # the same name in both paragraphs
+    assert "DTB-K" not in by["large_caps"]["body_md"] + by["banking"]["body_md"]
+
+
+def test_ryans_names_are_printed_and_bamburi_is_flagged_as_assumed(root):
+    with_moves(root, moves(COOP=3.0, BAT=2.0, BAMB=1.5))
+    review = build(root)
+    text = blocks(review)["large_caps"]["body_md"]
+    assert text.endswith("supported by gains recorded by large-cap stocks such as Co-operative Bank, British American "
+                         "Tobacco and Bamburi Cement of 3.0%, 2.0% and 1.5% respectively.")
+    bamburi = items(review, "Market Performance: large-cap movers: Bamburi Cement week-on-week change")[0]
+    assert bamburi.status == "flagged" and "\"Bamburi Cement\" is assumed" in bamburi.detail[0].message
+
+
+def test_no_assumed_name_flag_when_bamburi_is_not_named(root):
+    assert not any("is assumed" in str(i.detail) for i in build(root).review_items)
+
+
+def mover(ticker, name, change):
+    return eqw.Mover(ticker, name, Decimal(change), {})
+
+
+def test_a_tie_goes_to_a_bank_then_alphabetically_by_the_printed_name():
+    tied = [mover("SCOM", "Safaricom", "1"), mover("EABL", "EABL", "1"), mover("EQTY", "Equity", "1"),
+            mover("COOP", "Co-operative Bank", "1"), mover("DTBK", "Diamond Trust Bank of Kenya", "1")]
+    gainers, _ = eqw.ranked(tied)
+    assert [x.name for x in gainers] == ["Co-operative Bank", "Diamond Trust Bank of Kenya", "Equity"]
+    _, losers = eqw.ranked([mover(x.ticker, x.name, "-1") for x in tied])
+    assert [x.name for x in losers] == ["Co-operative Bank", "Diamond Trust Bank of Kenya", "Equity"]
+
+
+def test_the_tie_rule_decides_the_cut_off_for_the_last_place():
+    # one clear leader, then three tied for the two places left: the bank, then the alphabetically first non-bank
+    movers = [mover("SCOM", "Safaricom", "1"), mover("EABL", "EABL", "1"), mover("KCB", "KCB", "1"), mover("BAT", "British American Tobacco", "5")]
+    assert [x.name for x in eqw.ranked(movers)[0]] == ["British American Tobacco", "KCB", "EABL"]
+    falls = [mover(x.ticker, x.name, str(-Decimal(x.change))) for x in movers]
+    assert [x.name for x in eqw.ranked(falls)[1]] == ["British American Tobacco", "KCB", "EABL"]
+
+
+def test_a_larger_change_still_beats_a_bank_and_the_typed_list_tickers_count_as_banks():
+    movers = [mover("SCOM", "Safaricom", "1.01"), mover("SBIC", "Stanbic", "1"), mover("IMH", "I&M Holdings", "1"),
+              mover("DTK", "DTBK", "1"), mover("EABL", "EABL", "1")]
+    assert [x.name for x in eqw.ranked(movers)[0]] == ["Safaricom", "DTBK", "Stanbic"]
 
 
 def test_kcb_disagreeing_on_one_stock_is_a_sources_disagree_flag(root):
