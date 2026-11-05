@@ -24,6 +24,7 @@ def fake_anthropic_key(monkeypatch):
     """
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-placeholder-not-a-real-key")
     monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    monkeypatch.setenv("CYTONN_LLM_MODEL", "claude-sonnet-5-5")  # no default exists; anthropic mode refuses without it
 
 
 # Settings a developer's shell may carry, and that the Docker container always carries

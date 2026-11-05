@@ -33,6 +33,26 @@ def test_factory_defaults_to_anthropic(monkeypatch, capsys):
     assert capsys.readouterr().out == ""
 
 
+def test_llm_model_env_overrides_the_anthropic_model(monkeypatch):
+    from cytonn_weekly.narrative.factory import get_narrative_provider
+
+    monkeypatch.delenv("CYTONN_LLM_PROVIDER", raising=False)
+    monkeypatch.setenv("CYTONN_LLM_MODEL", " claude-opus-5-5 ")
+    for p in (provider_factory.get_provider(), get_narrative_provider()):
+        assert p.model == "claude-opus-5-5" and p.drafted_by == "anthropic:claude-opus-5-5"
+    for blank in ("  ", None):
+        if blank is None:
+            monkeypatch.delenv("CYTONN_LLM_MODEL")
+        else:
+            monkeypatch.setenv("CYTONN_LLM_MODEL", blank)
+        with pytest.raises(ValueError, match="CYTONN_LLM_MODEL is not set"):
+            provider_factory.get_provider()
+        with pytest.raises(ValueError, match="CYTONN_LLM_MODEL is not set"):
+            get_narrative_provider()
+        from api.main import provider_problem
+        assert "CYTONN_LLM_MODEL" in provider_problem()
+
+
 def test_factory_local_prints_warning_every_time(monkeypatch, capsys):
     monkeypatch.setenv("CYTONN_LLM_PROVIDER", "local")
     for _ in range(2):

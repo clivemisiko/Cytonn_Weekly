@@ -14,6 +14,7 @@ actually returned by the search tool.
 
 from __future__ import annotations
 
+import os
 import re
 from datetime import date
 from typing import Any, Optional, Sequence
@@ -39,8 +40,18 @@ from cytonn_weekly.digital_payments.providers.base import (
     word_count as _word_count,
 )
 
-MODEL = "claude-sonnet-5-5"
-DRAFTED_BY = f"anthropic:{MODEL}"  # derived, never a second hand-typed string that can drift
+MODEL_ENV_VAR = "CYTONN_LLM_MODEL"
+MODEL_MISSING = f"{MODEL_ENV_VAR} is not set. Set it to the Claude model to draft with (in .env or the shell)."
+
+
+def model_name() -> str:
+    # Read when a provider is built, not at import: entrypoints load .env after imports.
+    model = (os.environ.get(MODEL_ENV_VAR) or "").strip()
+    if not model:
+        raise ValueError(MODEL_MISSING)
+    return model
+
+
 WEB_SEARCH_TOOL = {"type": "web_search_20250305", "name": "web_search", "max_uses": 5}
 MAX_TOKENS = 6000
 MAX_CONTINUATIONS = 3  # server-side search turns can pause; resume a bounded number of times
@@ -282,9 +293,9 @@ def _draft_for_company(client, model, company, scope, start, end, today, example
 class AnthropicProvider(DraftingProvider):
     """Claude Sonnet + native web search.  ``client`` is injectable for tests."""
 
-    def __init__(self, client: Optional[anthropic.Anthropic] = None, model: str = MODEL):
+    def __init__(self, client: Optional[anthropic.Anthropic] = None, model: Optional[str] = None):
         self._client = client
-        self.model = model
+        self.model = model = model or model_name()
         self.drafted_by = f"anthropic:{model}"
 
     @property

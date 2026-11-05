@@ -162,6 +162,8 @@ def provider_problem() -> Optional[str]:
             f"API budget is approved, or set {PROVIDER_ENV_VAR}=local to draft in dev mode (Ollama + Exa, never "
             "for publication). Restart the API after changing .env."
         )
+    if provider == "anthropic" and not (os.environ.get("CYTONN_LLM_MODEL") or "").strip():
+        return "CYTONN_LLM_MODEL is not set (in .env or the shell). Set it to the Claude model to draft with. Restart the API after changing .env."
     if provider == "local" and not (os.environ.get(EXA_KEY_ENV_VAR) or "").strip():
         return EXA_KEY_MISSING
     return None

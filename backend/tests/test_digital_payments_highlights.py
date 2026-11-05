@@ -301,13 +301,13 @@ def test_pause_turn_is_resumed_and_bounded():
             return resp(story("Visa", "https://investor.visa.com/n")[1:])
 
     c = Paused(1)
-    h = ap._draft_for_company(c, ap.MODEL, dh.HIGHLIGHT_COMPANIES[0], "investor_relations",
+    h = ap._draft_for_company(c, ap.model_name(), dh.HIGHLIGHT_COMPANIES[0], "investor_relations",
                               date(2026, 9, 23), TODAY, TODAY, "", [])
     assert len(c.calls) == 2 and c.calls[1]["messages"][-1]["role"] == "assistant"
     assert h is not None
 
     c = Paused(99)
-    ap._run_search(c, ap.MODEL, "Company: Visa.\nx", {"type": "web_search_20250305", "name": "web_search"})
+    ap._run_search(c, ap.model_name(), "Company: Visa.\nx", {"type": "web_search_20250305", "name": "web_search"})
     assert len(c.calls) == ap.MAX_CONTINUATIONS + 1
 
 

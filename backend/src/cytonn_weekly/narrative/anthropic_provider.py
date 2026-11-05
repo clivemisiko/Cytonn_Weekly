@@ -152,9 +152,9 @@ def parse_piece(content: list[Any], brief: NarrativeBrief) -> Optional[dict[str,
 class AnthropicNarrativeProvider(NarrativeProvider):
     """Claude + native web search.  ``client`` is injectable for tests."""
 
-    def __init__(self, client: Optional[anthropic.Anthropic] = None, model: str = dp.MODEL):
+    def __init__(self, client: Optional[anthropic.Anthropic] = None, model: Optional[str] = None):
         self._client = client
-        self.model = model
+        self.model = model = model or dp.model_name()
         self.drafted_by = f"anthropic:{model}"
         self.requests = 0   # API requests made, search continuations included; the Focus review shows it
 
