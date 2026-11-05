@@ -92,6 +92,14 @@ def isolated_weekly_inputs(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def isolated_sources(tmp_path, monkeypatch):
+    """The sources a Bedrock draft is written from default to a folder under the real data directory; every test gets its own."""
+    from cytonn_weekly.common import sources
+
+    monkeypatch.setattr(sources, "_DEFAULT_ROOT", tmp_path / "inputs" / "sources")
+
+
+@pytest.fixture(autouse=True)
 def isolated_chart_files(tmp_path, monkeypatch):
     """Chart files default to a folder under the real data directory; every test gets its own."""
     from cytonn_weekly.charts import store
