@@ -24,6 +24,8 @@ from cytonn_weekly.digital_payments.fetcher import fetch_digital_payments, forma
 from cytonn_weekly.digital_payments.highlights import compose_section, draft_highlights, draft_outlook
 from cytonn_weekly.digital_payments.provider_factory import get_provider
 from cytonn_weekly.digital_payments.providers.base import DraftingProvider
+from cytonn_weekly.digital_payments.workbook import read_dp_workbook, year_open_warnings
+from cytonn_weekly.weekly.workbook import Workbook
 
 SOURCE_NAME = "Yahoo Finance"
 
@@ -33,12 +35,16 @@ def build_digital_payments_review(
     today: Optional[date] = None,
     fetch_table: Callable[[Optional[date]], list[dict[str, Any]]] = fetch_digital_payments,
     on_event: Optional[Observer] = None,
+    workbook: Optional[Workbook] = None,
 ) -> CoordinatorReview:
     """Draft this week's Digital Payments section, check it, and return the review.
 
     ``provider`` defaults to the one CYTONN_LLM_PROVIDER selects.  Provider and
     fetch errors propagate to the caller.  ``on_event`` (common/run_events.py) is
     told each step as it happens; with None the run is exactly what it always was.
+    ``workbook`` (the uploaded Digital Payments workbook, optional) adds reviewer warnings: a P/E or Average the
+    workbook shows that is not the figure worked out by company name, a Year Open that is not the first trading
+    day's close, and quarters its P/E formulas add while blank.  It changes no printed figure.
     """
     provider = provider or get_provider()
     draft = draft_highlights(provider=provider, today=today, on_event=on_event)
@@ -46,6 +52,13 @@ def build_digital_payments_review(
     report_failed_rows(on_event, table, lambda r: f"{SOURCE_NAME}: {r.get('company') or r['ticker']} ({r['ticker']})")
     outlook = draft_outlook(draft, table, provider=provider, on_event=on_event)
     section = compose_section(draft, table, outlook)
+    if workbook is not None:
+        book = read_dp_workbook(workbook)
+        section["warnings"] += book.warnings + year_open_warnings(book, table)
+        if book.blank_quarters:
+            section["warnings"].append(
+                f"The workbook's P/E formulas add blank cells ({', '.join(book.blank_quarters)}) as 0, so those P/Es cover fewer than four quarters"
+            )
     emit(on_event, PIECE_FINISHED, TABLE_TITLE)
     report = check_digital_payments(
         source_rows=table,

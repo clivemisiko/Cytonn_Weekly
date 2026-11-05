@@ -119,12 +119,46 @@ def test_priority_order_honored_when_all_five_have_news():
     assert any("Circle: not searched" in w for w in d["warnings"])
 
 
-def test_lower_priority_company_fills_in_when_a_higher_one_has_no_news():
+def test_circle_does_not_fill_in_while_any_priority_company_released():
     news = all_ir_news(companies=["Visa", "American Express", "PayPal", "Circle"])
-    d = dh.draft_highlights(provider=AnthropicProvider(client=NewsClient(news)), today=TODAY)
-    assert [h["company"] for h in d["highlights"]] == ["Visa", "American Express", "PayPal", "Circle"]
-    assert d["shortfall"] == 0
+    client = NewsClient(news)
+    d = dh.draft_highlights(provider=AnthropicProvider(client=client), today=TODAY)
+    assert [h["company"] for h in d["highlights"]] == ["Visa", "American Express", "PayPal"]
+    assert d["shortfall"] == 1
+    assert ("Circle", "ir") not in client.scopes()
     assert any("Mastercard: no story found" in w for w in d["warnings"])
+    assert any("Circle: not searched (3 of the 4 priority companies released" in w for w in d["warnings"])
+
+
+def test_every_priority_company_that_released_appears():
+    for released in (["Visa"], ["Mastercard", "PayPal"], ["Visa", "Mastercard", "American Express", "PayPal"]):
+        d = dh.draft_highlights(provider=AnthropicProvider(client=NewsClient(all_ir_news(companies=released + ["Circle"]))), today=TODAY)
+        assert [h["company"] for h in d["highlights"]] == released
+
+
+def test_circle_is_considered_only_when_none_of_the_four_released():
+    client = NewsClient(all_ir_news(companies=["Circle"]))
+    d = dh.draft_highlights(provider=AnthropicProvider(client=client), today=TODAY)
+    assert [h["company"] for h in d["highlights"]] == ["Circle"]
+    assert {c for c, _ in client.scopes()} == set(PRIORITY)
+    assert any("Circle: considered because none of the 4 priority companies released" in w for w in d["warnings"])
+
+
+def test_a_priority_search_that_found_but_discarded_a_result_cannot_be_confirmed():
+    class Provider:
+        drafted_by = "test"
+
+        def find_highlight(self, company, ir_domain, **kw):
+            from cytonn_weekly.digital_payments.providers.base import HighlightResult
+
+            return HighlightResult(company=company, search_scope=None, ir_domain=ir_domain, drafted_by="test",
+                                   no_story=True, draft_warnings=[f"{company}: a story was discarded as not about the company"])
+
+    d = dh.draft_highlights(provider=Provider(), today=TODAY)
+    assert d["highlights"] == []
+    for name in PRIORITY[:4]:
+        assert any(f"{name}: a result was found but discarded" in w and "check its releases by hand" in w for w in d["warnings"])
+    assert not any("Circle: a result was found but discarded" in w for w in d["warnings"])
 
 
 def test_block_and_global_payments_are_never_searched_or_used():
@@ -136,7 +170,7 @@ def test_block_and_global_payments_are_never_searched_or_used():
     d = dh.draft_highlights(provider=AnthropicProvider(client=client), today=TODAY)
     assert [h["company"] for h in d["highlights"]] == ["Visa"]
     searched = {c for c, _ in client.scopes()}
-    assert searched == set(PRIORITY)  # Block / Global Payments never requested
+    assert searched == set(PRIORITY[:4])  # Block / Global Payments never requested; Circle not needed once Visa released
     assert all("Block" not in h["body"] and "Global Payments" not in h["body"] for h in d["highlights"])
     assert any("not about the company" in w and "Mastercard" in w for w in d["warnings"])
 
@@ -197,7 +231,7 @@ def test_no_story_anywhere_tries_ir_then_web_then_moves_on():
     client = NewsClient(all_ir_news(companies=["Mastercard", "American Express", "PayPal", "Circle"]))
     d = dh.draft_highlights(provider=AnthropicProvider(client=client), today=TODAY)
     assert client.scopes()[:2] == [("Visa", "ir"), ("Visa", "web")]
-    assert [h["company"] for h in d["highlights"]] == ["Mastercard", "American Express", "PayPal", "Circle"]
+    assert [h["company"] for h in d["highlights"]] == ["Mastercard", "American Express", "PayPal"]
     assert any("Visa: no story found" in w for w in d["warnings"])
 
 

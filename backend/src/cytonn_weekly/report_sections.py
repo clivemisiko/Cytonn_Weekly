@@ -102,7 +102,14 @@ def _as_of(ctx: DraftContext) -> dict[str, Any]:
 def _digital_payments(ctx: DraftContext) -> CoordinatorReview:
     from cytonn_weekly.digital_payments.review_run import build_digital_payments_review
 
-    return build_digital_payments_review(**_as_of(ctx), **_observer(ctx))
+    book = {}
+    if ctx.week_ending is not None:
+        from cytonn_weekly.weekly.inputs import WeeklyInputs
+        from cytonn_weekly.weekly.week import Week
+
+        found = WeeklyInputs(Week(ctx.week_ending), ctx.inputs_root).dp_book
+        book = {} if found is None else {"workbook": found}
+    return build_digital_payments_review(**_as_of(ctx), **_observer(ctx), **book)
 
 
 def _company_updates(ctx: DraftContext) -> CoordinatorReview:

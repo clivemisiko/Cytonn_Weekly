@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from cytonn_weekly import paths
+from cytonn_weekly.digital_payments import workbook as dp_workbook
 from cytonn_weekly.weekly import cbk_bulletin, equities_workbook, fi_workbook, kcb, nse_yield_curve
 from cytonn_weekly.weekly.week import Week, day_text
 from cytonn_weekly.weekly.workbook import Workbook, WorkbookError
@@ -39,6 +40,7 @@ XLSX_MAGIC = b"PK\x03\x04"
 
 EQUITIES_WORKBOOK = "equities_workbook"
 FI_WORKBOOK = "fi_workbook"
+DP_WORKBOOK = "dp_workbook"
 KCB_DAILY = "kcb_daily"
 KCB_WEEKLY = "kcb_weekly"
 CBK_BULLETIN = "cbk_bulletin"
@@ -78,6 +80,9 @@ SLOTS: tuple[Slot, ...] = (
          "The Friday's bulletin. It can be fetched from centralbank.go.ke, or uploaded."),
     Slot(NSE_YIELD_CURVE, "NSE yield curve", "pdf", True, False, False,
          "Optional. Shown beside the T-bond bidding range as context only."),
+    Slot(DP_WORKBOOK, "Digital Payments workbook", "xlsx", True, False, False,
+         "Optional. Its P/Es are checked by company name and its Year Open against the first trading day's close; "
+         "differences show as warnings on the Digital Payments review."),
 )
 BY_SLUG = {s.slug: s for s in SLOTS}
 
@@ -170,6 +175,10 @@ def identify(slot: Slot, data: bytes, week: Week) -> dict[str, Any]:
             read = fi_workbook_date(fi_workbook.open_fi_workbook(data, slot.title))
             # its date: the date its money market fund table is published on
             return _found(read, read == week.ending, "fi_workbook.xlsx", "")
+        if slot.slug == DP_WORKBOOK:
+            read = dp_workbook.read_dp_workbook(dp_workbook.open_dp_workbook(data, slot.title)).price_date
+            # its date: the date of the newest price column
+            return _found(read, read == week.ending, "dp_workbook.xlsx", "")
         if slot.slug in (KCB_DAILY, KCB_WEEKLY):
             report = kcb.parse_kcb_pdf(data)
             wanted = kcb.DAILY if slot.slug == KCB_DAILY else kcb.WEEKLY
@@ -351,6 +360,10 @@ class WeeklyInputs:
     @property
     def fi_book(self) -> Optional[Workbook]:
         return self._parsed("fi", "fi_workbook.xlsx", lambda b: fi_workbook.open_fi_workbook(b))
+
+    @property
+    def dp_book(self) -> Optional[Workbook]:
+        return self._parsed("dp", "dp_workbook.xlsx", lambda b: dp_workbook.open_dp_workbook(b))
 
     @property
     def kcb_weekly(self) -> Optional[kcb.KcbReport]:
