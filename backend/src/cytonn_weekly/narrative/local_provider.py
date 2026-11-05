@@ -27,16 +27,20 @@ from cytonn_weekly.narrative.base import NarrativeBrief, NarrativeProvider
 
 def _system(brief: NarrativeBrief) -> str:
     opener = f'begins exactly with "{brief.opener}"' if brief.opener else "is formal prose"
+    extra = f"\n\n{brief.context}" if brief.context else ""
+    head = "a short headline and " if brief.headed else (
+        "body paragraphs only, with no heading of any kind (set the headline to the subject, and put no line starting "
+        "with # in the paragraph): ")
     return f"""\
 You help draft one item for the {brief.section} section of a {brief.report} investment research report \
 on Kenya (formal, data-forward, third person) from search results.
 
-Subject: {brief.label}. What qualifies: {brief.focus}
+Subject: {brief.label}. What qualifies: {brief.focus}{extra}
 
 Step 1 - judge the material. Decide whether the search results contain material that genuinely \
 qualifies. Analysis, opinion pieces or unrelated material do not. Do not force a draft.
 
-Step 2 - only if it qualifies: write a short headline and prose of {brief.words[0]} to \
+Step 2 - only if it qualifies: write {head}prose of {brief.words[0]} to \
 {brief.words[1]} words that {opener}. Use ONLY facts stated in the search results; never add \
 figures, dates, names or claims from memory. Embed sources as inline markdown hyperlinks, using \
 only URLs given in the results.
@@ -74,8 +78,13 @@ class LocalNarrativeProvider(dp_local.LocalProvider, NarrativeProvider):
             warnings.append(f"{brief.label}: local model judged the {scope} results not qualifying "
                             f"({' '.join((out.get('reasoning') or '').split())})")
             return None
-        headline = (out.get("headline") or "").strip().strip("*").strip()
+        headline = (out.get("headline") or "").strip().strip("*").strip() if brief.headed else brief.label
         paragraph_md = (out.get("paragraph") or "").strip()
+        if not brief.headed:   # a heading line never cuts a Focus section; it is dropped
+            lines = paragraph_md.splitlines()
+            paragraph_md = "\n".join(ln for ln in lines if not ln.lstrip().startswith("#")).strip()
+            if len(paragraph_md.splitlines()) < len(lines):
+                warnings.append(f"{brief.label}: removed heading line(s) the local model added to the section")
         if not headline or not paragraph_md:
             warnings.append(f"{brief.label}: local model returned no headline/paragraph; discarded")
             return None
@@ -133,3 +142,7 @@ class LocalNarrativeProvider(dp_local.LocalProvider, NarrativeProvider):
                 return res
         return HighlightResult(company=brief.label, search_scope=None, ir_domain=", ".join(brief.preferred_domains),
                                drafted_by=self.drafted_by, no_story=True, draft_warnings=warnings)
+
+    def complete(self, system: str, prompt: str, *, max_tokens: int) -> str:
+        self._ensure_model()
+        return self._chat([{"role": "system", "content": system}, {"role": "user", "content": prompt}]).strip()

@@ -28,9 +28,9 @@ def seen():
 
 @pytest.fixture
 def client(tmp_path, monkeypatch, seen):
-    def build(topic, on_event=None):
+    def build(topic, on_event=None, sections=None, **_):
         seen.append(topic)                       # the topic exactly as the API handed it to the builder
-        return sh.focus_review(topic=topic, on_event=on_event)
+        return sh.focus_review(topic=topic, on_event=on_event, sections=sections)
 
     monkeypatch.setattr(focus_run, "build_focus_review", build)
     return TestClient(create_app(db_path=tmp_path / "app.db", load_dotenv=False))
@@ -107,3 +107,26 @@ def test_the_run_route_hands_the_builder_the_same_cleaned_topic(client, seen):
         time.sleep(0.01)
     assert client.get(f"/api/runs/{run_id}").json()["status"] == "finished"
     assert seen == [clean_topic(WORDS_300)]
+
+
+def test_typed_section_titles_reach_the_builder_and_come_back_numbered(client, seen):
+    r = client.post("/api/sections/focus/draft", json={"topic": "SSA", "sections": "Overview\nSection 2: Yields\n\nRecommendations and Conclusion"})
+    assert r.status_code == 200, r.text
+    assert r.json()["section"]["outline"] == {"titles": ["Overview", "Yields", "Recommendations and Conclusion"], "source": "typed"}
+
+
+@pytest.mark.parametrize("sections, reason", [
+    ("\n".join(f"Title {n}" for n in range(9)), "9 section titles; the limit is 8"),
+    ("Fine\n" + "x" * 121, "section title 2 is 121 characters; the limit is 120"),
+])
+def test_too_many_or_too_long_section_titles_are_refused_with_a_sentence_and_nothing_is_drafted(client, seen, sections, reason):
+    for url, body in (("/api/sections/focus/draft", {"topic": "SSA", "sections": sections}),
+                      ("/api/runs", {"section": "focus", "topic": "SSA", "sections": sections})):
+        r = client.post(url, json=body)
+        assert r.status_code == 422 and r.json()["detail"] == reason and r.json()["problems"][0]["code"] == "draft_input_invalid"
+    assert seen == []
+
+
+def test_a_blank_topic_is_refused_even_with_section_titles(client, seen):
+    r = client.post("/api/sections/focus/draft", json={"topic": " ", "sections": "Overview"})
+    assert r.status_code == 422 and r.json()["detail"] == "Type a topic for Focus of the Week first, then start the draft."

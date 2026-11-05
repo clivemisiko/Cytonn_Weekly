@@ -43,6 +43,7 @@ class DraftContext:
     report_type: str = WEEKLY
     period: str = ""
     topic: Optional[str] = None     # Focus of the Week
+    sections: tuple[str, ...] = ()  # Focus of the Week: its section titles, cleaned; empty means the model proposes them
     text: Optional[str] = None      # Company Updates
     db_path: Optional[Union[Path, str]] = None  # Executive Summary reads the approved sections from here
     today: Optional[date] = None
@@ -143,7 +144,8 @@ def _real_estate(ctx: DraftContext) -> CoordinatorReview:
 def _focus(ctx: DraftContext) -> CoordinatorReview:
     from cytonn_weekly.focus.review_run import build_focus_review
 
-    return build_focus_review(ctx.topic or "", **_as_of(ctx), **_observer(ctx))
+    titles = {"sections": ctx.sections} if ctx.sections else {}   # left out when none were typed, like the other optional inputs
+    return build_focus_review(ctx.topic or "", **titles, **_as_of(ctx), **_observer(ctx))
 
 
 _YOUR_REVIEW = ("Your review", "You resolve each item, then approve or reject the whole section.")

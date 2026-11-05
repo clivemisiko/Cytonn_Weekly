@@ -89,7 +89,7 @@ def app(db, clock, monkeypatch):
     monkeypatch.setattr(eq_weekly, "build_equities_weekly_review", lambda on_event=None: sh.equities_review(on_event=on_event))
     monkeypatch.setattr(re_run, "build_real_estate_review", lambda on_event=None: sh.real_estate_review(on_event=on_event))
     monkeypatch.setattr(focus_run, "build_focus_review",
-                        lambda topic, on_event=None: sh.focus_review(topic=topic, on_event=on_event))
+                        lambda topic, on_event=None, **_: sh.focus_review(topic=topic, on_event=on_event))
     for module, name, builder in PERIODIC:
         monkeypatch.setattr(module, name, lambda ctx, on_event=None, _b=builder: _b(ctx, on_event=on_event))
     return create_app(db_path=db, load_dotenv=False, clock=clock)

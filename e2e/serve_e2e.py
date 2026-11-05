@@ -121,10 +121,15 @@ def main() -> None:
     class _E2EProvider(FakeNarrativeProvider):
         # A topic that says so is drafted with a figure its cited text lacks, so the sentence-edit tests have a flagged sentence.
         def draft_piece(self, brief, **kw):
-            self.bad_figure = "bad figure" in brief.label
+            self.bad_figure = "bad figure" in brief.label + brief.focus   # a Focus section's label is its title; the topic is in `focus`
             return super().draft_piece(brief, **kw)
 
     drafter.get_narrative_provider = lambda: _E2EProvider()
+    from cytonn_weekly.focus import review_run as focus  # noqa: E402
+    from tests.section_helpers import previous_issue  # noqa: E402
+
+    focus.get_narrative_provider = lambda: _E2EProvider()
+    focus._default_previous = previous_issue()   # the Focus disclaimer, from a fixed issue instead of cytonnreport.com
 
     def _fail(**_):
         waited = 0.0

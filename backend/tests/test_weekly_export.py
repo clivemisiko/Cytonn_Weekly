@@ -129,7 +129,7 @@ def test_the_report_has_the_real_order_and_headings_with_a_summary_per_section(w
     headings = [p.text for p in doc.paragraphs if p.style.name == "Heading 1"]
     assert headings == ["Executive Summary:"] + ORDER
     assert text[0] == "Cytonn Weekly: week ending 2nd October 2026"
-    assert doc.core_properties.title == "SSA Eurobonds: a development, Cytonn Weekly"
+    assert doc.core_properties.title == "SSA Eurobonds, Cytonn Weekly"
     # page 1: one summary paragraph per section, led by its name in bold; Company Updates has none, as published
     summary = text[text.index("Executive Summary:") + 1:text.index("Company Updates")]
     assert [t.split(":")[0] for t in summary] == ORDER[1:]
@@ -152,7 +152,7 @@ def test_computed_paragraphs_tables_charts_and_marked_text_are_all_in_the_file(w
     charts = [t for t in text if t.startswith("[Chart to add: ")]
     assert len(charts) == 6 and text[tbills + 3].startswith("[Chart to add: The chart below shows the yield growth rate")
     assert len(doc.inline_shapes) == 2 and not [t for t in text if t.startswith("[Chart not drawn")]
-    assert sum(t == "[Carried forward from the previous issue: edit before publishing]" for t in text) == 3
+    assert sum(t == "[Carried forward from the previous issue: edit before publishing]" for t in text) == 4   # three carried paragraphs and the Focus disclaimer
     assert any(t.startswith("[Not included: T-Bonds: recommended bidding range") for t in text)
     assert "Source: Daily Nation" in text and "Source: Central Bank of Kenya (CBK) Weekly Highlights" in text
     assert "*Target Price as per Cytonn Analyst estimates" in text
@@ -295,13 +295,13 @@ def _rewrite_outlook(db, text):
 
 def test_an_unedited_carried_paragraph_keeps_its_red_line(week, tmp_path):
     _, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
-    assert text.count(NOTE) == 3
+    assert text.count(NOTE) == 4
 
 
 def test_a_rewritten_carried_paragraph_is_exported_as_plain_text_with_no_red_line(week, tmp_path):
     _rewrite_outlook(week, REWRITTEN)
     _, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
-    assert text.count(NOTE) == 2 and text.count(REWRITTEN) == 1
+    assert text.count(NOTE) == 3 and text.count(REWRITTEN) == 1
     heading = text.index("Rates and outlook (closing paragraph)")
     assert text[heading + 1] == REWRITTEN
 
@@ -310,7 +310,7 @@ def test_a_re_edited_paragraph_exports_the_same_way(week, tmp_path):
     _rewrite_outlook(week, REWRITTEN)
     _rewrite_outlook(week, "Rates eased again.")
     _, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
-    assert text.count(NOTE) == 2 and "Rates eased again." in text and REWRITTEN not in text
+    assert text.count(NOTE) == 3 and "Rates eased again." in text and REWRITTEN not in text
 
 
 # --- the published look (common/word_layout.py) --------------------------------------------------
@@ -328,7 +328,7 @@ def test_the_review_copy_keeps_every_mark_with_a_dev_draft(week, tmp_path):
     _save(week, "digital_payments", make_review(provider=LocalFakeProvider()))
     doc, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
     assert text[0] == export.DEV_LABEL and 'string="DEV MODE DRAFT"' in doc.sections[0].header._element.xml
-    assert text.count(NOTE) == 3 and any(t.startswith("[Not included: ") for t in text)
+    assert text.count(NOTE) == 4 and any(t.startswith("[Not included: ") for t in text)
     note = next(p for p in doc.paragraphs if p.text == NOTE).runs[0]
     assert note.bold and str(note.font.color.rgb) == "C00000"
     assert doc.paragraphs[0].alignment == WD_ALIGN_PARAGRAPH.LEFT   # the dev banner
@@ -375,3 +375,51 @@ def test_the_approval_line_writes_its_date_as_the_app_does(week, tmp_path):
     last = max(review.decided_at for _, review in reviews)
     assert line.startswith(f"Every section checked and approved by the coordinator (last on {day_text(date.fromisoformat(last[:10]))}). ")
     assert re.search(r"\(last on \d{1,2} [A-Z][a-z]{2} \d{4}\)", line) and not re.search(r"\d{4}-\d{2}-\d{2}", line)
+
+
+# --- the Focus's structure: lead, contents, numbered sections, disclaimer ---------------------------------------
+
+FOCUS_TITLES = "Overview\nYields\nRecommendations and Conclusion"
+
+
+def test_a_focus_in_the_new_structure_is_exported_lead_contents_numbered_sections_then_the_disclaimer(week, tmp_path):
+    _save(week, "focus", sh.focus_review(topic="SSA Eurobonds", sections=FOCUS_TITLES))
+    path = export.write_weekly_report(week, PERIOD, tmp_path / "out")
+    doc, text = _text(path)
+    assert path.name == "ssa-eurobonds-cytonn-weekly.docx" and doc.core_properties.title == "SSA Eurobonds, Cytonn Weekly"
+    start = max(n for n, p in enumerate(doc.paragraphs) if p.text == "Focus of the Week" and p.style.name == "Heading 1")
+    after = doc.paragraphs[start + 1:]
+    heads = [(p.style.name, p.text) for p in after if p.style.name.startswith("Heading")]
+    assert heads == [("Heading 2", "Section I: Overview"), ("Heading 2", "Section II: Yields"),
+                     ("Heading 2", "Section III: Recommendations and Conclusion")]
+    lines = [p.text for p in after]
+    contents = [t for t in lines if t.startswith("Section ") and t not in {h for _, h in heads}]
+    assert lines[0] == "This report covers the market and its risks."   # the lead, with no heading above it
+    assert lines[1:4] == [h for _, h in heads]   # the contents: plain lines, in the headings' order, not headings
+    assert not contents and [p.style.name for p in after[1:4]] == ["Normal"] * 3
+    assert lines.index("Disclaimer: Past performance is not a guide.") > lines.index("Section III: Recommendations and Conclusion")
+    disclaimer = next(n for n, t in enumerate(lines) if t.startswith("Disclaimer:"))
+    assert export.CARRIED_NOTE in lines[disclaimer - 1:disclaimer + 2] and "Disclaimer" not in [t for _, t in heads]
+
+
+def test_the_executive_summary_takes_the_focus_lead_paragraph(week, tmp_path):
+    _save(week, "focus", sh.focus_review(topic="SSA Eurobonds", sections=FOCUS_TITLES))
+    doc, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
+    summary = text[text.index("Executive Summary:") + 1:text.index("Company Updates")]
+    assert summary[-1] == "Focus of the Week: This report covers the market and its risks."
+
+
+def test_a_focus_saved_before_the_structure_still_opens_and_exports_as_before(week, tmp_path):
+    from api.serialize import serialize_review
+
+    old = _save(week, "focus", sh.old_focus_review(topic="SSA Eurobonds"))
+    shown = serialize_review(old)
+    assert [b["kind"] for b in shown["section"]["blocks"]] == ["narrative"] and shown["review_items"]
+    path = export.write_weekly_report(week, PERIOD, tmp_path / "out")
+    doc, text = _text(path)
+    assert path.name == "ssa-eurobonds-cytonn-weekly.docx" and doc.core_properties.title == "SSA Eurobonds: a development, Cytonn Weekly"
+    focus = [p for p in doc.paragraphs][max(n for n, p in enumerate(doc.paragraphs) if p.text == "Focus of the Week") + 1:]
+    assert (focus[0].style.name, focus[0].text) == ("Heading 2", "SSA Eurobonds: a development")
+    assert focus[1].text == "During the week, SSA Eurobonds grew 8.75% in 2026. Lending rose to Sh30.1 billion."
+    assert text[text.index("Executive Summary:") + 1:text.index("Company Updates")][-1] == (
+        "Focus of the Week: During the week, SSA Eurobonds grew 8.75% in 2026. Lending rose to Sh30.1 billion.")

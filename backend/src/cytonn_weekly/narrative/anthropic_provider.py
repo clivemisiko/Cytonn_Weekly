@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import re
 from datetime import date
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import anthropic
 
@@ -39,11 +39,16 @@ def _span(brief: NarrativeBrief) -> str:
 def system_prompt(brief: NarrativeBrief) -> str:
     opener = (f'The paragraph opens with "{brief.opener}" and ' if brief.opener else "The piece ")
     that = "that week" if _span(brief) == "week" else f"in that {_span(brief)}"
+    extra = f"\n\n{brief.context}" if brief.context else ""
+    layout = (f'a line "### <headline>" followed by prose of {brief.words[0]}-{brief.words[1]} words. No introduction, '
+              "closing remarks or other headings." if brief.headed else
+              f"prose of {brief.words[0]}-{brief.words[1]} words in paragraphs separated by blank lines. No headline, no "
+              "heading of any kind (no line starting with #), no introduction or closing remarks.")
     return f"""\
 You draft one item for the {brief.section} section of a {brief.report} investment research report \
 on Kenya (formal, data-forward, third person).
 
-Subject: {brief.label}. What qualifies: {brief.focus}
+Subject: {brief.label}. What qualifies: {brief.focus}{extra}
 
 Rules:
 - Use web search to find material published during the {brief.window} given in the user \
@@ -52,8 +57,7 @@ message. Do not use stale news.
 nothing else. Never pad with off-topic or older material.
 - Every factual claim (figure, quote, name, date, specific detail) must come from the search \
 results you retrieved. Never rely on memory.
-- Output format, exactly: a line "### <headline>" followed by prose of \
-{brief.words[0]}-{brief.words[1]} words. No introduction, closing remarks or other headings.
+- Output format, exactly: {layout}
 - {opener}ends with 1-2 sentences of implications that contain no new figures or factual claims.
 - Embed sources as inline markdown hyperlinks on natural anchor text, using only URLs that \
 appeared in your search results. No footnotes or reference lists.
@@ -72,11 +76,14 @@ def _prompt(brief: NarrativeBrief, preferred: bool, start: date, end: date, toda
             f"(today is {today.isoformat()}). Draft the item.")
 
 
-def _run(client, model: str, system: str, prompt: str, tool: dict[str, Any]) -> list[Any]:
+def _run(client, model: str, system: str, prompt: str, tool: dict[str, Any], max_tokens: int = MAX_TOKENS,
+         on_request: Optional[Callable[[], None]] = None) -> list[Any]:
     messages: list[dict[str, Any]] = [{"role": "user", "content": prompt}]
     content: list[Any] = []
     for _ in range(dp.MAX_CONTINUATIONS + 1):
-        resp = client.messages.create(model=model, max_tokens=MAX_TOKENS, system=system, tools=[tool],
+        if on_request:
+            on_request()
+        resp = client.messages.create(model=model, max_tokens=max_tokens, system=system, tools=[tool],
                                       messages=messages)
         content.extend(resp.content)
         if resp.stop_reason != "pause_turn":
@@ -89,15 +96,26 @@ def parse_piece(content: list[Any], brief: NarrativeBrief) -> Optional[dict[str,
     """The first "### headline" piece in the reply, with its links and cited claims, or None."""
     full, spans, result_urls = dp._collect(content)
     seen = set(result_urls) | {c["url"] for _, _, cs in spans for c in cs}
-    heads = list(re.finditer(r"^###[ \t]+(.+?)[ \t]*$", full, flags=re.MULTILINE))
-    if not heads:
-        return None
-    m = heads[0]
-    end = heads[1].start() if len(heads) > 1 else len(full)
-    headline = m.group(1).strip().strip("*").strip()
     warnings: list[str] = []
-    if len(heads) > 1:
-        warnings.append(f"model returned {len(heads)} pieces; kept the first")
+    if brief.headed:
+        heads = list(re.finditer(r"^###[ \t]+(.+?)[ \t]*$", full, flags=re.MULTILINE))
+        if not heads:
+            return None
+        start, end = heads[0].end(), heads[1].start() if len(heads) > 1 else len(full)
+        headline = heads[0].group(1).strip().strip("*").strip()
+        if len(heads) > 1:
+            warnings.append(f"model returned {len(heads)} pieces; kept the first")
+    else:
+        # A Focus section is body paragraphs only. A "#" line is dropped with a warning, so a heading never cuts the piece.
+        lines = full.splitlines()
+        kept = [ln for ln in lines if not ln.lstrip().startswith("#")]
+        if len(kept) < len(lines):
+            warnings.append(f"removed {len(lines) - len(kept)} heading line(s) the model added to the section")
+        full = "\n".join(kept)
+        spans = [(e, "\n".join(ln for ln in t.splitlines() if not ln.lstrip().startswith("#")), cs) for e, t, cs in spans]
+        if not full.strip() or full.strip() == NO_STORY:
+            return None
+        start, end, headline = 0, len(full), brief.label
     links: list[dict[str, str]] = []
 
     def keep(match: re.Match) -> str:
@@ -107,12 +125,12 @@ def parse_piece(content: list[Any], brief: NarrativeBrief) -> Optional[dict[str,
         warnings.append(f"link to {match.group(2)} was not in the search results; unlinked")
         return match.group(1)
 
-    body_md = LINK_RE.sub(keep, full[m.end():end].strip())
+    body_md = LINK_RE.sub(keep, full[start:end].strip())
     body = strip_links(body_md)
     claims: list[dict[str, str]] = []
     citations: list[dict[str, str]] = []
     for end_pos, block_text, cites in spans:
-        if cites and m.end() <= end_pos - 1 < end:
+        if cites and (start <= end_pos - 1 < end or not brief.headed):
             text = dp._claim_text(block_text)
             for c in cites:
                 claims.append({"text": text, **c})
@@ -138,6 +156,7 @@ class AnthropicNarrativeProvider(NarrativeProvider):
         self._client = client
         self.model = model
         self.drafted_by = f"anthropic:{model}"
+        self.requests = 0   # API requests made, search continuations included; the Focus review shows it
 
     @property
     def client(self) -> anthropic.Anthropic:
@@ -154,7 +173,9 @@ class AnthropicNarrativeProvider(NarrativeProvider):
                 tool["allowed_domains"] = list(brief.preferred_domains)
             elif brief.blocked_domains:   # web search takes allowed_domains or blocked_domains, never both in one request
                 tool["blocked_domains"] = list(brief.blocked_domains)
-            piece = parse_piece(_run(self.client, self.model, system, _prompt(brief, preferred, start, end, today), tool), brief)
+            content = _run(self.client, self.model, system, _prompt(brief, preferred, start, end, today), tool,
+                           brief.max_tokens or MAX_TOKENS, self._count)
+            piece = parse_piece(content, brief)
             if piece:
                 return HighlightResult(
                     company=brief.label, search_scope=SCOPE_PREFERRED if preferred else SCOPE_WEB,
@@ -165,3 +186,12 @@ class AnthropicNarrativeProvider(NarrativeProvider):
                 )
         return HighlightResult(company=brief.label, search_scope=None, ir_domain=", ".join(brief.preferred_domains),
                                drafted_by=self.drafted_by, no_story=True)
+
+    def _count(self) -> None:
+        self.requests += 1
+
+    def complete(self, system: str, prompt: str, *, max_tokens: int) -> str:
+        self._count()
+        resp = self.client.messages.create(model=self.model, max_tokens=max_tokens, system=system,
+                                           messages=[{"role": "user", "content": prompt}])
+        return "".join(getattr(b, "text", "") for b in resp.content if getattr(b, "type", "") == "text").strip()

@@ -66,7 +66,7 @@ from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview,
 from cytonn_weekly.digital_payments.provider_factory import ENV_VAR as PROVIDER_ENV_VAR
 from cytonn_weekly.digital_payments.providers.local_provider import EXA_KEY_ENV_VAR, EXA_KEY_MISSING, SearchKeyError
 from cytonn_weekly.env import key_override_warnings, load_env
-from cytonn_weekly.focus.review_run import clean_topic
+from cytonn_weekly.focus.review_run import clean_sections, clean_topic
 from cytonn_weekly import db as database
 from cytonn_weekly import notable
 from cytonn_weekly.notable import store as notable_store
@@ -205,6 +205,8 @@ class DraftRequest(BaseModel):
     # No length here: clean_topic() is the one place a topic's length is judged (resolve_draft calls it),
     # so the API and the pipeline refuse the same topics in the same words.
     topic: Optional[str] = None
+    # Focus of the Week: the section titles, one per line. Like the topic, judged by one function (clean_sections).
+    sections: Optional[str] = None
     text: Optional[str] = Field(default=None, max_length=10_000)
     report_type: ReportType = WEEKLY
     period: Optional[str] = Field(default=None, max_length=40)
@@ -438,9 +440,15 @@ def create_app(
                 topic = clean_topic(topic)  # whitespace-normalized; over focus.review_run.MAX_TOPIC_CHARS is refused
             except ValueError as exc:
                 raise ProblemError(422, str(exc), "draft_topic_invalid")
+        titles: tuple[str, ...] = ()
+        if spec.needs_topic and body.sections and body.sections.strip():
+            try:
+                titles = tuple(clean_sections(body.sections))   # over MAX_SECTIONS or MAX_SECTION_TITLE is refused, never cut
+            except ValueError as exc:
+                raise ProblemError(422, str(exc), "draft_input_invalid")
         if spec.needs_text and not (body.text and body.text.strip()):
             raise ProblemError(422, f"Paste the text for {spec.title} first, then start the draft.", "draft_text_missing")
-        ctx = DraftContext(report_type=report_type, period=period, topic=topic, text=body.text, db_path=db_path,
+        ctx = DraftContext(report_type=report_type, period=period, topic=topic, sections=titles, text=body.text, db_path=db_path,
                            week_ending=week_ending_of(period) if report_type == WEEKLY else None, inputs_root=root)
         return spec, ctx, report_type, period
 

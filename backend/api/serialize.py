@@ -171,7 +171,8 @@ def _serialize_blocks(review: CoordinatorReview) -> dict[str, Any]:
             blocks.append({**{k: b.get(k) for k in _CHART_FIELDS}, "use_team_chart": team_chart_chosen(review, b["chart_id"])})
         else:
             blocks.append({k: b.get(k) for k in _UNAVAILABLE_FIELDS})
-        for key in ("group", "group_heading"):   # Real Estate's groups (real_estate/review_run.layout)
+        # Real Estate's groups (real_estate/review_run.layout); the Focus's parts, whose sections print under a group_heading too
+        for key in ("group", "group_heading", "role", "analyst_note"):
             if b.get(key):
                 blocks[-1][key] = b[key]
     return {
@@ -183,6 +184,10 @@ def _serialize_blocks(review: CoordinatorReview) -> dict[str, Any]:
         "topic": sec.get("topic"),
         "pieces_found": sec.get("pieces_found", 0),
         "pieces_expected": sec.get("pieces_expected", 0),
+        # Focus of the Week: the section titles and where they came from, and the model calls the draft made.
+        "outline": sec.get("outline"),
+        "model_calls": sec.get("model_calls"),
+        "api_requests": sec.get("api_requests"),
         "shortfall": sec.get("shortfall", 0),
         "warnings": list(sec.get("warnings", [])),
         "notices": list(sec.get("notices", [])),
