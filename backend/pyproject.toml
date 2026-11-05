@@ -13,7 +13,7 @@ dependencies = [
     "openpyxl==3.1.5",
     "pandas==2.2.3",
     "pdfplumber==0.11.4",
-    "anthropic==1.9.0",
+    "anthropic[bedrock]==1.9.0",  # the extra adds boto3 and botocore, which sign Bedrock requests made with access keys
     "apscheduler==3.11.0",
     "yfinance==1.7.0",
     "python-dotenv==1.2.3",

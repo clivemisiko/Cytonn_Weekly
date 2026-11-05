@@ -69,6 +69,7 @@ from cytonn_weekly.env import key_override_warnings, load_env
 from cytonn_weekly.focus.review_run import clean_sections, clean_topic
 from cytonn_weekly import db as database
 from cytonn_weekly import notable
+from cytonn_weekly.narrative import bedrock_provider
 from cytonn_weekly.notable import store as notable_store
 from cytonn_weekly.notable.registry import Detector, DetectorContext, run_detectors
 from cytonn_weekly.notable.suggestion import MAX_HEADLINE
@@ -119,6 +120,9 @@ DISCARDED_AS_STUCK = (
     "Open the section to see the newer draft."
 )
 
+PROVIDERS = ("anthropic", "bedrock", "local")
+
+
 def configured_provider() -> str:
     return (os.environ.get(PROVIDER_ENV_VAR) or "anthropic").strip().lower()
 
@@ -132,7 +136,7 @@ def failure_message(exc: BaseException) -> str:
     by its type.  Any configured secret that an error message happens to quote is removed
     before it is recorded.
     """
-    if isinstance(exc, (ValueError, SearchKeyError)):
+    if isinstance(exc, (ValueError, SearchKeyError, bedrock_provider.BedrockError)):
         text = " ".join(str(exc).split())
     else:
         text = user_message(exc)
@@ -154,8 +158,10 @@ def provider_problem() -> Optional[str]:
     a missing key is known here; a key Exa refuses is reported by the search itself.
     """
     provider = configured_provider()
-    if provider not in ("anthropic", "local"):
-        return f"Unknown {PROVIDER_ENV_VAR} value {provider!r}; expected 'anthropic' or 'local'."
+    if provider not in PROVIDERS:
+        return f"Unknown {PROVIDER_ENV_VAR} value {provider!r}; expected 'anthropic', 'bedrock' or 'local'."
+    if provider == "bedrock":
+        return bedrock_provider.env_problem()
     if provider == "anthropic" and not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
         return (
             "Production drafting needs ANTHROPIC_API_KEY, and none is set (in .env or the shell). Add the key once "
@@ -321,6 +327,8 @@ def create_app(
         # A key left in a Windows or shell variable beats .env, so editing .env would change nothing: say so once.
         for line in key_override_warnings():
             log.warning(line)
+    if configured_provider() == "bedrock":   # outside the .env branch: a container has no .env file, only its variables
+        log.warning(bedrock_provider.startup_line())
 
     database.target(db_path)  # refuses to start when CYTONN_REQUIRE_POSTGRES=1 and there is no PostgreSQL URL (db.py)
 
@@ -507,10 +515,10 @@ def create_app(
         provider = (os.environ.get(PROVIDER_ENV_VAR) or "anthropic").strip().lower()
         return {
             "provider": provider,
-            "provider_valid": provider in ("anthropic", "local"),
+            "provider_valid": provider in PROVIDERS,
             "dev_mode": provider == "local",
             "dev_mode_label": DEV_MODE_LABEL,
-            "spends_api_budget": provider == "anthropic",
+            "spends_api_budget": provider in ("anthropic", "bedrock"),
             "provider_problem": provider_problem(),
         }
 

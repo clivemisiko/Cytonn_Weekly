@@ -271,6 +271,9 @@ _RESPONSE_SCHEMA = {
 class LocalProvider(DraftingProvider):
     """Phi-4-mini (Ollama) + Exa.  ``http_client`` is injectable for tests."""
 
+    WHO = "local model"      # how a warning names the writer; the Bedrock subclass says its own
+    LABEL = "local provider"
+
     def __init__(
         self,
         model: str = MODEL,
@@ -432,7 +435,8 @@ class LocalProvider(DraftingProvider):
             return kept
         return [{**r, "text": truncate_text(r.get("text") or "", s.result_chars)} for r in kept]
 
-    def _chat(self, messages: list[dict[str, str]], schema: Optional[dict] = None) -> str:
+    def _chat(self, messages: list[dict[str, str]], schema: Optional[dict] = None, max_tokens: Optional[int] = None) -> str:
+        # max_tokens is for the Bedrock subclass; Ollama's cap is num_predict
         payload: dict[str, Any] = {
             "model": self.model,
             "stream": False,
@@ -472,18 +476,18 @@ class LocalProvider(DraftingProvider):
         try:
             out = json.loads(raw)
         except json.JSONDecodeError:
-            warnings.append(f"{company}: local model returned invalid JSON for the {scope} results; discarded")
+            warnings.append(f"{company}: {self.WHO} returned invalid JSON for the {scope} results; discarded")
             return None
         if not out.get("is_genuine_announcement"):
             reason = " ".join((out.get("reasoning") or "").split())
             warnings.append(
-                f"{company}: local model judged the {scope} results not a genuine announcement ({reason})"
+                f"{company}: {self.WHO} judged the {scope} results not a genuine announcement ({reason})"
             )
             return None
         paragraph_md = (out.get("paragraph") or "").strip()
         headline = (out.get("headline") or "").strip().strip("*").strip()
         if not paragraph_md or not headline:
-            warnings.append(f"{company}: local model said genuine but returned no headline/paragraph; discarded")
+            warnings.append(f"{company}: {self.WHO} said genuine but returned no headline/paragraph; discarded")
             return None
 
         by_url = {r.get("url"): r for r in results if r.get("url")}
@@ -531,7 +535,7 @@ class LocalProvider(DraftingProvider):
             hl_warnings.append("no cited claims recorded for this highlight")
         else:
             hl_warnings.append(
-                "local provider: claims carry no cited_text (model-mapped URLs only, not provider-cited spans)"
+                f"{self.LABEL}: claims carry no cited_text (model-mapped URLs only, not provider-cited spans)"
             )
         for link in links:
             published = by_url[link["url"]].get("publishedDate")
@@ -593,6 +597,7 @@ class LocalProvider(DraftingProvider):
             [
                 {"role": "system", "content": OUTLOOK_SYSTEM},
                 {"role": "user", "content": outlook_user_message(table_stats, highlights)},
-            ]
+            ],
+            max_tokens=800,   # the Anthropic path's cap
         ).strip()
         return OutlookResult(text=text, stats=table_stats, drafted_by=self.drafted_by)

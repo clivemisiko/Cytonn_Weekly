@@ -1,6 +1,7 @@
 """Chooses the drafting provider from the CYTONN_LLM_PROVIDER environment variable.
 
     (unset) / "anthropic"  -> AnthropicProvider, the production default
+    "bedrock"              -> BedrockProvider (Claude on Amazon Bedrock + Exa), production
     "local"                -> LocalProvider (Ollama + Exa), development only
 
 Selecting "local" prints a conspicuous warning on every call, because its
@@ -48,4 +49,8 @@ def get_provider() -> DraftingProvider:
         banner = "*" * len(warning)
         print(f"\n{banner}\n{warning}\n{banner}\n", flush=True)
         return LocalProvider(model=model, cache_dir=EXA_CACHE_DIR, refresh_cache=refresh)
-    raise ValueError(f"Unknown {ENV_VAR} value {name!r}; expected 'anthropic' or 'local'.")
+    if name == "bedrock":
+        from cytonn_weekly.narrative.bedrock_provider import BedrockProvider
+
+        return BedrockProvider()
+    raise ValueError(f"Unknown {ENV_VAR} value {name!r}; expected 'anthropic', 'bedrock' or 'local'.")

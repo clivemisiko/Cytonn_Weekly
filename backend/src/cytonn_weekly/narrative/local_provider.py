@@ -68,14 +68,15 @@ class LocalNarrativeProvider(dp_local.LocalProvider, NarrativeProvider):
             [{"role": "system", "content": _system(brief)},
              {"role": "user", "content": self._results_message(brief.label, results)}],
             dp_local._RESPONSE_SCHEMA,
+            brief.max_tokens,
         )
         try:
             out = json.loads(raw)
         except json.JSONDecodeError:
-            warnings.append(f"{brief.label}: local model returned invalid JSON; discarded")
+            warnings.append(f"{brief.label}: {self.WHO} returned invalid JSON; discarded")
             return None
         if not out.get("is_genuine_announcement"):
-            warnings.append(f"{brief.label}: local model judged the {scope} results not qualifying "
+            warnings.append(f"{brief.label}: {self.WHO} judged the {scope} results not qualifying "
                             f"({' '.join((out.get('reasoning') or '').split())})")
             return None
         headline = (out.get("headline") or "").strip().strip("*").strip() if brief.headed else brief.label
@@ -84,9 +85,9 @@ class LocalNarrativeProvider(dp_local.LocalProvider, NarrativeProvider):
             lines = paragraph_md.splitlines()
             paragraph_md = "\n".join(ln for ln in lines if not ln.lstrip().startswith("#")).strip()
             if len(paragraph_md.splitlines()) < len(lines):
-                warnings.append(f"{brief.label}: removed heading line(s) the local model added to the section")
+                warnings.append(f"{brief.label}: removed heading line(s) the {self.WHO} added to the section")
         if not headline or not paragraph_md:
-            warnings.append(f"{brief.label}: local model returned no headline/paragraph; discarded")
+            warnings.append(f"{brief.label}: {self.WHO} returned no headline/paragraph; discarded")
             return None
         by_url = {r.get("url"): r for r in results if r.get("url")}
         hl: list[str] = []
@@ -118,7 +119,7 @@ class LocalNarrativeProvider(dp_local.LocalProvider, NarrativeProvider):
         if brief.opener and not body.startswith(brief.opener):
             hl.append(f'body does not open with "{brief.opener}"')
         if claims:
-            hl.append("local provider: claims carry no cited_text (model-mapped URLs only)")
+            hl.append(f"{self.LABEL}: claims carry no cited_text (model-mapped URLs only)")
         else:
             hl.append("no cited claims recorded for this piece")
         return HighlightResult(
@@ -145,4 +146,5 @@ class LocalNarrativeProvider(dp_local.LocalProvider, NarrativeProvider):
 
     def complete(self, system: str, prompt: str, *, max_tokens: int) -> str:
         self._ensure_model()
-        return self._chat([{"role": "system", "content": system}, {"role": "user", "content": prompt}]).strip()
+        messages = [{"role": "system", "content": system}, {"role": "user", "content": prompt}]
+        return self._chat(messages, max_tokens=max_tokens).strip()
