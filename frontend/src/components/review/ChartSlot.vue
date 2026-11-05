@@ -98,7 +98,7 @@ function saveSource() {
         @blur="saveLeadIn"
       />
       <p v-if="entry.has_image" :id="`lead-in-hint-${entry.key}`" class="text-xs text-muted-foreground">
-        Left blank, the sentence shown is printed, dated from the week.
+        Left blank, the suggested sentence shown is printed. Its dates are a default; check them against your chart.
       </p>
     </div>
     <div class="space-y-1">

@@ -221,17 +221,31 @@ def test_the_summary_lists_every_slot_with_its_state(client):
 def test_every_slot_has_a_template_sentence_dated_from_the_week():
     t = {k: chart_uploads.template(k, WEEK) for k in chart_uploads.KEYS}   # the week ending Friday 2 October 2026
     assert t["tbill_91_growth"] == ("The chart below shows the yield growth rate for the 91-day paper over the last year, "
-                                    "from 2nd October 2025 to 2nd October 2026:")
-    assert t["tbill_yields"].endswith("over the last two years, from 2nd October 2024 to 2nd October 2026:")
+                                    "from October 2025 to October 2026:")
+    assert t["tbill_yields"].endswith("over the last two years, from October 2024 to October 2026:")
     assert t["tbill_subscription"].endswith("obtained in 2023, 2024, 2025 and 2026 Year-to-date (YTD):")
     assert t["money_market"] == "The chart below shows the money market yields as at 2nd October 2026:"
-    assert t["interbank"].endswith("up to 2nd October 2026:")
-    assert t["import_cover"].endswith("from 2nd October 2024 to 2nd October 2026:")
+    assert t["interbank"].endswith("up to October 2026:")
+    assert t["import_cover"].endswith("from October 2024 to October 2026:")
     assert t["nasi_pe"] == t["nasi_yield"] == "The charts below indicate the historical P/E and dividend yields of the market"
     later = chart_uploads.template("money_market", Week(WEEK.ending + timedelta(days=7)))
     assert later == "The chart below shows the money market yields as at 9th October 2026:"   # dates follow the week
     assert not any("uncaptioned" in x or chr(0x2014) in x for x in t.values())
     assert not hasattr(chart_uploads, "DEFAULT_LEAD_INS")
+
+
+def test_the_window_month_is_the_month_of_the_sunday_after_the_report_friday():
+    month = lambda friday: f"{chart_uploads.window_month(Week(friday)):%B %Y}"
+    assert month(date(2026, 10, 30)) == "November 2026"     # Sunday 1 November
+    assert month(date(2026, 10, 23)) == "October 2026"      # Sunday 25 October
+    assert month(date(2027, 12, 31)) == "January 2028"      # Sunday 2 January: the window crosses the year
+    t = {k: chart_uploads.template(k, Week(date(2026, 10, 30))) for k in chart_uploads.KEYS}
+    assert t["tbill_91_growth"].endswith("from November 2025 to November 2026:")
+    assert t["tbill_yields"].endswith("from November 2024 to November 2026:")
+    assert t["import_cover"].endswith("from November 2024 to November 2026:")
+    assert t["interbank"].endswith("up to November 2026:")
+    assert t["money_market"].endswith("as at 30th October 2026:")                 # a day, not a window
+    assert t["tbill_subscription"].endswith("2023, 2024, 2025 and 2026 Year-to-date (YTD):")
 
 
 def test_the_export_status_counts_the_charts_with_no_image(client, tmp_path):

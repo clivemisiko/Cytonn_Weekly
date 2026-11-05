@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -34,28 +34,34 @@ SECTION_OF = {s[0]: s[1] for s in _SLOTS}
 NASI_PAIR = "The charts below indicate the historical P/E and dividend yields of the market"
 
 
-def _years_back(day: date, years: int) -> date:
-    try:
-        return day.replace(year=day.year - years)
-    except ValueError:   # 29 February
-        return day.replace(year=day.year - years, day=28)
+def window_month(week: Week) -> date:
+    """A default suggestion, for the analyst to edit: the month an uploaded chart's window is taken to end in, the month of
+    the Sunday the issue goes out (the report Friday plus two days; the week ending 30 Oct 2026 gives November 2026).
+    Nothing is read from the chart itself.  Only the sentences above uploaded images use it; a drawn chart's sentence will
+    take its window from the workbook's own chart definition."""
+    return week.ending + timedelta(days=2)
+
+
+def _month(day: date, years_back: int = 0) -> str:
+    return f"{day:%B} {day.year - years_back}"
 
 
 def template(key: str, week: Week) -> str:
-    """The sentence printed above a chart when the analyst typed none: the section's CHARTS caption with its dates worked out
-    from the report week.  The money market chart has no published caption, so its sentence names the week only."""
-    e, y = week.ending, week.ending.year
+    """The suggested sentence printed above an uploaded image when the analyst typed none: the section's CHARTS caption with
+    its window ending in ``window_month``.  The money market chart has no published caption, so its sentence names the
+    report Friday; the subscription chart names calendar years, counted from the report Friday's year."""
+    e, y, m = week.ending, week.ending.year, window_month(week)
     return {
         "tbill_91_growth": f"The chart below shows the yield growth rate for the 91-day paper over the last year, from "
-                           f"{ordinal(_years_back(e, 1))} to {ordinal(e)}:",
+                           f"{_month(m, 1)} to {_month(m)}:",
         "tbill_yields": f"The chart below shows the performance of the 91-day, 182-day and 364-day papers over the last two "
-                        f"years, from {ordinal(_years_back(e, 2))} to {ordinal(e)}:",
+                        f"years, from {_month(m, 2)} to {_month(m)}:",
         "tbill_subscription": f"The chart below compares the overall average T-bill subscription rates obtained in {y - 3}, "
                               f"{y - 2}, {y - 1} and {y} Year-to-date (YTD):",
         "money_market": f"The chart below shows the money market yields as at {ordinal(e)}:",
-        "interbank": f"The chart below shows the interbank rates in the market over the years, up to {ordinal(e)}:",
+        "interbank": f"The chart below shows the interbank rates in the market over the years, up to {_month(m)}:",
         "import_cover": f"The chart below summarizes the evolution of Kenya's months of import cover over the last two "
-                        f"years, from {ordinal(_years_back(e, 2))} to {ordinal(e)}:",
+                        f"years, from {_month(m, 2)} to {_month(m)}:",
         "nasi_pe": NASI_PAIR,
         "nasi_yield": NASI_PAIR,
     }[key]
