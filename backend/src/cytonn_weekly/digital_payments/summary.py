@@ -30,12 +30,10 @@ from pathlib import Path
 from typing import Any, Optional, Union
 
 from docx import Document
-from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
+from cytonn_weekly.common.word_layout import keep_together, report_table
 from cytonn_weekly.digital_payments import review_store
 from cytonn_weekly.digital_payments.coordinator_review import APPROVED, CoordinatorReview
 from cytonn_weekly.digital_payments.fetcher import format_table_rows
@@ -173,56 +171,29 @@ def _small(doc, text: str, *, color: RGBColor = _GREY, italic: bool = False, bol
     return p
 
 
-def _shade(cell, hex_fill: str) -> None:
-    tc_pr = cell._tc.get_or_add_tcPr()
-    shd = OxmlElement("w:shd")
-    shd.set(qn("w:val"), "clear")
-    shd.set(qn("w:color"), "auto")
-    shd.set(qn("w:fill"), hex_fill)
-    tc_pr.append(shd)
-
-
 def _add_table(doc, rows: list[dict[str, Any]], stats: dict[str, Any]) -> None:
     shown = format_table_rows(rows)
-    body = [[r[k] for k, _, _ in TABLE_COLUMNS] for r in shown]
+    grid = [[label for _, label, _ in TABLE_COLUMNS]] + [[r[k] for k, _, _ in TABLE_COLUMNS] for r in shown]
     avg = _average_row(stats)
     if avg:
-        body.append(avg)
+        grid.append(avg)
 
-    table = doc.add_table(rows=1, cols=len(TABLE_COLUMNS))
-    table.style = "Table Grid"
-    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    table = report_table(doc, grid, keep_last=True)   # the source line always follows
     widths = [1.55, 0.55, 0.65, 0.8, 0.7, 0.65, 0.65, 0.75]
-    for i, (_, label, numeric) in enumerate(TABLE_COLUMNS):
-        c = table.rows[0].cells[i]
-        c.text = ""
-        run = c.paragraphs[0].add_run(label)
-        run.bold, run.font.size = True, Pt(9)
-        c.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT if numeric else WD_ALIGN_PARAGRAPH.LEFT
-        _shade(c, "E7EAF0")
-    for ri, values in enumerate(body):
-        is_avg = bool(avg) and ri == len(body) - 1
-        cells = table.add_row().cells
-        for i, ((_, _, numeric), v) in enumerate(zip(TABLE_COLUMNS, values)):
-            cells[i].text = ""
-            run = cells[i].paragraphs[0].add_run(v)
-            run.font.size, run.bold = Pt(9), is_avg
-            cells[i].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT if numeric else WD_ALIGN_PARAGRAPH.LEFT
     for row in table.rows:
-        row.cells[0].width = Inches(widths[0])
         for i, w in enumerate(widths):
             row.cells[i].width = Inches(w)
-        for c in row.cells:
-            c.paragraphs[0].paragraph_format.space_after = Pt(0)
 
+    lines = []
     failed = [f"{r['company']} ({r['ticker']})" for r in rows if r.get("error")]
     if failed:
-        _small(doc, f"Price data could not be retrieved for: {', '.join(failed)}.", italic=True)
+        lines.append(_small(doc, f"Price data could not be retrieved for: {', '.join(failed)}.", italic=True))
     if "advancers" in stats and "decliners" in stats:
-        _small(doc, f"Week over week: {stats['advancers']} advancers, {stats['decliners']} decliners.")
+        lines.append(_small(doc, f"Week over week: {stats['advancers']} advancers, {stats['decliners']} decliners."))
     dates = sorted({r["current_price_date"] for r in rows if r.get("current_price_date")})
     asof = f", prices as of {_fmt_date(dates[-1])}" if dates else ""
-    _small(doc, f"Source: Yahoo Finance{asof}. Forward P/E is based on analyst consensus forward earnings estimates.")
+    lines.append(_small(doc, f"Source: Yahoo Finance{asof}. Forward P/E is based on analyst consensus forward earnings estimates."))
+    keep_together(lines)
 
 
 def build_summary_document(review: CoordinatorReview):

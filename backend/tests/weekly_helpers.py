@@ -23,7 +23,7 @@ import pytest
 from openpyxl import Workbook as XlsxWorkbook
 
 from cytonn_weekly import paths
-from cytonn_weekly.weekly.week import Week
+from cytonn_weekly.weekly.week import Week, closures
 
 WEEK = Week(date(2026, 10, 2))
 FIXTURES = Path(__file__).parent / "fixtures" / "sources"
@@ -116,7 +116,7 @@ LARGE_CAP_MOVES = {"SCOM": 0.27, "EQTY": -1.40, "KCB": -1.07, "COOP": -0.54, "AB
 def kcb_weekly_text(week: Week = WEEK, nasi=(202.00, 200.00), nse20=(4040.00, 4000.00), nse25=(7070.00, 7000.00),
                     flows: Optional[dict[str, int]] = None) -> str:
     flows = flows or WEEKDAY_FLOWS
-    last, day = week.previous_friday, week.ending
+    last, day = week.previous_as_at, week.as_at
     lines = [
         "WEEKLY MARKET REPORT",
         day.strftime("%A, %d %B %Y"),
@@ -169,11 +169,39 @@ LARGE_CAPS = ["Safaricom", "Equity Group", "KCB", "Co-operative", "ABSA Bank", "
               "Stanbic", "DTBK", "NCBA", "HFCB Group"]
 
 
-def equities_workbook_bytes(week: Week = WEEK, updated: bool = True) -> bytes:
+# 'Gainers & Losers': the twelve large caps in the sheet's order and invented week-on-week moves (%).  The ten KCB's
+# synthetic weekly report also lists move as LARGE_CAP_MOVES says, so KCB's reading agrees with each of them.
+GAINERS_LOSERS = {"SCOM": 0.27, "EABL": 0.79, "EQTY": -1.40, "KCB": -1.07, "COOP": -0.54, "BAT": -0.50, "BAMB": 0.0,
+                  "ABSA": -1.05, "SCBK": -1.54, "DTBK": -0.13, "NCBA": -2.23, "STANBIC": -0.71}
+
+
+def gainers_losers_sheet(wb: Any, week: Week = WEEK, moves: Optional[dict[str, float]] = None,
+                         days: Optional[list[date]] = None) -> None:
+    """The sheet as the team lays it out: a 2016 block at B2:C17, the names in P from row 3, one price column per date
+    in row 2 (each price 100, and 100 plus the move on the report Friday), then the w/w column and a stray 2018 date."""
+    moves = GAINERS_LOSERS if moves is None else moves
+    days = [week.previous.previous_friday, week.previous_friday, week.ending] if days is None else days
+    ws = wb.create_sheet("Gainers & Losers")
+    for row, (name, value) in enumerate([("Gainers", None), ("NBK", 0.14), ("BRIT", 0.103)] + [(None, None)] * 6
+                                        + [("Losers", None), ("KEGN", -0.091), ("PAFR", -0.075)], start=2):
+        ws.cell(row, 2, name)
+        ws.cell(row, 3, value)
+    for col, day in enumerate(days, start=17):
+        ws.cell(2, col, dt(day))
+        for row, move in enumerate(moves.values(), start=3):
+            ws.cell(row, col, 100.0 + move if day == week.ending else 100.0)
+    ws.cell(2, 17 + len(days), "w/w")
+    ws.cell(2, 40, dt(date(2018, 7, 19)))
+    for row, ticker in enumerate(moves, start=3):
+        ws.cell(row, 16, ticker)
+        ws.cell(row, 40, 1.0)
+
+
+def equities_workbook_bytes(week: Week = WEEK, updated: bool = True, gainers_losers: Optional[dict[str, float]] = None) -> bytes:
     """A workbook laid out like the equities team's.  ``updated=False`` leaves this week's rows out."""
     wb = XlsxWorkbook()
     wb.remove(wb.active)
-    year = week.ending.year
+    year = week.as_at.year
 
     ws = wb.create_sheet("Kenyan Indices ")
     ws.append([None])
@@ -218,9 +246,11 @@ def equities_workbook_bytes(week: Week = WEEK, updated: bool = True) -> bytes:
         ws.append([None])
     ws.append(["Price to Earnings", None, "Dividend Yield"])
     ws.append(["AVERAGE", 10.0, "AVERAGE", 0.05])
-    friday = week.ending if updated else week.previous_friday
+    as_at = week if updated else week.previous
     for n in range(60):   # enough weeks for the charts drawn from this sheet (charts/specs.py), formatted as the real sheet is
-        ws.append([dt(friday - timedelta(days=7 * n)), 8.0 + n * 0.01, dt(friday - timedelta(days=7 * n)), 0.06 - n * 0.0001])
+        day = as_at.as_at
+        ws.append([dt(day), 8.0 + n * 0.01, dt(day), 0.06 - n * 0.0001])
+        as_at = as_at.previous
         ws.cell(ws.max_row, 2).number_format = r"0.0\x;\(0.0\x\)"
         ws.cell(ws.max_row, 4).number_format = "0.0%"
     ws["F26"], ws["F27"] = "PEG", 1.0
@@ -230,15 +260,16 @@ def equities_workbook_bytes(week: Week = WEEK, updated: bool = True) -> bytes:
                "Div-Market Cap Weighted", "P/E-Market Cap Weighted", None, None, None, None, "Year Open"])
     for name in LARGE_CAPS:
         ws.append([name, 1.0, 2.0, 30.0, None, None, 1000, None, None, None, None, None, None, None, name, 20.0])
+    gainers_losers_sheet(wb, week, gainers_losers, None if updated else [week.previous.previous_friday, week.previous_friday])
 
     ws = wb.create_sheet("Universe of Coverage")
-    month_end = week.ending.replace(day=1) - timedelta(days=1)
+    month_end = week.as_at.replace(day=1) - timedelta(days=1)
     while month_end.weekday() >= 5:
         month_end -= timedelta(days=1)
-    heads = [None, "Company", "Country Currency", f"Price as at {week.previous.previous_friday:%d/%m/%Y}",
-             f"Price as at {week.previous_friday:%d/%m/%Y}", f"Price as at {month_end:%d/%m/%Y}"]
+    heads = [None, "Company", "Country Currency", f"Price as at {week.previous.previous_as_at:%d/%m/%Y}",
+             f"Price as at {week.previous_as_at:%d/%m/%Y}", f"Price as at {month_end:%d/%m/%Y}"]
     if updated:
-        heads.append(f"Price as at {week.ending:%d/%m/%Y}")
+        heads.append(f"Price as at {week.as_at:%d/%m/%Y}")
     heads += ["w/w change", "m/m change", "YTD Change", f"Year Open {year - 1}", f"Year Open {year}", "`", "Target Price*",
               "Dividend Yield", "Upside/ Downside**", "TBV/Share", "P/TBv Multiple", "Recommendation", "No. of Shares(bn)",
               "Current Tangible Book Value (bn) FY'2025", "DPS", "EPS", "Tangible Book Value (bn) FY'2025"]
@@ -290,9 +321,10 @@ def cbk_rates() -> dict[date, float]:
 
 
 def weekdays(first: date, last: date) -> list[date]:
-    out, day = [], first
+    """The days a source has a row for: weekdays, less the known market closures."""
+    out, day, shut = [], first, closures()
     while day <= last:
-        if day.weekday() < 5:
+        if day.weekday() < 5 and day not in shut:
             out.append(day)
         day += timedelta(days=1)
     return out
@@ -308,7 +340,7 @@ def fi_workbook_bytes(week: Week = WEEK, updated: bool = True, funds: Optional[l
     wb = XlsxWorkbook()
     wb.remove(wb.active)
     at = week if updated else week.previous
-    year = week.ending.year
+    year = week.as_at.year
 
     ws = wb.create_sheet("Treasury Bills ")
     ws["Z379"] = "T-Bills Results"
@@ -329,9 +361,9 @@ def fi_workbook_bytes(week: Week = WEEK, updated: bool = True, funds: Optional[l
     ws["B6"], ws["C6"] = "3-Months Bank Placements", 0.095
     ws["S2"], ws["T2"] = "Last Week", "This Week"
     ws["R3"], ws["S3"], ws["T3"] = FUNDS[0][0], 0.1090, 0.1100
-    day = at.ending.day
+    day = at.as_at.day
     suffix = "th" if 11 <= day % 100 <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
-    ws["S10"] = f"Money Market Fund Yield for Fund Managers as published on {day}{suffix} {at.ending:%B %Y}"
+    ws["S10"] = f"Money Market Fund Yield for Fund Managers as published on {day}{suffix} {at.as_at:%B %Y}"
     ws["S11"], ws["T11"], ws["U11"] = "Rank", "Fund Manager", "Effective Annual Rate"
     for n, (fund, rate) in enumerate(funds or FUNDS):
         ws[f"S{12 + n}"], ws[f"T{12 + n}"], ws[f"U{12 + n}"] = n + 1, fund, rate

@@ -178,9 +178,11 @@ CHART_TITLES = tuple(spec.title for spec in SPECS.values())
 def same_print(by_workbook, by_form):
     """The two runs print the same thing; returns the items whose review status differs.
 
-    The one designed difference is the charts: they are drawn from the workbook's history, which the form does
-    not hold, so with only the form each is an unavailable part naming the workbook.  That is asserted here and
-    then the charts are left out of the comparison.
+    The designed differences are the charts, drawn from the workbook's history, which the form does not hold (with
+    only the form each is an unavailable part naming the workbook), and the large-cap movers, picked from the
+    workbook's 'Gainers & Losers' prices, which the form does not hold either (with only the form they are picked
+    from the typed list by KCB's changes, and the banking paragraph names no stocks).  Both are asserted here and
+    then left out of the comparison.
     """
     a, b = wh.printed(by_workbook), wh.printed(by_form)
     a_charts = [x for x in a["blocks"] if x["id"].startswith("chart_")]
@@ -190,6 +192,22 @@ def same_print(by_workbook, by_form):
         assert {x["kind"] for x in b_charts} == {"chart"} and {x["reason"] for x in b_charts} == {eq.eqw.NEED_WORKBOOK_FOR_CHARTS[0]}
         a = {**a, "blocks": [x for x in a["blocks"] if x not in a_charts], "items": [i for i in a["items"] if not i[0].startswith(CHART_TITLES)]}
         b = {**b, "blocks": [x for x in b["blocks"] if x not in b_charts], "items": [i for i in b["items"] if not i[0].startswith(CHART_TITLES)]}
+    by_a, by_b = {x["id"]: x for x in a["blocks"]}, {x["id"]: x for x in b["blocks"]}
+    if "large_caps" in by_a and by_a["large_caps"].get("body_md"):
+        movers = "Market Performance: large-cap movers"
+        named = {f[1] for f in by_a["banking"]["figures"] if f[0].startswith("bank_move_")}
+        assert by_b["large_caps"]["body_md"] != by_a["large_caps"]["body_md"]
+        assert by_a["banking"]["body_md"].startswith(by_b["banking"]["body_md"] + " This is attributable to ")
+        assert not any(f[0].startswith("bank_move_") for f in by_b["banking"]["figures"])
+        summary = a["summary"].replace(by_a["large_caps"]["body_md"], by_b["large_caps"]["body_md"]).replace(
+            by_a["banking"]["body_md"], by_b["banking"]["body_md"])
+        banking = {**by_a["banking"], "body_md": by_b["banking"]["body_md"],
+                   "figures": [f for f in by_a["banking"]["figures"] if not f[0].startswith("bank_move_")]}
+        a = {**a, "summary": summary,
+             "blocks": [banking if x["id"] == "banking" else x for x in a["blocks"] if x["id"] != "large_caps"],
+             "items": [i for i in a["items"] if not i[0].startswith(movers) and i[0].split(": ")[-1].split(" (")[0] not in named]}
+        b = {**b, "blocks": [x for x in b["blocks"] if x["id"] != "large_caps"],
+             "items": [i for i in b["items"] if not i[0].startswith(movers)]}
     assert [x["id"] for x in a["blocks"]] == [x["id"] for x in b["blocks"]]
     for x, y in zip(a["blocks"], b["blocks"]):
         assert x == y, x["id"]
@@ -628,8 +646,10 @@ def test_what_is_no_longer_valid_for_the_week_is_not_carried(tmp_path):
     done = analyst.carry_forward(november, tmp_path)
     assert set(done["carried"]) == {"foreign_prior_year", "universe"}       # the month turned: last month's open, month end, days
     assert analyst.read_form(november, tmp_path)["tables"]["universe"] == [{"company": "Alpha Bank", "target": "55"}]
-    january = Week(date(2027, 1, 1))
-    save_week(tmp_path, Week(date(2026, 12, 25)), fields={"foreign_prior_year": "-6", "large_caps": "Safaricom"})
+    # The week ending Friday 1 January 2027 is as at Thursday 31 December 2026, so it is still in 2026's running totals:
+    # the year turns with the week ending 8 January.
+    january = Week(date(2027, 1, 8))
+    save_week(tmp_path, Week(date(2027, 1, 1)), fields={"foreign_prior_year": "-6", "large_caps": "Safaricom"})
     assert analyst.carry_forward(january, tmp_path)["carried"] == ["large_caps"]   # "the previous year" is another year now
 
 
@@ -660,7 +680,7 @@ def test_a_running_total_is_suggested_as_last_weeks_plus_this_weeks_worked_out_f
     assert missing["turnover_ytd"]["reason"].startswith("Year-to-date equities turnover: this week's figure cannot be worked out: "
                                                         "no equities turnover or CBK rate for Friday 02 October")
     assert "value" in missing["foreign_ytd"]                             # KCB's weekly report still lists each weekday's flows
-    first = Week(date(2027, 1, 1))
+    first = Week(date(2027, 1, 8))
     assert "restarts with the year" in eq.eqw.running_total_suggestions(inputs.WeeklyInputs(first, tmp_path), lambda: eq.RATES)["turnover_ytd"]["reason"]
 
 
@@ -727,7 +747,7 @@ def test_every_refusal_of_a_suggestion_says_what_is_missing_and_what_to_do(tmp_p
         "Year-to-date equities turnover: this week's figure cannot be worked out: no equities turnover or CBK rate for Friday 02 October")
     assert r.json()["detail"].endswith("Upload what is missing under \"This week's inputs\" and try again, or type this week's total yourself.")
     # the year turned: last year's total is never the base
-    r = suggest("turnover_ytd", "2027-01-01")
+    r = suggest("turnover_ytd", "2027-01-08")
     assert r.status_code == 409 and r.json()["detail"] == (
         "Year-to-date equities turnover: the running total restarts with the year, so last week's is not carried into it. "
         "Type this week's total, the year so far, yourself.")

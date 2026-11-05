@@ -157,17 +157,20 @@ def test_computed_paragraphs_tables_charts_and_marked_text_are_all_in_the_file(w
     assert "Source: Daily Nation" in text and "Source: Central Bank of Kenya (CBK) Weekly Highlights" in text
     assert "*Target Price as per Cytonn Analyst estimates" in text
     # tables are Word tables
-    tables = {t.rows[0].cells[0].text + "|" + t.rows[0].cells[1].text: t for t in doc.tables}
+    # a block's table opens on its title, one merged row; the Digital Payments table has its numbered title line instead
+    titled = [t for t in doc.tables if len({c._tc for c in t.rows[0].cells}) == 1]
+    tables = {t.rows[1].cells[0].text + "|" + t.rows[1].cells[1].text: t for t in titled}
     funds = tables["Rank|Fund Manager"]
-    assert len(funds.rows) == 1 + len(wh.FUNDS) and funds.rows[1].cells[2].text == "11.0%"
+    assert len(funds.rows) == 2 + len(wh.FUNDS) and funds.rows[2].cells[2].text == "11.0%"
     universe = tables["Company|Price as at 25/09/2026"]
-    assert [c.text for c in universe.rows[1].cells][:4] == ["Alpha Bank", "40.0", "42.0", "5.0%"]
+    assert [c.text for c in universe.rows[2].cells][:4] == ["Alpha Bank", "40.0", "42.0", "5.0%"]
     # the Eurobond table as the issue prints it: issues across, the fixed rows on top
-    euro = next(t for t in doc.tables if t.rows[1].cells[0].text == "Tenor")
-    assert [c.text for c in euro.rows[0].cells] == ["", "2018", "2018", "2019", "2021", "2024"]
-    assert [r.cells[0].text for r in euro.rows][2:6] == ["Amount Issued (USD)", "Years to Maturity", "Yields at Issue", "02-Jan-26"]
-    assert [c.text for c in euro.rows[2].cells][1:] == ["1.0 bn", "1.0 bn", "1.2 bn", "1.0 bn", "1.5 bn"]
-    assert not any(t.rows[0].cells[0].text == "Issue" for t in doc.tables)   # the review-only table is not repeated
+    euro = next(t for t in titled if t.rows[2].cells[0].text == "Tenor")
+    assert euro.rows[0].cells[0].text == "Cytonn Report: Kenya Eurobonds Performance"
+    assert [c.text for c in euro.rows[1].cells] == ["", "2018", "2018", "2019", "2021", "2024"]
+    assert [r.cells[0].text for r in euro.rows][3:7] == ["Amount Issued (USD)", "Years to Maturity", "Yields at Issue", "02-Jan-26"]
+    assert [c.text for c in euro.rows[3].cells][1:] == ["1.0 bn", "1.0 bn", "1.2 bn", "1.0 bn", "1.5 bn"]
+    assert not any(t.rows[1].cells[0].text == "Issue" for t in titled)   # the review-only table is not repeated
     # Digital Payments keeps its own shape: the stock table with its Average row
     stocks = next(t for t in doc.tables if t.rows[0].cells[0].text == "Company" and t.rows[0].cells[1].text == "Ticker")
     assert stocks.rows[-1].cells[0].text == "Average"

@@ -44,6 +44,9 @@ def build_digital_payments_review(
 ) -> CoordinatorReview:
     """Draft this week's Digital Payments section, check it, and return the review.
 
+    ``as_at`` is the table's date when the week's Friday was a market holiday (the stock table is
+    fetched as at the last trading day, and a Friday 1 January would have no bar of its year).
+
     ``provider`` defaults to the one CYTONN_LLM_PROVIDER selects.  Provider and
     fetch errors propagate to the caller.  ``on_event`` (common/run_events.py) is
     told each step as it happens; with None the run is exactly what it always was.
@@ -54,7 +57,7 @@ def build_digital_payments_review(
     """
     provider = provider or get_provider()
     draft = draft_highlights(provider=provider, today=today, on_event=on_event)
-    table = fetch_source(on_event, SOURCE_NAME, fetch_table, today)
+    table = fetch_source(on_event, SOURCE_NAME, fetch_table, as_at or today)
     report_failed_rows(on_event, table, lambda r: f"{SOURCE_NAME}: {r.get('company') or r['ticker']} ({r['ticker']})")
     outlook = draft_outlook(draft, table, provider=provider, on_event=on_event)
     section = compose_section(draft, table, outlook)

@@ -17,7 +17,7 @@ export function chartFacts(block: ChartBlock): { label: string; value: string }[
   if (block.status !== "drawn" || !block.last_value || !block.average || !block.window || !block.newest_date) return [];
   return [
     { label: "Points read", value: String(block.points) },
-    { label: "Window", value: `Up to ${block.window.years} years, ${friendlyDate(block.window.first)} to ${friendlyDate(block.window.last)}` },
+    { label: "Window", value: `${friendlyDate(block.window.first)} to ${friendlyDate(block.window.last)}` },
     { label: "Newest point", value: friendlyDate(block.newest_date) },
     { label: "Last value", value: block.last_value.display },
     { label: "Average", value: `${block.average.display}, ${block.average.count} points since ${friendlyDate(block.average.first)}` },

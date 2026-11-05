@@ -15,7 +15,7 @@ from pathlib import Path
 from cytonn_weekly import charts
 from cytonn_weekly.charts import series as cs
 from cytonn_weekly.charts.series import (AverageCheck, ChartSeries, Point, Stated, average, check_quoted,
-                                         compare_average, read_series, windowed)
+                                         compare_average, read_series, window_start, windowed)
 from cytonn_weekly.charts.specs import AVERAGE_FROM, NASI_PE, NASI_YIELD, SPECS
 from cytonn_weekly.checkers.digital_payments import MISMATCH, MISSING, SOURCES_DISAGREE
 from cytonn_weekly.common.formatting import round_half_up
@@ -216,19 +216,41 @@ def test_the_average_covers_every_point_since_2009_and_not_only_the_window():
     assert s.drawn and a.count == len(used) and a.first >= AVERAGE_FROM and a.last == FRIDAY
     assert abs(a.value - exact) < Decimal("1e-20") and a.display == round_half_up(exact, 1)
     assert a.cells == f"B8:B{8 + used[-1]}"
-    shown = windowed(s)                             # the picture shows 5 years; the average does not stop there
-    start = date(FRIDAY.year - 5, FRIDAY.month, FRIDAY.day)
-    assert NASI_PE.window_years == NASI_YIELD.window_years == 5
+    shown = windowed(s)                             # the picture starts seven years back; the average does not stop there
+    start = date(FRIDAY.year - 7, FRIDAY.month, 1)
+    assert NASI_PE.window_years == NASI_YIELD.window_years == 7
     assert shown[0].day >= start > shown[0].day - timedelta(days=7) and shown[-1].day == FRIDAY
     assert len(shown) < a.count and a.count == len([p for p in s.points if p.day >= AVERAGE_FROM])
 
 
-def test_the_window_counts_years_back_from_the_newest_point_and_survives_29_february():
-    days = [date(2019, 2, 27), date(2019, 2, 28), date(2020, 2, 29), date(2024, 2, 29)]
+def start_for(week_ending):
+    return window_start(ChartSeries(NASI_PE, week_ending, "B", (), (), None))
+
+
+def test_the_window_starts_on_the_first_of_the_weeks_month_seven_years_back_and_is_fixed_within_the_month():
+    assert start_for(date(2026, 10, 23)) == start_for(date(2026, 10, 30)) == date(2019, 10, 1)
+    assert start_for(date(2026, 11, 6)) == date(2019, 11, 1)
+    assert start_for(date(2027, 1, 8)) == date(2020, 1, 1)
+    assert start_for(date(2026, 12, 18)) == date(2019, 12, 1)
+    assert start_for(date(2028, 2, 29)) == date(2021, 2, 1)           # a 29 February week has a start too
+
+
+def test_the_window_keeps_points_from_its_start_and_a_later_series_is_shown_from_its_first_point():
+    days = [date(2019, 9, 27), date(2019, 10, 1), date(2019, 10, 4), date(2026, 10, 23)]
     pts = tuple(Point(d, Decimal(i), i + 8, f"B{i + 8}") for i, d in enumerate(days))
-    s = ChartSeries(NASI_PE, date(2024, 3, 1), "B", pts, (), None)
-    assert [p.day for p in windowed(s)] == days[1:]       # 5 years before 2024-02-29 is 2019-02-28 (2019 has no 29 February)
+    s = ChartSeries(NASI_PE, date(2026, 10, 23), "B", pts, (), None)
+    assert [p.day for p in windowed(s)] == days[1:]       # 1 October 2019 is in; 27 September 2019 is not
+    late = ChartSeries(NASI_PE, date(2026, 10, 23), "B", pts[2:], (), None)
+    assert windowed(late) == pts[2:]                      # starts after 1 October 2019: every point shown, as before
     assert windowed(ChartSeries(NASI_PE, FRIDAY, "", (), (), None)) == ()
+
+
+def test_the_average_does_not_change_when_the_window_changes():
+    s = read(weeks=931)
+    for years in (1, 5, 7, 20):
+        other = replace(s, spec=replace(s.spec, window_years=years))
+        assert average(other) == average(s)
+    assert len(windowed(replace(s, spec=replace(s.spec, window_years=1)))) < len(windowed(s))
 
 
 # ---------------------------------------------------------------------------

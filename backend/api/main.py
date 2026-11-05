@@ -216,6 +216,7 @@ class InputNotes(BaseModel):
 
     bidding_range: Optional[str] = Field(default=None, max_length=weekly_inputs.MAX_NOTE)
     previous_issue: Optional[str] = Field(default=None, max_length=weekly_inputs.MAX_NOTE)
+    as_at: Optional[str] = Field(default=None, max_length=10)
 
 
 class ChartLeadIn(BaseModel):

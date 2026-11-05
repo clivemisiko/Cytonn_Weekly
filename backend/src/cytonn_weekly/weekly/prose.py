@@ -100,6 +100,17 @@ def try_fetch(on_event: Optional[Observer], label: str, fetch: Callable[..., T],
         return None
 
 
+def fetch_week_bulletin(fetch: Callable[[Any], T], week: Any) -> T:
+    """The CBK bulletin for the week: the issue of its Friday, or, when that was a holiday, the one dated the as-at day."""
+    first: Optional[LookupError] = None
+    for day in week.report_dates:
+        try:
+            return fetch(day)
+        except LookupError as exc:
+            first = first or exc
+    raise first
+
+
 def join_names(names: list[str]) -> str:
     if len(names) <= 1:
         return "".join(names)

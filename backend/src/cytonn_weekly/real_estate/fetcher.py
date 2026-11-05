@@ -129,7 +129,9 @@ def fetch_reits(today: Optional[date] = None, get: Getter = http_get_pdf) -> dic
         raise LookupError(f"no Ibuka weekly summary found in the {MAX_LOOKBACK_DAYS} days to {today.isoformat()}")
     cur_date, cur_url, cur = current
     warnings: list[str] = []
-    prior = latest_summary(cur_date - timedelta(days=7), get)
+    # The week before is looked for from a week back, or from six days back when the summary is not a Friday's
+    # (a holiday Friday's week is summarised on the day before), so the earlier Friday is not stepped over.
+    prior = latest_summary(cur_date - timedelta(days=7 if cur_date.weekday() == 4 else 6), get)
     base = latest_summary(date(cur_date.year - 1, 12, 31), get)
     if prior is None:
         warnings.append("previous week's Ibuka summary not found; w/w change (not in the report table) left empty")
