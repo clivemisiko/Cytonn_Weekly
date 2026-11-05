@@ -608,3 +608,22 @@ def test_a_run_stopped_by_an_empty_credit_balance_shows_the_sentence(client, mon
     run = run_to_end(client, **WEEKLY_DP)
     assert kinds(run) == ["run_started", "run_failed"]
     assert run["events"][-1]["detail"] == ev.anthropic_problem(api_error(400, CREDIT_MESSAGE))[0]
+
+
+def test_the_running_draft_names_its_run_and_both_carry_the_servers_elapsed_time(client, clock, monkeypatch):
+    provider = GatedProvider()
+    dp_pipeline(monkeypatch, provider=provider)
+    run_id = start(client, **WEEKLY_DP)
+    try:
+        assert provider.entered.wait(timeout=10)
+        clock.t += 134
+        drafting = client.get("/api/sections").json()["drafting"]
+        assert drafting["run_id"] == run_id and drafting["elapsed_seconds"] == 134 and drafting["stale"] is False
+        run = client.get(f"/api/runs/{run_id}").json()
+        assert run["elapsed_seconds"] == 134 and run["stale"] is False
+        clock.t += 3600
+        assert client.get(f"/api/runs/{run_id}").json()["stale"] is True
+    finally:
+        provider.release.set()
+    done = finished(client, run_id)
+    assert "elapsed_seconds" not in done and client.get("/api/sections").json()["drafting"] is None

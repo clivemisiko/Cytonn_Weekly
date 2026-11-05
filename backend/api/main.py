@@ -105,7 +105,7 @@ from cytonn_weekly.weekly.week import NotAFriday, Week, latest_friday
 
 from api.problems import ProblemError, problem_handler
 from api.draft_slot import DRAFT_STALE_AFTER_SECONDS, Claim, DraftBusy, DraftSlot, busy_message
-from api.runs import SSE_KEEPALIVE_SECONDS, Run, RunAlreadyRunning, RunRegistry
+from api.runs import RUNNING, SSE_KEEPALIVE_SECONDS, Run, RunAlreadyRunning, RunRegistry
 from api.serialize import DEV_MODE_LABEL, is_dev_draft, serialize_review
 
 log = logging.getLogger(__name__)
@@ -565,12 +565,12 @@ def create_app(
         without one); a companion report lists its sections once a kind is given.
         """
         period, kind = chosen_report(report_type, period, kind)
-        runs = latest_runs(db_path, report_type, period)
+        newest = latest_runs(db_path, report_type, period)
         today = date.today()
         out = []
         for spec in sections_for(report_type, kind):
             latest = None
-            run = runs.get(spec.slug)
+            run = newest.get(spec.slug)
             if run is not None:
                 review = load(run["run_id"])
                 s = serialize_review(review)
@@ -598,7 +598,10 @@ def create_app(
                   "suggested_week_ending": latest_friday(today).isoformat()}
         # The draft running right now, if any (one at a time across every section and report): it
         # is not saved until it finishes, so without this the overview could not show it at all.
-        return {"today": today.isoformat(), "drafting": draft_slot.status(), "report": report,
+        drafting = draft_slot.status()
+        if drafting:  # lets the screen link to the running draft's page; None for a draft the synchronous route runs
+            drafting["run_id"] = runs.running_id(drafting["report_type"], drafting["period"], drafting["slug"])
+        return {"today": today.isoformat(), "drafting": drafting, "report": report,
                 "report_types": report_types(), "companion_kinds": companion_kinds(), "sections": out}
 
     @app.get("/api/reviews/{run_id}")
@@ -1009,7 +1012,7 @@ def create_app(
                 "will use, then start it again.",
                 "draft_mode_changed")
         try:
-            run = runs.start(report_type, period, spec.slug, spec.title, TYPES[report_type].title)
+            run = runs.start(report_type, period, spec.slug, spec.title, TYPES[report_type].title, clock())
         except RunAlreadyRunning:
             raise ProblemError(
                 409,
@@ -1029,7 +1032,12 @@ def create_app(
     @app.get("/api/runs/{run_id}")
     def get_run(run_id: str) -> dict:
         """The run's status, every event so far, and (once finished) the saved review's id and dev-draft mark."""
-        return find_run(run_id).to_dict()
+        run = find_run(run_id)
+        out = run.to_dict()
+        if run.status == RUNNING:  # the server's count, so a screen that opens late or reloads still shows the true time
+            out["elapsed_seconds"] = max(0, int(clock() - run.started_at))
+            out["stale"] = out["elapsed_seconds"] >= draft_stale_after
+        return out
 
     @app.get("/api/runs/{run_id}/events")
     def run_events(run_id: str) -> StreamingResponse:
