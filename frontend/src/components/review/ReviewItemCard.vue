@@ -3,6 +3,7 @@ import { PhArrowSquareOut, PhCaretDown, PhPencilSimple } from "@phosphor-icons/v
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "reka-ui";
 import { computed, inject, ref, watch } from "vue";
 import Textarea from "@/components/ui/Textarea.vue";
+import * as api from "@/lib/api";
 import { KIND_LABELS, friendlyTime, pyRepr, resolutionKey } from "@/lib/format";
 import { READ_ONLY } from "@/lib/previous";
 import type { Flag, Resolution, Review, ReviewItem } from "@/lib/types";
@@ -139,6 +140,12 @@ const cells = (flag: Flag): [string, string][] => [
         </ul>
       </div>
       <blockquote v-if="ctx.text" class="border-l-2 border-input pl-3 text-sm text-foreground/85">{{ ctx.text }}</blockquote>
+      <img
+        v-if="ctx.chart_upload?.file_name"
+        :src="api.chartUploadUrl(ctx.chart_upload.week_ending, ctx.chart_upload.key, ctx.chart_upload.file_name)"
+        :alt="`The uploaded image, ${ctx.chart_upload.file_name}`"
+        class="h-24 w-auto max-w-full rounded-sm border bg-white object-contain"
+      />
       <p v-if="ctx.edited_at" class="text-xs text-muted-foreground [overflow-wrap:anywhere]">
         Your wording replaced: "{{ ctx.was }}". The source below was cited for the earlier wording, so read it to check that it supports yours.
       </p>

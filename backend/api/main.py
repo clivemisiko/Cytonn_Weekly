@@ -738,12 +738,35 @@ def create_app(
             raise HTTPException(404, f"no chart slot {key!r}")
         return key
 
+    def revise_charts(week: Week, key: str, reason: str) -> dict:
+        """After a chart change: the inputs status, plus each review of that week saved again for approval.
+
+        The section's newest review of the week (labelled with the week, or unlabelled and drafted for it) gets a NEW
+        undecided run with its chart items read again (chart_uploads.refresh), the way a sentence edit does, when what
+        the Word file would print changed.  A rejected review is left alone: the next draft reads the uploads."""
+        section, revised = chart_uploads.SECTION_OF[key], []
+        with write_lock:
+            for period in (f"Week ending {week.ending.isoformat()}", ""):
+                old = review_store.load_latest_review(section, report_type=WEEKLY, period=period, db_path=db_path)
+                if old is None or old.decision == "rejected" or old.section.get("week_ending") != week.ending.isoformat():
+                    continue
+                new = chart_uploads.refresh(old, root, charts_root, reason)
+                if new is not None:
+                    save(new)
+                    revised.append({"section": section, "run_id": new.run_id, "earlier_run_id": old.run_id,
+                                    "was_approved": old.decision == "approved", "reason": reason})
+        return {**weekly_inputs.status(week, root), "reviews_revised": revised}
+
+    def chart_title(key: str) -> str:
+        return next(s["title"] for s in chart_uploads.slots() if s["key"] == key)
+
     @app.put("/api/inputs/weekly/{week_ending}/charts/{key}")
-    async def upload_chart(week_ending: str, key: str, request: Request) -> dict:
+    async def upload_chart(week_ending: str, key: str, request: Request,
+                           filename: str = Query(default="", max_length=260)) -> dict:
         """Upload one chart image (PNG or JPEG, judged by its first bytes): the file is the request body.
 
         It replaces the slot's earlier image. 413 over the size limit, 422 when it is empty or not an image.
-        The image is kept for the Word export only; no draft reads it.
+        No model reads it; the section's review of the week is saved again with the image as a flagged item.
         """
         week, key = week_of(week_ending), chart_key(key)
         too_big = (f"The image is over the {chart_uploads.MAX_BYTES // 1_048_576} MB limit. "
@@ -755,10 +778,11 @@ def create_app(
         if len(data) > chart_uploads.MAX_BYTES:
             raise ProblemError(413, too_big, "upload_too_big")
         try:
-            await run_in_threadpool(chart_uploads.store, week, key, data, root)
+            await run_in_threadpool(chart_uploads.store, week, key, data, root, filename)
         except weekly_inputs.InputError as exc:
             raise ProblemError(422, str(exc), "upload_refused")
-        return weekly_inputs.status(week, root)
+        return revise_charts(week, key, f"chart image uploaded for {chart_title(key)}"
+                                        + (f" ({chart_uploads.status(week, root)[chart_uploads.KEYS.index(key)]['file_name']})"))
 
     @app.get("/api/inputs/weekly/{week_ending}/charts/{key}/image")
     def chart_upload_image(week_ending: str, key: str) -> Response:
@@ -773,7 +797,7 @@ def create_app(
         week, key = week_of(week_ending), chart_key(key)
         if not chart_uploads.remove(week, key, root):
             raise HTTPException(404, "this chart has no image")
-        return weekly_inputs.status(week, root)
+        return revise_charts(week, key, f"chart image removed for {chart_title(key)}")
 
     @app.put("/api/inputs/weekly/{week_ending}/charts/{key}/lead-in")
     def put_chart_lead_in(week_ending: str, key: str, body: ChartLeadIn) -> dict:
@@ -782,7 +806,7 @@ def create_app(
             chart_uploads.set_lead_in(week, key, body.lead_in, root)
         except weekly_inputs.InputError as exc:
             raise ProblemError(422, str(exc), "note_refused")
-        return weekly_inputs.status(week, root)
+        return revise_charts(week, key, f"sentence above the {chart_title(key)} chart changed")
 
     @app.put("/api/inputs/weekly/{week_ending}/charts/{key}/source")
     def put_chart_source(week_ending: str, key: str, body: ChartSource) -> dict:
@@ -791,7 +815,7 @@ def create_app(
             chart_uploads.set_source(week, key, body.source, root)
         except weekly_inputs.InputError as exc:
             raise ProblemError(422, str(exc), "note_refused")
-        return weekly_inputs.status(week, root)
+        return revise_charts(week, key, f"source line under the {chart_title(key)} chart changed")
 
     @app.put("/api/inputs/weekly/{week_ending}/{slot}")
     async def upload_input(week_ending: str, slot: str, request: Request,

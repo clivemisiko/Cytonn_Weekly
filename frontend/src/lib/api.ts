@@ -253,7 +253,7 @@ const chartPath = (weekEnding: string, key: string) => `${inputsPath(weekEnding)
 
 /** Upload a chart image (PNG or JPEG) for one slot, replacing the slot's earlier image. */
 export const uploadChart = (weekEnding: string, key: string, file: File) =>
-  request<WeeklyInputs>(chartPath(weekEnding, key), {
+  request<WeeklyInputs>(`${chartPath(weekEnding, key)}?filename=${encodeURIComponent(file.name)}`, {
     method: "PUT", body: file, headers: { "Content-Type": "application/octet-stream" },
   }, UPLOAD_TIMEOUT_MS);
 

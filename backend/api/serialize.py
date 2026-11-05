@@ -23,7 +23,7 @@ import math
 import re
 from typing import Any
 
-from cytonn_weekly.charts.block import team_chart_chosen
+from cytonn_weekly.charts.block import SLOT_KIND, team_chart_chosen
 from cytonn_weekly.digital_payments.coordinator_review import (
     CLEAN, FIX_NEEDED, FLAGGED, NOT_AUTO_VERIFIED, TABLE_ROW, CoordinatorReview,
 )
@@ -134,6 +134,7 @@ def _charts_to_add_by_hand(review: CoordinatorReview) -> list[str]:
     sec = review.section
     drawn = {b["caption"] for b in sec.get("blocks", []) if b.get("kind") == "chart" and b.get("status") == "drawn"
              and not team_chart_chosen(review, b["chart_id"])}
+    drawn |= {b["caption"] for b in sec.get("blocks", []) if b.get("kind") == SLOT_KIND and b.get("state") == "uploaded"}
     return [c for c in sec.get("chart_notes", []) if c not in drawn]
 
 
@@ -148,6 +149,8 @@ def _serialize_blocks(review: CoordinatorReview) -> dict[str, Any]:
     flagged = _flagged_rows(review)
     blocks = []
     for b in real_estate_layout(sec, review.report_type):
+        if b["kind"] == SLOT_KIND:
+            continue   # a chart slot is shown as its review item only (weekly/chart_uploads.slot_blocks)
         if b["kind"] == "table":
             out = {k: b.get(k) for k in _TABLE_FIELDS}
             key = b["key_field"]
@@ -191,6 +194,8 @@ def _serialize_blocks(review: CoordinatorReview) -> dict[str, Any]:
         # Executive Summary only: what the composition is, and what each included section holds that it leaves out.
         "summary_note": sec.get("summary_note"),
         "not_covered": list(sec.get("not_covered", [])),
+        # Why this run was saved again for approval: a chart image or its sentence changed (weekly/chart_uploads.refresh).
+        "revisions": list(sec.get("revisions", [])),
         "blocks": blocks,
     }
 

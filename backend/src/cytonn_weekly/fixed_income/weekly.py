@@ -63,7 +63,7 @@ from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview
 from cytonn_weekly.fixed_income import cbk_auctions, net_borrowing
 from cytonn_weekly.narrative.base import NarrativeBrief, NarrativeProvider
 from cytonn_weekly.narrative.drafter import draft_pieces
-from cytonn_weekly.weekly import analyst, cbk_bulletin, cbk_rates, fi_workbook, previous_issue
+from cytonn_weekly.weekly import analyst, cbk_bulletin, cbk_rates, chart_uploads, fi_workbook, previous_issue
 from cytonn_weekly.weekly.inputs import CBK_BULLETIN, WeeklyInputs, store
 from cytonn_weekly.weekly.prose import (
     Figures,
@@ -1372,7 +1372,8 @@ def build_fixed_income_review(
     content = {
         "section": SECTION, "title": TITLE, "week_ending": week.ending.isoformat(),
         "week_start": drafted["week_start"], "week_end": drafted["week_end"],
-        "blocks": numbered(blocks), "pieces_found": len(drafted["pieces"]), "pieces_expected": N_HIGHLIGHTS,
+        "blocks": numbered(blocks) + chart_uploads.slot_blocks(SECTION, week, inputs.root, blocks),
+        "pieces_found": len(drafted["pieces"]), "pieces_expected": N_HIGHLIGHTS,
         "shortfall": drafted["shortfall"],
         "warnings": list(drafted["warnings"]) + warnings + inputs.analyst.difference_lines() + problems,
         "notices": notices,

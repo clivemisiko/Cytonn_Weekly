@@ -349,9 +349,12 @@ def test_every_page_has_a_page_number_and_the_headings_are_real_heading_styles(w
 
 def test_the_chart_placeholders_keep_their_wording_and_look(week, tmp_path):
     doc, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
-    assert [t for t in text if t.startswith("[Chart to add: ")] == [f"[Chart to add: {c}]" for c in fi_weekly.CHARTS]
+    # The money market chart's "(uncaptioned chart under ...)" is a note to the team and is never printed.
+    assert [t for t in text if t.startswith("[Chart to add: ")] == [f"[Chart to add: {c.split(' (uncaptioned')[0]}]"
+                                                                   for c in fi_weekly.CHARTS]
+    assert not any("uncaptioned" in t for t in text)
     run = next(p for p in doc.paragraphs if p.text.startswith("[Chart to add: ")).runs[0]
-    assert run.italic and str(run.font.color.rgb) == "1F2A44"
+    assert run.italic and str(run.font.color.rgb) == "C00000"     # red, as "[Chart not drawn: ...]" is
 
 
 def test_the_review_marks_and_small_lines_are_left_aligned_not_stretched(week, tmp_path):

@@ -52,7 +52,7 @@ def refused(root, fields=None, tables=None) -> str:
 
 
 def blocks(review):
-    return {b["id"]: b for b in review.section["blocks"]}
+    return {b["id"]: b for b in review.section["blocks"] if b["kind"] != "chart_slot"}
 
 
 def figures(block):
@@ -183,6 +183,8 @@ def same_print(by_workbook, by_form):
     then the charts are left out of the comparison.
     """
     a, b = wh.printed(by_workbook), wh.printed(by_form)
+    # The chart slots follow the charts (drawn with a workbook, missing without): left out with them.
+    a, b = ({**v, "blocks": [x for x in v["blocks"] if x["kind"] != "chart_slot"]} for v in (a, b))
     a_charts = [x for x in a["blocks"] if x["id"].startswith("chart_")]
     b_charts = [x for x in b["blocks"] if x["id"].startswith("chart_")]
     if a_charts or b_charts:

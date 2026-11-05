@@ -74,7 +74,7 @@ def root(tmp_path, text_pdfs):
 
 
 def blocks(review):
-    return {b["id"]: b for b in review.section["blocks"]}
+    return {b["id"]: b for b in review.section["blocks"] if b["kind"] != "chart_slot"}
 
 
 def figures(block):
@@ -92,9 +92,10 @@ def items(review, prefix):
 def test_the_section_is_in_the_real_issues_order_with_no_afx_tables(root):
     review = build(root)
     assert [b["id"] for b in review.section["blocks"]] == ["indices", "large_caps", "banking", "turnover", "foreign", "valuation",
-                                                          "chart_nasi_pe", "chart_nasi_yield", "universe_of_coverage", "outlook"]
+                                                          "chart_nasi_pe", "chart_nasi_yield", "universe_of_coverage", "outlook",
+                                                          "chart_slot_nasi_pe", "chart_slot_nasi_yield"]
     kinds = [b["kind"] for b in review.section["blocks"]]
-    assert kinds == ["computed"] * 6 + ["chart", "chart", "table", "carried"]   # no index table, no gainers or losers table
+    assert kinds == ["computed"] * 6 + ["chart", "chart", "table", "carried", "chart_slot", "chart_slot"]   # no index or movers table
     assert [b["status"] for b in review.section["blocks"] if b["kind"] == "chart"] == ["drawn", "drawn"]
     files = getattr(review, chart_store._FILES)          # rendered and kept on the review until its first save
     assert {b["png_sha256"] for b in review.section["blocks"] if b["kind"] == "chart"} == {
@@ -311,11 +312,12 @@ def test_missing_inputs_leave_named_unavailable_parts(tmp_path):
         "not been typed under \"Weekly analyst inputs\", and the equities workbook for this week is not among this week's inputs.")
     assert by["universe_of_coverage"]["reason"].startswith("The Universe of Coverage inputs have not been typed")
     assert by["foreign"]["reason"].startswith("No foreign net flow was found for Monday 28 September")
-    # No workbook: no chart, said as information in the section and asking nothing of the coordinator (no review item).
+    # No workbook: no chart, said as information in the chart block; the slot asks the coordinator to accept the placeholder.
     assert [(by[c]["kind"], by[c]["status"]) for c in ("chart_nasi_pe", "chart_nasi_yield")] == [("chart", "no_workbook")] * 2
     assert by["chart_nasi_pe"]["reason"] == by["chart_nasi_yield"]["reason"] == eqw.NEED_WORKBOOK_FOR_CHARTS[0]
-    assert {i.status for i in review.review_items} == {"flagged"} and len(review.review_items) == 8
-    assert not [i for i in review.review_items if i.kind == "chart"]
+    assert {i.status for i in review.review_items} == {"flagged"} and len(review.review_items) == 10
+    assert [i.ref for i in review.review_items if i.kind == "chart"] == ["NASI P/E chart: no chart",
+                                                                        "NASI dividend yield chart: no chart"]
     assert review.section["summary"] == ""
 
 

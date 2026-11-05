@@ -23,7 +23,7 @@ from cytonn_weekly.charts.specs import NASI_PE, NASI_YIELD
 from cytonn_weekly.common.review import build_review, check_section
 from cytonn_weekly.digital_payments import review_store
 from cytonn_weekly.report_sections import BY_SLUG
-from cytonn_weekly.weekly import export
+from cytonn_weekly.weekly import chart_uploads, export
 from tests.chart_helpers import FRIDAY, book, day
 from tests.test_charts_block import MISSING_BOOK, QUOTED, STATED
 
@@ -94,11 +94,13 @@ def test_a_drawn_chart_is_the_stored_picture_six_inches_wide_where_the_placehold
         assert shape.width == Inches(6.0) and abs(shape.height - Inches(3.0)) <= 1       # 6.0 x 3.0 in, whole
         assert shape._inline.docPr.get("descr") == caption                                # the caption is its alt text
         assert embedded(doc, shape) == png_path(review, folder, chart_id).read_bytes()    # the stored file, byte for byte
-    # Where the issue puts them: straight after the valuation paragraph, each followed by its own small line (a separate
-    # paragraph, so the editor can delete it), the picture itself alone in its paragraph.
+    # Where the issue puts them: after the valuation paragraph and the published sentence above the pair (printed once),
+    # each followed by its own small line (a separate paragraph, so the editor can delete it), the picture alone in its paragraph.
     paras = doc.paragraphs
     at = [i for i, p in enumerate(paras) if p._p.xpath(".//w:drawing")]
-    assert at == [texts(doc).index("Invented valuation text.") + 1, texts(doc).index("Invented valuation text.") + 3]
+    valuation = texts(doc).index("Invented valuation text.")
+    assert paras[valuation + 1].text == chart_uploads.NASI_PAIR and texts(doc).count(chart_uploads.NASI_PAIR) == 1
+    assert at == [valuation + 2, valuation + 4]
     for i in at:
         assert paras[i].text == "" and paras[i + 1].text == "From the analyst workbook, not verified."
         assert paras[i + 1]._p.xpath(".//w:drawing") == []
@@ -108,7 +110,7 @@ def test_the_picture_is_the_only_change_a_drawn_chart_makes_to_the_section(tmp_p
     drawn_review, folder = approved(tmp_path)
     plain_review, plain_folder = approved(tmp_path / "plain", workbook=False)
     drawn, plain = document(drawn_review, folder), document(plain_review, plain_folder)
-    without = [t for t in texts(drawn) if t != "From the analyst workbook, not verified."]
+    without = [t for t in texts(drawn) if t not in ("From the analyst workbook, not verified.", chart_uploads.NASI_PAIR)]
     assert [t for t in without if t] == [t for t in texts(plain) if t and not t.startswith("[Chart to add: ")]
 
 

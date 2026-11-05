@@ -79,7 +79,7 @@ from cytonn_weekly.common.computed import (
     check_figure_record,
     figure_subject,
 )
-from cytonn_weekly.charts.block import CHART_ITEM, CHART_SCOPE, chart_counts, chart_flags, chart_parts
+from cytonn_weekly.charts.block import CHART_ITEM, CHART_SCOPE, SLOT_KIND, chart_counts, chart_flags, chart_parts
 from cytonn_weekly.common.formatting import format_rows
 from cytonn_weekly.common.links import LINK, find_links
 from cytonn_weekly.common.run_events import CHECK_FINISHED, CHECK_STARTED, Observer, emit
@@ -262,6 +262,11 @@ def check_section(content: dict[str, Any], on_event: Optional[Observer] = None) 
             report.flags.extend(chart_flags(b))
             report.checked += 2 if b["status"] == "drawn" else 0      # the last point and the average
             emit(on_event, CHECK_FINISHED, b["title"], counts=chart_counts(b))
+        elif b["kind"] == SLOT_KIND and b.get("checks"):
+            # An uploaded image or a missing chart: like a chart's, its flag was made with the block and is kept on it.
+            emit(on_event, CHECK_STARTED, b["ref"])
+            report.flags.extend(Flag(**f) for f in b["checks"])
+            emit(on_event, CHECK_FINISHED, b["ref"], counts={"flagged": 1})
         elif b["kind"] == "unavailable":
             report.flags.append(Flag(
                 kind=NOT_IMPLEMENTED, scope=UNAVAILABLE_SCOPE, subject=b["id"], field=None,
@@ -404,6 +409,13 @@ def build_review(content: dict[str, Any], report: CheckReport) -> CoordinatorRev
                 flags = by_subject.get(subject, [])
                 items.append(ReviewItem(kind=CHART_ITEM, ref=part.ref, status=FLAGGED if flags else part.status,
                                         detail=flags or part.note, context={"text": b["caption"], "chart": b["id"]}))
+        elif b["kind"] == SLOT_KIND and b.get("checks"):
+            subject = (CHART_SCOPE, f"{b['id']}#slot")
+            used.add(subject)
+            items.append(ReviewItem(kind=CHART_ITEM, ref=b["ref"], status=FLAGGED, detail=by_subject.get(subject),
+                                    context={"text": b["lead_in"] if b["state"] == "uploaded" else b["caption"],
+                                             "chart_upload": {"key": b["key"], "week_ending": b["week_ending"],
+                                                              "file_name": b.get("file_name")}}))
         elif b["kind"] == "unavailable":
             subject = (UNAVAILABLE_SCOPE, b["id"])
             used.add(subject)

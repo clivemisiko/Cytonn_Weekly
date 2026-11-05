@@ -59,7 +59,7 @@ from cytonn_weekly.equities.review_run import BRIEFS
 from cytonn_weekly.fixed_income.weekly import _carried
 from cytonn_weekly.narrative.base import NarrativeProvider
 from cytonn_weekly.narrative.drafter import draft_pieces
-from cytonn_weekly.weekly import analyst, cbk_bulletin, cbk_rates, equities_workbook, fi_workbook, kcb, nse_price_list, previous_issue
+from cytonn_weekly.weekly import analyst, cbk_bulletin, cbk_rates, chart_uploads, equities_workbook, fi_workbook, kcb, nse_price_list, previous_issue
 from cytonn_weekly.weekly.inputs import WeeklyInputs
 from cytonn_weekly.weekly.prose import (
     Fallbacks,
@@ -937,7 +937,8 @@ def build_equities_weekly_review(
     content = {
         "section": SECTION, "title": TITLE, "week_ending": week.ending.isoformat(),
         "week_start": drafted["week_start"], "week_end": drafted["week_end"],
-        "blocks": numbered(blocks), "pieces_found": len(drafted["pieces"]), "pieces_expected": N_HIGHLIGHTS,
+        "blocks": numbered(blocks) + chart_uploads.slot_blocks(SECTION, week, inputs.root, blocks),
+        "pieces_found": len(drafted["pieces"]), "pieces_expected": N_HIGHLIGHTS,
         "shortfall": drafted["shortfall"],
         "warnings": list(drafted["warnings"]) + warnings + inputs.analyst.difference_lines() + problems,
         "notices": notices,

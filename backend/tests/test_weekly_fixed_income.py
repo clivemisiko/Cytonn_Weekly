@@ -80,7 +80,7 @@ def root(tmp_path):
 
 
 def blocks(review):
-    return {b["id"]: b for b in review.section["blocks"]}
+    return {b["id"]: b for b in review.section["blocks"] if b["kind"] != "chart_slot"}
 
 
 def figures(block):
@@ -210,7 +210,9 @@ def test_the_section_is_in_the_real_issues_order(root):
     review = build(root)
     ids = [b["id"] for b in review.section["blocks"]]
     assert ids == ["tbills", "tbonds", "bidding_range", "money_market", "mmf_table", "liquidity", "eurobonds", "eurobonds_issues",
-                   "eurobonds_table", "shilling", "shilling_support", "shilling_pressure", "outlook", "borrowing"]
+                   "eurobonds_table", "shilling", "shilling_support", "shilling_pressure", "outlook", "borrowing",
+                   *(f"chart_slot_{k}" for k in ("tbill_91_growth", "tbill_yields", "tbill_subscription", "money_market",
+                                                 "interbank", "import_cover"))]
     assert review.section["section"] == "fixed_income" and review.section["week_ending"] == "2026-10-02"
     assert len(review.section["chart_notes"]) == 6 and review.section["chart_reference"] == "Cytonn Weekly #38.2026"
     assert review.section["shortfall"] == fiw.N_HIGHLIGHTS   # no highlight was found (drafting is stubbed out here)
@@ -449,7 +451,7 @@ def test_with_no_inputs_and_no_sources_every_part_is_a_named_unavailable_block(t
                                           "income workbook updated for this week, and draft again.")
     assert by["tbonds"]["reason"] == "CBK T-bond results: ConnectionError: no route to host"
     assert "there is no text to carry forward" in by["outlook"]["reason"]
-    assert len(review.review_items) == len(by) and {i.status for i in review.review_items} == {"flagged"}
+    assert len(review.review_items) == len(by) + 6 and {i.status for i in review.review_items} == {"flagged"}   # + a "no chart" per slot
     assert sum("ConnectionError" in w for w in review.section["warnings"]) == 5 and review.section["summary"] == ""
 
 

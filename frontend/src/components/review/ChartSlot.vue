@@ -68,6 +68,7 @@ function saveSource() {
         class="h-16 w-auto max-w-40 rounded-sm border bg-white object-contain"
       />
       <p class="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+        <span v-if="entry.file_name" class="font-mono [overflow-wrap:anywhere]">{{ entry.file_name }}</span>
         <span class="font-mono">{{ entry.type === "jpeg" ? "JPEG" : "PNG" }}, {{ megabytes(entry.size ?? 0) }}</span>
         <button
           type="button"
@@ -91,13 +92,13 @@ function saveSource() {
         autocomplete="off"
         maxlength="600"
         :disabled="busy"
-        :placeholder="entry.default_lead_in"
+        :placeholder="entry.template_lead_in"
         :aria-describedby="entry.has_image ? `lead-in-hint-${entry.key}` : undefined"
         :class="[FIELD, 'w-full']"
         @blur="saveLeadIn"
       />
       <p v-if="entry.has_image" :id="`lead-in-hint-${entry.key}`" class="text-xs text-muted-foreground">
-        Add the dates to this sentence, as the published report does.
+        Left blank, the sentence shown is printed, dated from the week.
       </p>
     </div>
     <div class="space-y-1">

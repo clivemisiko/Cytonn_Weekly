@@ -24,6 +24,7 @@ it, by the same test the Word summary's email path uses.
 
 from __future__ import annotations
 
+import hashlib
 import re
 import unicodedata
 from datetime import date, timedelta
@@ -77,13 +78,15 @@ CHART_WIDTH = Inches(6.0)
 CHART_NOT_VERIFIED = f"{PROVENANCE[0].upper()}{PROVENANCE[1:]}."   # its own paragraph, so the editor can delete it
 PICTURE_UNVERIFIED = "[Chart not drawn: the stored picture could not be verified]"
 UPLOAD_UNREADABLE = "[Chart image not used: the uploaded picture could not be read. Upload it again.]"
+UPLOAD_CHANGED = "[Chart image not used: the uploaded picture is not the one the review recorded. Review the section again.]"
+UPLOAD_NOT_VERIFIED = "Uploaded by analyst, not verified."   # under an uploaded picture, styled as CHART_NOT_VERIFIED
+UNCAPTIONED = re.compile(r"\s*\(uncaptioned [^)]*\)")      # a caption's note to the team, never printed
 
 # The issue's own section headings (#38.2026).
 HEADINGS = {"company_updates": "Company Updates", "fixed_income": "Fixed Income", "equities": "Equities",
             "real_estate": "Real Estate", "digital_payments": "Digital Payments Weekly Highlights", "focus": "Focus of the Week"}
 
 _RED = RGBColor(0xC0, 0x00, 0x00)
-_INK = RGBColor(0x1F, 0x2A, 0x44)
 
 
 class ExportNotAllowed(ValueError):
@@ -124,7 +127,13 @@ def export_status(db_path: Optional[Union[Path, str]], period: str, today: Optio
     return {"period": period, "ready": all(s["state"] == APPROVED for s in sections), "sections": sections,
             "is_dev_draft": bool(dev), "dev_sections": dev, "dev_mode_label": DEV_LABEL if dev else None,
             "can_send": not dev, "file_name": file_name(period, focus_title(reviews, typed_first=True)),
-            "charts_missing": chart_uploads.missing(export_week(period, reviews, today), inputs_root)}
+            "charts_missing": chart_uploads.missing(export_week(period, reviews, today), inputs_root, drawn_charts(reviews))}
+
+
+def drawn_charts(reviews) -> frozenset[str]:
+    """The charts the tool drew and the coordinator kept (not set aside for the team's own): they print no placeholder."""
+    return frozenset(b["chart_id"] for _, review in reviews if review is not None for b in review.section.get("blocks", [])
+                     if b.get("kind") == "chart" and b["status"] == "drawn" and not team_chart_chosen(review, b["chart_id"]))
 
 
 def require_all_approved(reviews: list[tuple[SectionSpec, Optional[CoordinatorReview]]]) -> list[tuple[SectionSpec, CoordinatorReview]]:
@@ -245,8 +254,9 @@ def _mark(doc, text: str):
 
 
 def _placeholder(doc, caption: str) -> None:
-    r = _mark(doc, f"[Chart to add: {caption}]")
-    r.italic, r.font.color.rgb = True, _INK
+    # Red, as a chart not drawn is: the reviewer accepted it missing, and the file must not pass for finished.
+    r = _mark(doc, f"[Chart to add: {UNCAPTIONED.sub('', caption)}]")
+    r.italic, r.font.color.rgb = True, _RED
 
 
 def _red_line(doc, text: str) -> None:
@@ -254,27 +264,42 @@ def _red_line(doc, text: str) -> None:
     r.italic, r.font.color.rgb = True, _RED
 
 
-def _uploaded_chart(doc, caption: str, upload: tuple[bytes, str, str]) -> None:
-    """The analyst's uploaded image: its lead-in, then the picture no wider than the text, keeping its proportions,
-    then the analyst's source line, if one was typed; none is ever filled in."""
-    data, lead_in, source = upload
+def _lead_in(doc, text: Optional[str]) -> None:
+    if text:
+        doc.add_paragraph(text).paragraph_format.keep_with_next = True
+
+
+def _uploaded_chart(doc, caption: str, slot: dict[str, Any], inputs_root: Optional[Union[Path, str]],
+                    lead_in: Optional[str]) -> bool:
+    """The analyst's uploaded image as the review recorded it: its sentence, the picture no wider than the text, keeping
+    its proportions, the analyst's source line if one was typed (none is ever filled in), and the line saying it is not
+    verified.  A picture that is gone, changed since the review, or unreadable is the placeholder and a red line."""
+    stored = chart_uploads.image(Week(date.fromisoformat(slot["week_ending"])), slot["key"], inputs_root)
+    if stored is None or hashlib.sha256(stored[0]).hexdigest() != slot.get("sha256"):
+        _placeholder(doc, caption)
+        _red_line(doc, UPLOAD_CHANGED)
+        return False
     para = doc.add_paragraph()
     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
     try:
-        shape = para.add_run().add_picture(BytesIO(data))
+        shape = para.add_run().add_picture(BytesIO(stored[0]))
     except Exception:  # noqa: BLE001 - a stored file python-docx cannot read is shown as a review line, never a crash
         para._p.getparent().remove(para._p)
         _placeholder(doc, caption)
-        return _red_line(doc, UPLOAD_UNREADABLE)
+        _red_line(doc, UPLOAD_UNREADABLE)
+        return False
     page = doc.sections[-1]
     text_width = page.page_width - page.left_margin - page.right_margin
     if shape.width > text_width:
         shape.height, shape.width = int(shape.height * text_width / shape.width), text_width
-    shape._inline.docPr.set("descr", lead_in)
-    para.insert_paragraph_before(lead_in).paragraph_format.keep_with_next = True
-    if source:
-        para.paragraph_format.keep_with_next = True      # the line below stays on the picture's page
-        _source_line(doc, {"name": source})
+    shape._inline.docPr.set("descr", slot["lead_in"])
+    if lead_in:
+        para.insert_paragraph_before(lead_in).paragraph_format.keep_with_next = True
+    para.paragraph_format.keep_with_next = True      # the lines below stay on the picture's page
+    if slot.get("source"):
+        _source_line(doc, {"name": slot["source"]}).paragraph_format.keep_with_next = True
+    small_line(doc, UPLOAD_NOT_VERIFIED)
+    return True
 
 
 def export_week(period: str, reviews, today: Optional[date] = None) -> Week:
@@ -295,23 +320,23 @@ def export_week(period: str, reviews, today: Optional[date] = None) -> Week:
     return week_for(None, today)
 
 
-def _uploaded_charts(week: Optional[Week], inputs_root: Optional[Union[Path, str]]) -> dict[str, tuple[bytes, str, str]]:
-    """Caption to (image, lead-in, source) for each chart slot of the week with an uploaded image; the lead-in is the
-    analyst's, else the slot's default sentence, never the caption; the source is the analyst's or empty."""
-    if week is None:
-        return {}
-    out = {}
-    for slot in chart_uploads.slots():
-        stored = chart_uploads.image(week, slot["key"], inputs_root)
-        if stored:
-            out[slot["caption"]] = (stored[0], chart_uploads.lead_in(week, slot["key"], inputs_root)
-                                    or chart_uploads.DEFAULT_LEAD_INS[slot["key"]],
-                                    chart_uploads.source(week, slot["key"], inputs_root))
-    return out
+def require_charts_unchanged(reviews: list[tuple[SectionSpec, CoordinatorReview]],
+                             inputs_root: Optional[Union[Path, str]]) -> None:
+    """ExportNotAllowed when a section's chart images or their sentences changed since its review was saved.
+
+    Every change made in the app saves a new review for approval (chart_uploads.refresh); this catches the rest: a review
+    saved before chart slots existed, or a file changed outside the app."""
+    changed = [f"{HEADINGS.get(spec.slug, spec.title)} ({', '.join(titles)})" for spec, review in reviews
+               if (titles := chart_uploads.changed_slots(review, inputs_root))]
+    if changed:
+        raise ExportNotAllowed("The weekly report cannot be exported yet, because chart images or the sentences above them "
+                               f"changed after these sections were reviewed: {'; '.join(changed)}. Open each section, "
+                               "review its chart items and approve it again.")
 
 
 def _chart(doc, caption: str, chart: Optional[dict[str, Any]], review: CoordinatorReview,
-           charts_root: Optional[Union[Path, str]], upload: Optional[tuple[bytes, str, str]] = None) -> None:
+           charts_root: Optional[Union[Path, str]], slot: Optional[dict[str, Any]] = None,
+           inputs_root: Optional[Union[Path, str]] = None, printed: Optional[str] = None) -> Optional[str]:
     """One chart's place in the file.  ``chart`` is the section's chart block for this caption, if the tool has one.
 
     * The tool's chart was drawn, is still the one in use and its stored picture verifies (the same SHA-256 check as the
@@ -323,38 +348,51 @@ def _chart(doc, caption: str, chart: Optional[dict[str, Any]], review: Coordinat
     * The picture is drawn but its file is changed or missing now: the placeholder and a red line, never a picture
       that cannot be verified.
     * No chart block for the caption (every chart outside this feature): the placeholder, as before.
-    * An image the analyst uploaded for the slot wins over all of these: it is the team's own chart.
+    * An image the analyst uploaded for the slot (``slot``, as the review recorded it) wins over all of these.
+
+    A picture has its sentence above it (the analyst's, else the slot's template), unless ``printed``, the sentence
+    printed above the chart just before it, is the same: the two NASI charts share one.  Returns the sentence above the
+    picture, or None when no picture was printed.
     """
-    if upload is not None:
-        return _uploaded_chart(doc, caption, upload)
+    if slot is not None and slot.get("state") == chart_uploads.UPLOADED:
+        lead_in = slot["lead_in"]
+        return lead_in if _uploaded_chart(doc, caption, slot, inputs_root, None if lead_in == printed else lead_in) else None
     if chart is None or chart["status"] == "no_workbook" or team_chart_chosen(review, chart["chart_id"]):
-        return _placeholder(doc, caption)
+        _placeholder(doc, caption)
+        return None
     if chart["status"] != "drawn":
         _placeholder(doc, caption)
         why = next((d["message"] for d in chart.get("defects", []) if d.get("blocking")), "the chart could not be drawn")
-        return _red_line(doc, f"[Chart not drawn: {why}]")
+        _red_line(doc, f"[Chart not drawn: {why}]")
+        return None
     try:
         png = chart_store.read_png(review.run_id, chart["chart_id"], chart.get("png_sha256"), charts_root)
     except chart_store.ChartFileError:
         _placeholder(doc, caption)
-        return _red_line(doc, PICTURE_UNVERIFIED)
+        _red_line(doc, PICTURE_UNVERIFIED)
+        return None
+    lead_in = chart_uploads.template(chart["chart_id"], Week(date.fromisoformat(review.section["week_ending"])))
+    _lead_in(doc, None if lead_in == printed else lead_in)
     para = doc.add_paragraph()
     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
     para.paragraph_format.keep_with_next = True      # the line below stays on the picture's page
     shape = para.add_run().add_picture(BytesIO(png), width=CHART_WIDTH)
     shape._inline.docPr.set("descr", caption)
     small_line(doc, CHART_NOT_VERIFIED)
+    return lead_in
 
 
 def _add_blocks(doc, review: CoordinatorReview, charts_root: Optional[Union[Path, str]] = None,
-                uploads: Optional[dict[str, tuple[bytes, str, str]]] = None) -> None:
+                inputs_root: Optional[Union[Path, str]] = None) -> None:
     section = review.section
     chart_after: dict[str, list[str]] = section.get("chart_after") or {}
     charts = {b["caption"]: b for b in section.get("blocks", []) if b.get("kind") == "chart"}
+    slots = {b["caption"]: b for b in section.get("blocks", []) if b.get("kind") == chart_uploads.SLOT_KIND}
 
     def place(captions: list[str]) -> None:
+        printed = None
         for caption in captions:
-            _chart(doc, caption, charts.get(caption), review, charts_root, (uploads or {}).get(caption))
+            printed = _chart(doc, caption, charts.get(caption), review, charts_root, slots.get(caption), inputs_root, printed)
 
     placed: set[str] = set()
     for block in real_estate_layout(section, WEEKLY):
@@ -482,12 +520,11 @@ def build_weekly_document(reviews: list[tuple[SectionSpec, CoordinatorReview]], 
     executive_summary(doc, SUMMARY_HEADING, [(HEADINGS.get(spec.slug, spec.title), summary_text(review.section))
                                              for spec, review in reviews])
 
-    uploads = _uploaded_charts(export_week(period, reviews), inputs_root)
     for spec, review in reviews:
         doc.add_heading(HEADINGS.get(spec.slug, spec.title), level=1)
         section = review.section
         if "blocks" in section:
-            _add_blocks(doc, review, charts_root, uploads)
+            _add_blocks(doc, review, charts_root, inputs_root)
         else:
             _add_digital_payments(doc, section)
     return doc
@@ -553,6 +590,7 @@ def write_weekly_report(db_path: Optional[Union[Path, str]], period: str, out_di
                         inputs_root: Optional[Union[Path, str]] = None) -> Path:
     """Write the week's approved report and return its path.  ExportNotAllowed unless every section is approved."""
     reviews = require_all_approved(weekly_reviews(db_path, period, today))
+    require_charts_unchanged(reviews, inputs_root)
     folder = export_dir(out_dir)
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / file_name(period, focus_title(reviews, typed_first=True))

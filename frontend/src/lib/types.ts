@@ -76,6 +76,8 @@ export interface ClaimContext {
   was?: string;
   /** A sentence the reviewer took out: when. */
   removed_at?: string;
+  /** A chart slot's item: the slot, its week and the uploaded file's name (null when no image was uploaded). */
+  chart_upload?: { key: string; week_ending: string; file_name: string | null };
 }
 
 export interface ReviewItem {
@@ -457,12 +459,14 @@ export interface ChartUpload {
   key: string;
   section: string;
   title: string;
-  default_lead_in: string;
+  /** The sentence printed above the chart when none is typed, dated from the week. */
+  template_lead_in: string;
   lead_in: string;
   source: string;
   has_image: boolean;
   type: "png" | "jpeg" | null;
   size: number | null;
+  file_name: string | null;
 }
 
 /** Where a value came from while it is still what was carried from last week's form, or what was suggested. */

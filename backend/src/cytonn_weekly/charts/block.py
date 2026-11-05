@@ -45,6 +45,7 @@ from cytonn_weekly.weekly.workbook import Workbook
 CHART_SCOPE = "chart"             # Flag.scope of every chart flag
 CHART_ITEM = "chart"              # ReviewItem.kind of every chart item
 STALE_FLAG = "stale"              # the newest point is older than the chart allows
+SLOT_KIND = "chart_slot"          # one per chart slot of a section (weekly/chart_uploads.slot_blocks); flags kept on it
 SERIES_DEFECT_FLAG = "series_defect"   # anything else wrong with the series or the AVERAGE cell
 
 POINT, AVERAGE, FRESHNESS, DEFECTS, SOURCE = "point", "average", "freshness", "defects", "source"
