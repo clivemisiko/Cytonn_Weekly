@@ -244,11 +244,15 @@ def equities_workbook_bytes(week: Week = WEEK, updated: bool = True) -> bytes:
               "Current Tangible Book Value (bn) FY'2025", "DPS", "EPS", "Tangible Book Value (bn) FY'2025"]
     ws.append([None, None, "Kenya Shilling"])
     ws.append(heads)
+    # The w/w, m/m and YTD cells hold formulas, as the team's do: the reader locates the price columns by them.
+    now, opened_col = ("G", "L") if updated else ("F", "K")
     for company, last_p, month_p, price, opened, target, dps, shares, tbv in UNIVERSE:
+        r = ws.max_row + 1
         row = [None, company, "Kenya Shilling", last_p - 1, last_p, month_p]
         if updated:
             row.append(price)
-        row += [None, None, None, opened - 5, opened, 1.0, target, None, None, None, None, None, shares, tbv, dps, 2.0, tbv]
+        row += [f"={now}{r}/E{r}-1", f"=({now}{r}/F{r})-1", f"={now}{r}/{opened_col}{r}-1", opened - 5, opened, 1.0, target,
+                None, None, None, None, None, shares, tbv, dps, 2.0, tbv]
         ws.append(row)
     ws.append([None, None])
     ws.append([None, "High"])

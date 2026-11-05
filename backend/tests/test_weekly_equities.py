@@ -433,8 +433,89 @@ def test_the_universe_of_coverage_reproduces_issue_38(tmp_path):
         assert rows[company]["target"] != dict(zip(COLUMNS, PRINTED_38[company]))["target"], company
 
 
-def universe_block_for(week, root):
+# The 30 October 2026 workbook's table, as published (previous price is the 23 Oct close, price the 30 Oct close).
+PRINTED_30_OCT = [
+    ("Co-op Bank", "36.8", "35.5", "(3.5%)", "(4.3%)", "48.5%", "23.9", "46.1", "7.0%", "36.9%", "1.3x", "Buy"),
+    ("NCBA", "88.0", "88.0", "0.0%", "(1.1%)", "3.5%", "85.0", "108.9", "8.1%", "31.9%", "1.2x", "Buy"),
+    ("ABSA Bank", "31.2", "30.0", "(4.0%)", "(9.7%)", "20.5%", "24.9", "36.8", "6.8%", "29.9%", "1.6x", "Buy"),
+    ("KCB Group", "85.3", "86.0", "0.9%", "(5.8%)", "30.8%", "65.8", "104.4", "8.1%", "29.5%", "0.9x", "Buy"),
+    ("Equity Group", "97.5", "95.0", "(2.6%)", "(9.3%)", "41.8%", "67.0", "113.5", "6.1%", "25.5%", "1.2x", "Buy"),
+    ("Stanbic Holdings", "272.0", "259.5", "(4.6%)", "(8.0%)", "31.2%", "197.8", "300.3", "8.6%", "24.3%", "1.5x", "Buy"),
+    ("Family Bank", "25.8", "27.2", "5.2%", "(6.2%)", "50.8%", "18.0", "32.5", "4.4%", "24.1%", "1.4x", "Buy"),
+    ("Standard Chartered Bank", "314.8", "304.8", "(3.2%)", "(3.9%)", "1.7%", "299.8", "345.8", "10.2%", "23.6%", "1.9x", "Buy"),
+    ("Diamond Trust Bank", "186.3", "179.3", "(3.8%)", "(5.2%)", "56.2%", "114.8", "199.5", "5.0%", "16.3%", "0.5x", "Accumulate"),
+    ("I&M Group", "81.3", "81.3", "0.0%", "(1.5%)", "89.8%", "42.8", "90.4", "4.6%", "15.9%", "1.3x", "Accumulate"),
+    ("Jubilee Holdings", "393.0", "396.8", "1.0%", "(0.8%)", "23.0%", "322.5", "420.5", "3.8%", "9.8%", "0.5x", "Hold"),
+    ("CIC Group", "5.1", "4.7", "(7.8%)", "(4.2%)", "4.4%", "4.5", "5.0", "2.7%", "7.4%", "1.2x", "Hold"),
+    ("Britam", "18.5", "18.1", "(2.2%)", "(4.0%)", "99.2%", "9.1", "18.5", "0.0%", "2.2%", "1.3x", "Lighten"),
+]
+
+
+def test_the_universe_of_coverage_reads_the_30_october_workbook_despite_its_shifted_columns_and_header_typos(tmp_path):
+    """New price columns moved every label (Year Open PE to PI, ...), and OV2/OW2 print 2027 and 2028 for 2026."""
+    week = Week(date(2026, 10, 30))
+    inputs.store(week, "equities_workbook", wh.sample("Equities Workbook 30.10.2026.vf (1).xlsx"), "Equities.xlsx", tmp_path)
+    warnings: list[str] = []
+    block = universe_block_for(week, tmp_path, warnings)
+    assert block["kind"] == "table"
+    assert [c["label"] for c in block["columns"][1:3]] == ["Price as at 23/10/2026", "Price as at 30/10/2026"]
+    assert [tuple(r[k] for k in ("company", *COLUMNS)) for r in block["rows"]] == PRINTED_30_OCT   # workbook order kept
+    assert "workbook's header OV2 reads 'Price as at 23/10/2027'" in " ".join(warnings)
+    assert "workbook's header OW2 reads 'Price as at 30/10/2028'" in " ".join(warnings)
+    assert "row 3 (prices OV3 and OW3, month-end OR3, Year Open PI3, target PK3, DPS PV3" in block["source_rows"][0]["_note"]
+
+
+def test_the_2_october_workbook_takes_last_friday_from_the_w_w_formula_not_the_month_end_column_beside_it(tmp_path):
+    """OR (30/09, the m/m base) sits between the two Fridays: w/w is OS/OQ, m/m is OS/OR."""
+    week = Week(date(2026, 10, 2))
+    inputs.store(week, "equities_workbook", wh.sample("Equities Workbook 02.10.2026.v6 (1).xlsx"), "Equities.xlsx", tmp_path)
+    warnings: list[str] = []
+    block = universe_block_for(week, tmp_path, warnings)
+    ncba = next(r for r in block["rows"] if r["company"] == "NCBA")
+    assert "prices OQ3 and OS3, month-end OR3, Year Open PE3" in next(r for r in block["source_rows"] if r["company"] == "NCBA")["_note"]
+    assert (ncba["last_price"], ncba["price"], ncba["wow"], ncba["mom"]) == ("89.8", "87.8", "(2.2%)", "(1.4%)")
+    assert not [w for w in warnings if "header" in w] and len(block["rows"]) == 13
+
+
+def _edited_universe(edit) -> bytes:
+    """The synthetic equities workbook with its 'Universe of Coverage' sheet changed by ``edit(ws, col_of)``."""
+    import io
+
+    from openpyxl import load_workbook
+    wb = load_workbook(io.BytesIO(wh.equities_workbook_bytes()))
+    ws = wb["Universe of Coverage"]
+    edit(ws, lambda label: next(c.column_letter for c in ws[2] if c.value == label))
+    out = io.BytesIO()
+    wb.save(out)
+    return out.getvalue()
+
+
+def test_a_mistyped_price_header_is_a_warning_naming_the_cell_and_the_table_is_still_drafted(tmp_path):
+    def mistype(ws, col_of):
+        ws[f"{col_of('Price as at 02/10/2026')}2"] = "Price as at 02/10/2028"
+    inputs.store(WEEK, "equities_workbook", _edited_universe(mistype), "Equities.xlsx", tmp_path)
+    warnings: list[str] = []
+    block = universe_block_for(WEEK, tmp_path, warnings)
+    assert block["kind"] == "table" and block["columns"][2]["label"] == "Price as at 02/10/2026"
+    assert warnings == ["Universe of Coverage: the workbook's header G2 reads 'Price as at 02/10/2028'; the column is this "
+                        "Friday's price, located by the workbook's own formulas, and the table prints 'Price as at "
+                        "02/10/2026'. Check the header in the workbook."]
+
+
+@pytest.mark.parametrize("edit, refusal", [
+    (lambda ws, col_of: ws.__setitem__(f"{col_of('DPS')}2", "Dividend"), "has no 'DPS' column to the right of its last price column"),
+    (lambda ws, col_of: ws.__setitem__("AD2", "DPS"), "has 'DPS' more than once to the right of its last price column: "),
+    (lambda ws, col_of: ws.__setitem__("H5", "=G5/D5-1"), "H5 (w/w change, Gamma Insurance, row 5) divides G by D, but row 3 divides G by E"),
+    (lambda ws, col_of: ws.__setitem__("I4", 0.01), "I4 (m/m change, Beta Bank) holds 0.01, not a formula"),
+])
+def test_a_missing_or_doubled_label_or_an_unreadable_formula_is_refused_by_name(tmp_path, edit, refusal):
+    inputs.store(WEEK, "equities_workbook", _edited_universe(edit), "Equities.xlsx", tmp_path)
+    block = universe_block_for(WEEK, tmp_path)
+    assert block["kind"] == "unavailable" and refusal in block["reason"], block["reason"]
+
+
+def universe_block_for(week, root, warnings=None):
     """The Universe of Coverage table alone, from the inputs stored under ``root``."""
     market = eqw.Market(week=week, inputs=inputs.WeeklyInputs(week, root), bulletin=None, rates={}, boxes={}, year_open_day=None,
                         afx=None, typed_indices=None)
-    return eqw.universe_block(market, [])
+    return eqw.universe_block(market, [] if warnings is None else warnings)

@@ -701,6 +701,7 @@ def universe_block(m: Market, warnings: list[str]) -> dict[str, Any]:
         return unavailable_block("universe_of_coverage", title, *form.why(analyst.EQ, ["universe"]))
     if data["month_end"] is None:
         return unavailable_block("universe_of_coverage", title, *form.why(analyst.EQ, ["universe_month_end"]))
+    warnings += data.get("warnings", [])
     week = m.week
     labels = {c.key: c.label.lower() for c in analyst.TABLES["universe"].columns}
     columns = [
