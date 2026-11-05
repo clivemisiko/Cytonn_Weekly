@@ -38,6 +38,7 @@ from cytonn_weekly.digital_payments.providers.base import (
 )
 
 N_HIGHLIGHTS = 4
+N_PRIORITY = 4  # the first four of HIGHLIGHT_COMPANIES
 OUTLOOK_LABEL = "Outlook paragraph"  # what a run's events call the closing paragraph
 ROMAN = ["I", "II", "III", "IV", "V", "VI"]
 
@@ -104,13 +105,13 @@ def draft_highlights(
 ) -> dict[str, Any]:
     """Draft the Weekly Highlights for the 7 days ending on ``today``.
 
-    Only the 5 HIGHLIGHT_COMPANIES are considered, in priority order (Visa,
-    Mastercard, American Express, PayPal, Circle); Block and Global Payments
-    never get a highlight.  For each company the provider searches the
+    Only the 5 HIGHLIGHT_COMPANIES are considered (Visa, Mastercard, American
+    Express, PayPal, then Circle); Block and Global Payments never get a
+    highlight.  For each company the provider searches the
     company's own investor relations site first, and the open web only if that
-    returned no story.  Companies are processed in priority order until 4
-    highlights are found, so lower-priority companies are searched only when a
-    higher-priority one has no news.
+    returned no story.  The first four companies (Visa, Mastercard, American
+    Express, PayPal) are always all searched and each one with a release
+    appears; any slots left up to 4 are filled from the other companies.
 
     ``provider`` defaults to ``get_provider()`` (CYTONN_LLM_PROVIDER, default
     Anthropic).
@@ -133,12 +134,8 @@ def draft_highlights(
 
     highlights: list[dict[str, Any]] = []
     warnings: list[str] = []
-    for company in HIGHLIGHT_COMPANIES:
-        if len(highlights) == N_HIGHLIGHTS:
-            warnings.append(
-                f"{company['name']}: not searched ({N_HIGHLIGHTS} higher-priority highlights already found)"
-            )
-            continue
+
+    def search(company: dict[str, Any], priority: bool) -> None:
         emit(on_event, PIECE_STARTED, company["name"])
         res = provider.find_highlight(
             company["name"],
@@ -152,10 +149,27 @@ def draft_highlights(
         warnings.extend(res.draft_warnings)
         if res.no_story:
             warnings.append(f"{company['name']}: no story found for the week (IR site or web)")
+            if priority and res.draft_warnings:
+                warnings.append(
+                    f"{company['name']}: a result was found but discarded (see the line above), so whether "
+                    f"{company['name']} released this week could not be confirmed; check its releases by hand"
+                )
             emit(on_event, PART_SKIPPED, company["name"], detail="No story found for the week (IR site or web).")
         else:
             highlights.append(_highlight_item(res))
             emit(on_event, PIECE_FINISHED, company["name"], detail=res.headline)
+
+    # The team's rule (5 Nov): the priority companies are all searched and any that released appears;
+    # the slots left up to N_HIGHLIGHTS are filled from the other companies, in order.
+    for company in HIGHLIGHT_COMPANIES[:N_PRIORITY]:
+        search(company, True)
+    for company in HIGHLIGHT_COMPANIES[N_PRIORITY:]:
+        if len(highlights) == N_HIGHLIGHTS:
+            warnings.append(
+                f"{company['name']}: not searched ({N_HIGHLIGHTS} higher-priority highlights already found)"
+            )
+        else:
+            search(company, False)
 
     shortfall = N_HIGHLIGHTS - len(highlights)
     if shortfall:

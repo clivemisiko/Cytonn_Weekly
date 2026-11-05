@@ -68,6 +68,8 @@ const error = ref<{ message: string; lostConnection: boolean } | null>(null);
 const uploads = ref(0);
 const typedPending = ref(false);
 const usesInputs = computed(() => props.report.type === "weekly" && !!props.week && USES_INPUTS.includes(props.section.slug));
+// Digital Payments has no analyst form; its panel holds the optional workbook upload alone.
+const showsInputs = computed(() => usesInputs.value || (props.report.type === "weekly" && !!props.week && props.section.slug === "digital_payments"));
 // Company Updates and the Executive Summary call no LLM: no API budget, no key needed, no draft slot.
 const llm = computed(() => props.section.uses_provider);
 const providerBlocked = computed(() => providerOff(llm.value, props.config));
@@ -404,8 +406,8 @@ const lists = computed(() => [
       </div>
 
       <template #aside>
-        <InputsPanel v-if="usesInputs && week" :key="week" :week="week" :section="section.slug" :disabled="starting" @week="(w) => emit('week', w)" @change="uploads++" />
-        <div class="space-y-6" :class="usesInputs && week && 'border-t pt-6'">
+        <InputsPanel v-if="showsInputs && week" :key="week" :week="week" :section="section.slug" :disabled="starting" @week="(w) => emit('week', w)" @change="uploads++" />
+        <div class="space-y-6" :class="showsInputs && week && 'border-t pt-6'">
           <section aria-labelledby="flow-title">
             <h2 id="flow-title" class="pb-4 text-lg font-semibold">What a run does</h2>
             <ol>
