@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import { useRouter } from "vue-router";
+import { computed, ref, watch } from "vue";
+import { RouterLink, useRouter } from "vue-router";
 import Button from "@/components/ui/Button.vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import { LINK } from "@/components/ui/button";
 import * as api from "@/lib/api";
-import { isDraftingThis, providerOff, slotTaken, useDraftingPoll, useLiveElapsed } from "@/lib/drafting";
+import { isDraftingThis, providerOff, reattachHref, runHref, slotTaken, useDraftingPoll, useLiveElapsed } from "@/lib/drafting";
 import { elapsed, friendlyTime, weekRange } from "@/lib/format";
 import { draftChartsNote } from "@/lib/charts";
 import { redraftNotes } from "@/lib/redraft";
@@ -90,6 +90,10 @@ useDraftingPoll(serverDrafting, onServerOverview, () => props.report, () => !sta
 const blocked = computed(() => slotTaken(llm.value, serverDrafting.value));
 const mine = computed(() => isDraftingThis(serverDrafting.value, props.section.slug, props.report));
 const seconds = useLiveElapsed(serverDrafting);
+// This section's own draft is running (left and come back, a reload, or started in another tab): its run page shows the
+// steps and the counter, so go there instead of offering a draft. Replace, so Back does not return to this screen.
+const resume = computed(() => (llm.value && !starting.value ? reattachHref(serverDrafting.value, props.section.slug, props.report) : null));
+watch(resume, (to) => to && void router.replace(to), { immediate: true });
 const cannotDraft = computed(
   () => starting.value || blocked.value || providerBlocked.value || inputMissing.value || topicOver.value || !!sectionsError.value || (usesInputs.value && typedPending.value),
 );
@@ -190,7 +194,8 @@ const lists = computed(() => [
 
     <!-- The panel is first in the page's order: what is uploaded and typed there is what the form and the draft button use.
          It is never folded (it holds the uploads' warnings) and, being tall, it does not stick. -->
-    <PageGrid aside-title="Inputs and steps" hide-title aside-first wide-body :sticky="false">
+    <p v-if="resume" role="status" class="mx-auto w-full max-w-275 px-4 py-8 text-sm sm:px-6">Opening the draft that is running…</p>
+    <PageGrid v-else aside-title="Inputs and steps" hide-title aside-first wide-body :sticky="false">
       <div class="space-y-8">
         <AnalystPanel v-if="usesInputs && week" :key="`analyst-${week}`" :week="week" :section="section.slug" :disabled="starting" :refresh="uploads" @pending="(p) => (typedPending = p)" />
         <section aria-labelledby="start-title" class="space-y-6 rounded-lg border border-t-[3px] border-t-primary bg-card p-6">
@@ -257,9 +262,9 @@ const lists = computed(() => [
             <template v-if="serverDrafting && !starting && llm">
               <Notice v-if="serverDrafting.stale" tone="warn" role="status">
                 <span class="font-semibold">
-                  {{ mine ? "This section" : serverDrafting.title }} has been drafting for
+                  This draft appears to have stopped. {{ mine ? "This section" : serverDrafting.title }} has been drafting for
                   <span class="font-mono tabular-nums">{{ elapsed(seconds) }}</span></span
-                >, longer than any healthy draft takes, and looks stuck. Starting a draft replaces it; its result will be discarded.
+                >, longer than any healthy draft takes. Starting a draft replaces it; its result will be discarded.
               </Notice>
               <Notice v-else tone="info" role="status">
                 <span class="font-semibold">
@@ -271,6 +276,7 @@ const lists = computed(() => [
                     ? "It is saved when it finishes, and this screen then offers it for review."
                     : "Only one draft runs at a time, across every section; drafting here unlocks when it finishes."
                 }}
+                <RouterLink v-if="!mine && runHref(serverDrafting)" :to="runHref(serverDrafting)!" :class="LINK">View its progress</RouterLink>
               </Notice>
             </template>
 

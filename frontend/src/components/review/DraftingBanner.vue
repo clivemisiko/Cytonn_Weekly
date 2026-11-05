@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { PhCircleNotch } from "@phosphor-icons/vue";
-import { useLiveElapsed } from "@/lib/drafting";
+import { RouterLink } from "vue-router";
+import { LINK } from "@/components/ui/button";
+import { runHref, useLiveElapsed } from "@/lib/drafting";
 import { elapsed, friendlyTime } from "@/lib/format";
 import type { Drafting } from "@/lib/types";
 import Notice from "./Notice.vue";
@@ -14,6 +16,7 @@ const seconds = useLiveElapsed(() => props.drafting);
     <span class="font-semibold">{{ drafting.title }} has been drafting for {{ elapsed(seconds) }}</span> (started
     {{ friendlyTime(drafting.started_at) }}), longer than any healthy draft takes. It looks stuck: the next draft started, in
     any section, replaces it, and its result will be discarded.
+    <RouterLink v-if="runHref(drafting)" :to="runHref(drafting)!" :class="LINK">View progress</RouterLink>
   </Notice>
   <div v-else role="status" class="flex flex-col gap-2 rounded-lg border border-input bg-muted px-4 py-3 sm:flex-row sm:items-center sm:gap-4">
     <span class="flex shrink-0 items-center gap-2 text-sm font-semibold whitespace-nowrap">
@@ -25,5 +28,6 @@ const seconds = useLiveElapsed(() => props.drafting);
       Started {{ friendlyTime(drafting.started_at) }}. One draft runs at a time, across every section; it is saved and shows
       below when it finishes.
     </span>
+    <RouterLink v-if="runHref(drafting)" :to="runHref(drafting)!" :class="[LINK, 'shrink-0 text-sm font-semibold']">View progress</RouterLink>
   </div>
 </template>

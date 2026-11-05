@@ -60,14 +60,25 @@ export function draftAgainOff(s: SectionSummary, drafting: Drafting | null, conf
   return `${isDraftingThis(drafting, s.slug, report) ? "This section is" : `${drafting?.title} is`} drafting now. Only one draft runs at a time, across every section.`;
 }
 
-/** The server's elapsed seconds, counted on locally between polls (the browser's clock never enters into it). */
-export function useLiveElapsed(drafting: MaybeRefOrGetter<Drafting | null>) {
+/** The page of a running draft (its steps and counter), or null when the server named no run for it. */
+export const runHref = (drafting: Drafting | null) => (drafting?.run_id ? `/runs/${drafting.run_id}` : null);
+
+/** Where a section's screen goes when its own draft is already running: the run's page, unless that draft looks stuck. */
+export const reattachHref = (drafting: Drafting | null, slug: string, report: ReportChoice) =>
+  drafting && !drafting.stale && isDraftingThis(drafting, slug, report) ? runHref(drafting) : null;
+
+/**
+ * The server's elapsed seconds as of the last read, counted on locally from then (never from when the page mounted, so
+ * it is right after leaving and coming back, or a reload). A stuck draft is not counted on: its count stays where the
+ * server put it.
+ */
+export function useLiveElapsed(drafting: MaybeRefOrGetter<{ elapsed_seconds: number; stale?: boolean } | null>) {
   const extra = ref(0);
   watch(
     () => toValue(drafting),
     (now, _before, onCleanup) => {
       extra.value = 0; // each poll brings a fresh server count; count on from that
-      if (!now) return;
+      if (!now || now.stale) return;
       const received = Date.now();
       const id = setInterval(() => (extra.value = Math.floor((Date.now() - received) / 1000)), 1000);
       onCleanup(() => clearInterval(id));

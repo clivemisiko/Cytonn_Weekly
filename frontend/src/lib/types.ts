@@ -677,6 +677,9 @@ export interface Run {
   is_dev_draft: boolean | null;
   dev_mode_label: string | null;
   events: RunEvent[];
+  /** Only while running: the server's count of seconds since it started, and whether that is past the stuck limit. */
+  elapsed_seconds?: number;
+  stale?: boolean;
 }
 
 // ---- The overview (GET /api/sections) ----
@@ -732,6 +735,8 @@ export interface Drafting {
   /** Ran past `stale_after_seconds`: treated as stuck, and the next draft replaces it. */
   stale: boolean;
   stale_after_seconds: number;
+  /** The running draft's run, whose page shows its steps; null for a draft the synchronous route runs. */
+  run_id?: string | null;
 }
 
 export interface Overview {
