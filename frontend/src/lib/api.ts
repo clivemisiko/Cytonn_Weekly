@@ -1,4 +1,5 @@
 import type {
+  AddedSource,
   AnalystForm,
   AnalystRow,
   AppConfig,
@@ -16,6 +17,8 @@ import type {
   Review,
   Run,
   SentenceResult,
+  SourceInput,
+  SourcesListing,
   WeeklyInputs,
 } from "./types";
 
@@ -166,6 +169,39 @@ export const startRun = (
     method: "POST",
     body: JSON.stringify({ ...input, section: slug, report_type: report.type, period: report.period || null, kind: report.kind }),
   });
+
+const sourcesQuery = (slug: string, report: ReportChoice, sections?: string) => {
+  const q = new URLSearchParams(reportQuery(report));
+  q.set("section", slug);
+  if (sections?.trim()) q.set("sections", sections);
+  return q;
+};
+
+/** A section's pieces with the sources supplied for each (Bedrock drafts are written only from these). `sections` is a Focus's typed titles. */
+export const getSources = (slug: string, report: ReportChoice, sections?: string) =>
+  request<SourcesListing>(`/api/sources?${sourcesQuery(slug, report, sections)}`);
+
+/** Supply one source for one piece: a url alone is fetched (approved sites only), a url with a date and text is kept as pasted. A refusal is a plain sentence. */
+export const addSource = (slug: string, report: ReportChoice, subject: string, input: SourceInput, sections?: string) =>
+  request<AddedSource>("/api/sources", {
+    method: "POST",
+    body: JSON.stringify({
+      section: slug,
+      subject,
+      report_type: report.type,
+      period: report.period || null,
+      sections: sections?.trim() ? sections : null,
+      url: input.url,
+      date: input.date || null,
+      text: input.text || null,
+      title: input.title || null,
+    }),
+  });
+
+export const removeSource = (id: string) => request<{ removed: string }>(`/api/sources/${encodeURIComponent(id)}`, { method: "DELETE" });
+
+/** Where one source's saved text is served as plain text (a link, never fetched by the app). */
+export const sourceTextUrl = (id: string) => `${API_BASE}/api/sources/${encodeURIComponent(id)}/text`;
 
 /** A run's status, events so far, and (once finished) its saved review. 404 once the API has restarted. */
 export const getRun = (runId: string) => request<Run>(`/api/runs/${encodeURIComponent(runId)}`);

@@ -77,6 +77,66 @@ export interface ClaimContext {
   was?: string;
   /** A sentence the reviewer took out: when. */
   removed_at?: string;
+  /** A claim quoted from a supplied source (Bedrock): which saved source, its fingerprint, and where and when it is from. */
+  source_id?: string;
+  sha256?: string;
+  fetched_at?: string;
+  host?: string;
+  published_date?: string;
+  origin?: "fetched" | "pasted";
+  source_flags?: string[];
+}
+
+// ---- Supplied sources (GET/POST/DELETE /api/sources) ----
+
+export interface SourceMeta {
+  id: string;
+  subject: string;
+  /** The Friday the source is filed under. */
+  week_end: string;
+  url: string;
+  host: string;
+  title: string;
+  /** YYYY-MM-DD, or "" when the page does not say and nobody typed it. */
+  published_date: string;
+  /** UTC with an offset; shown in East Africa Time. */
+  fetched_at: string;
+  origin: "fetched" | "pasted";
+  sha256: string;
+  chars: number;
+  flags: string[];
+}
+
+export interface SourcePiece {
+  subject: string;
+  end: string;
+  week_end: string;
+  sources: SourceMeta[];
+}
+
+export interface SourcesListing {
+  section: string;
+  title: string;
+  /** False for a section that is not written from sources (Company Updates, the Executive Summary). */
+  uses_sources: boolean;
+  pieces: SourcePiece[];
+  approved_sites: string[];
+}
+
+export interface AddedSource {
+  source: SourceMeta;
+  subject: string;
+  end: string;
+  week_end: string;
+  sources: SourceMeta[];
+}
+
+/** What one source is added with: a url alone is fetched, a url with a date and text is kept as pasted. */
+export interface SourceInput {
+  url: string;
+  date?: string;
+  text?: string;
+  title?: string;
 }
 
 export interface ReviewItem {
