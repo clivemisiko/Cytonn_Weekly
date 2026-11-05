@@ -1,24 +1,30 @@
 from __future__ import annotations
 
+import copy
 import importlib.util
 import json
 import logging
 import os
+import re
 from datetime import date
-from typing import Any, Optional, Sequence
+from typing import Any, Callable, Optional, Sequence
 
 import anthropic
 
+from cytonn_weekly.common import sources as source_store
+from cytonn_weekly.common.checks import check_sourced_claim
 from cytonn_weekly.digital_payments.providers.base import (
     OUTLOOK_SYSTEM,
     DraftingProvider,
     HighlightResult,
     OutlookResult,
     outlook_user_message,
+    strip_links,
 )
 from cytonn_weekly.digital_payments.providers.drafting import (
     HIGHLIGHT_SYSTEM,
     RESPONSE_SCHEMA,
+    ClaimReader,
     highlight_from_reply,
     narrative_system,
     piece_from_reply,
@@ -52,6 +58,25 @@ CREDENTIALS_MISSING = ("Drafting with Amazon Bedrock needs AWS credentials, and 
 BOTO3_MISSING = (f"Signing Bedrock requests with access keys needs boto3, which is not installed in this build. Use {BEARER_VAR}, "
                  "or rebuild the image from the current pyproject.toml.")
 NO_SOURCES = "No sources were supplied for this piece, so nothing was drafted. Supply the pages to read."
+NO_VERIFIED_CLAIMS = ("No claim in the draft held up against the supplied sources (each failed claim is listed in the "
+                      "warnings), so nothing was kept. Check the pages, or supply others.")
+SOURCE_CHARS = 12_000   # the most of one source's text the model is shown; the quote check reads the whole saved text
+
+# The shared prompts end their claim step with "the exact URL of the search result that supports it". Here the reply
+# cites a saved source by its id and quotes it, and code checks both (common/checks.check_sourced_claim).
+_STEP3 = re.compile(r"Step 3 - [^\n]*(?:\n(?!\n)[^\n]*)*")
+SOURCED_STEP3 = (
+    "Step 3 - claims: list every factual claim in your text. For each give text (the claim as you wrote it), quote (a "
+    "passage copied word for word from ONE supplied source, long enough to hold every figure and name in the claim, "
+    "never reworded and never joined from two places) and source_id (the Source id of that source, exactly as given). "
+    "Every number in a claim must appear in its quote, and your text must contain no number that is not inside one of "
+    "your quotes. Leave out of the text, and out of the claims, anything you cannot quote word for word.")
+SOURCED_SCHEMA = copy.deepcopy(RESPONSE_SCHEMA)
+SOURCED_SCHEMA["properties"]["claims"]["items"] = {
+    "type": "object",
+    "properties": {"text": {"type": "string"}, "quote": {"type": "string"}, "source_id": {"type": "string"}},
+    "required": ["text", "quote", "source_id"],
+}
 
 
 class BedrockError(RuntimeError):
@@ -76,14 +101,16 @@ def boto3_installed() -> bool:
     return importlib.util.find_spec("boto3") is not None
 
 
-def sources_for(subject: str, week_end: date) -> list[dict[str, str]]:
-    """The pages a piece is written from: dicts with url, title, text and publishedDate (the shape of a search result).
+def sources_for(subject: str, week_end: date) -> list[dict[str, Any]]:
+    """The pages a piece is written from: dicts with url, title, text and publishedDate (the shape of a search result)
+    plus the source's id, sha256, fetched_at, host, origin and flags.
 
-    The one place Bedrock gets its material. It is code, never the model: no search, no fetch tool, no open web.
-    ponytail: returns nothing until step 2b, which reads the coordinator's supplied pages and fetches from the approved
-    sites. With nothing, a piece is unavailable and says so. ``subject`` is a brief's label or a company name.
+    The one place Bedrock gets its material, and it only reads the saved sources (common/sources.py): no search, no
+    fetch and no network call happens here or anywhere on this path. ``subject`` is a brief's label or a company name;
+    ``week_end`` is the end of the window the draft gives the provider, filed under the Friday on or before it. A saved
+    file that changed since it was saved raises SourceError, which is a plain sentence.
     """
-    return []
+    return [s.as_result() for s in source_store.list_for(subject, week_end)]
 
 
 def env_problem() -> Optional[str]:
@@ -214,9 +241,59 @@ class _Chat:
     def _written_by(self) -> str:
         return f"Written by Amazon Bedrock ({self.model}) from the supplied sources."
 
+    def _write(self, empty: HighlightResult, label: str, system: str, results: list[dict[str, Any]],
+               max_tokens: Optional[int],
+               parse: Callable[[str, list[str], ClaimReader], Optional[HighlightResult]]) -> HighlightResult:
+        """The call both drafting providers make once they hold sources: the draft, or ``empty`` saying why not."""
+        warnings = [f"{label}: only the first {SOURCE_CHARS:,} characters of {r['host']} were shown to the model"
+                    for r in results if len(" ".join(r["text"].split())) > SOURCE_CHARS]
+        raw = self._chat(
+            [{"role": "system", "content": _sourced(system)},
+             {"role": "user", "content": results_message(label, results, "Supplied sources", SOURCE_CHARS)}],
+            SOURCED_SCHEMA, max_tokens)
+        res = parse(raw, warnings, _sourced_reader(results))
+        if res is None:
+            empty.draft_warnings = warnings
+            return empty
+        if not res.claims:   # nothing in it traces to a quote, so none of it is kept
+            empty.draft_warnings = warnings + res.warnings + [f"{label}: {NO_VERIFIED_CLAIMS}"]
+            empty.reason = NO_VERIFIED_CLAIMS
+            return empty
+        res.warnings.append(self._written_by())
+        res.draft_warnings = warnings
+        return res
 
-def _supplied(system: str) -> str:
+
+def _sourced(system: str) -> str:
+    """A shared drafting prompt made to speak of supplied sources, with the claim step that asks for a quote."""
+    system, n = _STEP3.subn(lambda _m: SOURCED_STEP3, system)
+    if n != 1:
+        raise RuntimeError("the shared drafting prompt no longer has exactly one claim step to replace")
     return system.replace("search results", "supplied sources")
+
+
+def _sourced_reader(results: list[dict[str, Any]]) -> ClaimReader:
+    """Reads a claim of the reply only if it holds against the source it cites; otherwise drops it, saying why."""
+    by_id = {r["id"]: r for r in results if r.get("id")}
+    texts = {i: r["text"] for i, r in by_id.items()}
+
+    def read(c: dict[str, Any], by_url: dict[str, dict[str, Any]], hl: list[str]) -> Optional[dict[str, Any]]:
+        text = strip_links((c.get("text") or c.get("claim") or "").strip())
+        if not text:
+            return None
+        quote = " ".join(str(c.get("quote") or "").split())
+        sid = str(c.get("source_id") or "").strip().strip("[]").casefold()
+        why = check_sourced_claim(text, quote, sid, texts)
+        if why:
+            hl.append(f"claim dropped, {why}: {text[:90]}")
+            return None
+        r = by_id[sid]
+        return {"text": text, "url": r["url"], "title": r.get("title") or "", "cited_text": quote, "source_id": sid,
+                "sha256": r.get("sha256", ""), "fetched_at": r.get("fetched_at", ""), "host": r.get("host", ""),
+                "published_date": r.get("publishedDate") or "", "origin": r.get("origin", ""),
+                "source_flags": list(r.get("flags") or [])}
+
+    return read
 
 
 class BedrockProvider(_Chat, DraftingProvider):
@@ -233,20 +310,11 @@ class BedrockProvider(_Chat, DraftingProvider):
             empty.draft_warnings = [f"{company}: {NO_SOURCES}"]
             empty.reason = NO_SOURCES
             return empty
-        warnings: list[str] = []
-        raw = self._chat(
-            [{"role": "system", "content": _supplied(HIGHLIGHT_SYSTEM.replace("{company}", company))},
-             {"role": "user", "content": results_message(company, results, "Supplied sources")}],
-            RESPONSE_SCHEMA)
-        res = highlight_from_reply(raw, company, ir_domain, SCOPE_SUPPLIED, list(aliases or [company]), results,
-                                   warnings, who=self.WHO, label=self.LABEL, drafted_by=self.drafted_by,
-                                   where=WHERE_SUPPLIED)
-        if res is None:
-            empty.draft_warnings = warnings
-            return empty
-        res.warnings.append(self._written_by())
-        res.draft_warnings = warnings
-        return res
+        return self._write(
+            empty, company, HIGHLIGHT_SYSTEM.replace("{company}", company), results, None,
+            lambda raw, warnings, read: highlight_from_reply(
+                raw, company, ir_domain, SCOPE_SUPPLIED, list(aliases or [company]), results, warnings, who=self.WHO,
+                label=self.LABEL, drafted_by=self.drafted_by, where=WHERE_SUPPLIED, read_claim=read))
 
     def draft_outlook(self, table_stats: dict[str, Any], highlights: list[dict[str, Any]]) -> OutlookResult:
         text = self._chat(
@@ -267,19 +335,11 @@ class BedrockNarrativeProvider(_Chat, NarrativeProvider):
             empty.draft_warnings = [f"{brief.label}: {NO_SOURCES}"]
             empty.reason = NO_SOURCES
             return empty
-        warnings: list[str] = []
-        raw = self._chat(
-            [{"role": "system", "content": _supplied(narrative_system(brief))},
-             {"role": "user", "content": results_message(brief.label, results, "Supplied sources")}],
-            RESPONSE_SCHEMA, brief.max_tokens)
-        res = piece_from_reply(raw, brief, SCOPE_SUPPLIED, results, warnings,
-                               who=self.WHO, label=self.LABEL, drafted_by=self.drafted_by, where=WHERE_SUPPLIED)
-        if res is None:
-            empty.draft_warnings = warnings
-            return empty
-        res.warnings.append(self._written_by())
-        res.draft_warnings = warnings
-        return res
+        return self._write(
+            empty, brief.label, narrative_system(brief), results, brief.max_tokens,
+            lambda raw, warnings, read: piece_from_reply(
+                raw, brief, SCOPE_SUPPLIED, results, warnings, who=self.WHO, label=self.LABEL,
+                drafted_by=self.drafted_by, where=WHERE_SUPPLIED, read_claim=read))
 
     def complete(self, system: str, prompt: str, *, max_tokens: int) -> str:
         messages = [{"role": "system", "content": system}, {"role": "user", "content": prompt}]

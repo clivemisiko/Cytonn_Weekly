@@ -42,8 +42,11 @@ BRIEF = NarrativeBrief(id="lending", section="Real Estate", label="Mortgage lend
 # Values have spaces on purpose: they can never be mistaken for, or be, a real credential.
 SECRETS = {"AWS_ACCESS_KEY_ID": "not a real key id", "AWS_SECRET_ACCESS_KEY": "not a real secret",
            "AWS_SESSION_TOKEN": "not a real session token", "AWS_BEARER_TOKEN_BEDROCK": "not a real bearer token"}
-PAGE = {"url": URL, "title": "Release", "text": "Visa paid $5 million for a thing. Loans rose 8.75% in 2026.",
-        "publishedDate": "2026-09-29"}
+SID = "a1b2c3d4"
+PAGE = {"id": SID, "url": URL, "title": "Release", "text": "Visa paid $5 million for a thing. Loans rose 8.75% in 2026.",
+        "publishedDate": "2026-09-29", "sha256": "f" * 64, "fetched_at": "2026-11-06T10:00:00+00:00",
+        "host": "investor.example.com", "origin": "pasted", "flags": []}
+QUOTE = "paid $5 million for a thing"
 SEAM_AS_SHIPPED = bp.sources_for   # before any test replaces it
 
 
@@ -61,7 +64,7 @@ def aws(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def pages(monkeypatch):
-    """One supplied page for every subject, standing in for step 2b; the tests of the empty seam put the real one back."""
+    """One supplied page for every subject, standing in for the saved sources; the tests of the real seam put it back."""
     monkeypatch.setattr(bp, "sources_for", lambda subject, week_end: [dict(PAGE)])
 
 
@@ -71,7 +74,8 @@ TEXT = {"propose the section titles": "Overview of the topic\nMarket performance
 
 
 class FakeBedrock:
-    """What ``client.messages.create`` is: a forced-tool call gets a draft that cites one shown and one unseen URL."""
+    """What ``client.messages.create`` is: a forced-tool call gets a draft with one claim quoted from the supplied page
+    and one that cites a source that was not supplied."""
 
     def __init__(self, error=None, stop="tool_use"):
         self.calls, self.messages, self.error, self.stop = [], self, error, stop
@@ -86,7 +90,8 @@ class FakeBedrock:
                          f"[more]({UNSEEN}) was said.")
             reply = {"is_genuine_announcement": True, "reasoning": "x", "headline": f"{subject} announces a thing",
                      "paragraph": paragraph,
-                     "claims": [{"claim": f"{subject} paid $5 million", "url": URL}, {"claim": "unseen", "url": UNSEEN}]}
+                     "claims": [{"text": f"{subject} paid $5 million", "quote": QUOTE, "source_id": SID},
+                                {"text": "unseen", "quote": "x", "source_id": "ffffffff"}]}
             return NS(stop_reason=self.stop, content=[NS(type="tool_use", input=reply)])
         said = next((v for k, v in TEXT.items() if k in kw.get("system", "")), "Outlook: the sector gained $2 billion.")
         return NS(stop_reason="end_turn", content=[NS(type="text", text=said)])
@@ -122,12 +127,13 @@ def test_the_ollama_speed_settings_have_no_say_over_a_bedrock_draft(aws, monkeyp
     monkeypatch.setenv("CYTONN_LOCAL_MAX_SEARCH_RESULTS", "1")
     monkeypatch.setenv("CYTONN_LOCAL_RESULT_CHARS", "500")
     monkeypatch.setattr(bp, "sources_for", lambda subject, week_end: [
-        {"url": f"{URL}/{i}", "title": str(i), "text": "word " * 400, "publishedDate": ""} for i in range(3)])
+        {**PAGE, "id": f"0000000{i}", "url": f"{URL}/{i}", "title": str(i), "text": "word " * 400, "publishedDate": ""}
+        for i in range(3)])
     client = FakeBedrock()
     p = bp.BedrockNarrativeProvider(client=client)
     p.draft_piece(BRIEF, start=START, end=TODAY, today=TODAY)
     sent = client.calls[0]["messages"][-1]["content"]
-    assert not hasattr(p, "settings") and sent.count("[Result") == 3 and len(sent) > 3 * 1900
+    assert not hasattr(p, "settings") and sent.count("[Source ") == 3 and len(sent) > 3 * 1900
 
 
 # --- independent of the local providers and of Exa -------------------------------------------------
@@ -163,13 +169,16 @@ def test_a_narrative_piece_has_claims_links_and_flags_as_a_local_one_does_and_dr
     p = bp.BedrockNarrativeProvider(client=client)
     res = p.draft_piece(BRIEF, start=START, end=TODAY, today=TODAY)
     assert res.drafted_by == f"bedrock:{MODEL}" and not res.no_story
-    assert res.claims == [{"text": "Mortgage lending paid $5 million", "url": URL, "title": "Release", "cited_text": ""}]
+    assert res.claims == [{"text": "Mortgage lending paid $5 million", "url": URL, "title": "Release", "cited_text": QUOTE,
+                           "source_id": SID, "sha256": "f" * 64, "fetched_at": "2026-11-06T10:00:00+00:00",
+                           "host": "investor.example.com", "published_date": "2026-09-29", "origin": "pasted",
+                           "source_flags": []}]
     assert res.links == [{"anchor": "Mortgage lending", "url": URL}]
     assert UNSEEN not in res.paragraph_md and "more" in res.paragraph
-    assert any("claim cited a URL not in the supplied sources; dropped" in w for w in res.warnings)
+    assert any("claim dropped, source ffffffff is not one of the supplied sources: unseen" in w for w in res.warnings)
     assert any("link to " + UNSEEN + " was not in the supplied sources; unlinked" in w for w in res.warnings)
     assert not any("search results" in w for w in res.warnings)
-    assert "Bedrock provider: claims carry no cited_text" in " ".join(res.warnings)
+    assert "claims carry no cited_text" not in " ".join(res.warnings)   # these claims do: their verified quote
     assert f"Written by Amazon Bedrock ({MODEL}) from the supplied sources." in res.warnings
     assert not any("Exa" in w for w in res.warnings) and res.search_scope == bp.SCOPE_SUPPLIED
 
@@ -183,6 +192,10 @@ def test_the_call_is_a_forced_client_side_function_with_no_server_tool_and_no_co
     assert [t["name"] for t in call["tools"]] == [bp.DRAFT_TOOL] == ["submit_draft"] and "type" not in call["tools"][0]
     assert call["messages"][0]["role"] == "user" and "Supplied sources:" in call["messages"][0]["content"]
     assert "search results" not in call["system"] and "Search results" not in call["messages"][0]["content"]
+    claim = call["tools"][0]["input_schema"]["properties"]["claims"]["items"]
+    assert claim["required"] == ["text", "quote", "source_id"]            # the reply quotes and names its source
+    assert "word for word" in call["system"] and "exact URL" not in call["system"]
+    assert f"Source id: {SID}" in call["messages"][0]["content"] and "[Source 1]" in call["messages"][0]["content"]
     assert set(call) == {"model", "max_tokens", "messages", "system", "tools", "tool_choice"}   # no other tool or option
     assert "web_search" not in json.dumps(call) and len(client.calls) == 1
 
@@ -353,7 +366,7 @@ def test_an_exa_key_override_is_reported_for_the_local_provider_only(monkeypatch
 
 # --- the source seam ---------------------------------------------------------------------------------
 
-def test_the_seam_as_shipped_returns_no_sources():
+def test_the_seam_as_shipped_returns_nothing_when_nothing_is_saved():
     assert SEAM_AS_SHIPPED("Mortgage lending", TODAY) == []
 
 

@@ -88,6 +88,7 @@ from cytonn_weekly.digital_payments.coordinator_review import (
     CLEAN,
     FLAGGED,
     NOT_AUTO_VERIFIED,
+    SOURCE_KEYS,
     TABLE_ROW,
     CoordinatorReview,
     ReviewItem,
@@ -291,6 +292,7 @@ def _short(text: str) -> str:
 
 def _claim_context(claim: dict[str, Any]) -> dict[str, Any]:
     context = {k: claim.get(k, "") for k in ("text", "url", "title", "cited_text")}
+    context.update({k: claim[k] for k in SOURCE_KEYS if k in claim})   # a claim quoted from a supplied source
     if claim.get("edited_at"):   # a sentence the reviewer rewrote by hand (weekly/sentence_edit.py)
         context.update(edited_at=claim["edited_at"], was=claim.get("was", ""))
     return context
