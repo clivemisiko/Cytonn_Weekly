@@ -9,6 +9,7 @@ export type ItemKind =
   | "supplied_text"
   | "computed_figure"
   | "carried_text"
+  | "piece_check"
   | "chart";
 
 // ---- Report types (report_types.py): which report a review belongs to ----
@@ -165,6 +166,7 @@ export interface TableColumn {
 
 export interface TableBlock {
   numeral: string;
+  role?: string;
   /** Real Estate (weekly) only: the group it is printed under, and on the group's first block its heading ("I. Residential Sector"). */
   group?: string;
   group_heading?: string;
@@ -196,6 +198,9 @@ export interface ComputedBlock {
   id: string;
   title: string;
   body_md: string;
+  /** Focus of the Week only: "contents" for the list the tool builds from the section titles. */
+  role?: string;
+  group_heading?: string;
   figures: ComputedFigure[];
   sources: { name: string; url?: string | null }[];
   notes: string[];
@@ -209,6 +214,8 @@ export interface CarriedBlock {
   title: string;
   body_md: string;
   carried_from: { issue_id: number | null; url: string | null; published: string | null };
+  /** Focus of the Week only: "disclaimer". */
+  role?: string;
   /** Set once the reviewer retyped the paragraph by hand (weekly/sentence_edit.py). */
   edits?: BlockEdit[] | null;
 }
@@ -218,6 +225,10 @@ export interface NarrativeBlock {
   /** Real Estate (weekly) only: the group it is printed under, and on the group's first block its heading ("I. Residential Sector"). */
   group?: string;
   group_heading?: string;
+  /** Focus of the Week only: which part of the report this is. A lead and a conclusion are written from the sections, with no cited claim. */
+  role?: "lead" | "section" | "conclusion";
+  /** Focus of the Week only: a plain note for the analyst under a section, not a claim or a flag. */
+  analyst_note?: string;
   kind: "narrative";
   id: string;
   topic: string;
@@ -242,6 +253,8 @@ export interface BlockEdit {
 export interface UnavailableBlock {
   numeral: string;
   kind: "unavailable";
+  role?: string;
+  group_heading?: string;
   id: string;
   title: string;
   reason: string;
@@ -251,6 +264,7 @@ export interface UnavailableBlock {
 /** Text the coordinator supplied (Company Updates): carried verbatim, never drafted or checked. */
 export interface SuppliedBlock {
   numeral: string;
+  role?: string;
   kind: "supplied";
   id: string;
   title: string;
@@ -345,6 +359,10 @@ export interface BlocksSection {
   period_start?: string | null;
   period_end?: string | null;
   topic: string | null;
+  /** Focus of the Week only: the section titles and whether they were typed or proposed, and the model calls the draft made. */
+  outline?: { titles: string[]; source: "typed" | "proposed" };
+  model_calls?: number;
+  api_requests?: number | null;
   pieces_found: number;
   pieces_expected: number;
   shortfall: number;

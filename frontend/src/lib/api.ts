@@ -160,7 +160,7 @@ export const getOverview = async (report: ReportChoice = WEEKLY_REPORT): Promise
 export const startRun = (
   slug: string,
   report: ReportChoice,
-  input: { topic?: string; text?: string; provider?: string } = {},
+  input: { topic?: string; sections?: string; text?: string; provider?: string } = {},
 ) =>
   request<{ run_id: string }>("/api/runs", {
     method: "POST",

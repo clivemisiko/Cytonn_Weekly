@@ -61,6 +61,12 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
       <div class="space-y-2 empty:hidden">
         <Notice v-if="review.is_dev_draft && review.dev_mode_label" role="alert" class="font-semibold">{{ review.dev_mode_label }}</Notice>
         <Notice v-if="section.summary_note" tone="info" role="status">{{ section.summary_note }}</Notice>
+        <Notice v-if="section.model_calls" tone="info" role="status">
+          Model calls made for this draft: <span class="font-mono tabular-nums">{{ section.model_calls }}</span
+          ><template v-if="section.api_requests != null">
+            ({{ section.api_requests }} API {{ section.api_requests === 1 ? "request" : "requests" }}, searches that continued a reply included)</template
+          >.
+        </Notice>
         <Notice v-if="section.shortfall > 0" tone="warn" role="status" class="font-semibold">
           Only {{ section.pieces_found }} of {{ section.pieces_expected }} drafted pieces were found {{ review.period ? `for ${review.period}` : "this week" }}.
         </Notice>
@@ -123,11 +129,13 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
         {{ b.group_heading }}
       </h3>
       <article v-if="b.kind === 'narrative'" :class="PIECE" :aria-labelledby="`blk-${b.id}`">
-        <component :is="b.group ? 'h4' : 'h3'" :id="`blk-${b.id}`" :class="HEAD">
-          <Numeral>{{ b.numeral }}</Numeral>
+        <!-- A Focus section's visible heading is its "Section I: ..." line above; this one names the article for a screen reader. -->
+        <component :is="b.group ? 'h4' : 'h3'" :id="`blk-${b.id}`" :class="[HEAD, b.role === 'section' || b.role === 'conclusion' ? 'sr-only' : '']">
+          <Numeral v-if="b.numeral || !b.role">{{ b.numeral }}</Numeral>
           <span>{{ b.headline }}</span>
         </component>
         <Markdown :class="BODY" :text="b.body_md" />
+        <p v-if="b.analyst_note" class="text-xs text-muted-foreground md:pl-11">{{ b.analyst_note }}</p>
         <ul v-if="edited(b).length" aria-label="Sentences you edited" class="space-y-1 text-xs text-muted-foreground md:pl-11">
           <li v-for="e in edited(b)" :key="`${e.at}|${e.now}`" class="[overflow-wrap:anywhere]">
             <span class="font-medium text-foreground">Edited by you, {{ friendlyTime(e.at) }}.</span> Now: "{{ e.now }}" Was: "{{ e.was }}"
@@ -147,7 +155,7 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
 
       <section v-else-if="b.kind === 'table'" :class="PIECE" :aria-labelledby="`blk-${b.id}`">
         <component :is="b.group ? 'h4' : 'h3'" :id="`blk-${b.id}`" class="flex items-center gap-3 text-base font-semibold">
-          <Numeral>{{ b.numeral }}</Numeral>
+          <Numeral v-if="b.numeral || !b.role">{{ b.numeral }}</Numeral>
           {{ b.title }}
         </component>
         <DataTable :id="b.id" :title="b.title" :columns="b.columns" :rows="b.rows" :row-key="b.key_field" />
@@ -173,7 +181,7 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
       <!-- Text the coordinator supplied (Company Updates), shown as written. Never drafted, never checked. -->
       <article v-else-if="b.kind === 'supplied'" :class="PIECE" :aria-labelledby="`blk-${b.id}`">
         <h3 :id="`blk-${b.id}`" :class="HEAD">
-          <Numeral>{{ b.numeral }}</Numeral>
+          <Numeral v-if="b.numeral || !b.role">{{ b.numeral }}</Numeral>
           <span>{{ b.title }}</span>
         </h3>
         <Markdown :class="BODY" :text="b.body_md" />
@@ -184,7 +192,7 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
       <!-- A paragraph the tool worked out, not drafted: fixed wording around figures, each one a review item. -->
       <article v-else-if="b.kind === 'computed'" :class="PIECE" :aria-labelledby="`blk-${b.id}`">
         <h3 :id="`blk-${b.id}`" :class="HEAD">
-          <Numeral>{{ b.numeral }}</Numeral>
+          <Numeral v-if="b.numeral || !b.role">{{ b.numeral }}</Numeral>
           <span>{{ b.title }}</span>
         </h3>
         <Markdown :class="BODY" :text="b.body_md" />
@@ -195,7 +203,7 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
       <!-- Text copied from the previous issue. It was not written for this week, so it is always flagged. -->
       <article v-else-if="b.kind === 'carried'" :class="PIECE" :aria-labelledby="`blk-${b.id}`">
         <h3 :id="`blk-${b.id}`" class="flex flex-wrap items-start gap-3 text-base font-semibold">
-          <Numeral>{{ b.numeral }}</Numeral>
+          <Numeral v-if="b.numeral || !b.role">{{ b.numeral }}</Numeral>
           <span>{{ b.title }}</span>
         </h3>
         <Notice v-if="b.edits?.length" tone="warn" class="font-medium md:ml-11">
@@ -217,7 +225,7 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
       <!-- A part of the real report this tool cannot draft yet. Neutral, not a review-state colour: nothing was checked. -->
       <section v-else :class="PIECE" :aria-labelledby="`blk-${b.id}`">
         <h3 :id="`blk-${b.id}`" class="flex flex-wrap items-center gap-3 text-base font-semibold">
-          <Numeral>{{ b.numeral }}</Numeral>
+          <Numeral v-if="b.numeral || !b.role">{{ b.numeral }}</Numeral>
           {{ b.title }}
           <span class="inline-flex items-center gap-1 rounded-full border border-input px-2 py-0.5 text-xs font-semibold text-muted-foreground">
             <PhLockSimple weight="bold" class="size-3" aria-hidden="true" />

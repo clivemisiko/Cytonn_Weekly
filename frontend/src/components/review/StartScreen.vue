@@ -10,7 +10,7 @@ import { elapsed, friendlyTime, weekRange } from "@/lib/format";
 import { draftChartsNote } from "@/lib/charts";
 import { redraftNotes } from "@/lib/redraft";
 import { shell, useShellRibbon } from "@/lib/shell";
-import { MAX_TOPIC, topicLength } from "@/lib/topic";
+import { MAX_SECTIONS, MAX_SECTION_TITLE, MAX_TOPIC, sectionsProblem, sectionTitles, topicLength } from "@/lib/topic";
 import type { AppConfig, Drafting, Overview, ReportChoice, Review, SectionSummary } from "@/lib/types";
 import PageGrid from "@/components/nav/PageGrid.vue";
 import AnalystPanel from "./analyst/AnalystPanel.vue";
@@ -60,6 +60,10 @@ const inputMissing = computed(() => (props.section.needs_topic && !topic.value.t
 // Counted as the API counts it (lib/topic.ts). Nothing is ever cut: an over-long topic stays whole and blocks the draft.
 const topicCount = computed(() => topicLength(topic.value));
 const topicOver = computed(() => props.section.needs_topic && topicCount.value > MAX_TOPIC);
+// Focus of the Week's section titles, one per line, counted and refused as the API does (lib/topic.ts).
+const sections = ref("");
+const sectionCount = computed(() => sectionTitles(sections.value).length);
+const sectionsError = computed(() => (props.section.needs_topic ? sectionsProblem(sections.value) : null));
 // True from the click until the run view takes over (the start call answers at once).
 const starting = ref(false);
 const error = ref<{ message: string; lostConnection: boolean } | null>(null);
@@ -87,7 +91,7 @@ const blocked = computed(() => slotTaken(llm.value, serverDrafting.value));
 const mine = computed(() => isDraftingThis(serverDrafting.value, props.section.slug, props.report));
 const seconds = useLiveElapsed(serverDrafting);
 const cannotDraft = computed(
-  () => starting.value || blocked.value || providerBlocked.value || inputMissing.value || topicOver.value || (usesInputs.value && typedPending.value),
+  () => starting.value || blocked.value || providerBlocked.value || inputMissing.value || topicOver.value || !!sectionsError.value || (usesInputs.value && typedPending.value),
 );
 
 // Drafting over a section that already has a review asks first (what happens to the earlier one), then drafts.
@@ -125,6 +129,7 @@ async function draft() {
   try {
     const { run_id } = await api.startRun(props.section.slug, props.report, {
       topic: props.section.needs_topic ? topic.value.trim() : undefined,
+      sections: props.section.needs_topic && sections.value.trim() ? sections.value : undefined,
       text: props.section.needs_text ? text.value.trim() : undefined,
       provider: llm.value ? props.config.provider : undefined,
     });
@@ -294,6 +299,29 @@ const lists = computed(() => [
                   Over the limit by <span class="font-mono tabular-nums">{{ (topicCount - MAX_TOPIC).toLocaleString() }}</span>
                   {{ topicCount - MAX_TOPIC === 1 ? "character" : "characters" }}. Shorten it to submit.
                 </span>
+              </p>
+            </div>
+
+            <div v-if="section.needs_topic" class="space-y-1">
+              <label for="focus-sections" class="text-sm font-semibold">Sections (optional)</label>
+              <Textarea
+                id="focus-sections"
+                v-model="sections"
+                name="sections"
+                rows="5"
+                :disabled="starting"
+                :placeholder="'One title per line, e.g.\nOverview of the market\nYields and pricing\nRecommendations and Conclusion'"
+                :aria-invalid="!!sectionsError || undefined"
+                aria-describedby="focus-sections-hint focus-sections-count"
+                class="min-h-28 py-2"
+              />
+              <p id="focus-sections-hint" class="text-xs text-muted-foreground">
+                Leave blank and the tool proposes four to six titles from the topic (one model call). Typed titles are used exactly as typed and
+                numbered Section I, II, III… by the tool; end with a "Recommendations and Conclusion" part for the closing section.
+              </p>
+              <p id="focus-sections-count" class="text-xs" :class="sectionsError ? 'font-medium text-flag-fg' : 'text-muted-foreground'">
+                <span class="font-mono tabular-nums">{{ sectionCount }}</span> of {{ MAX_SECTIONS }} sections, each at most {{ MAX_SECTION_TITLE }} characters.
+                <span v-if="sectionsError" role="status">{{ sectionsError.charAt(0).toUpperCase() + sectionsError.slice(1) }}. Shorten or remove it to submit.</span>
               </p>
             </div>
 
