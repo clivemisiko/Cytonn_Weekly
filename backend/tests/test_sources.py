@@ -75,6 +75,12 @@ def test_the_social_list_is_the_one_real_estate_uses():
     assert not [d for d in src.SOCIAL_DOMAINS if src.is_approved(d)]
 
 
+def test_knight_frank_kenya_is_approved_and_a_look_alike_is_not():
+    for url in ("https://www.knightfrank.co.ke/some-page", "https://knightfrank.co.ke/x"):
+        assert src.is_approved(src.host_of(url))
+    assert not src.is_approved(src.host_of("https://notknightfrank.co.ke"))
+
+
 def test_a_host_is_approved_by_name_or_as_a_subdomain_and_never_by_a_look_alike():
     assert src.is_approved("centralbank.go.ke") and src.is_approved("www.centralbank.go.ke")
     assert src.is_approved("content.knightfrank.com") and src.is_approved("uk.knightfrank.com")

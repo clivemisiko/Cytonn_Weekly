@@ -51,6 +51,15 @@ async function load() {
     if (mine === latest) loading.value = false;
   }
 }
+// Another section or report must never show the last one's pieces while its own are read.
+watch(
+  () => [props.section.slug, props.report.type, props.report.period] as const,
+  () => {
+    latest++;
+    listing.value = null;
+    error.value = null;
+  },
+);
 watch(
   () => [props.section.slug, props.report.type, props.report.period, props.titles] as const,
   () => {
@@ -92,7 +101,7 @@ const sites = computed(() => listing.value?.approved_sites ?? []);
     <ul v-if="pieces.length" class="space-y-3" aria-label="Pieces of this section">
       <SourcePieceCard
         v-for="(p, i) in pieces"
-        :key="p.subject"
+        :key="`${section.slug}:${p.subject}`"
         :piece="p"
         :uid="`${section.slug}-${i}`"
         :slug="section.slug"
