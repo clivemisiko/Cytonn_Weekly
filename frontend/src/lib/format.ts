@@ -32,7 +32,11 @@ export const KIND_LABELS: Record<ItemKind, string> = {
   supplied_text: "Your text",
   computed_figure: "Computed figure",
   carried_text: "Carried forward",
+<<<<<<< HEAD
   piece_check: "Whole piece",
+=======
+  workbook_quarter: "Workbook quarter",
+>>>>>>> origin/main
   chart: "Chart",
 };
 

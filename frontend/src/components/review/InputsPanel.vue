@@ -95,6 +95,9 @@ const upload = (slot: string, files: File[]) =>
   });
 
 const remove = (name: string) => act(() => api.removeInput(props.week, name));
+// Digital Payments takes one input, its workbook; the other slots and the notes belong to Fixed Income and Equities.
+const dpOnly = computed(() => props.section === "digital_payments");
+const slots = computed(() => (status.value?.slots ?? []).filter((s) => !dpOnly.value || s.slug === "dp_workbook"));
 const charts = computed(() => (status.value?.charts ?? []).filter((c) => c.section === props.section));
 // Bumped on each image change, so a replaced image's thumbnail is read again.
 const chartVersion = ref(0);
@@ -185,7 +188,7 @@ function saveNote(key: "bidding_range" | "previous_issue" | "as_at", value: stri
       </details>
       <ul>
         <InputSlot
-          v-for="slot in status.slots"
+          v-for="slot in slots"
           :key="slot.slug"
           :entry="slot"
           :week="status.week_ending"
@@ -218,7 +221,7 @@ function saveNote(key: "bidding_range" | "previous_issue" | "as_at", value: stri
         </ul>
       </section>
 
-      <div class="space-y-4 border-t pt-4">
+      <div v-if="!dpOnly" class="space-y-4 border-t pt-4">
         <div class="space-y-1">
           <label for="bidding-range" class="text-sm font-semibold">T-bond bidding range (the analysts’ recommendation)</label>
           <Textarea
