@@ -64,7 +64,9 @@ def test_the_listing_of_a_section_that_is_not_written_from_sources_says_so(clien
 def test_an_unknown_section_is_404_and_a_period_that_does_not_fit_is_422(client):
     assert client.get("/api/sources", params={"section": "nope"}).status_code == 404
     bad = client.get("/api/sources", params={"section": "equities", "report_type": "quarterly", "period": "Q2'2026"})
-    assert bad.status_code == 422 and "Q2" in bad.json()["detail"]
+    assert bad.status_code == 422 and "half-year" in bad.json()["detail"]   # Q2 is published as the half-year review
+    notq = client.get("/api/sources", params={"section": "equities", "report_type": "quarterly", "period": "Quarter three"})
+    assert notq.status_code == 422
 
 
 def test_a_markets_review_lists_its_own_pieces_filed_under_the_period_end(client):

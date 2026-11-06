@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { API, DRAFT, VARIANT, openStart } from "./helpers";
+import { API, DRAFT, PERIOD, VARIANT, openStart } from "./helpers";
 
 // The Sources panel of a Bedrock draft. Runs only on the "bedrock" start of the test API (E2E_VARIANT=bedrock, see
 // e2e/serve_e2e.py): the provider is Bedrock with invented settings, the model is a fake client that quotes the first
@@ -10,6 +10,14 @@ test.describe.configure({ mode: "serial" });
 
 const TITLES = "Overview of the topic\nMarket performance\nRecommendations and Conclusion";
 const PASTED = "The invented regulator said private sector credit grew by 8.75% in the year to September 2026. Lending to households rose faster than lending to firms.";
+// Sources are kept on the server for the whole run, so each test starts from none.
+test.beforeEach(async ({ request }) => {
+  if (VARIANT !== "bedrock") return;
+  const query = new URLSearchParams({ section: "focus", period: PERIOD, sections: TITLES });
+  const listed = await (await request.get(`${API}/api/sources?${query}`)).json();
+  for (const piece of listed.pieces) for (const s of piece.sources) await request.delete(`${API}/api/sources/${s.id}`);
+});
+
 const group = (page: Page, subject: string) => page.getByRole("group", { name: `Sources for ${subject}` });
 
 async function openFocus(page: Page) {
@@ -62,7 +70,7 @@ test("T108 a pasted source is listed with its host, date, size, origin and finge
   await expect(piece).toContainText("www.centralbank.go.ke");
   await expect(piece).toContainText("8 Oct 2026");
   await expect(piece).toContainText(`${PASTED.length.toLocaleString("en-GB")} characters`);
-  await expect(piece).toContainText(/pasted \d+ \w+ 2026, \d\d:\d\d EAT/); // times are East Africa Time, never UTC
+  await expect(piece).toContainText(/pasted \d+ \w+ \d{4}, \d\d:\d\d EAT/); // times are East Africa Time, never UTC
   await expect(piece).toContainText(/fingerprint [0-9a-f]{8}\b/);
   await expect(piece).not.toContainText("host not on the approved list");
   await expect(piece.getByText("No sources yet", { exact: false })).toHaveCount(0);
@@ -73,10 +81,8 @@ test("T108 a pasted source is listed with its host, date, size, origin and finge
   expect(text.headers()["content-type"]).toContain("text/plain");
   expect(await text.text()).toBe(PASTED); // kept exactly as pasted
 
-  await page.reload();
-  await page.getByLabel("This week’s topic").fill("SYNTHETIC bedrock topic");
-  await page.getByLabel("Sections (optional)").fill(TITLES);
-  await expect(group(page, "Market performance")).toContainText("www.centralbank.go.ke"); // saved on the server, not in the page
+  await openFocus(page); // a fresh page: what shows is what the server saved
+  await expect(group(page, "Market performance")).toContainText("www.centralbank.go.ke");
 });
 
 test("T109 a fetch from an approved site is kept as fetched, and a refused fetch shows the API's sentence and keeps nothing", async ({ page }) => {
@@ -104,7 +110,7 @@ test("T109 a fetch from an approved site is kept as fetched, and a refused fetch
   await expect(piece.getByRole("alert")).toHaveCount(0);
 });
 
-test("T110 a pasted source with no date is refused in the API's words, and one from a site off the list is kept and marked", async ({ page }) => {
+test("T110 a pasted source needs its date before it can be saved, and one from a site off the list is kept and marked", async ({ page }) => {
   await openFocus(page);
   const piece = group(page, "Market performance");
   await piece.getByText("Add a source", { exact: true }).click();

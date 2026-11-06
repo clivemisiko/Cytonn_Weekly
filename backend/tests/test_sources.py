@@ -1,5 +1,6 @@
 import importlib
 import json
+import re
 from datetime import date
 
 import pytest
@@ -291,7 +292,7 @@ def test_pasted_text_is_kept_exactly_as_given(tmp_path):
 def test_a_paste_needs_a_url_a_date_and_text(tmp_path):
     for kw, word in ((dict(url=""), "address (URL)"), (dict(when=""), "date of the page"), (dict(text=" \n "), "Paste the text"),
                      (dict(subject=" "), "Say which piece")):
-        with pytest.raises(src.SourceError, match=word):
+        with pytest.raises(src.SourceError, match=re.escape(word)):
             paste(tmp_path, **kw)
     assert src.list_all(FRIDAY, tmp_path) == []
 

@@ -267,7 +267,7 @@ class SourcedProvider(FakeNarrativeProvider):
 
 def test_a_review_item_for_a_sourced_claim_shows_its_source_quote_host_date_hash_and_flag():
     review = real_estate_review(SourcedProvider())
-    claim_items = [i for i in review.items if i.kind == "claim"]
+    claim_items = [i for i in review.review_items if i.kind == "claim"]
     assert claim_items
     for item in claim_items:
         ctx = item.context
@@ -279,7 +279,7 @@ def test_a_review_item_for_a_sourced_claim_shows_its_source_quote_host_date_hash
 
 def test_a_claim_without_source_facts_has_none_in_its_review_item():
     review = real_estate_review(FakeNarrativeProvider())
-    for item in (i for i in review.items if i.kind == "claim"):
+    for item in (i for i in review.review_items if i.kind == "claim"):
         assert not set(SOURCE_KEYS) & set(item.context)
 
 
