@@ -13,6 +13,7 @@ import anthropic
 
 from cytonn_weekly.common import sources as source_store
 from cytonn_weekly.common.checks import check_sourced_claim
+from cytonn_weekly.common.run_events import frames
 from cytonn_weekly.digital_payments.providers.base import (
     OUTLOOK_SYSTEM,
     DraftingProvider,
@@ -256,8 +257,8 @@ class _Chat:
             SOURCED_SCHEMA, max_tokens)
         try:
             res = parse(raw, warnings, _sourced_reader(results))
-        except (AttributeError, TypeError, KeyError, ValueError):   # a field of the reply was not in a usable shape
-            logger.warning("%s: the model's reply could not be read", label, exc_info=True)
+        except (AttributeError, TypeError, KeyError, ValueError) as exc:   # a field of the reply was not in a usable shape
+            logger.warning("%s: the model's reply could not be read: %s", label, frames(exc))
             empty.draft_warnings = warnings
             empty.reason = "The model's reply for this piece was not in a form that could be read, so nothing was drafted. Draft again."
             return empty

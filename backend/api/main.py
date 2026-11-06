@@ -62,7 +62,7 @@ from cytonn_weekly.charts import store as chart_store
 from cytonn_weekly.charts.block import set_team_chart
 from cytonn_weekly.common import gather as source_gather
 from cytonn_weekly.common import sources as source_store
-from cytonn_weekly.common.run_events import RUN_STARTED, describe, redact, review_counts, safe_describe, user_message
+from cytonn_weekly.common.run_events import RUN_STARTED, describe, frames, redact, review_counts, safe_describe, user_message
 from cytonn_weekly.digital_payments import review_run, review_store
 from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview, rejected_draft_notes
 from cytonn_weekly.digital_payments.provider_factory import ENV_VAR as PROVIDER_ENV_VAR
@@ -526,7 +526,7 @@ def create_app(
             run.fail(failure_message(exc))
             if not isinstance(exc, Exception):
                 raise
-            log.warning("run %s (%s) failed: %s", run.run_id, spec.slug, safe_describe(exc), exc_info=exc)
+            log.warning("run %s (%s) failed: %s; %s", run.run_id, spec.slug, safe_describe(exc), frames(exc))
             return
         if claim is not None and not draft_slot.release(claim):
             log.warning("draft of %s finished after it was replaced as stuck; its result was discarded", spec.slug)
