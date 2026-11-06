@@ -3,14 +3,15 @@ import { computed, onBeforeUnmount, ref, watch } from "vue";
 import * as api from "@/lib/api";
 import { NEEDS_TITLES } from "@/lib/sources";
 import { sectionTitles } from "@/lib/topic";
-import type { ReportChoice, SectionSummary, SourceMeta, SourcePiece, SourcesListing } from "@/lib/types";
+import type { GatherLook, ReportChoice, SectionSummary, SourceMeta, SourcePiece, SourcesListing } from "@/lib/types";
 import Notice from "./Notice.vue";
 import SourcePieceCard from "./SourcePieceCard.vue";
 
 /**
  * The pages each piece of this section is written from (Amazon Bedrock drafts only; the screen shows it for no other
- * provider). Nothing is searched: a piece with no source comes back unavailable, and every quote it uses is checked
- * against the saved text. The panel holds what a coordinator must act on, so it never folds.
+ * provider). The tool searches for them when a draft starts and the analyst can add more; a piece with no source comes
+ * back unavailable, and every quote it uses is checked against the saved text. The panel holds what a coordinator must
+ * act on, so it never folds.
  */
 const props = defineProps<{
   section: SectionSummary;
@@ -76,10 +77,12 @@ onBeforeUnmount(() => {
 const pieces = computed(() => listing.value?.pieces ?? []);
 // What the screen knows of which pieces lack sources: null while it does not know, so it never names one by guess.
 watch([listing, needsTitles], () => emit("pieces", listing.value ? listing.value.pieces : needsTitles.value ? [] : null), { deep: true, immediate: true });
-function update(subject: string, sources: SourceMeta[]) {
+function update(subject: string, sources: SourceMeta[], gather?: GatherLook | null) {
   if (!listing.value) return;
   const piece = listing.value.pieces.find((p) => p.subject === subject);
-  if (piece) piece.sources = sources;
+  if (!piece) return;
+  piece.sources = sources;
+  if (gather !== undefined) piece.gather = gather;
 }
 const sites = computed(() => listing.value?.approved_sites ?? []);
 </script>
@@ -89,9 +92,9 @@ const sites = computed(() => listing.value?.approved_sites ?? []);
     <div class="space-y-1">
       <h2 id="sources-title" class="text-lg font-semibold">Sources</h2>
       <p class="text-sm text-muted-foreground">
-        Amazon Bedrock writes only from the pages saved here; it has no search of its own. The tool looks for sources itself when a draft starts, and you can add
-        more: paste a page’s text with its address and date, or fetch a page from its address. Remove any page you do not want. Every quote a claim uses is
-        checked against the saved text, and you see it on the review.
+        Amazon Bedrock writes only from the pages saved here; it has no search of its own. The tool looks for sources itself when a draft starts, and you can
+        search for them now or add more: paste a page’s text with its address and date, or fetch a page from its address. Remove any page you do not want.
+        Every quote a claim uses is checked against the saved text, and you see it on the review.
       </p>
     </div>
 
@@ -109,7 +112,7 @@ const sites = computed(() => listing.value?.approved_sites ?? []);
         :report="report"
         :titles="titles"
         :disabled="disabled"
-        @update="(s) => update(p.subject, s)"
+        @update="(s, g) => update(p.subject, s, g)"
       />
     </ul>
 

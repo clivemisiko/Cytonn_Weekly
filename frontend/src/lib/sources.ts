@@ -10,7 +10,23 @@ export const NOT_ON_LIST = "host not on the approved list";
 /** The hint in every piece's address box. Generic on purpose: the same box serves every section, so it names no site. */
 export const ADDRESS_PLACEHOLDER = "www.example.org/the-page";
 
-export const NO_SOURCES_YET = "No sources yet: this piece will come back unavailable";
+/** A piece nobody has searched for yet: calm, because a draft searches by itself. */
+export const NOT_LOOKED_YET = "Sources are found automatically when you draft.";
+export const LOOKING = "Looking for sources…";
+/** The only warning a piece gets: a search ran, found nothing, and no source was added. */
+export const NOTHING_FOUND = "Nothing found yet for this piece. Add a link or paste text, or it will come back unavailable.";
+/** The search service is not set up: nothing to warn about, only something to know. */
+export const SEARCH_NOT_SET_UP = "The search service is not set up here, so sources are not found automatically. Add a link or paste text.";
+
+export type PieceState = "has_sources" | "never_looked" | "nothing_found" | "not_set_up";
+
+/** What a piece's sources area says: from its sources and the last look, never from a guess. */
+export function pieceState(piece: SourcePiece): PieceState {
+  if (piece.sources.length > 0) return "has_sources";
+  const look = piece.gather;
+  if (!look) return "never_looked";
+  return look.searched ? "nothing_found" : "not_set_up";
+}
 
 /** Whether this section's start screen asks for sources: only when the draft is written from them. */
 export const usesSources = (config: Pick<AppConfig, "provider">, section: Pick<SectionSummary, "uses_provider">) =>
@@ -19,13 +35,16 @@ export const usesSources = (config: Pick<AppConfig, "provider">, section: Pick<S
 /** The pieces that have no source yet, in the order listed. */
 export const piecesWithoutSources = (pieces: SourcePiece[]) => pieces.filter((p) => p.sources.length === 0).map((p) => p.subject);
 
-/** What the confirmation says before a draft that has pieces with no sources, or null when every piece has one. */
+/** The pieces a search has already looked at and found nothing for, with no source added since: the only ones a draft asks about. */
+export const piecesNothingFoundFor = (pieces: SourcePiece[]) => pieces.filter((p) => pieceState(p) === "nothing_found").map((p) => p.subject);
+
+/** What the confirmation says before a draft, or null when no search has found nothing for a piece. */
 export function missingSourcesNote(subjects: string[]): string | null {
   if (subjects.length === 0) return null;
   const list = subjects.map((s) => `“${s}”`).join(", ");
   return subjects.length === 1
-    ? `${list} has no sources, so it will come back unavailable.`
-    : `${subjects.length} pieces have no sources, so each will come back unavailable: ${list}.`;
+    ? `${list}: the last search found nothing and no source was added, so it will come back unavailable.`
+    : `${subjects.length} pieces: the last search found nothing and no source was added, so each will come back unavailable: ${list}.`;
 }
 
 export const hashPrefix = (sha256: string) => sha256.slice(0, 8);
