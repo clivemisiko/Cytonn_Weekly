@@ -1134,7 +1134,8 @@ def create_app(
 
     def source_meta(piece, items: list[source_store.SourceText]) -> dict:
         return {"subject": piece.subject, "end": piece.end.isoformat(),
-                "week_end": latest_friday(piece.end).isoformat(), "sources": [s.meta() for s in items]}
+                "week_end": latest_friday(piece.end).isoformat(), "sources": [s.meta() for s in items],
+                "gather": source_store.last_look(piece.subject, piece.end, sources_dir)}
 
     @app.get("/api/sources")
     def list_sources(
@@ -1252,7 +1253,7 @@ def create_app(
             if len(have) >= limits.enough:
                 reason = f"This piece already has {len(have)} sources, so none were looked for."
             elif last is not None and clock() - last < gather_cooldown:
-                reason = "Sources were looked for less than an hour ago. Add one by hand, or look again later."
+                reason = "Sources were looked for less than an hour ago. Add one by hand, or search again later."
             else:
                 saved, looked = source_gather.gather([piece], search=search_sources, fetch=fetch_source, root=sources_dir,
                                                      limits=limits)

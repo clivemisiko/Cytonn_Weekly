@@ -53,6 +53,7 @@ def test_the_listing_names_each_piece_with_its_day_and_week_and_no_sources_yet(c
     assert body["section"] == "real_estate" and body["uses_sources"] is True and body["title"] == "Real Estate"
     assert [p["subject"] for p in body["pieces"]] == [p.subject for p in REAL_ESTATE] and len(REAL_ESTATE) >= 3
     assert all(p["sources"] == [] and p["end"] == "2026-10-02" and p["week_end"] == "2026-10-02" for p in body["pieces"])
+    assert all(p["gather"] is None for p in body["pieces"])   # no look has happened yet
     assert body["approved_sites"] == list(src.APPROVED_SITES)
 
 

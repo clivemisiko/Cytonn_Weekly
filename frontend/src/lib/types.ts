@@ -108,11 +108,20 @@ export interface SourceMeta {
   flags: string[];
 }
 
+/** The last time the gather step looked for a piece's sources: counts and a time only. Null (or absent) when it never has. */
+export interface GatherLook {
+  looked_at: string | null;
+  found: number;
+  /** False when the search service is not set up, so nothing was searched. */
+  searched: boolean;
+}
+
 export interface SourcePiece {
   subject: string;
   end: string;
   week_end: string;
   sources: SourceMeta[];
+  gather?: GatherLook | null;
 }
 
 export interface SourcesListing {
@@ -141,6 +150,7 @@ export interface Gathered {
   end: string;
   week_end: string;
   sources: SourceMeta[];
+  gather?: GatherLook | null;
 }
 
 /** What one source is added with: a url alone is fetched, a url with a date and text is kept as pasted. */

@@ -157,6 +157,7 @@ def gather_piece(piece: Piece, *, search: Search, fetch: Fetch, root: Optional[P
         ev.emit(on_event, ev.SOURCES_FOUND, piece.subject,
                 detail=f"{n} page{'' if n == 1 else 's'}" + (" (the search did not answer)" if failed and not n else ""))
         log.info("gather: %s: %d queries, %d results, %d pages saved", piece.subject, queries, len(pool), len(saved))
+    store.record_look(piece.subject, piece.end, len(saved), True, root)   # not reached when the key was refused: gather() records that
     return saved
 
 
@@ -167,6 +168,8 @@ def gather(pieces: Iterable[Piece], *, search: Search = exa_search, fetch: Fetch
     error class and skipped. With the real search and no EXA_API_KEY nothing is searched and one event says so."""
     if search is exa_search and not search_key_set():
         ev.emit(on_event, ev.SOURCES_SEARCH_UNAVAILABLE, "Sources", detail=NOT_CONFIGURED)
+        for piece in pieces:
+            store.record_look(piece.subject, piece.end, 0, False, root)
         return [], False
     limits = limits or limits_from_env()
     deadline = time.monotonic() + limits.seconds
@@ -177,6 +180,7 @@ def gather(pieces: Iterable[Piece], *, search: Search = exa_search, fetch: Fetch
         except Exception as exc:  # noqa: BLE001
             if type(exc).__name__ == "SearchKeyError":
                 ev.emit(on_event, ev.SOURCES_SEARCH_UNAVAILABLE, "Sources", detail=str(exc))
+                store.record_look(piece.subject, piece.end, 0, False, root)
                 return saved, False
             log.warning("gather: %s skipped: %s", piece.subject, type(exc).__name__)
     return saved, True

@@ -12,6 +12,8 @@ import {
   isPaste,
   normalizeAddress,
   missingSourcesNote,
+  pieceState,
+  piecesNothingFoundFor,
   piecesWithoutSources,
   sourceFacts,
   usesSources,
@@ -33,7 +35,8 @@ const source = (over: Partial<SourceMeta> = {}): SourceMeta => ({
   flags: [],
   ...over,
 });
-const piece = (subject: string, sources: SourceMeta[] = []): SourcePiece => ({ subject, end: "2026-11-06", week_end: "2026-11-06", sources });
+const piece = (subject: string, sources: SourceMeta[] = [], gather: SourcePiece["gather"] = null): SourcePiece => ({ subject, end: "2026-11-06", week_end: "2026-11-06", sources, gather });
+const look = (found: number, searched: boolean) => ({ looked_at: "2026-11-06T08:00:00+00:00", found, searched });
 
 describe("usesSources", () => {
   it("is on only for Bedrock and a section that calls a provider", () => {
@@ -46,15 +49,33 @@ describe("usesSources", () => {
 });
 
 describe("pieces with no source", () => {
-  const pieces = [piece("Visa", [source()]), piece("Mastercard"), piece("Circle")];
-  it("lists them in order", () => expect(piecesWithoutSources(pieces)).toEqual(["Mastercard", "Circle"]));
-  it("names one", () => expect(missingSourcesNote(["Circle"])).toBe("“Circle” has no sources, so it will come back unavailable."));
+  const pieces = [piece("Visa", [source()]), piece("Mastercard"), piece("Circle", [], look(0, true)), piece("PayPal", [], look(0, false))];
+  it("lists those with none in order", () => expect(piecesWithoutSources(pieces)).toEqual(["Mastercard", "Circle", "PayPal"]));
+  it("names only a piece a search found nothing for", () => expect(piecesNothingFoundFor(pieces)).toEqual(["Circle"]));
+  it("a source added after a search that found nothing ends the notice", () =>
+    expect(piecesNothingFoundFor([piece("Circle", [source()], look(0, true))])).toEqual([]));
+  it("names one", () =>
+    expect(missingSourcesNote(["Circle"])).toBe("“Circle”: the last search found nothing and no source was added, so it will come back unavailable."));
   it("names several with a count", () =>
-    expect(missingSourcesNote(["Mastercard", "Circle"])).toBe("2 pieces have no sources, so each will come back unavailable: “Mastercard”, “Circle”."));
-  it("says nothing when every piece has one", () => {
-    expect(missingSourcesNote(piecesWithoutSources([piece("Visa", [source()])]))).toBeNull();
+    expect(missingSourcesNote(["Mastercard", "Circle"])).toBe(
+      "2 pieces: the last search found nothing and no source was added, so each will come back unavailable: “Mastercard”, “Circle”.",
+    ));
+  it("says nothing when no search has found nothing", () => {
+    expect(missingSourcesNote(piecesNothingFoundFor([piece("Visa", [source()]), piece("Mastercard")]))).toBeNull();
     expect(missingSourcesNote([])).toBeNull();
   });
+});
+
+describe("what a piece says", () => {
+  it("is calm until a search has run", () => {
+    expect(pieceState(piece("A"))).toBe("never_looked");
+    expect(pieceState({ ...piece("A"), gather: undefined })).toBe("never_looked");
+  });
+  it("warns only after a real search found nothing and nothing was added", () => {
+    expect(pieceState(piece("A", [], look(0, true)))).toBe("nothing_found");
+    expect(pieceState(piece("A", [source()], look(0, true)))).toBe("has_sources");
+  });
+  it("is neutral when the search service is not set up", () => expect(pieceState(piece("A", [], look(0, false)))).toBe("not_set_up"));
 });
 
 describe("a source's facts", () => {

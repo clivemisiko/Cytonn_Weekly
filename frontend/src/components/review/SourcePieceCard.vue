@@ -4,8 +4,8 @@ import { computed, ref } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import * as api from "@/lib/api";
-import { ADDRESS_PLACEHOLDER, NO_SOURCES_YET, normalizeAddress, sourceFacts, sourcePageHref } from "@/lib/sources";
-import type { ReportChoice, SourceMeta, SourcePiece } from "@/lib/types";
+import { ADDRESS_PLACEHOLDER, LOOKING, NOTHING_FOUND, NOT_LOOKED_YET, SEARCH_NOT_SET_UP, normalizeAddress, pieceState, sourceFacts, sourcePageHref } from "@/lib/sources";
+import type { GatherLook, ReportChoice, SourceMeta, SourcePiece } from "@/lib/types";
 import Notice from "./Notice.vue";
 
 const props = defineProps<{
@@ -18,7 +18,7 @@ const props = defineProps<{
   titles: string;
   disabled: boolean;
 }>();
-const emit = defineEmits<{ update: [sources: SourceMeta[]] }>();
+const emit = defineEmits<{ update: [sources: SourceMeta[], gather?: GatherLook | null] }>();
 
 const open = ref(false);
 const fetchUrl = ref("");
@@ -26,17 +26,19 @@ const pasteUrl = ref("");
 const pasteDate = ref("");
 const pasteText = ref("");
 const busy = ref(false);
+const looking = ref(false);
+const state = computed(() => pieceState(props.piece));
 const error = ref<string | null>(null);
 const saved = ref<string | null>(null);
 const off = computed(() => props.disabled || busy.value);
 
-async function run(work: () => Promise<{ sources: SourceMeta[]; source?: SourceMeta; note?: string }>, done: () => void) {
+async function run(work: () => Promise<{ sources: SourceMeta[]; gather?: GatherLook | null; source?: SourceMeta; note?: string }>, done: () => void) {
   error.value = null;
   saved.value = null;
   busy.value = true;
   try {
     const res = await work();
-    emit("update", res.sources);
+    emit("update", res.sources, res.gather);
     saved.value = res.note ?? (res.source ? `Saved ${res.source.title} (${res.source.host}).` : "Removed.");
     done();
   } catch (err) {
@@ -72,15 +74,22 @@ const pasteIt = () =>
       open.value = false;
     },
   );
-const lookAgain = () =>
-  run(
-    async () => {
-      const res = await api.gatherSources(props.slug, props.report, props.piece.subject, props.titles);
-      const note = res.reason ?? (res.found ? `Found ${res.found} ${res.found === 1 ? "page" : "pages"}` : "Nothing found");
-      return { sources: res.sources, note };
-    },
-    () => undefined,
-  );
+async function search() {
+  looking.value = true;
+  try {
+    await run(
+      async () => {
+        const res = await api.gatherSources(props.slug, props.report, props.piece.subject, props.titles);
+        // Nothing found is said once, by the piece's own notice below; a refusal (an hour's wait, enough sources) says why.
+        const note = res.reason ?? (res.found ? `Found ${res.found} ${res.found === 1 ? "page" : "pages"}` : "");
+        return { sources: res.sources, gather: res.gather ?? null, note };
+      },
+      () => undefined,
+    );
+  } finally {
+    looking.value = false;
+  }
+}
 const remove = (s: SourceMeta) =>
   run(async () => {
     await api.removeSource(s.id);
@@ -95,8 +104,15 @@ const remove = (s: SourceMeta) =>
       <span class="text-xs text-muted-foreground">{{ piece.sources.length }} {{ piece.sources.length === 1 ? "source" : "sources" }}</span>
     </div>
 
-    <Notice v-if="piece.sources.length === 0" tone="warn">{{ NO_SOURCES_YET }}</Notice>
-    <ul v-else class="space-y-2">
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+      <Button size="sm" variant="outline" :disabled="off" :aria-label="`Search for sources for ${piece.subject}`" @click="search">Search for sources</Button>
+      <p v-if="looking" role="status" class="text-xs text-muted-foreground">{{ LOOKING }}</p>
+      <p v-else-if="state === 'never_looked'" class="text-xs text-muted-foreground">{{ NOT_LOOKED_YET }}</p>
+    </div>
+
+    <Notice v-if="state === 'nothing_found'" tone="warn">{{ NOTHING_FOUND }}</Notice>
+    <Notice v-else-if="state === 'not_set_up'" tone="info">{{ SEARCH_NOT_SET_UP }}</Notice>
+    <ul v-if="piece.sources.length" class="space-y-2">
       <li v-for="s in piece.sources" :key="s.id" class="space-y-1 rounded-md border px-3 py-2">
         <p class="text-sm font-medium [overflow-wrap:anywhere]">{{ s.title }}</p>
         <p class="text-xs text-muted-foreground [overflow-wrap:anywhere]">
@@ -113,10 +129,6 @@ const remove = (s: SourceMeta) =>
         </div>
       </li>
     </ul>
-
-    <div>
-      <Button size="sm" variant="outline" :disabled="off" :aria-label="`Look again for sources for ${piece.subject}`" @click="lookAgain">Look again</Button>
-    </div>
 
     <details :open="open" class="rounded-md border" @toggle="open = ($event.target as HTMLDetailsElement).open">
       <summary class="cursor-pointer rounded-md px-3 py-2 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring">Add a source</summary>

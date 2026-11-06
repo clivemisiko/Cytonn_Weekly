@@ -1,6 +1,6 @@
 # Testing a Bedrock draft on the droplet
 
-A Bedrock draft is written only from pages the coordinator supplies for each piece (pasted with a URL and a date, or fetched from a site on the approved list). Nothing is searched. Code checks that every quote is in the saved page word for word and that every figure in a claim is in its quote. `EXA_API_KEY` is not used on this path and is not needed on the server.
+A Bedrock draft is written only from pages the coordinator supplies for each piece (pasted with a URL and a date, or fetched from a site on the approved list). The tool looks for sources itself when a draft starts (it needs `EXA_API_KEY`), and the coordinator can add more. Code checks that every quote is in the saved page word for word and that every figure in a claim is in its quote. Without `EXA_API_KEY` nothing is searched and a piece with no source comes back unavailable.
 
 Times on screen are East Africa Time. Reports are named by week ending date.
 
@@ -77,12 +77,12 @@ Spend as little as possible: a piece with no sources makes no Bedrock call at al
 
 1. Open the overview through the tunnel. The side rail must say **Production · bedrock** and there must be **no DEV MODE ribbon** anywhere. A DEV ribbon means the provider is the local one.
 2. Pick the cheapest piece: **Real Estate** (weekly, the default week), piece **Affordable housing**. Its draft makes one Bedrock request for each piece that has sources, and nothing else. (The next cheapest is **Digital Payments**, piece **Visa**, which adds one request for the closing outlook.)
-3. Open Real Estate's start screen. The **Sources** panel lists six pieces. Every piece except the one you will use shows "No sources yet: this piece will come back unavailable"; leave them so.
+3. Open Real Estate's start screen. The **Sources** panel lists six pieces. Every piece except the one you will use shows "Sources are found automatically when you draft."; leave them so.
 4. For **Affordable housing** supply three sources:
    - two pasted: open "Add a source", give the page's address, the page's date and its text (copy the article text as it is, nothing edited), then "Save pasted text";
    - one fetched: paste an address on an approved site (the panel lists them under "Approved sites") into "Address (URL) to fetch" and press "Fetch page". If the page has its date in a meta tag it is filled in; if the sentence says the date could not be read, use the paste form for that page instead.
    Each source should show its host, date, characters, whether it was pasted or fetched, a fingerprint and a "View saved text" link. Open the link once: the text must be what you gave.
-5. Press Draft. The confirmation lists the five pieces that have no sources. Choose "Draft anyway". Only the one piece is written; the others come back unavailable with "No sources were supplied for this piece, so nothing was drafted."
+5. Press Draft. With no `EXA_API_KEY` on the server nothing is searched and no confirmation is asked (it names only pieces a search already found nothing for). Only the one piece is written; the others come back unavailable with "No sources were supplied for this piece, so nothing was drafted."
 6. In the review, expand the drafted claims. Each one shows its source host, the page's date, the quote in quotation marks and "checked word for word against the saved text", the fingerprint and "View saved text". Confirm the quote is really in the page you gave. A pasted page from a host off the list carries "host not on the approved list".
 7. Check the fingerprint: it is the sha256 of what is stored. On the server, for a pasted source (`.txt`) or a fetched one (`.html` or `.pdf`, the page as received):
 

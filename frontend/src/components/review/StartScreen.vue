@@ -9,7 +9,7 @@ import { draftingFor, draftingList, draftingStatus, isLive, ownBusy, providerOff
 import { elapsed, friendlyTime, weekRange } from "@/lib/format";
 import { draftChartsNote } from "@/lib/charts";
 import { redraftNotes } from "@/lib/redraft";
-import { TITLES_REQUIRED, missingSourcesNote, piecesWithoutSources, usesSources } from "@/lib/sources";
+import { TITLES_REQUIRED, missingSourcesNote, piecesNothingFoundFor, piecesWithoutSources, usesSources } from "@/lib/sources";
 import { shell, useShellRibbon } from "@/lib/shell";
 import { MAX_SECTIONS, MAX_SECTION_TITLE, MAX_TOPIC, sectionsProblem, sectionTitles, topicLength } from "@/lib/topic";
 import type { AppConfig, Drafting, Overview, ReportChoice, Review, SectionSummary, SourcePiece } from "@/lib/types";
@@ -79,10 +79,11 @@ const showsInputs = computed(() => usesInputs.value || (props.report.type === "w
 // Company Updates and the Executive Summary call no LLM: no API budget, no key needed, no draft slot.
 const llm = computed(() => props.section.uses_provider);
 const providerBlocked = computed(() => providerOff(llm.value, props.config));
-// A Bedrock draft is written only from the sources supplied for each piece (the Sources panel); nothing is searched.
+// A Bedrock draft is written only from saved sources (the Sources panel); the tool searches for them when the draft starts.
 const bedrock = computed(() => usesSources(props.config, props.section));
 const sourcePieces = ref<SourcePiece[] | null>(null);
 const withoutSources = computed(() => (bedrock.value && sourcePieces.value ? piecesWithoutSources(sourcePieces.value) : []));
+const nothingFound = computed(() => (bedrock.value && sourcePieces.value ? piecesNothingFoundFor(sourcePieces.value) : []));
 // Bedrock has nothing to search, so a Focus needs its section titles typed: the API refuses a draft without them.
 const titlesNeeded = computed(() => bedrock.value && props.section.needs_topic && sectionTitles(sections.value).length === 0);
 const sectionsHint = computed(() =>
@@ -130,10 +131,10 @@ async function start() {
   }
   afterCharts();
 }
-// A Bedrock draft with pieces that have no sources says which, first; the coordinator may draft anyway.
+// A Bedrock draft says first which pieces a search has already found nothing for; the coordinator may draft anyway. With none, no question is asked.
 const sourcesNote = ref<string | null>(null);
 function afterCharts() {
-  sourcesNote.value = missingSourcesNote(withoutSources.value);
+  sourcesNote.value = missingSourcesNote(nothingFound.value);
   if (!sourcesNote.value) afterSources();
 }
 function afterSources() {
@@ -276,8 +277,8 @@ const lists = computed(() => [
             </Notice>
             <Notice v-if="llm && config.spends_api_budget && !config.provider_problem" tone="info">
               <template v-if="bedrock">
-                Drafting provider: {{ config.provider }}. A run spends real API budget (model tokens). Nothing is searched: each piece is written only from the sources
-                supplied for it.
+                Drafting provider: {{ config.provider }}. A run spends real API budget (model tokens). The tool looks for sources itself when you draft, and each piece is
+                written only from the sources saved for it. You can add more.
               </template>
               <template v-else>Drafting provider: {{ config.provider }}. A run spends real API budget (web search and tokens).</template>
             </Notice>
@@ -410,8 +411,9 @@ const lists = computed(() => [
                 </li>
                 <li v-if="bedrock && sourcePieces" class="flex items-center gap-2">
                   <span v-if="!withoutSources.length" class="flex size-4 items-center justify-center rounded-full bg-ok/20 font-bold text-ok-fg text-[10px]">✓</span>
-                  <span v-else class="flex size-4 items-center justify-center rounded-full bg-warn/20 font-bold text-warn-fg text-[10px]">!</span>
-                  <span>Sources: {{ withoutSources.length ? `${withoutSources.length} of ${sourcePieces.length} pieces have none yet` : "every piece has at least one" }}</span>
+                  <span v-else-if="nothingFound.length" class="flex size-4 items-center justify-center rounded-full bg-warn/20 font-bold text-warn-fg text-[10px]">!</span>
+                  <span v-else class="flex size-4 items-center justify-center rounded-full bg-muted font-bold text-muted-foreground text-[10px]">·</span>
+                  <span>Sources: {{ !withoutSources.length ? "every piece has at least one" : nothingFound.length ? `a search found nothing for ${nothingFound.length} of ${sourcePieces.length} pieces` : "found automatically when you draft" }}</span>
                 </li>
                 <li v-if="blocked" class="flex items-center gap-2 text-warn-fg font-medium">
                   <span class="flex size-4 items-center justify-center rounded-full bg-warn/20 font-bold text-[10px]">⏳</span>
@@ -452,7 +454,7 @@ const lists = computed(() => [
             <RedraftDialog
               :open="sourcesNote !== null"
               title="Some pieces have no sources"
-              :notes="sourcesNote ? [sourcesNote, 'Nothing is searched, so a piece with no sources is not drafted. Supply sources and draft it again, or draft anyway and fill them in afterwards.'] : []"
+              :notes="sourcesNote ? [sourcesNote, 'Add a link or paste text for them and draft again, or draft anyway and fill them in afterwards.'] : []"
               confirm-label="Draft anyway"
               cancel-label="Go back"
               @confirm="sourcesConfirmed"

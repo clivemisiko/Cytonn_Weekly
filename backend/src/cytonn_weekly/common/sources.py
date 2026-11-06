@@ -405,6 +405,36 @@ def dismissed(subject: str, week_end: date, root: Optional[Path] = None) -> set[
     return {d["url"] for d in _read_dismissed(_folder(week_end, root)) if d.get("subject") == key}
 
 
+def last_look(subject: str, week_end: date, root: Optional[Path] = None) -> Optional[dict[str, Any]]:
+    """The last time the gather step looked for this piece: {looked_at, found, searched}, or None when it never has.
+    ``searched`` is False when the search service was not set up, so nothing was searched. Only counts and a time are kept."""
+    try:
+        raw = json.loads((_folder(week_end, root) / "looks.json").read_text(encoding="utf-8")).get(subject_key(subject))
+    except (OSError, ValueError, AttributeError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    return {"looked_at": raw.get("looked_at"), "found": int(raw.get("found") or 0), "searched": bool(raw.get("searched"))}
+
+
+def record_look(subject: str, week_end: date, found: int, searched: bool, root: Optional[Path] = None) -> None:
+    """Keep the result of a look in looks.json beside the manifest; a failure to write it is logged and never raised."""
+    folder = _folder(week_end, root)
+    try:
+        with _LOCK:
+            try:
+                looks = json.loads((folder / "looks.json").read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                looks = {}
+            looks[subject_key(subject)] = {"looked_at": _now(), "found": found, "searched": searched}
+            folder.mkdir(parents=True, exist_ok=True)
+            tmp = folder / "looks.json.tmp"
+            tmp.write_text(json.dumps(looks, indent=2), encoding="utf-8")
+            os.replace(tmp, folder / "looks.json")
+    except OSError as exc:
+        log.warning("could not record a look for a piece: %s", type(exc).__name__)
+
+
 def remove(source_id: str, root: Optional[Path] = None) -> bool:
     """Delete one source and its files; False when there is none.  A source found automatically is also recorded in
     dismissed.json (by piece and address) so a later gather skips it; a pasted or fetched-by-hand one is not."""

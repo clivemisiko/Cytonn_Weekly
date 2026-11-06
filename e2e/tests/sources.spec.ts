@@ -49,7 +49,7 @@ test("T107 a Bedrock start screen: the mode is production, not dev, and the Sour
   await openFocusStart(page);
   await expect(page.getByText("Production · bedrock")).toBeVisible();
   await expect(page.getByText("DEV MODE", { exact: false })).toHaveCount(0);
-  await expect(page.getByText("Nothing is searched: each piece is written only from the sources supplied for it.", { exact: false })).toBeVisible();
+  await expect(page.getByText("The tool looks for sources itself when you draft", { exact: false }).first()).toBeVisible();
   await expect(page.getByText("web search and tokens", { exact: false })).toHaveCount(0);
 
   const sources = page.getByRole("region", { name: "Sources" });
@@ -80,7 +80,7 @@ test("T108 a pasted source is listed with its host, date, size, origin and finge
   await expect(piece).toContainText(/pasted \d+ \w+ \d{4}, \d\d:\d\d EAT/); // times are East Africa Time, never UTC
   await expect(piece).toContainText(/fingerprint [0-9a-f]{8}\b/);
   await expect(piece).not.toContainText("host not on the approved list");
-  await expect(piece.getByText("No sources yet", { exact: false })).toHaveCount(0);
+  await expect(piece.getByText("Sources are found automatically when you draft.")).toHaveCount(0);
 
   const href = await piece.getByRole("link", { name: /View saved text/ }).getAttribute("href");
   expect(href).toMatch(/^\/sources\/[0-9a-f]{8}$/); // the styled page, which reads the raw text route
@@ -106,7 +106,7 @@ test("T109 any site is fetched and flagged when unknown or http, and a refused f
     await address.fill(url);
     await piece.getByRole("button", { name: "Fetch page" }).click();
     await expect(piece.getByRole("alert")).toContainText(sentence);
-    await expect(piece).toContainText("No sources yet");
+    await expect(piece).toContainText("Sources are found automatically when you draft.");
   }
 
   await address.fill("https://www.imf.org/en/news/e2e");
@@ -142,28 +142,39 @@ test("T110 a pasted source needs its date before it can be saved, and one from a
   await expect(piece).toContainText("host not on the approved list");
 });
 
-test("T111 a removed source goes back to the no-sources notice", async ({ page }) => {
+test("T111 a removed source goes back to the calm never-searched line", async ({ page }) => {
   await openFocus(page);
   const piece = group(page, "Market performance");
-  await expect(piece.getByText("No sources yet: this piece will come back unavailable")).toBeVisible();
+  await expect(piece.getByText("Sources are found automatically when you draft.")).toBeVisible();
+  await expect(piece.getByRole("button", { name: "Search for sources for Market performance" })).toBeEnabled();
   await paste(page, "Market performance", { url: "https://www.knbs.or.ke/e2e", text: PASTED + " More text follows." });
   await expect(piece).toContainText("1 source");
   await piece.getByRole("button", { name: /^Remove .* from Market performance$/ }).first().click();
-  await expect(piece.getByText("No sources yet: this piece will come back unavailable")).toBeVisible();
+  await expect(piece.getByText("Sources are found automatically when you draft.")).toBeVisible();
   await expect(piece).toContainText("0 sources");
 });
 
-test("T112 a piece with no sources says so, the draft button stays on, and the confirmation names the pieces without sources", async ({ page }) => {
+test("T112 a never-searched piece is calm, and only a piece a search found nothing for is warned about and named at draft time", async ({ page }) => {
+  // The test API has no search service, so the last look of one piece is stood in for on its way to the page.
+  await page.route("**/api/sources?*", async (route) => {
+    const res = await route.fetch();
+    const body = await res.json();
+    body.pieces = body.pieces.map((p: { subject: string }) =>
+      p.subject === "Overview of the topic" ? { ...p, gather: { looked_at: "2026-11-06T08:00:00+00:00", found: 0, searched: true } } : p,
+    );
+    await route.fulfill({ response: res, json: body });
+  });
   await openFocus(page);
   await paste(page, "Market performance", { url: "https://www.nse.co.ke/e2e", text: PASTED });
-  await expect(group(page, "Overview of the topic").getByText("No sources yet: this piece will come back unavailable")).toBeVisible();
-  await expect(group(page, "Market performance").getByText("No sources yet", { exact: false })).toHaveCount(0);
-  await expect(page.getByText("1 of 2 pieces have none yet", { exact: false })).toBeVisible();
+  await expect(group(page, "Overview of the topic").getByText("Nothing found yet for this piece. Add a link or paste text, or it will come back unavailable.")).toBeVisible();
+  await expect(group(page, "Overview of the topic").getByText("Sources are found automatically when you draft.")).toHaveCount(0);
+  await expect(group(page, "Market performance").getByText("Nothing found yet", { exact: false })).toHaveCount(0);
+  await expect(page.getByText("a search found nothing for 1 of 2 pieces", { exact: false })).toBeVisible();
 
   await expect(page.getByRole("button", { name: DRAFT })).toBeEnabled(); // the coordinator decides
   await page.getByRole("button", { name: DRAFT }).click();
   const dialog = page.getByRole("dialog", { name: "Some pieces have no sources" });
-  await expect(dialog).toContainText("“Overview of the topic” has no sources, so it will come back unavailable.");
+  await expect(dialog).toContainText("“Overview of the topic”: the last search found nothing and no source was added, so it will come back unavailable.");
   await expect(dialog).not.toContainText("Market performance");
   await dialog.getByRole("button", { name: "Go back" }).click();
   await expect(dialog).toHaveCount(0);
@@ -174,7 +185,8 @@ test("T113 a drafted piece shows its source host, date and verified quote, and a
   await openFocus(page);
   await paste(page, "Market performance", { url: "https://blog.example.com/e2e", date: "2026-10-07", text: PASTED });
   await page.getByRole("button", { name: DRAFT }).click();
-  await page.getByRole("dialog", { name: "Some pieces have no sources" }).getByRole("button", { name: "Draft anyway" }).click();
+  // No search has found nothing for a piece, so the draft starts without a question: it searches by itself.
+  await expect(page.getByRole("dialog", { name: "Some pieces have no sources" })).toHaveCount(0);
   await expect(page).toHaveURL(/\/runs\//);
   await expect(page.getByRole("heading", { name: "Draft ready for review", level: 2 })).toBeVisible({ timeout: 60_000 });
   await page.getByRole("link", { name: "Open review" }).click();
