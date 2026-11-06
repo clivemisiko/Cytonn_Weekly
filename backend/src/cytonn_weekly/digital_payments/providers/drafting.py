@@ -118,12 +118,27 @@ headline and paragraph empty and claims an empty list.
 Reply with JSON only."""
 
 
+def _decoded(value: Any, kind: type) -> Any:
+    """The model sometimes sends a nested object or list as a JSON string; decode it (twice at most)."""
+    for _ in range(2):
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except json.JSONDecodeError:
+                return None
+    return value if isinstance(value, kind) else None
+
+
 def _claims(out: dict[str, Any], by_url: dict[str, dict[str, Any]], hl: list[str], where: str,
             read_claim: Optional[ClaimReader]) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
     """The reply's claims that cite a given source, and the distinct citations they make."""
     claims: list[dict[str, Any]] = []
     citations: list[dict[str, str]] = []
-    for c in out.get("claims") or []:
+    for c in _decoded(out.get("claims") or [], list) or []:
+        c = _decoded(c, dict)
+        if c is None:
+            hl.append("a claim in the reply was not readable; dropped")
+            continue
         if read_claim:
             claim = read_claim(c, by_url, hl)
         else:
@@ -154,6 +169,10 @@ def highlight_from_reply(
         out = json.loads(raw)
     except json.JSONDecodeError:
         warnings.append(f"{company}: {who} returned invalid JSON for the {scope} results; discarded")
+        return None
+    out = _decoded(out, dict)
+    if out is None:
+        warnings.append(f"{company}: {who} returned a reply that is not a draft object for the {scope} results; discarded")
         return None
     if not out.get("is_genuine_announcement"):
         reason = " ".join((out.get("reasoning") or "").split())
@@ -219,6 +238,10 @@ def piece_from_reply(
         out = json.loads(raw)
     except json.JSONDecodeError:
         warnings.append(f"{brief.label}: {who} returned invalid JSON; discarded")
+        return None
+    out = _decoded(out, dict)
+    if out is None:
+        warnings.append(f"{brief.label}: {who} returned a reply that is not a draft object; discarded")
         return None
     if not out.get("is_genuine_announcement"):
         warnings.append(f"{brief.label}: {who} judged the {scope} results not qualifying "

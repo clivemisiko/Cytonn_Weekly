@@ -254,7 +254,13 @@ class _Chat:
             [{"role": "system", "content": _sourced(system)},
              {"role": "user", "content": results_message(label, results, "Supplied sources", SOURCE_CHARS)}],
             SOURCED_SCHEMA, max_tokens)
-        res = parse(raw, warnings, _sourced_reader(results))
+        try:
+            res = parse(raw, warnings, _sourced_reader(results))
+        except (AttributeError, TypeError, KeyError, ValueError):   # a field of the reply was not in a usable shape
+            logger.warning("%s: the model's reply could not be read", label, exc_info=True)
+            empty.draft_warnings = warnings
+            empty.reason = "The model's reply for this piece was not in a form that could be read, so nothing was drafted. Draft again."
+            return empty
         if res is None:
             empty.draft_warnings = warnings
             return empty

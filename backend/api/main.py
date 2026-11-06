@@ -526,7 +526,7 @@ def create_app(
             run.fail(failure_message(exc))
             if not isinstance(exc, Exception):
                 raise
-            log.warning("run %s (%s) failed: %s", run.run_id, spec.slug, safe_describe(exc))
+            log.warning("run %s (%s) failed: %s", run.run_id, spec.slug, safe_describe(exc), exc_info=exc)
             return
         if claim is not None and not draft_slot.release(claim):
             log.warning("draft of %s finished after it was replaced as stuck; its result was discarded", spec.slug)
