@@ -4,7 +4,7 @@ import type { AppConfig, ClaimContext, SectionSummary, SourceInput, SourceMeta, 
 /** The only provider whose drafts are written from supplied sources (the others search). */
 export const SOURCES_PROVIDER = "bedrock";
 
-/** The flag the API puts on pasted text from a host off the approved list; the review shows it as it stands. */
+/** The off_list flag the API puts on a fetched or pasted source from a host that is not a known site; the review shows it as it stands. */
 export const NOT_ON_LIST = "host not on the approved list";
 
 /** The hint in every piece's address box. Generic on purpose: the same box serves every section, so it names no site. */
@@ -85,7 +85,7 @@ export const TITLES_REQUIRED = "Amazon Bedrock does not propose section titles, 
 export const ADDRESS_EMPTY = "Type the address of the page to fetch.";
 export const ADDRESS_SPACES = "An address has no spaces in it. Check it and try again.";
 
-// A bare domain or a link without a scheme gets https://; any address that names a scheme is sent as typed, so the API refuses a non-https one in its own words.
+// A bare domain or a link without a scheme gets https://; any address that names a scheme is sent as typed, so the API refuses a scheme other than http and https in its own words.
 export function normalizeAddress(raw: string): { url: string } | { error: string } {
   const v = raw.trim();
   if (!v) return { error: ADDRESS_EMPTY };

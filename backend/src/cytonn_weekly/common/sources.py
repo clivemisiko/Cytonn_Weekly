@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import socket
+import ssl
 import threading
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timezone
@@ -22,10 +23,10 @@ from cytonn_weekly.weekly.week import latest_friday
 
 log = logging.getLogger(__name__)
 
-# The approved sites: the one list a fetch is allowed to read, and the one place to edit it. A host matches when it is a
-# listed name or a subdomain of one (knightfrank.com covers content.knightfrank.com). It is built from the briefs'
-# preferred domains in the section modules and real_estate.review_run.PREFERRED_SITES, and a test fails when a brief
-# names a domain this list lacks. Pasted text is never limited to it. Reviewed by Clive before use.
+# The known sites: only a label. A fetch or a paste from any other host is kept too and flagged off_list, so the
+# reviewer sees it. A host matches when it is a listed name or a subdomain of one (knightfrank.com covers
+# content.knightfrank.com). It is built from the briefs' preferred domains in the section modules and
+# real_estate.review_run.PREFERRED_SITES, and a test fails when a brief names a domain this list lacks.
 APPROVED_SITES = (
     # Digital Payments: each company's own investor relations site
     "investor.visa.com", "investor.mastercard.com", "ir.americanexpress.com", "investor.pypl.com", "investor.circle.com",
@@ -43,17 +44,19 @@ APPROVED_SITES = (
 # Never a source, fetched or pasted (the same list as real_estate.review_run.SOCIAL_DOMAINS, which a test compares).
 SOCIAL_DOMAINS = ("x.com", "twitter.com", "facebook.com", "instagram.com", "tiktok.com")
 
-NOT_ON_LIST = "host not on the approved list"
+NOT_ON_LIST = "host not on the approved list"       # the off_list flag, on a fetched source and a pasted one
+INSECURE = "Not secure: the page could have been altered in transit"   # the insecure flag: fetched over http://
 MAX_BYTES = 5 * 1024 * 1024
 MAX_PASTE_CHARS = 200_000
 MIN_CHARS = 400        # shorter than this is a stub or an error page, not an article
 MAX_HOPS = 3
 TIMEOUT = 20.0
 
-NOT_HTTPS = "Only https addresses are fetched. Use an https address, or paste the text with its address and date."
+NOT_HTTP = "Only http:// and https:// addresses are fetched. Use one of those, or paste the text with its address and date."
+CERTIFICATE = ("The certificate of {host} could not be verified, so nothing was fetched. Paste the text with its address and "
+               "date instead, or try the http:// version of the address if the site serves one.")
+NOT_A_PAGE = "The address at {host} did not answer with a web page or a PDF ({kind}), so nothing was kept. Paste the text with its address and date instead."
 SOCIAL = "{host} is a social media site, and social media is never used as a source."
-OFF_LIST = ("{host} is not on the approved list of sites, so it is not fetched. Paste the text with its address and date "
-            "instead (the list is APPROVED_SITES in common/sources.py).")
 PRIVATE = "{host} points to a private or internal address, so it is not fetched."
 LOOKUP = "The address {host} could not be looked up, so nothing was fetched."
 REDIRECT = ("{host} redirects to {other}, a different host, and the redirect was not followed. Use the final address, or "
@@ -146,12 +149,27 @@ def is_approved(host: str) -> bool:
     return _under(host, APPROVED_SITES)
 
 
+def _certificate_failed(exc: BaseException) -> bool:
+    while exc is not None:
+        if isinstance(exc, ssl.SSLCertVerificationError):
+            return True
+        exc = exc.__cause__ or exc.__context__
+    return False
+
+
 def _resolve(host: str) -> list[str]:
     return sorted({info[4][0] for info in socket.getaddrinfo(host, 443, proto=socket.IPPROTO_TCP)})
 
 
+def list_flags(host: str) -> list[str]:
+    """The off_list flag: one rule for a fetched source and a pasted one."""
+    return [] if is_approved(host) else [NOT_ON_LIST]
+
+
 def _refuse_address(url: str, resolve: Callable[[str], list[str]]) -> str:
-    """The host of ``url`` once it passes every rule of a fetch, else SourceError saying which rule it broke."""
+    """The host of ``url`` once it passes every rule of a fetch, else SourceError saying which rule it broke.
+
+    Any site may be fetched; the rules are about where the request goes, not which site it is."""
     try:
         parts = urlsplit(url)
         port = parts.port
@@ -160,16 +178,17 @@ def _refuse_address(url: str, resolve: Callable[[str], list[str]]) -> str:
     host = host_of(url)
     if is_social(host):
         raise SourceError(SOCIAL.format(host=host))
-    if parts.scheme != "https":
-        raise SourceError(NOT_HTTPS)
-    if not host or parts.username or parts.password or port not in (None, 443):
+    if parts.scheme not in ("http", "https"):
+        raise SourceError(NOT_HTTP)
+    if not host or parts.username or parts.password or port not in (None, 80, 443):
         raise SourceError(BAD_URL.format(url=url))
-    if not is_approved(host):
-        raise SourceError(OFF_LIST.format(host=host))
     try:
-        addresses = resolve(host)
-    except OSError:
-        raise SourceError(LOOKUP.format(host=host)) from None
+        addresses = [str(ipaddress.ip_address(host))]      # an address typed as the host is checked as it stands
+    except ValueError:
+        try:
+            addresses = resolve(host)
+        except OSError:
+            raise SourceError(LOOKUP.format(host=host)) from None
     if not addresses:
         raise SourceError(LOOKUP.format(host=host))
     for a in addresses:
@@ -395,13 +414,13 @@ def _now() -> str:
 def fetch_page(url: str, subject: str, week_end: date, *, http_get: Callable[..., http.Reply] = http.http_get_once,
                resolve: Callable[[str], list[str]] = _resolve, root: Optional[Path] = None,
                now: Callable[[], str] = _now) -> SourceText:
-    """Fetch one page from an approved site, keep its readable text, and list it for ``subject``.
+    """Fetch one page from any site, keep its readable text, and list it for ``subject``.
 
     ``http_get(url, max_bytes=...)`` answers once and follows nothing (common/http.http_get_once); this function
     follows at most MAX_HOPS redirects itself, each only to the same host, and applies every rule to each address.
     SourceError says, in the coordinator's terms, why a page was not kept.
-    ponytail: the address is resolved before the request, so a DNS answer that changes between the two is not caught;
-    the host list is what limits where a fetch can go.
+    ponytail: the address is resolved before the request, so a DNS answer that changes between the two (rebinding) is not
+    caught; pin the checked IP in the connection if that matters. TLS is verified by httpx and cannot be turned off.
     """
     if not subject.strip():
         raise SourceError(NO_SUBJECT)
@@ -414,6 +433,8 @@ def fetch_page(url: str, subject: str, week_end: date, *, http_get: Callable[...
         except http.TooLarge:
             raise SourceError(TOO_LARGE.format(mb=MAX_BYTES // (1024 * 1024))) from None
         except Exception as exc:  # noqa: BLE001 - the coordinator gets a sentence, the log gets the class
+            if _certificate_failed(exc):
+                raise SourceError(CERTIFICATE.format(host=host)) from None
             log.warning("fetch of %s failed: %s", host, type(exc).__name__)
             raise SourceError(NETWORK.format(host=host)) from None
         if reply.status not in (301, 302, 303, 307, 308):
@@ -434,6 +455,9 @@ def fetch_page(url: str, subject: str, week_end: date, *, http_get: Callable[...
     if reply.status >= 400 or reply.status < 200:
         raise SourceError(ERROR_STATUS.format(host=host, status=reply.status))
     body = reply.body
+    kind = reply.headers.get("content-type", "").split(";")[0].strip().lower()
+    if kind and not body.startswith(b"%PDF") and "html" not in kind and "pdf" not in kind:
+        raise SourceError(NOT_A_PAGE.format(host=host, kind=kind))
     if body.startswith(b"%PDF"):
         try:
             text, title = read_pdf(body)
@@ -453,7 +477,8 @@ def fetch_page(url: str, subject: str, week_end: date, *, http_get: Callable[...
     src = SourceText(id=_id(subject, current, sha), subject=" ".join(subject.split()),
                      week_end=latest_friday(week_end).isoformat(), url=current, host=host,
                      title=title or current.rsplit("/", 1)[-1] or host, published_date=published, fetched_at=now(),
-                     origin="fetched", text=text, sha256=sha, chars=len(text))
+                     origin="fetched", text=text, sha256=sha, chars=len(text),
+                     flags=list_flags(host) + ([INSECURE] if current.lower().startswith("http://") else []))
     return _save(src, body, raw_name, root)
 
 
@@ -486,5 +511,5 @@ def from_paste(url: str, date_text: str, text: str, subject: str, week_end: date
                      week_end=latest_friday(week_end).isoformat(), url=url, host=host,
                      title=" ".join((title or "").split()) or host, published_date=published, fetched_at=now(),
                      origin="pasted", text=text, sha256=sha, chars=len(text),
-                     flags=[] if is_approved(host) else [NOT_ON_LIST])
+                     flags=list_flags(host))
     return _save(src, None, "", root)

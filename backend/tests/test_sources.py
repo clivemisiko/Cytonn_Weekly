@@ -1,6 +1,7 @@
 import importlib
 import json
 import re
+import ssl
 from datetime import date
 
 import pytest
@@ -136,15 +137,21 @@ def test_a_page_is_filed_under_the_friday_on_or_before_the_day_given(tmp_path):
 
 # --- every refusal -----------------------------------------------------------------------------------------------------
 
-def test_a_host_off_the_list_is_refused_and_nothing_is_asked(tmp_path):
-    got = Getter()
-    why = refused(got, "https://blog.example.com/post", root=tmp_path)
-    assert "blog.example.com is not on the approved list" in why and "Paste the text" in why and got.asked == []
-    assert not (tmp_path / "2026-11-06").exists()
+def test_a_host_off_the_list_is_fetched_and_flagged_off_list(tmp_path):
+    for url in ("https://blog.example.com/post", "https://centralbank.go.ke.evil.example/x"):
+        one = fetch(Getter(reply(article())), url, root=tmp_path)
+        assert one.flags == [src.NOT_ON_LIST] and one.url == url
 
 
-def test_a_look_alike_host_is_refused(tmp_path):
-    assert "not on the approved list" in refused(Getter(), "https://centralbank.go.ke.evil.example/x", root=tmp_path)
+def test_a_known_site_is_not_flagged(tmp_path):
+    assert fetch(Getter(reply(article())), root=tmp_path).flags == []
+
+
+def test_fetched_and_pasted_sources_share_the_off_list_rule(tmp_path):
+    for host in ("www.centralbank.go.ke", "blog.example.com"):
+        fetched = fetch(Getter(reply(article())), f"https://{host}/a", root=tmp_path)
+        pasted = paste(tmp_path, url=f"https://{host}/b")
+        assert fetched.flags == pasted.flags == src.list_flags(host)
 
 
 @pytest.mark.parametrize("url", ["https://x.com/CBKKenya/status/1", "https://www.facebook.com/page/posts/2",
@@ -154,14 +161,20 @@ def test_social_media_is_refused_even_over_http(url, tmp_path):
     assert "social media is never used as a source" in refused(got, url, root=tmp_path) and got.asked == []
 
 
-def test_http_is_refused(tmp_path):
-    got = Getter()
-    assert "Only https addresses are fetched" in refused(got, "http://www.centralbank.go.ke/x", root=tmp_path)
-    assert got.asked == []
+def test_an_http_page_is_fetched_and_flagged_insecure(tmp_path):
+    url = "http://blog.example.com/x"
+    one = fetch(Getter(reply(article())), url, root=tmp_path)
+    assert one.flags == [src.NOT_ON_LIST, src.INSECURE] and one.url == url
+    assert fetch(Getter(reply(article())), "http://www.centralbank.go.ke/x", root=tmp_path).flags == [src.INSECURE]
 
 
-@pytest.mark.parametrize("url", ["https://user:pw@www.centralbank.go.ke/x", "https://www.centralbank.go.ke:8443/x",
-                                 "https:///nohost", "ftp://www.centralbank.go.ke/x"])
+def test_an_https_page_is_not_flagged_insecure(tmp_path):
+    assert src.INSECURE not in fetch(Getter(reply(article())), "https://blog.example.com/x", root=tmp_path).flags
+
+
+@pytest.mark.parametrize("url", ["https://user:pw@www.centralbank.go.ke/x", "http://user@www.centralbank.go.ke/x",
+                                 "https://www.centralbank.go.ke:8443/x", "http://www.centralbank.go.ke:8080/x",
+                                 "https:///nohost", "ftp://www.centralbank.go.ke/x", "file:///etc/passwd"])
 def test_an_address_with_credentials_a_port_or_no_host_is_refused(url, tmp_path):
     got = Getter()
     with pytest.raises(src.SourceError):
@@ -182,9 +195,23 @@ def test_a_redirect_on_the_same_host_is_followed_and_the_final_address_is_kept(t
     assert one.url == "https://www.centralbank.go.ke/press/final"
 
 
-def test_a_redirect_that_downgrades_to_http_is_refused(tmp_path):
-    got = Getter(reply(status=302, location="http://www.centralbank.go.ke/press/final"))
-    assert "Only https" in refused(got, root=tmp_path)
+def test_a_redirect_that_downgrades_to_http_is_followed_and_flagged_insecure(tmp_path):
+    got = Getter(reply(status=302, location="http://www.centralbank.go.ke/press/final"), reply(article()))
+    one = fetch(got, root=tmp_path)
+    assert one.url.startswith("http://") and one.flags == [src.INSECURE]
+
+
+def test_a_redirect_to_a_private_address_is_refused_by_the_same_host_rule(tmp_path):
+    hosts = {"www.centralbank.go.ke": PUBLIC}
+    got = Getter(reply(status=302, location="https://10.0.0.5/x"))
+    assert "a different host" in refused(got, resolve=lambda h: hosts[h], root=tmp_path) and got.asked == [OK_URL]
+
+
+def test_a_redirect_whose_host_now_resolves_to_a_private_address_is_refused(tmp_path):
+    answers = iter([PUBLIC, ["10.0.0.5"]])
+    got = Getter(reply(status=302, location="/internal"))
+    assert "private or internal address" in refused(got, resolve=lambda h: next(answers), root=tmp_path)
+    assert got.asked == [OK_URL]
 
 
 def test_a_redirect_loop_stops(tmp_path):
@@ -198,6 +225,28 @@ def test_an_address_that_is_private_loopback_or_link_local_is_refused(address, t
     got = Getter()
     assert "private or internal address" in refused(got, resolve=lambda host: [address], root=tmp_path)
     assert got.asked == []
+
+
+@pytest.mark.parametrize("url", ["https://127.0.0.1/x", "http://169.254.169.254/latest/meta-data", "http://[::1]/x",
+                                 "https://10.1.2.3/x", "http://0.0.0.0/x", "https://[fe80::1]/x"])
+def test_an_address_typed_as_the_host_is_checked_as_it_stands(url, tmp_path):
+    got = Getter()
+    assert "private or internal address" in refused(got, url, resolve=lambda h: PUBLIC, root=tmp_path) and got.asked == []
+
+
+def test_a_certificate_that_cannot_be_verified_gives_the_clear_message(tmp_path):
+    inner = ssl.SSLCertVerificationError("CERTIFICATE_VERIFY_FAILED")
+    outer = ConnectionError("connect failed")
+    outer.__cause__ = inner
+    why = refused(Getter(outer), root=tmp_path)
+    assert "certificate of www.centralbank.go.ke could not be verified" in why
+    assert "Paste the text" in why and "http:// version" in why
+    assert "could not be fetched" in refused(Getter(ConnectionError("reset")), root=tmp_path)    # other errors keep their message
+
+
+def test_a_page_that_is_neither_html_nor_a_pdf_is_refused(tmp_path):
+    why = refused(Getter(reply(b"not a page", content_type="image/png")), root=tmp_path)
+    assert "web page or a PDF (image/png)" in why
 
 
 def test_one_private_answer_among_public_ones_refuses(tmp_path):

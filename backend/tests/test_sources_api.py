@@ -166,9 +166,9 @@ def test_a_url_alone_is_fetched_and_kept_as_fetched(client, fetched):
     assert client.get(f"/api/sources/{one['id']}/text").text == src.get(one["id"]).text
 
 
-@pytest.mark.parametrize("url,word", [("https://blog.example.com/post", "not on the approved list"),
-                                      ("https://x.com/CBK/status/1", "social media"),
-                                      ("http://www.centralbank.go.ke/x", "Only https")])
+@pytest.mark.parametrize("url,word", [("https://x.com/CBK/status/1", "social media"),
+                                      ("ftp://www.centralbank.go.ke/x", "Only http:// and https://"),
+                                      ("https://127.0.0.1/x", "private or internal")])
 def test_a_refused_fetch_is_422_with_the_sentence_and_nothing_was_asked(client, fetched, url, word):
     r = post(client, url=url, date=None, text=None)
     assert r.status_code == 422 and word in r.json()["detail"] and fetched.asked == []

@@ -65,7 +65,7 @@ test("T107 a Bedrock start screen: the mode is production, not dev, and the Sour
   await expect(group(page, "Overview of the topic")).toBeVisible();
   await expect(group(page, "Market performance")).toBeVisible();
   await expect(page.getByRole("group", { name: /Recommendations and Conclusion/ })).toHaveCount(0);
-  await expect(sources.getByText("Approved sites (", { exact: false })).toBeVisible();
+  await expect(sources.getByText("Known sites (", { exact: false })).toBeVisible();
 });
 
 test("T108 a pasted source is listed with its host, date, size, origin and fingerprint, and its saved text is one link away", async ({ page }) => {
@@ -92,16 +92,16 @@ test("T108 a pasted source is listed with its host, date, size, origin and finge
   await expect(group(page, "Market performance")).toContainText("www.centralbank.go.ke");
 });
 
-test("T109 a fetch from an approved site is kept as fetched, and a refused fetch shows the API's sentence and keeps nothing", async ({ page }) => {
+test("T109 any site is fetched and flagged when unknown or http, and a refused fetch shows the API's sentence and keeps nothing", async ({ page }) => {
   await openFocus(page);
   const piece = group(page, "Overview of the topic");
   await piece.getByText("Add a source", { exact: true }).click();
   const address = piece.getByLabel("Address (URL) to fetch");
 
   for (const [url, sentence] of [
-    ["https://blog.example.com/post", "blog.example.com is not on the approved list of sites, so it is not fetched"],
     ["https://x.com/someone/status/1", "x.com is a social media site, and social media is never used as a source"],
-    ["http://www.centralbank.go.ke/press/1", "Only https addresses are fetched"],
+    ["http://127.0.0.1/admin", "127.0.0.1 points to a private or internal address, so it is not fetched"],
+    ["ftp://www.centralbank.go.ke/press/1", "Only http:// and https:// addresses are fetched"],
   ]) {
     await address.fill(url);
     await piece.getByRole("button", { name: "Fetch page" }).click();
@@ -115,6 +115,18 @@ test("T109 a fetch from an approved site is kept as fetched, and a refused fetch
   await expect(piece).toContainText("fetched");
   await expect(piece).toContainText("8 Oct 2026"); // the page's own date, read from its meta tag
   await expect(piece.getByRole("alert")).toHaveCount(0);
+  await expect(piece).not.toContainText("host not on the approved list"); // a known site carries no flag
+  await expect(piece).not.toContainText("Not secure");
+
+  await address.fill("https://blog.example.com/post"); // an unknown site is fetched and marked
+  await piece.getByRole("button", { name: "Fetch page" }).click();
+  await expect(piece.getByRole("status")).toContainText("(blog.example.com)");
+  await expect(piece).toContainText("host not on the approved list");
+
+  await address.fill("http://www.knbs.or.ke/press/1"); // http is fetched and marked insecure
+  await piece.getByRole("button", { name: "Fetch page" }).click();
+  await expect(piece.getByRole("status")).toContainText("(www.knbs.or.ke)");
+  await expect(piece).toContainText("Not secure: the page could have been altered in transit");
 });
 
 test("T110 a pasted source needs its date before it can be saved, and one from a site off the list is kept and marked", async ({ page }) => {

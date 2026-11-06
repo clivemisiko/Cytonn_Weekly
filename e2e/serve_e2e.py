@@ -30,7 +30,7 @@ E2E_VARIANT starts it in another state, for the tests that need one:
 - "stale":  a draft that has held the slot for six seconds counts as stuck;
 - "bedrock": the provider is "bedrock" with invented AWS settings, so the screens show the Sources panel. Narrative drafting
   runs the real Bedrock provider over a fake client (no AWS call) that quotes the first sentence of the first saved source
-  it is shown, plus one claim whose quote is not in the page; "approved site" fetches are answered by one fixed page and
+  it is shown, plus one claim whose quote is not in the page; every fetch is answered by one fixed page and
   every refusal is the real one. Nothing is searched, fetched or sent anywhere.
 
 The weekly Fixed Income and Equities drafts, and the suggested running totals, still read CBK's and

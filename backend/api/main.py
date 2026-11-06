@@ -1064,7 +1064,7 @@ def create_app(
 
     @app.post("/api/sources")
     def add_source(body: SourceBody) -> dict:
-        """Keep one source for a piece: with no ``text`` and no ``date`` the page at ``url`` is fetched (approved sites only);
+        """Keep one source for a piece: with no ``text`` and no ``date`` the page at ``url`` is fetched (any site; the safety rules of common/sources.py apply);
         with them, the pasted text is kept as it is, under the address and date given.  422 with the reason if it is refused."""
         spec, period, piece = source_piece(body.section, body.subject, body.report_type, body.period, body.sections)
         refuse_while_drafting()
