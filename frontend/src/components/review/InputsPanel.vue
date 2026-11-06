@@ -95,9 +95,18 @@ const upload = (slot: string, files: File[]) =>
   });
 
 const remove = (name: string) => act(() => api.removeInput(props.week, name));
-// Digital Payments takes one input, its workbook; the other slots and the notes belong to Fixed Income and Equities.
+// Each section shows only the slots its builder reads; the bulletin is read by both Fixed Income and Equities.
+// Any other section sees every slot. The notes below belong to Fixed Income and Equities.
+const SLOTS_READ: Record<string, string[]> = {
+  fixed_income: ["fi_workbook", "cbk_bulletin", "nse_yield_curve"],
+  equities: ["equities_workbook", "kcb_daily", "kcb_weekly", "cbk_bulletin"],
+  digital_payments: ["dp_workbook"],
+};
 const dpOnly = computed(() => props.section === "digital_payments");
-const slots = computed(() => (status.value?.slots ?? []).filter((s) => !dpOnly.value || s.slug === "dp_workbook"));
+const slots = computed(() => {
+  const read = props.section ? SLOTS_READ[props.section] : undefined;
+  return (status.value?.slots ?? []).filter((s) => !read || read.includes(s.slug));
+});
 const charts = computed(() => (status.value?.charts ?? []).filter((c) => c.section === props.section));
 // Bumped on each image change, so a replaced image's thumbnail is read again.
 const chartVersion = ref(0);

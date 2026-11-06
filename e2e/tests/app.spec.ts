@@ -168,15 +168,15 @@ test("T07 inputs panel: what was received, an upload refused with its reason, a 
   const panel = page.locator("section", { has: page.getByRole("heading", { name: "This week’s inputs" }) }).first();
   await expect(panel.getByText("Week ending 9 Oct 2026: Monday 5 Oct 2026 to Friday.")).toBeVisible();
   await expect(panel.locator("li", { hasText: "Fixed income workbook" }).first()).toContainText("Received, this week’s");
-  await expect(panel.getByText("5 of 5 received")).toBeVisible();
+  await expect(panel.getByText("KCB IB daily trading reports")).toHaveCount(0); // Equities' input, not Fixed Income's
   await expect(panel.getByText("Not received (optional)")).toBeVisible();
 
   // The NSE yield curve slot is empty; a file that is not a PDF is refused in the API's own words and nothing is kept.
-  await panel.locator('input[type="file"]').nth(5).setInputFiles({ name: "not-a-pdf.pdf", mimeType: "application/pdf", buffer: Buffer.from("hello") });
+  await panel.locator('input[type="file"]').nth(2).setInputFiles({ name: "not-a-pdf.pdf", mimeType: "application/pdf", buffer: Buffer.from("hello") });
   await expect(panel.getByRole("alert").filter({ hasText: "not-a-pdf.pdf: NSE yield curve: this is not a PDF file" })).toBeVisible();
   await expect(panel.getByText("Not received (optional)")).toBeVisible();
   // The same file can be chosen again after a refusal.
-  await panel.locator('input[type="file"]').nth(5).setInputFiles({ name: "not-a-pdf.pdf", mimeType: "application/pdf", buffer: Buffer.from("hello") });
+  await panel.locator('input[type="file"]').nth(2).setInputFiles({ name: "not-a-pdf.pdf", mimeType: "application/pdf", buffer: Buffer.from("hello") });
   await expect(panel.getByRole("alert").filter({ hasText: "not-a-pdf.pdf: NSE yield curve: this is not a PDF file" })).toBeVisible();
 
   await panel.getByLabel("Week ending (a Friday)").fill("2026-10-08");
