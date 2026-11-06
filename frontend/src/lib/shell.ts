@@ -1,10 +1,16 @@
 import { type MaybeRefOrGetter, computed, onUnmounted, ref, shallowRef, toValue, watchEffect } from "vue";
 import * as api from "./api";
-import { type SectionState, isDraftingThis, stateOf } from "./drafting";
-import type { AppConfig, Overview, ReportChoice, ReportType } from "./types";
+import { type SectionState, draftingFor, draftingList, isLive, stateOf } from "./drafting";
+import type { AppConfig, Overview, ReportChoice, ReportType, SectionSummary } from "./types";
 
 /** What the side rail shows for a section: its state on the overview, "drafting" while it is being drafted, or null (unknown). */
-export type RailState = SectionState | "drafting";
+export type RailState = SectionState | "drafting" | "queued";
+
+function railState(overview: Overview, s: SectionSummary, report: ReportChoice): RailState {
+  const mine = draftingFor(draftingList(overview), s.slug, report);
+  if (isLive(mine)) return mine.state === "queued" ? "queued" : "drafting";
+  return stateOf(s);
+}
 
 export interface RailSection {
   slug: string;
@@ -81,7 +87,7 @@ export function createShell(load: (report: ReportChoice) => Promise<Overview>) {
     return overview.sections.map((s) => ({
       slug: s.slug,
       title: s.title,
-      state: !known.value ? null : isDraftingThis(overview.drafting, s.slug, report) ? "drafting" : stateOf(s),
+      state: !known.value ? null : railState(overview, s, report),
     }));
   });
   /** How many sections are approved, counted as the overview's own tally counts them; null when not known. */

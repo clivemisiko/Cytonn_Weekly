@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { effectScope, ref } from "vue";
-import { isDraftingThis, reattachHref, runHref, slotTaken, useLiveElapsed } from "./drafting";
+import { draftingFor, draftingList, draftingStatus, isDraftingThis, ownBusy, reattachHref, runHref, useLiveElapsed } from "./drafting";
 import { elapsed } from "./format";
 import type { Drafting, ReportChoice } from "./types";
 
@@ -92,7 +92,20 @@ describe("where a draft that is running leads", () => {
     const stuck = draft({ stale: true, elapsed_seconds: 4000 });
     expect(isDraftingThis(stuck, "equities", weekly)).toBe(true);
     expect(reattachHref(stuck, "equities", weekly)).toBeNull();
-    expect(slotTaken(true, stuck)).toBe(false);
-    expect(slotTaken(true, draft())).toBe(true); // a live draft still blocks another
+    expect(ownBusy(true, stuck)).toBe(false);
+    expect(ownBusy(true, draft())).toBe(true); // its own live draft still blocks it
+    expect(ownBusy(true, draft({ state: "queued", position: 2 }))).toBe(true);
+    expect(ownBusy(true, draft({ state: "failed" }))).toBe(false);
+  });
+
+  it("finds a section's own entry in the list; another section drafting never counts", () => {
+    const list = [draft({ slug: "fixed_income" }), draft({ state: "queued", position: 2 })];
+    expect(draftingFor(list, "equities", weekly)?.state).toBe("queued");
+    expect(draftingFor(list, "real_estate", weekly)).toBeNull();
+    expect(draftingFor([draft({ state: "failed" }), draft()], "equities", weekly)?.state).toBeUndefined(); // a live one wins
+    expect(draftingList({ drafting: draft(), drafting_list: undefined })).toHaveLength(1); // an older API
+    expect(draftingList({ drafting: null, drafting_list: undefined })).toEqual([]);
+    expect(draftingStatus(draft({ state: "queued", position: 3 }))).toBe("Queued, 2 ahead");
+    expect(draftingStatus(draft())).toBe("Being drafted now");
   });
 });

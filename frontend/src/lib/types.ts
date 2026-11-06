@@ -722,7 +722,8 @@ export type RunEventKind =
   | "run_failed"
   | "sources_looking"
   | "sources_found"
-  | "sources_search_unavailable";
+  | "sources_search_unavailable"
+  | "retrying";
 
 /** One real step of a draft, as the pipeline reported it (common/run_events.py). */
 export interface RunEvent {
@@ -745,7 +746,9 @@ export interface Run {
   period: string;
   section: string;
   section_title: string;
-  status: "running" | "finished" | "failed";
+  status: "queued" | "running" | "finished" | "failed";
+  /** Only while queued: 1 is next in line. */
+  position?: number | null;
   /** The saved review, once the run has finished. */
   review_id: number | null;
   /** As the review serializer computes it; null until the review exists. */
@@ -798,9 +801,17 @@ export interface SectionSummary {
   latest: LatestRun | null;
 }
 
-/** The draft running right now. One runs at a time across every section, and it is not saved until it finishes. */
+/** A draft holding a drafting seat (running) or waiting for one (queued). It is not saved until it finishes. */
 export interface Drafting {
   slug: string;
+  /** `running` (holds a seat) or `queued`; absent on the older single `drafting` key, which is always running. */
+  state?: "running" | "queued" | "failed";
+  /** Only when `failed`: the run's one-line failure. A failed entry holds no seat and is not polled for. */
+  reason?: string | null;
+  /** 1 is next in the queue; null unless queued. */
+  position?: number | null;
+  /** The latest event a running draft reported, worded by `eventText` in lib/run.ts. */
+  step?: { kind: RunEventKind; label: string; detail: string | null } | null;
   title: string;
   /** Which report the running draft is for; the same slug drafts in several report types. */
   report_type?: ReportType;
@@ -816,7 +827,10 @@ export interface Drafting {
 
 export interface Overview {
   today: string;
+  /** The longest-held seat alone: the older single key, kept for one release. Read `drafting_list`. */
   drafting: Drafting | null;
+  /** Every draft running or queued, across every section and report (the API's `section` is `slug` here). */
+  drafting_list?: Drafting[];
   /** The report these sections belong to, as the API normalized it. */
   report: {
     type: ReportType;

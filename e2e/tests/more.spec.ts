@@ -251,28 +251,24 @@ test("T23 rejecting a section is final: the dialog, the locked review, the overv
   await expect(page.getByRole("button", { name: "Save your text as the section" })).toBeVisible();
 });
 
-test("T24 a draft holding the one draft slot: the overview and the other sections say so, and unlock when it ends", async ({ page, request }) => {
+test("T24 a section that is drafting says so on its own card and run page; another section's draft button stays on", async ({ page, request }) => {
   hold();
   const run = await startRun(request, "real_estate");
   await page.goto(overviewUrl());
-  await expect(page.getByRole("status").filter({ hasText: "Drafting Real Estate" })).toContainText("One draft runs at a time, across every section; it is saved and shows");
-  await expect(card(page, "Real Estate")).toContainText("Drafting now");
+  await expect(page.getByRole("status").filter({ hasText: "Real Estate: Being drafted now" })).toContainText("It is saved and shows below when it finishes.");
+  await expect(card(page, "Real Estate")).toContainText("Being drafted now");
   await expect(card(page, "Real Estate")).toContainText("Drafting now; the review shows here when it finishes.");
-  await expect(card(page, "Fixed Income")).not.toContainText("Drafting now");
+  await expect(card(page, "Fixed Income")).not.toContainText("Being drafted now");
 
-  // Another drafting section: told which draft is running, and its own draft is off.
+  // Another section is not held up by it: its draft button is on and no notice about Real Estate is shown.
   await openStart(page, "Focus of the Week");
   await page.getByLabel("This week’s topic").fill("Eurobonds");
-  const notice = page.getByRole("status").filter({ hasText: /^Real Estate \(Week ending 2026-10-09\) is drafting now \(/ });
-  await expect(notice).toContainText("Only one draft runs at a time, across every section; drafting here unlocks when it finishes.");
-  await expect(page.getByRole("button", { name: DRAFT })).toBeDisabled();
-  // The API refuses a second draft in the same words, whatever the screen does.
-  const second = await request.post(`${API}/api/runs`, { headers: { "Content-Type": "application/json" }, data: { section: "focus", report_type: "weekly", period: PERIOD, topic: "Eurobonds" } });
+  await expect(page.getByRole("button", { name: DRAFT })).toBeEnabled();
+  await expect(page.getByText("Only one draft runs at a time", { exact: false })).toHaveCount(0);
+  // The API refuses a second draft of the same section, and says why.
+  const second = await request.post(`${API}/api/runs`, { headers: { "Content-Type": "application/json" }, data: { section: "real_estate", report_type: "weekly", period: PERIOD } });
   expect(second.status()).toBe(409);
-  expect((await second.json()).detail).toContain("Real Estate");
-
-  // The other drafting section's notice links to its page.
-  await expect(notice.getByRole("link", { name: "View its progress" })).toHaveAttribute("href", `/runs/${run}`);
+  expect((await second.json()).detail).toContain("already being drafted or is queued");
 
   // The section that is drafting leads to its run page, not to a draft button: from its card, and from the overview's link.
   await page.goto(overviewUrl());
@@ -286,7 +282,7 @@ test("T24 a draft holding the one draft slot: the overview and the other section
   await expect(page.getByText(/^Drafting for \d+:\d\d$/)).toBeVisible();
   await page.reload();
   await expect(page.getByText(/^Drafting for \d+:\d\d$/)).toBeVisible();
-  // A section that calls no provider takes no slot: no notice, and it can be saved.
+  // A section that calls no provider takes no seat: no notice, and it can be saved.
   await openStart(page, "Company Updates");
   await expect(page.getByText("drafting now", { exact: false })).toHaveCount(0);
 
@@ -295,20 +291,16 @@ test("T24 a draft holding the one draft slot: the overview and the other section
   await expect(page.getByText(/^Running\. Started .* EAT\.$/)).toBeVisible();
   await expect(page.getByRole("log", { name: "Steps of this draft" }).getByRole("listitem")).toHaveText(["Done: Starting the draft."]);
 
-  // Let it end: the waiting screen unlocks by itself on its next poll.
-  await openStart(page, "Focus of the Week");
-  await page.getByLabel("This week’s topic").fill("Eurobonds");
-  await expect(page.getByRole("button", { name: DRAFT })).toBeDisabled();
+  // Let it end: it failed while the reader was away, and its page says so with the counter gone.
   release();
-  await expect(page.getByRole("button", { name: DRAFT })).toBeEnabled({ timeout: 20_000 });
-  await expect(page.getByText("is drafting now", { exact: false })).toHaveCount(0);
-  // It failed while the reader was away: its page says so, and the counter has gone.
+  await expect.poll(async () => (await (await request.get(`${API}/api/runs/${run}`)).json()).status).toBe("failed");
   await page.goto(`/runs/${run}`);
   await expect(page.getByRole("alert").getByText("The draft stopped.", { exact: false })).toBeVisible();
   await expect(page.getByText(/^Drafting for/)).toHaveCount(0);
-  await openStart(page, "Focus of the Week");
-  await topbar(page).getByRole("button", { name: "Back to all sections" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Drafting Real Estate" })).toHaveCount(0);
+  // The overview then shows the failure on the section's card, and no banner for a draft that is no longer running.
+  await page.goto(overviewUrl());
+  await expect(card(page, "Real Estate")).toContainText("Draft failed");
+  await expect(page.getByRole("status").filter({ hasText: "Real Estate: Being drafted now" })).toHaveCount(0);
 });
 
 test("T25 Executive Summary: refused until every section is approved, then composed, with what it leaves out", async ({ page, request }) => {

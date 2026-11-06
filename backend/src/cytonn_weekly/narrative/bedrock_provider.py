@@ -5,12 +5,16 @@ import importlib.util
 import json
 import logging
 import os
+import random
 import re
+import threading
+import time
 from datetime import date
 from typing import Any, Callable, Optional, Sequence
 
 import anthropic
 
+from cytonn_weekly.common import run_events
 from cytonn_weekly.common import sources as source_store
 from cytonn_weekly.common.checks import check_sourced_claim
 from cytonn_weekly.common.run_events import frames
@@ -86,6 +90,48 @@ class BedrockError(RuntimeError):
 
 def _clean(name: str) -> str:
     return (os.environ.get(name) or "").strip()
+
+
+RETRIES_ENV = "CYTONN_BEDROCK_RETRIES"
+RETRY_BASE_ENV = "CYTONN_BEDROCK_RETRY_BASE_SECONDS"
+DEFAULT_ATTEMPTS = 5        # calls per request, the first included
+DEFAULT_BASE_SECONDS = 2.0  # the first wait; each next one doubles, with jitter
+MAX_WAIT_SECONDS = 60.0
+COOL_OFF_SECONDS = 5.0      # after a throttle, every new call from any draft waits this long
+RETRY_KINDS = ("ThrottlingException", "ModelNotReadyException", "ServiceUnavailableException")
+NEVER_RETRY_KINDS = ("AccessDeniedException", "ValidationException", "ExpiredTokenException", "ServiceQuotaExceededException",
+                     "UnrecognizedClientException", "InvalidSignatureException")
+
+_cool_lock = threading.Lock()
+_cool_until = 0.0   # time.monotonic() before which no new Bedrock call starts; one per process, shared by every draft
+
+
+def retry_settings() -> tuple[int, float]:
+    """(attempts, base seconds) from the environment; a bad value logs one warning and the default is used."""
+    def number(name: str, default: float, whole: bool) -> float:
+        raw = _clean(name)
+        if not raw:
+            return default
+        try:
+            n = int(raw) if whole else float(raw)
+        except ValueError:
+            n = 0
+        if n < 1 if whole else n <= 0:
+            logger.warning("%s must be %s; the default %s is used", name, "a whole number of 1 or more" if whole else "above 0", default)
+            return default
+        return n
+
+    return int(number(RETRIES_ENV, DEFAULT_ATTEMPTS, True)), number(RETRY_BASE_ENV, DEFAULT_BASE_SECONDS, False)
+
+
+def _retryable(exc: BaseException) -> bool:
+    """Throttled (429), not ready or unavailable (503): worth the same call again.  Anything else is a fixed sentence."""
+    kind, status = _kind(exc), getattr(exc, "status_code", 0) or 0
+    return kind not in NEVER_RETRY_KINDS and (kind in RETRY_KINDS or status in (429, 503))
+
+
+def _throttled(exc: BaseException) -> bool:
+    return _kind(exc) == "ThrottlingException" or getattr(exc, "status_code", 0) == 429
 
 
 def region() -> str:
@@ -201,11 +247,12 @@ class _Chat:
     WHO = "Bedrock model"
     LABEL = "Bedrock provider"
 
-    def __init__(self, client: Any = None, model: Optional[str] = None):
+    def __init__(self, client: Any = None, model: Optional[str] = None, sleep: Callable[[float], None] = time.sleep):
         self.model = model or model_id()
         self.drafted_by = f"bedrock:{self.model}"
         self._client = client
-        self.requests = 0   # Bedrock calls made; the Focus review shows it
+        self._sleep = sleep   # injectable, so a test waits for nothing
+        self.requests = 0   # Bedrock calls made, a retry of one call not counted; the Focus review shows it
 
     @property
     def client(self) -> Any:
@@ -214,8 +261,40 @@ class _Chat:
                 raise BedrockError(REGION_MISSING)
             # The bearer token (AWS_BEARER_TOKEN_BEDROCK) is read by the client itself and wins when set; otherwise
             # boto3's chain signs the request with AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_SESSION_TOKEN.
-            self._client = anthropic.AnthropicBedrock(aws_region=region())
+            # max_retries=0: the SDK's own retries would stack on ours (_create), so only ours happen.
+            self._client = anthropic.AnthropicBedrock(aws_region=region(), max_retries=0)
         return self._client
+
+    def _create(self, **request: Any) -> Any:
+        """``messages.create`` with backoff on a throttle (429) or a service not ready (503).  Waits are exponential with
+        jitter, each one reported as a ``retrying`` run event; a call that returned is never made again; every other
+        error goes up at once to be turned into its fixed sentence.  After any throttle every new call, from any draft,
+        first waits ``COOL_OFF_SECONDS``, so drafts running together do not all hit the limit at the same moment."""
+        global _cool_until
+        attempts, base = retry_settings()
+        for attempt in range(1, attempts + 1):
+            with _cool_lock:
+                pause = _cool_until - time.monotonic()
+            if pause > 0:
+                self._sleep(pause)
+            try:
+                return self.client.messages.create(**request)
+            except BedrockError:
+                raise
+            except Exception as exc:
+                if not _retryable(exc) or attempt == attempts:
+                    raise
+                if _throttled(exc):
+                    with _cool_lock:
+                        _cool_until = max(_cool_until, time.monotonic() + COOL_OFF_SECONDS)
+                wait = min(MAX_WAIT_SECONDS, base * 2 ** (attempt - 1)) * random.uniform(0.5, 1.0)
+                why = "throttling this account" if _throttled(exc) else "not ready"
+                run_events.emit(run_events.current_observer.get(), run_events.RETRYING, "Amazon Bedrock is busy",
+                                detail=f"It is {why}. Waiting {wait:.0f} seconds, then trying again (attempt {attempt + 1} of {attempts}).")
+                logger.warning("Bedrock call %d throttled or not ready (aws error %r, HTTP %s); attempt %d of %d, waiting %.1fs",
+                               self.requests, _kind(exc), getattr(exc, "status_code", None), attempt + 1, attempts, wait)
+                self._sleep(wait)
+        raise AssertionError("unreachable")   # the last attempt returns or raises above
 
     def _chat(self, messages: list[dict[str, str]], schema: Optional[dict] = None, max_tokens: Optional[int] = None) -> str:
         system = "\n\n".join(m["content"] for m in messages if m["role"] == "system")
@@ -225,7 +304,7 @@ class _Chat:
             extra["tool_choice"] = {"type": "tool", "name": DRAFT_TOOL}
         self.requests += 1
         try:
-            resp = self.client.messages.create(
+            resp = self._create(
                 model=self.model, max_tokens=max_tokens or MAX_TOKENS,
                 messages=[m for m in messages if m["role"] != "system"], **extra)
         except BedrockError:

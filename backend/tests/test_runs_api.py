@@ -92,6 +92,7 @@ def app(db, clock, monkeypatch):
                         lambda topic, on_event=None, **_: sh.focus_review(topic=topic, on_event=on_event))
     for module, name, builder in PERIODIC:
         monkeypatch.setattr(module, name, lambda ctx, on_event=None, _b=builder: _b(ctx, on_event=on_event))
+    monkeypatch.setenv("CYTONN_DRAFT_CONCURRENCY", "1")   # one seat, so these tests pin the seat and queue rules
     return create_app(db_path=db, load_dotenv=False, clock=clock)
 
 
@@ -103,7 +104,7 @@ def client(app):
 def start(client, **body):
     r = client.post("/api/runs", json=body)
     assert r.status_code == 202, r.text
-    assert set(r.json()) == {"run_id"}
+    assert set(r.json()) == {"run_id", "state", "position"}
     return r.json()["run_id"]
 
 
@@ -112,7 +113,7 @@ def finished(client, run_id, timeout=20.0):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         run = client.get(f"/api/runs/{run_id}").json()
-        if run["status"] != "running":
+        if run["status"] not in ("running", "queued"):
             return run
         time.sleep(0.01)
     raise AssertionError(f"run {run_id} did not end within {timeout}s")
@@ -419,15 +420,23 @@ def test_a_second_run_of_the_same_section_is_refused_while_the_first_is_running(
         assert provider.entered.wait(timeout=10)
         r = client.post("/api/runs", json=WEEKLY_DP)
         assert r.status_code == 409
-        assert r.json()["detail"].startswith("Digital Payments is already being drafted.")
-        # another section is refused too, by the one draft slot, which names the draft that holds it
+        assert r.json()["detail"].startswith("Digital Payments is already being drafted or is queued.")
+        # with the only seat taken, another section waits in the queue instead of being refused
         other = client.post("/api/runs", json={"section": "equities"})
-        assert other.status_code == 409 and "Another draft is running: Digital Payments" in other.json()["detail"]
-        # ... and the refused run left nothing behind: only the first is on the overview
-        assert client.get("/api/sections").json()["drafting"]["slug"] == "digital_payments"
-        # the same section of another report is a different run, but it too waits for the slot
-        assert client.post("/api/runs", json={"section": "digital_payments", **Q3}).status_code == 409
-        # a section that calls no provider takes no slot, so it runs alongside
+        assert other.status_code == 202 and other.json()["state"] == "queued" and other.json()["position"] == 1
+        listed = client.get("/api/sections").json()
+        assert listed["drafting"]["slug"] == "digital_payments"   # the older single key: the seat holder
+        assert [(d["section"], d["state"], d["position"]) for d in listed["drafting_list"]] == [
+            ("digital_payments", "running", None), ("equities", "queued", 1)]
+        # the same section of another report is a different run, and queues behind it
+        again = client.post("/api/runs", json={"section": "digital_payments", **Q3})
+        assert again.status_code == 202 and again.json()["position"] == 2
+        # a queued run can be cancelled, a running one cannot
+        assert client.post(f"/api/runs/{again.json()['run_id']}/cancel").status_code == 200
+        assert client.get(f"/api/runs/{again.json()['run_id']}").json()["status"] == "failed"
+        running_cancel = client.post(f"/api/runs/{first}/cancel")
+        assert running_cancel.status_code == 409 and "cannot be stopped" in running_cancel.json()["detail"]
+        # a section that calls no provider takes no seat
         assert run_to_end(client, section="company_updates", text="Demo.", **Q3)["status"] == "finished"
         assert client.get(f"/api/runs/{first}").json()["status"] == "running"
     finally:

@@ -27,7 +27,7 @@ What differs from the real API, all of it set here and nothing in the backend ch
 
 E2E_VARIANT starts it in another state, for the tests that need one:
 - "no-key": the provider is "anthropic" with no API key, so every drafting section shows a provider problem;
-- "stale":  a draft that has held the slot for six seconds counts as stuck;
+- "stale":  one drafting seat (CYTONN_DRAFT_CONCURRENCY=1), and a draft that has held it for six seconds counts as stuck;
 - "bedrock": the provider is "bedrock" with invented AWS settings, so the screens show the Sources panel. Narrative drafting
   runs the real Bedrock provider over a fake client (no AWS call) that quotes the first sentence of the first saved source
   it is shown, plus one claim whose quote is not in the page; every fetch is answered by one fixed page and
@@ -213,6 +213,8 @@ def main() -> None:
         return saved.read_bytes(), f"https://e2e.invalid/uploads/weekly_bulletin/{saved.name}"
 
     print(f"E2E instance: data folder {paths.DATA_DIR}, port {PORT}, variant {VARIANT or 'default'}", flush=True)
+    if VARIANT == "stale":
+        os.environ["CYTONN_DRAFT_CONCURRENCY"] = "1"   # one seat, so the next draft has to take the stuck one's over
     app = create_app(DB_PATH, load_dotenv=False, fetch_bulletin=fetch_bulletin, notable_registry=notable_demo.REGISTRY, fetch_source=fetch_source,
                      **({"draft_stale_after": 6} if VARIANT == "stale" else {}))
     verify_isolated(DB_PATH, DATA)  # fail closed, before anything is served

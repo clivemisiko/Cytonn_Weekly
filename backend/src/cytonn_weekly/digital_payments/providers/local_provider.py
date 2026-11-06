@@ -44,6 +44,7 @@ from typing import Any, Mapping, Optional, Sequence
 import httpx
 
 from cytonn_weekly import env
+from cytonn_weekly.common import atomic
 from cytonn_weekly.digital_payments.providers.base import (
     OUTLOOK_SYSTEM,
     SCOPE_IR,
@@ -351,12 +352,8 @@ class LocalProvider(DraftingProvider):
         results = self._search(company, ir_domain, scope, start)
         cached[scope] = results
         path = self._cache_path(company, today)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps({"company": company, "today": today.isoformat(), "start": start.isoformat(),
-                        "scopes": cached}, indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
+        atomic.write_atomic(path, json.dumps({"company": company, "today": today.isoformat(), "start": start.isoformat(),
+                                              "scopes": cached}, indent=2, ensure_ascii=False))
         return results
 
     # -- drafting ------------------------------------------------------------

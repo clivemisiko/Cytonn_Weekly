@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { RouterLink, useRouter } from "vue-router";
+import { useRouter } from "vue-router";
 import Button from "@/components/ui/Button.vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import { LINK } from "@/components/ui/button";
 import * as api from "@/lib/api";
-import { isDraftingThis, providerOff, reattachHref, runHref, slotTaken, useDraftingPoll, useLiveElapsed } from "@/lib/drafting";
+import { draftingFor, draftingList, draftingStatus, isLive, ownBusy, providerOff, reattachHref, useDraftingPoll, useLiveElapsed } from "@/lib/drafting";
 import { elapsed, friendlyTime, weekRange } from "@/lib/format";
 import { draftChartsNote } from "@/lib/charts";
 import { redraftNotes } from "@/lib/redraft";
@@ -39,8 +39,8 @@ const props = defineProps<{
   /** The report and period this section is drafted for (chosen on the overview). */
   report: ReportChoice;
   saved: Review | null;
-  /** The draft running on the server when this screen was opened, if any. */
-  drafting: Drafting | null;
+  /** Every draft the server reported when this screen was opened (running, queued, or a newest failure). */
+  drafting: Drafting[];
   /** Weekly only: the Friday the report week ends on (the period's, or the latest Friday). */
   week: string | null;
   onRecheck: () => Promise<void>;
@@ -91,19 +91,19 @@ const sectionsHint = computed(() =>
     : "Leave blank and the tool proposes four to six titles from the topic (one model call). Typed titles are used exactly as typed and numbered Section I, II, III… by the tool; end with a \"Recommendations and Conclusion\" part for the closing section.",
 );
 
-// A draft already running on the server (this section's or another's) blocks this one until it finishes.
-const serverDrafting = ref<Drafting | null>(props.drafting);
-let watched = isDraftingThis(props.drafting, props.section.slug, props.report);
+// Only this section's own draft (running or queued) holds its Draft button; other sections drafting never do.
+const serverDrafting = ref<Drafting | null>(draftingFor(props.drafting, props.section.slug, props.report));
+let watched = isLive(serverDrafting.value);
 function onServerOverview(next: Overview) {
   shell.setOverview(next); // the rail reads the same payload as this screen's poll
-  serverDrafting.value = next.drafting;
+  serverDrafting.value = draftingFor(draftingList(next), props.section.slug, props.report);
   const wasMine = watched;
-  watched = isDraftingThis(next.drafting, props.section.slug, props.report);
+  watched = isLive(serverDrafting.value);
   if (wasMine && !watched) void props.onRecheck(); // offer what it saved
 }
-useDraftingPoll(serverDrafting, onServerOverview, () => props.report, () => !starting.value);
-const blocked = computed(() => slotTaken(llm.value, serverDrafting.value));
-const mine = computed(() => isDraftingThis(serverDrafting.value, props.section.slug, props.report));
+useDraftingPoll(() => (serverDrafting.value ? [serverDrafting.value] : []), onServerOverview, () => props.report, () => !starting.value);
+const blocked = computed(() => ownBusy(llm.value, serverDrafting.value));
+const queued = computed(() => serverDrafting.value?.state === "queued");
 const seconds = useLiveElapsed(serverDrafting);
 // This section's own draft is running (left and come back, a reload, or started in another tab): its run page shows the
 // steps and the counter, so go there instead of offering a draft. Replace, so Back does not return to this screen.
@@ -172,7 +172,7 @@ async function draft() {
     starting.value = false;
     if (llm.value && e.status === 409) {
       try {
-        onServerOverview(await api.getOverview(props.report)); // show which draft holds the slot, and watch it finish
+        onServerOverview(await api.getOverview(props.report)); // show that this section is already drafting or queued
       } catch {
         /* the error above already says a draft is running */
       }
@@ -290,24 +290,23 @@ const lists = computed(() => [
             </Notice>
 
             <!-- A draft already running on the server (started from another tab, or before this screen was opened). -->
-            <template v-if="serverDrafting && !starting && llm">
+            <template v-if="serverDrafting && isLive(serverDrafting) && !starting && llm">
               <Notice v-if="serverDrafting.stale" tone="warn" role="status">
                 <span class="font-semibold">
-                  This draft appears to have stopped. {{ mine ? "This section" : serverDrafting.title }} has been drafting for
+                  This draft appears to have stopped. This section has been drafting for
                   <span class="font-mono tabular-nums">{{ elapsed(seconds) }}</span></span
                 >, longer than any healthy draft takes. Starting a draft replaces it; its result will be discarded.
               </Notice>
               <Notice v-else tone="info" role="status">
                 <span class="font-semibold">
-                  {{ mine ? "This section is" : `${serverDrafting.title} is` }} drafting now (<span class="font-mono tabular-nums">{{ elapsed(seconds) }}</span
-                  >, started {{ friendlyTime(serverDrafting.started_at) }}).
+                  {{ draftingStatus(serverDrafting) }}<template v-if="!queued"> (<span class="font-mono tabular-nums">{{ elapsed(seconds) }}</span
+                  >, started {{ friendlyTime(serverDrafting.started_at) }})</template>.
                 </span>
                 {{
-                  mine
-                    ? "It is saved when it finishes, and this screen then offers it for review."
-                    : "Only one draft runs at a time, across every section; drafting here unlocks when it finishes."
+                  queued
+                    ? "It starts by itself when a drafting seat is free."
+                    : "It is saved when it finishes, and this screen then offers it for review."
                 }}
-                <RouterLink v-if="!mine && runHref(serverDrafting)" :to="runHref(serverDrafting)!" :class="LINK">View its progress</RouterLink>
               </Notice>
             </template>
 
@@ -416,7 +415,7 @@ const lists = computed(() => [
                 </li>
                 <li v-if="blocked" class="flex items-center gap-2 text-warn-fg font-medium">
                   <span class="flex size-4 items-center justify-center rounded-full bg-warn/20 font-bold text-[10px]">⏳</span>
-                  <span>Server slot: Busy drafting {{ serverDrafting?.title ?? 'another section' }}</span>
+                  <span>{{ serverDrafting ? draftingStatus(serverDrafting) : "Being drafted now" }}</span>
                 </li>
               </ul>
             </div>

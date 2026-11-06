@@ -5,7 +5,7 @@ import { computed, ref, watch } from "vue";
 import PageGrid from "@/components/nav/PageGrid.vue";
 import { LINK } from "@/components/ui/button";
 import { exportChartsNote } from "@/lib/charts";
-import { type SectionState, draftAgainOff, isDraftingThis, stateOf, useDraftingPoll } from "@/lib/drafting";
+import { type SectionState, draftAgainOff, draftingFor, draftingList, isLive, stateOf, useDraftingPoll } from "@/lib/drafting";
 import { friendlyDate, plural, reportName } from "@/lib/format";
 import { APPROVED_BANNER, fullyApproved } from "@/lib/previous";
 import { useShellRibbon } from "@/lib/shell";
@@ -34,7 +34,8 @@ const emit = defineEmits<{
 }>();
 
 useShellRibbon(() => (props.config.dev_mode ? props.config.dev_mode_label : null)); // the shell draws it under the top bar
-const drafting = computed(() => props.overview.drafting);
+const drafting = computed(() => draftingList(props.overview));
+const live = computed(() => drafting.value.filter(isLive));
 useDraftingPoll(drafting, (next) => emit("overview", next), () => props.report);
 const name = computed(() => reportName(props.overview.report.title, props.overview.report.period));
 const kind = computed(() => props.overview.companion_kinds.find((k) => k.slug === props.overview.report.kind));
@@ -108,7 +109,7 @@ const flagged = computed(() =>
       <div v-if="exportError" data-attention="export-bar">
         <Notice role="alert" data-problem class="font-medium">{{ exportError }}</Notice>
       </div>
-      <DraftingBanner v-if="drafting" :drafting="drafting" />
+      <DraftingBanner v-for="d in live" :key="d.run_id ?? `${d.report_type}${d.period}${d.slug}`" :drafting="d" />
       <Notice v-if="fullyApproved(overview)" tone="info" role="status">
         <span>{{ APPROVED_BANNER }} <RouterLink to="/previous" :class="LINK">Open Previous reports</RouterLink></span>
       </Notice>
@@ -181,8 +182,8 @@ const flagged = computed(() =>
               :s="s"
               :index="i"
               :period="overview.report.period"
-              :drafting="isDraftingThis(drafting, s.slug, report) ? drafting : null"
-              :draft-again-off="draftAgainOff(s, drafting, config, report)"
+              :drafting="draftingFor(drafting, s.slug, report)"
+              :draft-again-off="draftAgainOff(s, draftingFor(drafting, s.slug, report), config)"
               @open="(slug, resume) => emit('open', slug, resume)"
               @redraft="(slug) => emit('redraft', slug)"
             />

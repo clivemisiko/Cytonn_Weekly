@@ -6,6 +6,7 @@ import type {
   ChartSeriesFile,
   Decision,
   DismissReason,
+  Drafting,
   ExportStatus,
   FixResult,
   Notable,
@@ -152,8 +153,10 @@ const reportQuery = (report: ReportChoice) => {
 /** One report's sections at a glance, with its review for this period (if any). A period that does not fit is a 422. */
 export const getOverview = async (report: ReportChoice = WEEKLY_REPORT): Promise<Overview> => {
   const overview = await request<Overview>(`/api/sections?${reportQuery(report)}`);
-  // An API from before `drafting` existed omits it; absent means nothing is drafting, never undefined.
-  return { ...overview, drafting: overview.drafting ?? null };
+  // An API from before `drafting` existed omits it; absent means nothing is drafting, never undefined. The list names
+  // the section `section`; the screens read it as `slug`, as they always have.
+  const list = (overview.drafting_list as unknown as (Drafting & { section: string })[] | undefined) ?? undefined;
+  return { ...overview, drafting: overview.drafting ?? null, drafting_list: list?.map((e) => ({ ...e, slug: e.section })) };
 };
 
 /**
@@ -167,10 +170,13 @@ export const startRun = (
   report: ReportChoice,
   input: { topic?: string; sections?: string; text?: string; provider?: string } = {},
 ) =>
-  request<{ run_id: string }>("/api/runs", {
+  request<{ run_id: string; state: "running" | "queued"; position: number | null }>("/api/runs", {
     method: "POST",
     body: JSON.stringify({ ...input, section: slug, report_type: report.type, period: report.period || null, kind: report.kind }),
   });
+
+/** Take a queued run out of the queue. A running draft cannot be stopped (409). */
+export const cancelRun = (runId: string) => request<{ run_id: string; status: string }>(`/api/runs/${runId}/cancel`, { method: "POST" });
 
 const sourcesQuery = (slug: string, report: ReportChoice, sections?: string) => {
   const q = new URLSearchParams(reportQuery(report));

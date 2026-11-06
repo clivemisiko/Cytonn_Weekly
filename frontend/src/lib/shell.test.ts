@@ -92,6 +92,15 @@ describe("shell store", () => {
     expect(states(shell).fixed_income).toBe("not_drafted");
   });
 
+  it("marks several drafts at once: running ones as drafting and a waiting one as queued", () => {
+    const shell = createShell(never);
+    const entry = (slug: string, state: "running" | "queued"): Drafting => ({ slug, title: slug, state, position: state === "queued" ? 1 : null, report_type: "weekly", period: WEEK, started_at: "", elapsed_seconds: 5, stale: false, stale_after_seconds: 3600 });
+    const o = overview({});
+    o.drafting_list = [entry("fixed_income", "running"), entry("equities", "running"), entry("real_estate", "queued")];
+    shell.setOverview(o);
+    expect(states(shell)).toEqual({ company_updates: "not_drafted", fixed_income: "drafting", equities: "drafting", real_estate: "queued" });
+  });
+
   it("updates after a rejection: unknown at once, then the rejected state, with the approved count unchanged", async () => {
     const reads: ReportChoice[] = [];
     let served = overview({ company_updates: "approved", fixed_income: "open" });

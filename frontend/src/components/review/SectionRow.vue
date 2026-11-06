@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { PhArrowsClockwise, PhCaretRight, PhCircleNotch, PhLockSimple } from "@phosphor-icons/vue";
 import { computed } from "vue";
+import { RouterLink } from "vue-router";
 import Button from "@/components/ui/Button.vue";
 import { CHIP as CHIP_BASE } from "@/components/ui/button";
-import { type SectionState, stateOf, useLiveElapsed, when } from "@/lib/drafting";
+import { type SectionState, draftingStatus, stateOf, useLiveElapsed, when } from "@/lib/drafting";
 import { elapsed, friendlyDate, plural, weekRange } from "@/lib/format";
+import { textOf } from "@/lib/run";
 import type { Drafting, SectionSummary } from "@/lib/types";
 
 const CHIP: Record<SectionState, { label: string; className: string; glyph?: string; stateClass?: string }> = {
@@ -20,9 +22,9 @@ const props = defineProps<{
   s: SectionSummary;
   index: number;
   period: string;
-  /** Set only on the card of the section being drafted right now. */
+  /** This section's entry from the server: running, queued, or its newest run's failure; null when it has none. */
   drafting: Drafting | null;
-  /** Why "Draft again" is off (another draft holds the slot, the provider cannot run), or null when it is on. */
+  /** Why "Draft again" is off (this section is running or queued, the provider cannot run), or null when it is on. */
   draftAgainOff: string | null;
 }>();
 const emit = defineEmits<{ open: [slug: string, resume: boolean]; redraft: [slug: string] }>();
@@ -42,13 +44,22 @@ const action = computed(() => {
 // A section that already has a review (in review, approved or rejected) can be drafted again; the start screen asks first.
 const canRedraft = computed(() => state.value === "in_review" || state.value === "approved" || state.value === "rejected");
 const seconds = useLiveElapsed(() => props.drafting);
+const failed = computed(() => props.drafting?.state === "failed");
+const queued = computed(() => props.drafting?.state === "queued");
+// The step a running draft reported last, in the run view's own wording.
+const step = computed(() => (props.drafting?.step ? textOf(props.drafting.step) : null));
 const nothing = computed(() => {
   const r = run.value;
-  const first = props.drafting
-    ? props.drafting.stale
-      ? "A draft has run far longer than it should and looks stuck. Drafting again replaces it."
-      : "Drafting now; the review shows here when it finishes."
-    : `Nothing drafted ${when(props.period)}.`;
+  const d = props.drafting;
+  const first = failed.value
+    ? `The last draft stopped. ${d?.reason ?? ""}`.trim()
+    : d
+      ? d.stale
+        ? "A draft has run far longer than it should and looks stuck. Drafting again replaces it."
+        : queued.value
+          ? "Waiting for a free drafting seat; it starts by itself."
+          : "Drafting now; the review shows here when it finishes."
+      : `Nothing drafted ${when(props.period)}.`;
   return (
     first +
     (r ? ` The last review (run ${r.run_id}, ${friendlyDate(r.run_date)}) was ${r.decision ?? "left in progress"}.` : "") +
@@ -98,13 +109,25 @@ const lists = computed(() =>
               </span>
               <!-- Small chip on the drafting section's own card. -->
               <span
-                v-if="drafting"
+                v-if="drafting && failed"
+                :class="[CHIP_BASE, 'border-flag/40 bg-flag/10 text-flag-fg', 'state-flagged', 'shadow-2xs']"
+              >
+                <span class="glyph size-4 text-xs" aria-hidden="true">!</span>
+                Draft failed
+              </span>
+              <span
+                v-else-if="drafting"
                 :class="[CHIP_BASE, drafting.stale ? 'border-warn/40 bg-warn/10 text-warn-fg' : 'border-input bg-muted text-foreground', 'shadow-2xs']"
               >
-                <PhCircleNotch weight="bold" class="size-3" :class="!drafting.stale && 'animate-spin motion-reduce:animate-none'" aria-hidden="true" />
-                {{ drafting.stale ? "Looks stuck" : "Drafting now" }}
-                <span class="font-mono font-medium tabular-nums">{{ elapsed(seconds) }}</span>
+                <PhCircleNotch weight="bold" class="size-3" :class="!drafting.stale && !queued && 'animate-spin motion-reduce:animate-none'" aria-hidden="true" />
+                {{ drafting.stale ? "Looks stuck" : draftingStatus(drafting) }}
+                <span v-if="!queued" class="font-mono font-medium tabular-nums">{{ elapsed(seconds) }}</span>
               </span>
+              <p v-if="drafting && !failed && !queued && step" class="text-xs text-muted-foreground">{{ step }}</p>
+              <p v-if="drafting && failed" class="text-xs text-muted-foreground">
+                {{ drafting.reason ?? "The draft stopped." }}
+                <RouterLink v-if="drafting.run_id" :to="`/runs/${drafting.run_id}`" class="underline">See the run</RouterLink>
+              </p>
               <span v-if="current && run?.is_dev_draft" class="hatch-dev rounded-sm px-1.5 py-0.5 font-mono text-xs font-semibold text-dev-ink shadow-2xs">DEV DRAFT</span>
               <p v-if="run && current && state !== 'unavailable'" class="text-xs text-muted-foreground">
                 Run <span class="font-mono font-medium">{{ run.run_id }}</span
