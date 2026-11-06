@@ -35,6 +35,7 @@ class Limits:
     max_queries: int = 2   # per piece
     max_pages: int = 4     # saved per piece, per gather
     seconds: int = 60      # for the whole gather
+    market: str = "Kenya"  # appended to a piece's label in the query, so results are about this market
 
 
 def limits_from_env() -> Limits:
@@ -53,7 +54,8 @@ def limits_from_env() -> Limits:
 
     d = Limits()
     return Limits(number("CYTONN_SOURCES_ENOUGH", d.enough), number("CYTONN_SOURCES_MAX_QUERIES", d.max_queries),
-                  number("CYTONN_SOURCES_MAX_PAGES", d.max_pages), number("CYTONN_SOURCES_GATHER_SECONDS", d.seconds))
+                  number("CYTONN_SOURCES_MAX_PAGES", d.max_pages), number("CYTONN_SOURCES_GATHER_SECONDS", d.seconds),
+                  (os.environ.get("CYTONN_SOURCES_MARKET") or "").strip() or d.market)
 
 
 def search_key_set() -> bool:
@@ -119,7 +121,8 @@ def _save(r: dict[str, Any], piece: Piece, fetch: Fetch, root: Optional[Path]) -
 
 def gather_piece(piece: Piece, *, search: Search, fetch: Fetch, root: Optional[Path], limits: Limits, deadline: float,
                  on_event: Optional[ev.Observer] = None) -> list[store.SourceText]:
-    """Look for the pages of one piece. The query is the piece's label alone; the window is the piece's own.
+    """Look for the pages of one piece. The query is the piece's label plus the market name (a company piece, whose search
+    is about a global company, gets the label alone); the window is the piece's own.
     Pass 1 is restricted to the brief's domains; pass 2 is open and runs when pass 1 gave fewer than ``enough`` usable pages
     or the piece has no domains."""
     have = store.list_for(piece.subject, piece.end, root)
@@ -138,7 +141,7 @@ def gather_piece(piece: Piece, *, search: Search, fetch: Fetch, root: Optional[P
                 break
             queries += 1
             try:
-                pool += search(piece.subject, start, domains)
+                pool += search(f"{piece.subject} {limits.market}" if piece.market else piece.subject, start, domains)
             except Exception as exc:  # noqa: BLE001 - a failed search leaves the piece without sources, never fails the draft
                 failed = True
                 log.warning("gather: search failed for %s: %s", piece.subject, type(exc).__name__)
