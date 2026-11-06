@@ -143,6 +143,8 @@ def gather_piece(piece: Piece, *, search: Search, fetch: Fetch, root: Optional[P
             try:
                 pool += search(f"{piece.subject} {limits.market}" if piece.market else piece.subject, start, domains)
             except Exception as exc:  # noqa: BLE001 - a failed search leaves the piece without sources, never fails the draft
+                if type(exc).__name__ == "SearchKeyError":
+                    raise   # the key is missing or refused: the same for every piece, so gather() says so once
                 failed = True
                 log.warning("gather: search failed for %s: %s", piece.subject, type(exc).__name__)
         for r in _usable(pool, start, end, skip)[:limits.max_pages]:
@@ -173,5 +175,8 @@ def gather(pieces: Iterable[Piece], *, search: Search = exa_search, fetch: Fetch
         try:
             saved += gather_piece(piece, search=search, fetch=fetch, root=root, limits=limits, deadline=deadline, on_event=on_event)
         except Exception as exc:  # noqa: BLE001
+            if type(exc).__name__ == "SearchKeyError":
+                ev.emit(on_event, ev.SOURCES_SEARCH_UNAVAILABLE, "Sources", detail=str(exc))
+                return saved, False
             log.warning("gather: %s skipped: %s", piece.subject, type(exc).__name__)
     return saved, True
