@@ -11,6 +11,7 @@ import StartScreen from "@/components/review/StartScreen.vue";
 import StartSkeleton from "@/components/review/StartSkeleton.vue";
 import Button from "@/components/ui/Button.vue";
 import * as api from "@/lib/api";
+import { draftingList } from "@/lib/drafting";
 import { BACK_HOME, type BackTarget, useBack } from "@/lib/nav";
 import { openingReport } from "@/lib/previous";
 import { shell, useShellActions, useShellHere } from "@/lib/shell";
@@ -20,7 +21,7 @@ type Phase =
   | { name: "booting"; target?: "overview" | "review" | "start" }
   | { name: "unreachable"; message: string }
   | { name: "overview"; config: AppConfig; overview: Overview }
-  | { name: "start"; config: AppConfig; section: SectionSummary; saved: Review | null; drafting: Drafting | null; week: string | null }
+  | { name: "start"; config: AppConfig; section: SectionSummary; saved: Review | null; drafting: Drafting[]; week: string | null }
   | { name: "review"; review: Review };
 
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -113,7 +114,7 @@ async function fetchStart(slug: string, known?: Overview): Promise<Phase> {
     const saved = run && (run.current ?? run.this_week) ? await api.getReview(run.run_id) : null;
     // The weekly report's week: the Friday its period names, else the latest Friday (what an unlabelled draft uses).
     const week = overview.report.type === "weekly" ? (overview.report.week_ending ?? overview.report.suggested_week_ending ?? null) : null;
-    return { name: "start", config, section, saved, drafting: overview.drafting, week };
+    return { name: "start", config, section, saved, drafting: draftingList(overview), week };
   } catch (err) {
     return { name: "unreachable", message: messageOf(err) };
   }

@@ -1,6 +1,6 @@
-"""The one-draft-at-a-time slot (api/draft_slot.py): visible while held, never wedged forever.
+"""The drafting seats (api/draft_slot.py), here with one seat: visible while held, never wedged forever.
 
-The slot is global across every section.  These pin that a draft which crashes, or a server
+The seats are global across every section.  These pin that a draft which crashes, or a server
 restart, frees it; that a draft which hangs is shown on the overview and, once it has run
 past the stale limit, is replaced rather than blocking drafting forever; and that the hung
 run's late result is discarded rather than saved over its replacement.  Time is a fake
@@ -44,6 +44,7 @@ def clock():
 def app(db, clock, monkeypatch):
     monkeypatch.setattr(eq_weekly, "build_equities_weekly_review", lambda: sh.equities_review())
     monkeypatch.setattr(re_run, "build_real_estate_review", lambda: sh.real_estate_review())
+    monkeypatch.setenv("CYTONN_DRAFT_CONCURRENCY", "1")   # one seat, so these tests pin the seat rules (the default is 3)
     return create_app(db_path=db, load_dotenv=False, draft_stale_after=STALE_AFTER, clock=clock)
 
 
@@ -130,10 +131,11 @@ def test_a_running_draft_is_shown_on_the_overview_and_named_in_the_refusal(app, 
         assert drafting["slug"] == "equities" and drafting["title"] == "Equities"
         assert drafting["elapsed_seconds"] == 185 and drafting["stale"] is False
         assert drafting["stale_after_seconds"] == STALE_AFTER and drafting["started_at"].endswith("+00:00")
-        # the slot is global: another section is refused too, and told which draft holds it
+        # with every seat taken (one here) another section is refused too, and told which draft holds the longest seat
         r = client.post("/api/sections/real_estate/draft")
         assert r.status_code == 409
-        assert "Another draft is running: Equities (3 min so far)" in r.json()["detail"]
+        assert "All 1 drafting seat is taken; the longest is Equities (3 min so far)" in r.json()["detail"]
+        assert client.get("/api/sections").json()["drafting_list"][0]["section"] == "equities"
     finally:
         release.set()
         t.join(timeout=10)
@@ -236,3 +238,21 @@ def test_the_search_key_check_is_local_modes_alone(client, monkeypatch):
     monkeypatch.delenv("CYTONN_LLM_PROVIDER", raising=False)
     assert client.get("/api/config").json()["provider_problem"] is None
     assert client.post("/api/sections/equities/draft").status_code == 200
+
+
+def test_the_seat_count_comes_from_the_environment_and_a_bad_value_uses_the_default(monkeypatch, caplog):
+    from api.draft_slot import DraftBusy, DraftSlot, draft_concurrency, draft_queue_max
+
+    monkeypatch.delenv("CYTONN_DRAFT_CONCURRENCY", raising=False)
+    assert draft_concurrency() == 3 and draft_queue_max() == 20
+    monkeypatch.setenv("CYTONN_DRAFT_CONCURRENCY", "5")
+    assert draft_concurrency() == 5
+    for bad in ("0", "7", "two", "-1"):
+        monkeypatch.setenv("CYTONN_DRAFT_CONCURRENCY", bad)
+        assert draft_concurrency() == 3
+    assert "CYTONN_DRAFT_CONCURRENCY must be a whole number from 1 to 6" in caplog.text
+    slot = DraftSlot(capacity=2, stale_after=STALE_AFTER, clock=Clock())
+    slot.claim("a", "A")
+    slot.claim("b", "B")
+    with pytest.raises(DraftBusy):
+        slot.claim("c", "C")

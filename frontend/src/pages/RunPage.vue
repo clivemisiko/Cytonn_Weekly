@@ -10,7 +10,7 @@ import Notice from "@/components/review/Notice.vue";
 import Button from "@/components/ui/Button.vue";
 import { LINK, buttonVariants } from "@/components/ui/button";
 import * as api from "@/lib/api";
-import { useLiveElapsed } from "@/lib/drafting";
+import { queueText, useLiveElapsed } from "@/lib/drafting";
 import { STATUS_ORDER, elapsed, friendlyTime, reportName } from "@/lib/format";
 import { type BackTarget, useBack } from "@/lib/nav";
 import { isTerminal, mergeEvents, overviewHref, stepLines } from "@/lib/run";
@@ -51,7 +51,25 @@ shell.invalidate();
 
 const ended = computed(() => events.value.some(isTerminal));
 // The saved review's id and dev mark come with the run itself, which is read once more after its last event.
-const settled = computed(() => run.value !== null && run.value.status !== "running");
+const settled = computed(() => run.value !== null && run.value.status !== "running" && run.value.status !== "queued");
+// Waiting for a drafting seat: no events yet. The run is read every two seconds so its place moves up and the screen
+// goes to running by itself; the event stream carries it from there.
+const queued = computed(() => run.value?.status === "queued" && !ended.value);
+const cancelError = ref<string | null>(null);
+const cancelling = ref(false);
+async function cancel() {
+  cancelError.value = null;
+  cancelling.value = true;
+  try {
+    await api.cancelRun(props.runId);
+    await read();
+  } catch (err) {
+    cancelError.value = (err as api.ApiError).message;
+    await read(); // it may have just started
+  } finally {
+    cancelling.value = false;
+  }
+}
 
 /** Read the run once. A 404 means the API no longer has it; any other failure leaves the screen as it is. */
 async function read(): Promise<boolean> {
@@ -107,7 +125,7 @@ onUnmounted(() => {
 });
 
 // Plain reads: while the stream is not carrying the run, and once after its last event for the saved review.
-const reading = computed(() => !missing.value && !settled.value && (feed.value === "poll" || feed.value === "lost" || ended.value));
+const reading = computed(() => !missing.value && !settled.value && (feed.value === "poll" || feed.value === "lost" || ended.value || queued.value));
 watch(
   [reading, ended],
   ([isReading, hasEnded], _before, onCleanup) => {
@@ -168,6 +186,7 @@ const weekly = computed(() => (run.value ? run.value.report_type === "weekly" &&
 const failed = computed(() => final.value?.kind === "run_failed");
 const still = computed(() => reduced || feed.value === "lost");
 const status = computed(() => {
+  if (queued.value) return `${queueText(run.value?.position)}.`;
   if (!last.value) return run.value ? "Waiting for the draft to start." : feed.value === "lost" ? "Not connected." : "Loading the run…";
   if (final.value) return `${failed.value ? "Stopped" : "Finished"} ${friendlyTime(final.value.at)}.`;
   return `Running. Started ${friendlyTime(events.value[0].at)}.`;
@@ -188,7 +207,8 @@ const status = computed(() => {
     <PageGrid :key="missing ? 'gone' : 'run'" aside-title="This run">
       <div v-if="missing" class="space-y-6">
         <Notice tone="warn" role="status">
-          This run is no longer available. If the draft finished, open the section from the overview.
+          This run is no longer available. The tool was restarted, which stops a draft that was still running or waiting and
+          saves nothing from it. If the draft had finished, open the section from the overview.
           <RouterLink to="/overview" :class="LINK">Go to the overview</RouterLink>
         </Notice>
       </div>
@@ -198,10 +218,15 @@ const status = computed(() => {
           <span class="font-semibold">{{ status }}</span>
           <span v-if="!final && feed === 'poll'" class="text-muted-foreground">Live updates are off; checking every 2 seconds.</span>
         </p>
+        <div v-if="queued" class="space-y-2">
+          <p class="text-sm text-muted-foreground">All drafting seats are taken. This draft starts by itself when one is free; you can leave this page.</p>
+          <Button variant="outline" :disabled="cancelling" @click="cancel">Cancel this draft</Button>
+          <Notice v-if="cancelError" role="alert" class="font-medium">{{ cancelError }}</Notice>
+        </div>
         <p v-if="running && !final && !stopped" class="font-mono text-sm tabular-nums text-muted-foreground">Drafting for {{ elapsed(seconds) }}</p>
         <Notice v-if="stopped" tone="warn" role="status">
-          This draft appears to have stopped. It has run for {{ elapsed(seconds) }}, longer than any healthy draft takes. The next draft
-          started, in any section, replaces it, and its result will be discarded.
+          This draft appears to have stopped. It has run for {{ elapsed(seconds) }}, longer than any healthy draft takes. A draft
+          that finds every seat taken replaces it, and its result will be discarded.
         </Notice>
 
         <Notice v-if="feed === 'lost' && !settled" tone="warn" role="alert">

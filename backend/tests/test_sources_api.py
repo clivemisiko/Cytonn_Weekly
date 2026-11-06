@@ -239,7 +239,7 @@ def test_a_saved_text_changed_on_disk_is_refused_with_a_plain_sentence_on_every_
 
 # --- no change while a draft runs -------------------------------------------------------------------------------------------
 
-def test_sources_cannot_be_added_or_removed_while_a_draft_holds_the_slot(client, clock, monkeypatch):
+def test_sources_cannot_be_added_or_removed_while_a_draft_that_reads_them_runs(client, clock, monkeypatch):
     one = post(client).json()["source"]
     gated = GatedProvider()
     monkeypatch.setattr(review_run, "build_digital_payments_review", lambda on_event=None: REAL_DP(
@@ -248,7 +248,7 @@ def test_sources_cannot_be_added_or_removed_while_a_draft_holds_the_slot(client,
     assert gated.entered.wait(timeout=10)
     try:
         added = post(client)
-        assert added.status_code == 409 and "is being drafted right now" in added.json()["detail"]
+        assert added.status_code == 409 and "is being drafted or is queued" in added.json()["detail"]
         assert "Digital Payments" in added.json()["detail"]
         assert client.delete(f"/api/sources/{one['id']}").status_code == 409
         assert listing(client, subject=SUBJECT).json()["pieces"][0]["sources"][0]["id"] == one["id"]   # reading is allowed

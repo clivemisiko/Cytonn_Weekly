@@ -62,6 +62,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+from cytonn_weekly.common import atomic
 from cytonn_weekly.weekly import equities_workbook, fi_workbook
 from cytonn_weekly.weekly.inputs import InputError, WeeklyInputs, week_dir
 from cytonn_weekly.weekly.week import Week, day_text, ordinal
@@ -733,9 +734,7 @@ def _write(week: Week, root: Optional[Path], form: dict[str, Any]) -> dict[str, 
     form["carried"] = {k: v for k, v in form.get("carried", {}).items() if k in held}
     form["unconfirmed"] = sorted(k for k in form.get("unconfirmed", []) if k in held)
     form["saved_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    path = _path(week, root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(form, indent=1, sort_keys=True), encoding="utf-8")
+    atomic.write_atomic(_path(week, root), json.dumps(form, indent=1, sort_keys=True))
     return form
 
 
@@ -746,6 +745,7 @@ def usable_form(form: dict[str, Any]) -> dict[str, Any]:
             "tables": {k: v for k, v in form["tables"].items() if k not in waiting}}
 
 
+@atomic.locked
 def save_form(week: Week, changes: dict[str, Any], root: Optional[Path] = None) -> dict[str, Any]:
     """Check and keep what was typed; an item given as None (or empty) is cleared, one left out is kept.
 
@@ -819,6 +819,7 @@ def save_form(week: Week, changes: dict[str, Any], root: Optional[Path] = None) 
     return _write(week, root, form)
 
 
+@atomic.locked
 def carry_forward(week: Week, root: Optional[Path] = None) -> dict[str, Any]:
     """Start this week's form from last week's: copy what last week's holds into every item still empty here.
 
@@ -888,6 +889,7 @@ def _row_problems(table: Table, row: dict[str, str], week: Week) -> list[str]:
     return problems
 
 
+@atomic.locked
 def suggest(week: Week, key: str, value: str, note: str, root: Optional[Path] = None) -> dict[str, Any]:
     """Keep a worked-out suggestion for a running total as an unconfirmed value, with its working.
 

@@ -13,6 +13,7 @@ from typing import Any, Callable, Iterable, Optional
 import httpx
 
 from cytonn_weekly import paths
+from cytonn_weekly.common import atomic
 from cytonn_weekly.common import run_events as ev
 from cytonn_weekly.common import sources as store
 from cytonn_weekly.source_pieces import Piece
@@ -77,8 +78,7 @@ def exa_search(query: str, start: date, domains: Optional[list[str]] = None) -> 
     with httpx.Client(timeout=SEARCH_TIMEOUT) as client:   # the provider's own client waits 10 minutes, for a local model
         results = LocalProvider(http_client=client)._exa_search(query, start, domains)
     try:
-        cache.parent.mkdir(parents=True, exist_ok=True)
-        cache.write_text(json.dumps({"query": query, "results": results}, ensure_ascii=False), encoding="utf-8")
+        atomic.write_atomic(cache, json.dumps({"query": query, "results": results}, ensure_ascii=False))
     except OSError:
         log.warning("gather: the search cache could not be written")
     return results

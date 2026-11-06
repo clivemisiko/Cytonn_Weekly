@@ -140,16 +140,18 @@ describe("draft again", () => {
     ({ slug: "real_estate", title: "Real Estate (Week ending 2026-10-09)", report_type: "weekly", period: "Week ending 2026-10-09", stale: false, ...over }) as Drafting;
   const weekly = { type: "weekly", period: "Week ending 2026-10-09", kind: null } as const;
 
-  it("is off for the same two reasons the draft button is, and only for a section that calls the provider", () => {
-    expect(draftAgainOff(section(true), null, config(null), weekly)).toBeNull();
-    expect(draftAgainOff(section(true), running(), config(null), weekly)).toBe(
-      "Real Estate (Week ending 2026-10-09) is drafting now. Only one draft runs at a time, across every section.",
-    );
-    expect(draftAgainOff(section(true), running({ slug: "equities", title: "Equities" }), config(null), weekly)).toMatch(/^This section is drafting now/);
-    expect(draftAgainOff(section(true), null, config("No key."), weekly)).toBe("No key. Drafting is off until then.");
-    // a stuck draft does not hold the slot (the next draft replaces it); a section with no provider is never held up
-    expect(draftAgainOff(section(true), running({ stale: true }), config(null), weekly)).toBeNull();
-    expect(draftAgainOff(section(false), running(), config("No key."), weekly)).toBeNull();
+  it("is off only while this section is itself running or queued, or the provider cannot run", () => {
+    const mine = running({ slug: "equities", title: "Equities" });
+    expect(draftAgainOff(section(true), null, config(null))).toBeNull();
+    expect(draftAgainOff(section(true), mine, config(null))).toBe("Being drafted now.");
+    expect(draftAgainOff(section(true), { ...mine, state: "queued", position: 3 }, config(null))).toBe("Queued, 2 ahead.");
+    expect(draftAgainOff(section(true), { ...mine, state: "queued", position: 1 }, config(null))).toBe("Queued, next in line.");
+    expect(draftAgainOff(section(true), null, config("No key."))).toBe("No key. Drafting is off until then.");
+    // a stuck draft does not hold the seat (a new draft replaces it), a failed one never blocks, and a section with no
+    // provider is never held up
+    expect(draftAgainOff(section(true), { ...mine, stale: true }, config(null))).toBeNull();
+    expect(draftAgainOff(section(true), { ...mine, state: "failed" }, config(null))).toBeNull();
+    expect(draftAgainOff(section(false), mine, config("No key."))).toBeNull();
   });
 
   it("tells a coordinator what happens to the earlier review, and about the export only after an approval", () => {

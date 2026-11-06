@@ -33,11 +33,14 @@ three guards the store does not provide on its own:
   without this check its items could still be rewritten;
 * writes run one at a time (one process-wide lock), because two quick clicks arrive as
   two concurrent requests and each one rewrites the whole items blob;
-* only one draft runs at a time, across every section, because a draft takes minutes and
-  (in anthropic mode) spends real API budget, so a double click or a second tab must not
-  start another.  The slot (api/draft_slot.py) records which section holds it and since
-  when, so the overview can show a running draft, and it expires a claim that has run
-  far longer than any healthy draft, so a hung draft cannot block drafting forever.
+* only a few drafts run at once (CYTONN_DRAFT_CONCURRENCY seats, default 3), across every
+  section, because a draft takes minutes and (on Anthropic or Bedrock) spends real budget.
+  A run that finds the seats taken waits in a bounded first-in-first-out queue
+  (CYTONN_DRAFT_QUEUE_MAX) and starts when a seat frees.  The seats (api/draft_slot.py) record
+  which sections hold one and since when, so the overview can show them, and a claim that has
+  run far longer than any healthy draft is taken over, so a hung draft cannot block drafting
+  forever.  Seats, queue and run registry are in this process's memory: the API must run as
+  one process (threads), never several workers.
 
 The tool never approves anything: /decide only records the coordinator's call, and
 CoordinatorReview.decide() decides whether it is allowed.
@@ -47,8 +50,9 @@ import logging
 import os
 import threading
 import time
+from collections import deque
 from dataclasses import replace
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Literal, Mapping, Optional, Sequence, Union
 
@@ -108,8 +112,9 @@ from cytonn_weekly.weekly import sentence_edit
 from cytonn_weekly.weekly.week import NotAFriday, Week, latest_friday
 
 from api.problems import ProblemError, problem_handler
-from api.draft_slot import DRAFT_STALE_AFTER_SECONDS, Claim, DraftBusy, DraftSlot, busy_message
-from api.runs import RUNNING, SSE_KEEPALIVE_SECONDS, Run, RunAlreadyRunning, RunRegistry
+from api.draft_slot import (DRAFT_STALE_AFTER_SECONDS, Claim, DraftBusy, DraftSlot, busy_message, draft_concurrency,
+                            draft_queue_max)
+from api.runs import ACTIVE, FAILED, QUEUED, RUNNING, SSE_KEEPALIVE_SECONDS, Run, RunAlreadyRunning, RunRegistry
 from api.serialize import DEV_MODE_LABEL, is_dev_draft, serialize_review
 
 log = logging.getLogger(__name__)
@@ -377,8 +382,11 @@ def create_app(
                        expose_headers=["Content-Disposition"])
 
     write_lock = threading.Lock()
-    draft_slot = DraftSlot(stale_after=draft_stale_after, clock=clock)
+    draft_slot = DraftSlot(capacity=draft_concurrency(), stale_after=draft_stale_after, clock=clock)
     runs = RunRegistry()  # in memory only: a restart forgets every run (api/runs.py)
+    queue_max = draft_queue_max()
+    waiting: deque[tuple[Run, SectionSpec, DraftContext]] = deque()   # runs waiting for a seat, first in first out
+    seats = threading.Lock()   # "take a seat or join the queue" and "free a seat, start the next" are each one step
 
     # -- helpers ----------------------------------------------------------
 
@@ -428,7 +436,7 @@ def create_app(
 
     def run_draft(slug: str, build: Callable[[], CoordinatorReview], report_type: str = WEEKLY,
                   period: str = "") -> dict:
-        """Claim the one draft slot, run ``build``, save the result at once, and free the slot.
+        """Take a drafting seat, run ``build``, save the result at once, and free the seat.
 
         A fresh draft is saved before it is returned, so a closed tab never loses a paid run.
         The one exception is a run that held the slot so long it was taken over as stuck: its
@@ -439,31 +447,77 @@ def create_app(
         try:
             review = build()
         except BaseException:
-            draft_slot.release(claim)
+            free_seat(claim)
             raise
-        if not draft_slot.release(claim):
+        if not free_seat(claim):
             log.warning("draft of %s finished after it was replaced as stuck; its result was discarded", slug)
             raise ProblemError(409, DISCARDED_AS_STUCK, "draft_discarded")
         with write_lock:
             save(review)
         return serialize_review(review)
 
-    def claim_slot(slug: str, report_type: str, period: str) -> Claim:
-        """Refuse a draft the provider cannot run (409), then take the one draft slot (409 if another holds it)."""
-        problem = provider_problem()
-        if problem:
-            raise ProblemError(409, problem, "drafting_off")
+    def take_seat(slug: str, report_type: str, period: str) -> Claim:
+        """Take a drafting seat or raise DraftBusy; a seat held past the stale limit is taken over."""
         title = spec_for(report_type, slug).title
         if report_type != WEEKLY or period:
             title = f"{title} ({report_label(report_type, period)})"
-        try:
-            claim, replaced = draft_slot.claim(slug, title, report_type, period)
-        except DraftBusy as exc:
-            raise ProblemError(409, busy_message(exc), "draft_busy")
+        claim, replaced = draft_slot.claim(slug, title, report_type, period)
         if replaced is not None:
             log.warning("draft of %s (started %.0fs ago) was treated as stuck and replaced by a draft of %s",
                         replaced.slug, claim.started_at - replaced.started_at, slug)
         return claim
+
+    def claim_slot(slug: str, report_type: str, period: str) -> Claim:
+        """The synchronous draft routes: refuse a draft the provider cannot run (409), then take a seat (409 if all are taken;
+        only a run, started with POST /api/runs, waits in the queue)."""
+        problem = provider_problem()
+        if problem:
+            raise ProblemError(409, problem, "drafting_off")
+        try:
+            return take_seat(slug, report_type, period)
+        except DraftBusy as exc:
+            raise ProblemError(409, busy_message(exc), "draft_busy")
+
+    def free_seat(claim: Claim) -> bool:
+        """Give a seat back and start the next queued run.  False means the seat had been taken over as stale."""
+        released = draft_slot.release(claim)
+        start_next()
+        return released
+
+    def start_next() -> None:
+        """A seat is free: start queued runs, oldest first, while seats last."""
+        while True:
+            with seats:
+                if not waiting:
+                    return
+                run, spec, ctx = waiting[0]
+                try:
+                    claim = take_seat(spec.slug, ctx.report_type, ctx.period)
+                except DraftBusy:
+                    return
+                waiting.popleft()
+                run.begin(clock())
+            launch(run, spec, ctx, claim)
+
+    def launch(run: Run, spec: SectionSpec, ctx: DraftContext, claim: Optional[Claim]) -> None:
+        threading.Thread(target=guarded_run, args=(run, spec, ctx, claim), name=f"run-{run.run_id[:8]}", daemon=True).start()
+
+    def guarded_run(run: Run, spec: SectionSpec, ctx: DraftContext, claim: Optional[Claim]) -> None:
+        """One run's thread: whatever happens in it ends this run only, and its seat always goes back."""
+        try:
+            work_run(run, spec, ctx, claim)
+        except Exception as exc:  # noqa: BLE001 - work_run reports the failures it foresees; this is the rest
+            log.warning("run %s (%s) stopped unexpectedly: %s", run.run_id, spec.slug, safe_describe(exc))
+            if run.status in ACTIVE:
+                run.fail("The draft stopped unexpectedly. See the server log.")
+        finally:
+            if claim is not None:
+                free_seat(claim)   # a no-op when work_run already gave the seat back (before it saved)
+
+    def queue_position(run: Run) -> Optional[int]:
+        """1 for the run next in line, or None when it is not waiting."""
+        with seats:
+            return next((i + 1 for i, (r, _, _) in enumerate(waiting) if r is run), None)
 
     def resolve_draft(slug: str, body: DraftRequest) -> tuple[SectionSpec, DraftContext, str, str]:
         """Validate one draft request: (the section's spec, its draft context, the report type, the normalized period).
@@ -523,13 +577,13 @@ def create_app(
             review = stamp(spec.build(replace(ctx, on_event=run.record)), ctx.report_type, ctx.period)
         except BaseException as exc:
             if claim is not None:
-                draft_slot.release(claim)
+                free_seat(claim)
             run.fail(failure_message(exc))
             if not isinstance(exc, Exception):
                 raise
             log.warning("run %s (%s) failed: %s", run.run_id, spec.slug, safe_describe(exc))
             return
-        if claim is not None and not draft_slot.release(claim):
+        if claim is not None and not free_seat(claim):   # the seat goes back before the save, so the next run starts at once
             log.warning("draft of %s finished after it was replaced as stuck; its result was discarded", spec.slug)
             run.fail(DISCARDED_AS_STUCK)
             return
@@ -648,13 +702,46 @@ def create_app(
                   # The weekly report's week: the Friday its period names, and the Friday to suggest.
                   "week_ending": week.isoformat() if week else None,
                   "suggested_week_ending": latest_friday(today).isoformat()}
-        # The draft running right now, if any (one at a time across every section and report): it
-        # is not saved until it finishes, so without this the overview could not show it at all.
+        # The drafts holding a seat and those queued, across every section and report: a draft is not saved until it
+        # finishes, so without this the overview could not show it at all.  ``drafting`` (the longest-held seat alone) is
+        # the older single key, kept for one release.
         drafting = draft_slot.status()
         if drafting:  # lets the screen link to the running draft's page; None for a draft the synchronous route runs
             drafting["run_id"] = runs.running_id(drafting["report_type"], drafting["period"], drafting["slug"])
-        return {"today": today.isoformat(), "drafting": drafting, "report": report,
+        return {"today": today.isoformat(), "drafting": drafting, "drafting_list": drafting_list(), "report": report,
                 "report_types": report_types(), "companion_kinds": companion_kinds(), "sections": out}
+
+    def drafting_list() -> list[dict]:
+        """Every draft holding a seat (running) and every queued run: section, run id, state, position, start time and,
+        for a running one, its latest step (the last event it reported)."""
+        def step(run: Optional[Run]) -> Optional[dict]:
+            last = run.events[-1] if run and run.events else None
+            return {"kind": last.kind, "label": last.label, "detail": last.detail} if last else None
+
+        out = []
+        for h in draft_slot.statuses():
+            run_id = runs.running_id(h["report_type"], h["period"], h["slug"])
+            out.append({"section": h["slug"], "title": h["title"], "report_type": h["report_type"], "period": h["period"],
+                        "run_id": run_id, "state": "running", "position": None, "started_at": h["started_at"],
+                        "elapsed_seconds": h["elapsed_seconds"], "stale": h["stale"],
+                        "stale_after_seconds": h["stale_after_seconds"], "step": step(runs.get(run_id) if run_id else None)})
+        with seats:
+            queued = [r for r, _, _ in waiting]
+        for i, r in enumerate(queued):
+            out.append({"section": r.section, "title": r.section_title, "report_type": r.report_type, "period": r.period,
+                        "run_id": r.run_id, "state": "queued", "position": i + 1,
+                        "started_at": datetime.fromtimestamp(r.started_at, tz=timezone.utc).isoformat(timespec="seconds"),
+                        "elapsed_seconds": max(0, int(clock() - r.started_at)), "stale": False,
+                        "stale_after_seconds": int(draft_stale_after), "step": None})
+        # A section whose newest run failed keeps showing why until it is drafted again (in memory, like the runs).
+        for r in runs.latest_by_key():
+            if r.status == FAILED:
+                reason = r.events[-1].detail if r.events else None
+                out.append({"section": r.section, "title": r.section_title, "report_type": r.report_type, "period": r.period,
+                            "run_id": r.run_id, "state": "failed", "position": None, "reason": reason,
+                            "started_at": datetime.fromtimestamp(r.started_at, tz=timezone.utc).isoformat(timespec="seconds"),
+                            "elapsed_seconds": 0, "stale": False, "stale_after_seconds": int(draft_stale_after), "step": None})
+        return out
 
     @app.get("/api/reviews/{run_id}")
     def get_review(run_id: int) -> dict:
@@ -1006,14 +1093,17 @@ def create_app(
 
     sources_dir = Path(sources_root) if sources_root is not None else None
 
-    def refuse_while_drafting() -> None:
-        """A draft reads the saved sources as it goes, so none may change under it.  The slot is one draft at a time across
-        every section, so this refuses while any draft holds it (a stuck one, past the stale limit, does not count).
-        ponytail: not narrowed to the section being drafted; do that if a long draft of another section gets in the way."""
-        held = draft_slot.status()
-        if held and not held["stale"]:
-            raise HTTPException(409, f"{held['title']} is being drafted right now, so sources cannot be added or removed until "
-                                     "it finishes. Wait for it, then try again.")
+    def refuse_while_drafting(subject: str, friday: str) -> None:
+        """A draft reads the saved sources of its own pieces as it goes, so none of those may change under it.  Refuses only
+        while a draft that reads this piece (``subject`` filed under ``friday``) is running or queued; a draft of any other
+        section is no reason to wait.  A running draft past the stale limit is treated as stuck and does not hold anything."""
+        key = (source_store.subject_key(subject), friday)
+        for run in runs.active():
+            if run.status == RUNNING and clock() - run.started_at >= draft_stale_after:
+                continue
+            if key in run.piece_keys:
+                raise HTTPException(409, f"{run.section_title} is being drafted or is queued, and it reads this piece's sources, so "
+                                         "they cannot be added or removed until it finishes. Wait for it, then try again.")
 
     def source_piece(section: str, subject: str, report_type: str, period: Optional[str], typed: Optional[str]):
         """(the section's spec, the normalized period, the piece) a source is for, or a plain refusal (404, 422)."""
@@ -1083,7 +1173,7 @@ def create_app(
         """Keep one source for a piece: with no ``text`` and no ``date`` the page at ``url`` is fetched (any site; the safety rules of common/sources.py apply);
         with them, the pasted text is kept as it is, under the address and date given.  422 with the reason if it is refused."""
         spec, period, piece = source_piece(body.section, body.subject, body.report_type, body.period, body.sections)
-        refuse_while_drafting()
+        refuse_while_drafting(piece.subject, latest_friday(piece.end).isoformat())
         pasted = bool((body.text or "").strip() or (body.date or "").strip())
         try:
             if pasted:
@@ -1121,11 +1211,12 @@ def create_app(
 
     @app.delete("/api/sources/{source_id}")
     def delete_source(source_id: str) -> dict:
-        refuse_while_drafting()
         try:
             gone = source_store.get(source_id, sources_dir)
         except source_store.SourceError:
             gone = None
+        if gone:
+            refuse_while_drafting(gone.subject, gone.week_end)
         if not source_store.remove(source_id, sources_dir):
             raise HTTPException(404, f"no saved source {source_id!r}")
         if gone:   # the first look after a removal is not held back by the cooldown
@@ -1147,10 +1238,10 @@ def create_app(
 
     @app.post("/api/sources/gather")
     def gather_sources(body: GatherBody) -> dict:
-        """Run the gather step for one piece. 409 while a draft holds the slot. Once an hour per piece, except the first
-        look after a source is removed. Answers with what was saved, how many, and the piece's sources."""
+        """Run the gather step for one piece. 409 while a draft that reads the piece is running or queued. Once an hour per
+        piece, except the first look after a source is removed. Answers with what was saved, how many, and the piece's sources."""
         _, _, piece = source_piece(body.section, body.subject, body.report_type, body.period, body.sections)
-        refuse_while_drafting()
+        refuse_while_drafting(piece.subject, latest_friday(piece.end).isoformat())
         key = (latest_friday(piece.end).isoformat(), source_store.subject_key(piece.subject))
         limits = source_gather.limits_from_env()
         reason, saved = None, []
@@ -1223,8 +1314,9 @@ def create_app(
 
         Takes what POST /api/sections/{slug}/draft takes (with the section in the body) and
         refuses the same things before anything starts.  409 if this section of this report
-        is already running here, if another draft holds the one draft slot, or if ``provider``
-        names a provider the API is not configured for.  A failure once the draft is under
+        is already running or queued here, or if ``provider`` names a provider the API is not
+        configured for.  With every drafting seat taken the run waits in the queue (202,
+        ``state: "queued"``, ``position``); 429 when the queue is full.  A failure once the draft is under
         way (sections not yet approved for an Executive Summary, a source that is down) is
         the run's ``run_failed`` event, not an HTTP error.
         """
@@ -1235,32 +1327,72 @@ def create_app(
                 "The tool's drafting mode changed after this page was opened. Reload the page to see what a draft "
                 "will use, then start it again.",
                 "draft_mode_changed")
-        try:
-            run = runs.start(report_type, period, spec.slug, spec.title, TYPES[report_type].title, clock())
-        except RunAlreadyRunning:
-            raise ProblemError(
-                409,
-                f"{spec.title}{f' for {period}' if period else ''} is already being drafted. It is saved when it "
-                "finishes, and the overview shows it until then. Wait for it, then open it from the overview.",
-                "draft_already_running")
-        claim: Optional[Claim] = None
-        if uses_provider(spec):
+        needs_seat = uses_provider(spec)
+        if needs_seat:
+            problem = provider_problem()
+            if problem:
+                raise ProblemError(409, problem, "drafting_off")
+        try:   # the sources this draft reads, so a change to another section's sources is not held up by it
+            piece_keys = frozenset((source_store.subject_key(p.subject), latest_friday(p.end).isoformat()) for p in
+                                   (pieces_for(report_type, period, spec.slug, sections=ctx.sections, today=date.today()) or [])) \
+                if needs_seat else frozenset()
+        except Exception:  # noqa: BLE001 - a piece list that cannot be built only means no source is held back
+            piece_keys = frozenset()
+        with seats:
             try:
-                claim = claim_slot(spec.slug, report_type, period)
-            except HTTPException:
-                runs.discard(run)
-                raise
-        threading.Thread(target=work_run, args=(run, spec, ctx, claim), name=f"run-{run.run_id[:8]}", daemon=True).start()
-        return {"run_id": run.run_id}
+                run = runs.start(report_type, period, spec.slug, spec.title, TYPES[report_type].title, clock(),
+                                 status=QUEUED if needs_seat else RUNNING)
+            except RunAlreadyRunning:
+                raise ProblemError(
+                    409,
+                    f"{spec.title}{f' for {period}' if period else ''} is already being drafted or is queued. It is saved when "
+                    "it finishes, and the overview shows it until then. Wait for it, then open it from the overview.",
+                    "draft_already_running")
+            run.piece_keys = piece_keys
+            claim: Optional[Claim] = None
+            if needs_seat:
+                if not waiting:   # nobody is ahead of this run
+                    try:
+                        claim = take_seat(spec.slug, report_type, period)
+                    except DraftBusy:
+                        pass
+                if claim is None:
+                    if len(waiting) >= queue_max:
+                        runs.discard(run)
+                        raise HTTPException(429, f"The draft queue is full ({queue_max} waiting). Try again when one of the "
+                                                 "drafts has finished.")
+                    waiting.append((run, spec, ctx))
+                else:
+                    run.begin(clock())
+            position = next((i + 1 for i, (r, _, _) in enumerate(waiting) if r is run), None)
+        if claim is not None or not needs_seat:
+            launch(run, spec, ctx, claim)
+        return {"run_id": run.run_id, "state": run.status, "position": position}
+
+    @app.post("/api/runs/{run_id}/cancel")
+    def cancel_run(run_id: str) -> dict:
+        """Take a queued run out of the queue.  A running draft cannot be stopped (409): it is saved when it finishes."""
+        run = find_run(run_id)
+        with seats:
+            at = next((i for i, (r, _, _) in enumerate(waiting) if r is run), None)
+            if at is not None:
+                del waiting[at]
+        if at is None:
+            raise HTTPException(409, "A running draft cannot be stopped. It is saved when it finishes."
+                                if run.status == RUNNING else "This draft has already ended, so there is nothing to cancel.")
+        run.fail("Cancelled while it waited for a drafting seat, before it started. Nothing was drafted.")
+        return {"run_id": run.run_id, "status": run.status}
 
     @app.get("/api/runs/{run_id}")
     def get_run(run_id: str) -> dict:
-        """The run's status, every event so far, and (once finished) the saved review's id and dev-draft mark."""
+        """The run's status, every event so far, and (once finished) the saved review's id and dev-draft mark.  A queued run
+        carries its ``position`` (1 is next)."""
         run = find_run(run_id)
         out = run.to_dict()
         if run.status == RUNNING:  # the server's count, so a screen that opens late or reloads still shows the true time
             out["elapsed_seconds"] = max(0, int(clock() - run.started_at))
             out["stale"] = out["elapsed_seconds"] >= draft_stale_after
+        out["position"] = queue_position(run) if run.status == QUEUED else None
         return out
 
     @app.get("/api/runs/{run_id}/events")

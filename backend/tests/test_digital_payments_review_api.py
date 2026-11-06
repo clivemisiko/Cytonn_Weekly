@@ -518,6 +518,7 @@ def test_draft_failure_is_shown_not_swallowed_and_saves_nothing(client, db, monk
 
 
 def test_a_second_draft_while_one_is_running_is_409_and_spends_nothing(db, monkeypatch):
+    monkeypatch.setenv("CYTONN_DRAFT_CONCURRENCY", "1")   # the synchronous route is refused only when every seat is taken
     app = create_app(db_path=db, load_dotenv=False)
     entered, release = threading.Event(), threading.Event()
     calls = []
@@ -535,7 +536,7 @@ def test_a_second_draft_while_one_is_running_is_409_and_spends_nothing(db, monke
     try:
         assert entered.wait(timeout=10)
         second = TestClient(app).post("/api/reviews/draft")
-        assert second.status_code == 409 and "Another draft is running" in second.json()["detail"]
+        assert second.status_code == 409 and "drafting seat" in second.json()["detail"]
         assert len(calls) == 1  # the pipeline, and so the API spend, was not started again
     finally:
         release.set()

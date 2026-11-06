@@ -131,7 +131,7 @@ test("T44 a section in review: Draft again leaves the unfinished review as it is
   await expect(card(page, "Company Updates")).toContainText(`Run ${fresh.run_id}`);
 });
 
-test("T45 Draft again is off, with the reason, while another draft holds the one draft slot", async ({ page, request }) => {
+test("T45 Draft again is off, with the reason, only while that section is itself drafting; another section drafting does not turn it off", async ({ page, request }) => {
   const period = "Week ending 2026-11-27";
   await draftCompanyUpdates(request, period, "Investment Updates:\nSYNTHETIC e2e text.");
   const dp = await request.post(`${API}/api/sections/digital_payments/draft`, { headers: json, data: { report_type: "weekly", period }, timeout: 120_000 });
@@ -142,19 +142,20 @@ test("T45 Draft again is off, with the reason, while another draft holds the one
   await page.goto(overviewUrl(period));
   const payments = card(page, "Digital Payments");
   await expect(payments.getByRole("button", { name: "Resume review" })).toBeEnabled();
-  const again = payments.getByRole("button", { name: "Draft again" });
-  await expect(again).toBeDisabled();
-  await expect(payments).toContainText(`Real Estate (${period}) is drafting now. Only one draft runs at a time, across every section.`);
-  await expect(again).toHaveAccessibleDescription(/is drafting now/);
-  // A section that calls no provider takes no slot, so it is not held up.
+  // Real Estate is drafting; Digital Payments is a different section, so its button stays on.
+  await expect(payments.getByRole("button", { name: "Draft again" })).toBeEnabled();
+  await expect(payments).not.toContainText("Being drafted now");
   await expect(card(page, "Company Updates").getByRole("button", { name: "Draft again" })).toBeEnabled();
 
-  // Once the run ends the slot is free and the button is on again.
+  // The section that is drafting has its own button off, with the reason.
+  const own = card(page, "Real Estate").getByRole("button", { name: "Draft again" });
+  if (await own.count()) {
+    await expect(own).toBeDisabled();
+    await expect(own).toHaveAccessibleDescription(/Being drafted now/);
+  }
+
   release();
   await expect.poll(async () => (await (await request.get(`${API}/api/runs/${running}`)).json()).status).not.toBe("running");
-  await page.reload();
-  await expect(card(page, "Digital Payments").getByRole("button", { name: "Draft again" })).toBeEnabled();
-  await expect(card(page, "Digital Payments")).not.toContainText("is drafting now");
 });
 
 test("T46 a section never drafted for the week still shows only Draft section, and no Draft again anywhere", async ({ page }) => {

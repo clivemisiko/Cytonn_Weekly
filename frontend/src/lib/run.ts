@@ -23,7 +23,7 @@ const stop = (label: string) => (/[.!?…]$/.test(label) ? label : `${label}.`);
 const then = (detail: string | null) => (detail ? ` ${detail}` : "");
 
 /** The fixed wording of each event kind. Every word after the template comes from the event itself. */
-function textOf(e: RunEvent): string {
+export function textOf(e: Pick<RunEvent, "kind" | "label" | "detail"> & { counts?: RunEvent["counts"] }): string {
   switch (e.kind) {
     case "run_started":
       return "Starting the draft.";

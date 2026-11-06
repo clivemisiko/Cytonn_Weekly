@@ -61,6 +61,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from cytonn_weekly.checkers.digital_payments import MISSING
+from cytonn_weekly.common import atomic
 from cytonn_weekly.common.computed import ANALYST, SOURCE, an_input
 from cytonn_weekly.common.formatting import NUMBER, TEXT
 from cytonn_weekly.common.http import http_get, http_head
@@ -122,14 +123,24 @@ class ResultsCache:
         self.unchecked: list[str] = []
         self.downloaded: list[str] = []
         self.pages: dict[str, bytes] = {}     # the listing pages fetched this run, as served
-        self.index: dict[str, dict[str, Any]] = {}
+        self.index: dict[str, dict[str, Any]] = self._read_index()
+
+    def _read_index(self) -> dict[str, dict[str, Any]]:
         path = self.folder / "index.json"
         if path.is_file():
             try:
                 loaded = json.loads(path.read_text(encoding="utf-8"))
-                self.index = loaded if isinstance(loaded, dict) else {}
+                return loaded if isinstance(loaded, dict) else {}
             except ValueError:
-                self.index = {}
+                return {}
+        return {}
+
+    def _save_index(self, url: str) -> None:
+        """Write the index with this instance's entry for ``url`` and whatever another draft saved meanwhile (each draft
+        holds its own copy in memory, and a whole-file write from a stale copy would drop the other's entries)."""
+        with atomic.GUARD:
+            self.index = {**self.index, **self._read_index(), url: self.index[url]}
+            atomic.write_atomic(self.folder / "index.json", json.dumps(self.index, indent=1, sort_keys=True))
 
     def _pace(self, seconds: float) -> None:
         if self._asked:
@@ -148,12 +159,11 @@ class ResultsCache:
         return self._get(url)
 
     def _store(self, url: str, data: bytes, headers: Optional[dict[str, str]]) -> None:
-        self.folder.mkdir(parents=True, exist_ok=True)
         name = _file_name(url)
-        (self.folder / name).write_bytes(data)
+        atomic.write_atomic(self.folder / name, data)
         self.index[url] = {"file": name, "sha256": sha256(data), "bytes": len(data), "headers": headers or {},
                            "fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
-        (self.folder / "index.json").write_text(json.dumps(self.index, indent=1, sort_keys=True), encoding="utf-8")
+        self._save_index(url)
         self.downloaded.append(name)
 
     def info(self, url: str) -> dict[str, Any]:
@@ -181,14 +191,14 @@ class ResultsCache:
         if not damaged and not moved:
             if headers and not recorded:   # first re-check: remember what CBK reports for the file as held
                 entry["headers"] = headers
-                (self.folder / "index.json").write_text(json.dumps(self.index, indent=1, sort_keys=True), encoding="utf-8")
+                self._save_index(url)
             return held
         data = self._download(url)
         new, old = sha256(data), entry["sha256"]
         if new != old:
             kept = f"{path.stem}.replaced-{old[:8]}{path.suffix}"
             if not damaged:
-                (self.folder / kept).write_bytes(held)
+                atomic.write_atomic(self.folder / kept, held)
             why = ("the kept copy no longer matched the hash recorded when it was downloaded" if damaged else
                    f"CBK's file changed after it was downloaded on {str(entry.get('fetched_at', ''))[:10]} "
                    f"(sha256 {old[:12]} then, {new[:12]} now); the earlier copy is kept as {kept}")

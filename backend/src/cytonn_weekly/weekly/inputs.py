@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from cytonn_weekly import paths
+from cytonn_weekly.common import atomic
 from cytonn_weekly.digital_payments import workbook as dp_workbook
 from cytonn_weekly.weekly import cbk_bulletin, equities_workbook, fi_workbook, kcb, nse_yield_curve
 from cytonn_weekly.weekly.week import Week, day_text
@@ -118,9 +119,7 @@ def read_manifest(week: Week, root: Optional[Path] = None) -> dict[str, Any]:
 
 
 def _write_manifest(week: Week, root: Optional[Path], manifest: dict[str, Any]) -> None:
-    path = _manifest_path(week, root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(manifest, indent=1, sort_keys=True), encoding="utf-8")
+    atomic.write_atomic(_manifest_path(week, root), json.dumps(manifest, indent=1, sort_keys=True))
 
 
 # ---------------------------------------------------------------------------
@@ -236,20 +235,21 @@ def store(week: Week, slug: str, data: bytes, filename: str = "", root: Optional
         raise InputError(f"unknown input {slug!r}")
     found = identify(slot, data, week)
     folder = week_dir(week, root)
-    folder.mkdir(parents=True, exist_ok=True)
-    (folder / found["stored_name"]).write_bytes(data)
     entry = {
         "slot": slug, "stored_name": found["stored_name"], "read_date": found["read_date"], "matches": found["matches"],
         "note": found["note"], "notices": found["notices"], "size": len(data), "sha256": hashlib.sha256(data).hexdigest(),
         "original_name": _SAFE_NAME.sub("_", filename or "")[:160], "received_at": _now(),
         "fetched_from": fetched_from,
     }
-    manifest = read_manifest(week, root)
-    manifest[found["stored_name"]] = entry
-    _write_manifest(week, root, manifest)
+    with atomic.GUARD:   # two uploads at once (five KCB days) must not each write a manifest without the other's entry
+        atomic.write_atomic(folder / found["stored_name"], data)
+        manifest = read_manifest(week, root)
+        manifest[found["stored_name"]] = entry
+        _write_manifest(week, root, manifest)
     return entry
 
 
+@atomic.locked
 def remove(week: Week, stored_name: str, root: Optional[Path] = None) -> bool:
     manifest = read_manifest(week, root)
     if stored_name not in manifest:
@@ -273,6 +273,7 @@ def read_notes(week: Week, root: Optional[Path] = None) -> dict[str, str]:
     return {k: str(v) for k, v in data.items() if k in NOTE_KEYS and isinstance(v, str) and v.strip()}
 
 
+@atomic.locked
 def write_notes(week: Week, notes: dict[str, Optional[str]], root: Optional[Path] = None) -> dict[str, str]:
     kept = read_notes(week, root)
     for key, value in notes.items():
@@ -292,9 +293,7 @@ def write_notes(week: Week, notes: dict[str, Optional[str]], root: Optional[Path
             kept[key] = text
         else:
             kept.pop(key, None)
-    folder = week_dir(week, root)
-    folder.mkdir(parents=True, exist_ok=True)
-    (folder / "notes.json").write_text(json.dumps(kept, indent=1, sort_keys=True), encoding="utf-8")
+    atomic.write_atomic(week_dir(week, root) / "notes.json", json.dumps(kept, indent=1, sort_keys=True))
     return kept
 
 

@@ -169,7 +169,6 @@ def test_a_second_draft_while_one_runs(db, monkeypatch):
     try:
         assert entered.wait(timeout=10)
         expect(client.post("/api/runs", json={"section": "equities"}), 409, "draft_already_running", "already being drafted")
-        expect(client.post("/api/runs", json={"section": "real_estate"}), 409, "draft_busy", "Another draft is running")
     finally:
         release.set()
 

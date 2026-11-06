@@ -47,15 +47,13 @@ test("T27 a stale draft: shown as stuck, the next draft takes the slot over and 
 
   await page.goto(overviewUrl());
   const banner = page.getByRole("status").filter({ hasText: /^Real Estate \(Week ending 2026-10-09\) has been drafting for/ });
-  await expect(banner).toContainText("longer than any healthy draft takes. It looks stuck: the next draft started, in");
-  await expect(banner).toContainText("replaces it, and its result will be discarded.");
+  await expect(banner).toContainText("longer than any healthy draft takes. It looks stuck: a draft that finds every");
+  await expect(banner).toContainText("seat taken replaces it, and its result will be discarded.");
   await expect(card(page, "Real Estate")).toContainText("Looks stuck");
   await expect(card(page, "Real Estate")).toContainText("A draft has run far longer than it should and looks stuck. Drafting again replaces it.");
 
-  // Another section: warned, and free to draft.
+  // Another section: free to draft (this variant has one seat, so its draft takes the stuck one's seat over).
   await openStart(page, "Digital Payments");
-  const warning = page.getByRole("status").filter({ hasText: "This draft appears to have stopped. Real Estate (Week ending 2026-10-09) has been drafting for" });
-  await expect(warning).toContainText("longer than any healthy draft takes. Starting a draft replaces it; its result will be discarded.");
   await expect(page.getByRole("button", { name: DRAFT })).toBeEnabled();
   await page.getByRole("button", { name: DRAFT }).click();
   await expect(page.getByRole("heading", { name: "Draft ready for review", level: 2 })).toBeVisible({ timeout: 60_000 });

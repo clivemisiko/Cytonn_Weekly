@@ -7,6 +7,7 @@ import {
   PhCircleHalf,
   PhCircleNotch,
   PhClockCounterClockwise,
+  PhHourglass,
   PhLockSimple,
   PhSidebarSimple,
   PhSquaresFour,
@@ -33,6 +34,7 @@ const MARKS: Record<RailState | "unknown", { label: string; icon: typeof PhCircl
   not_drafted: { label: "Not drafted", icon: PhCircle, tone: "text-muted-foreground" },
   unavailable: { label: "Not available yet", icon: PhLockSimple, tone: "text-muted-foreground" },
   drafting: { label: "Being drafted", icon: PhCircleNotch, tone: "text-foreground" },
+  queued: { label: "Queued", icon: PhHourglass, tone: "text-muted-foreground" },
   unknown: { label: "State not known", icon: PhCircleDashed, tone: "text-muted-foreground" },
 };
 const markOf = (s: RailSection) => MARKS[s.state ?? "unknown"];

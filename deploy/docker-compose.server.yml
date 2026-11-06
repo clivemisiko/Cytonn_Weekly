@@ -42,6 +42,8 @@ services:
       CYTONN_SOURCES_MARKET:
       CYTONN_BEDROCK_RETRIES:
       CYTONN_BEDROCK_RETRY_BASE_SECONDS:
+      CYTONN_DRAFT_CONCURRENCY:
+      CYTONN_DRAFT_QUEUE_MAX:
 
   web:
     image: ghcr.io/clivemisiko/cytonn-weekly-web:${IMAGE_TAG:-latest}
