@@ -83,8 +83,8 @@ test("T108 a pasted source is listed with its host, date, size, origin and finge
   await expect(piece.getByText("No sources yet", { exact: false })).toHaveCount(0);
 
   const href = await piece.getByRole("link", { name: /View saved text/ }).getAttribute("href");
-  expect(href).toMatch(/^.*\/api\/sources\/[0-9a-f]{8}\/text$/);
-  const text = await page.request.get(`${API}${new URL(href!, "http://x").pathname}`);
+  expect(href).toMatch(/^\/sources\/[0-9a-f]{8}$/); // the styled page, which reads the raw text route
+  const text = await page.request.get(`${API}/api/sources/${href!.split("/").pop()}/text`);
   expect(text.headers()["content-type"]).toContain("text/plain");
   expect(await text.text()).toBe(PASTED); // kept exactly as pasted
 
@@ -191,7 +191,7 @@ test("T113 a drafted piece shows its source host, date and verified quote, and a
   await expect(claim).toContainText("checked word for word against the saved text");
   await expect(claim).toContainText("Pasted");
   await expect(claim).toContainText(/fingerprint [0-9a-f]{8}\b/);
-  await expect(claim.getByRole("link", { name: "View saved text" })).toHaveAttribute("href", /\/api\/sources\/[0-9a-f]{8}\/text$/);
+  await expect(claim.getByRole("link", { name: "View saved text" })).toHaveAttribute("href", /^\/sources\/[0-9a-f]{8}\?quote=.+&review=\d+$/);
   // The host is not on the approved list: said on the item itself, in words (not by colour alone).
   await expect(page.locator("li[data-status]", { has: claims.first() }).getByText("host not on the approved list").first()).toBeVisible();
 

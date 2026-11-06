@@ -3,10 +3,9 @@ import { PhArrowSquareOut, PhCaretDown, PhPencilSimple, PhWarning } from "@phosp
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "reka-ui";
 import { computed, inject, ref, watch } from "vue";
 import Textarea from "@/components/ui/Textarea.vue";
-import { sourceTextUrl } from "@/lib/api";
 import { KIND_LABELS, friendlyTime, pyRepr, resolutionKey } from "@/lib/format";
 import { READ_ONLY } from "@/lib/previous";
-import { NOT_ON_LIST, TEXT_FROM_SEARCH, claimSource } from "@/lib/sources";
+import { NOT_ON_LIST, TEXT_FROM_SEARCH, claimSource, sourcePageHref } from "@/lib/sources";
 import type { Flag, Resolution, Review, ReviewItem } from "@/lib/types";
 import EditSentence from "./EditSentence.vue";
 import FixFromFile from "./FixFromFile.vue";
@@ -170,7 +169,7 @@ const cells = (flag: Flag): [string, string][] => [
         <dt class="eyebrow">Saved copy</dt>
         <dd class="min-w-0 text-xs text-muted-foreground [overflow-wrap:anywhere]">
           {{ source.origin === "found" ? "Found automatically" : source.origin === "fetched" ? "Fetched" : "Pasted" }} {{ source.savedAt }} · fingerprint <span class="font-mono">{{ source.fingerprint }}</span> ·
-          <a :href="sourceTextUrl(source.id)" target="_blank" rel="noopener noreferrer" class="text-link underline decoration-link/40 underline-offset-2 hover:decoration-link">View saved text</a>
+          <a :href="sourcePageHref(source.id, source.quote, review.run_id)" target="_blank" rel="noopener noreferrer" class="text-link underline decoration-link/40 underline-offset-2 hover:decoration-link">View saved text</a>
         </dd>
       </dl>
       <p v-else-if="ctx.cited_text" class="text-xs text-muted-foreground">Cited text: “{{ ctx.cited_text }}”</p>
