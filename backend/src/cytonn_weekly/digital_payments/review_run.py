@@ -41,6 +41,7 @@ def build_digital_payments_review(
     on_event: Optional[Observer] = None,
     workbook: Optional[Workbook] = None,
     search: Search = exa_search,
+    as_at: Optional[date] = None,
 ) -> CoordinatorReview:
     """Draft this week's Digital Payments section, check it, and return the review.
 
