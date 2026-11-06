@@ -224,8 +224,8 @@ def user_message(exc: BaseException) -> str:
     except Exception:  # noqa: BLE001
         host = None
     slow = isinstance(exc, (httpx.TimeoutException, anthropic.APITimeoutError))
-    return (f"Could not reach {host or 'an outside service'}: it {'did not answer in time' if slow else 'could not be reached'}. "
-            "Check your internet connection (a VPN, proxy or firewall can block it) and try again.")
+    return (f"The server could not reach {host or 'an outside service'}: it {'did not answer in time' if slow else 'could not be reached'}. "
+            "The site may be down; try again later.")
 
 
 def fetch_source(on_event: Optional[Observer], label: str, fetch: Callable[..., T], *args: Any) -> T:
