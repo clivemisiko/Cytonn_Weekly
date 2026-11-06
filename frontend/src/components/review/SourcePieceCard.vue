@@ -4,7 +4,7 @@ import { computed, ref } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import * as api from "@/lib/api";
-import { NO_SOURCES_YET, sourceFacts } from "@/lib/sources";
+import { NO_SOURCES_YET, normalizeAddress, sourceFacts } from "@/lib/sources";
 import type { ReportChoice, SourceMeta, SourcePiece } from "@/lib/types";
 import Notice from "./Notice.vue";
 
@@ -50,11 +50,18 @@ async function run(work: () => Promise<{ sources: SourceMeta[]; source?: SourceM
 const add = (url: string, extra: { date?: string; text?: string } = {}) =>
   api.addSource(props.slug, props.report, props.piece.subject, { url, ...extra }, props.titles);
 
-const fetchIt = () =>
-  run(
-    () => add(fetchUrl.value.trim()),
+const fetchIt = () => {
+  const address = normalizeAddress(fetchUrl.value);
+  if ("error" in address) {
+    saved.value = null;
+    error.value = address.error;
+    return;
+  }
+  return run(
+    () => add(address.url),
     () => (fetchUrl.value = ""),
   );
+};
 const pasteIt = () =>
   run(
     () => add(pasteUrl.value.trim(), { date: pasteDate.value, text: pasteText.value }),
@@ -103,9 +110,9 @@ const remove = (s: SourceMeta) =>
       <div class="space-y-5 border-t p-3">
         <form class="space-y-2" @submit.prevent="fetchIt">
           <label :for="`fetch-${uid}`" class="text-sm font-semibold">Address (URL) to fetch</label>
-          <input :id="`fetch-${uid}`" v-model="fetchUrl" type="url" autocomplete="off" :disabled="off" placeholder="https://…" class="flex h-10 w-full rounded-md border border-input bg-card px-3 text-sm transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-60" :aria-describedby="`fetch-hint-${uid}`" />
-          <p :id="`fetch-hint-${uid}`" class="text-xs text-muted-foreground">Only pages on the approved sites are fetched. For any other page, paste its text below.</p>
-          <Button type="submit" variant="outline" :disabled="off || !fetchUrl.trim()">Fetch page</Button>
+          <input :id="`fetch-${uid}`" v-model="fetchUrl" type="text" inputmode="url" autocomplete="off" :disabled="off" placeholder="knightfrank.com/research/report" class="flex h-10 w-full rounded-md border border-input bg-card px-3 text-sm transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-60" :aria-describedby="`fetch-hint-${uid}`" />
+          <p :id="`fetch-hint-${uid}`" class="text-xs text-muted-foreground">A link with or without https:// works. Give the page that holds the facts, not the site’s home page. Only pages on the approved sites are fetched; for any other page, paste its text below.</p>
+          <Button type="submit" variant="outline" :disabled="off">Fetch page</Button>
         </form>
 
         <form class="space-y-2 border-t pt-4" @submit.prevent="pasteIt">
