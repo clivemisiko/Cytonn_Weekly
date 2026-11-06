@@ -28,7 +28,7 @@ def db(tmp_path):
 def client(db, monkeypatch):
     monkeypatch.setattr(eq_weekly, "build_equities_weekly_review", lambda: sh.equities_review())
     monkeypatch.setattr(re_run, "build_real_estate_review", lambda: sh.real_estate_review())
-    monkeypatch.setattr(focus_run, "build_focus_review", lambda topic: sh.focus_review(topic=topic))
+    monkeypatch.setattr(focus_run, "build_focus_review", lambda topic, **_: sh.focus_review(topic=topic))
     return TestClient(create_app(db_path=db, load_dotenv=False))
 
 

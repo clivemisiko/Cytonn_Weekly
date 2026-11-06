@@ -271,10 +271,21 @@ test("T24 a draft holding the one draft slot: the overview and the other section
   expect(second.status()).toBe(409);
   expect((await second.json()).detail).toContain("Real Estate");
 
-  // The section that is drafting says it is its own.
-  await openStart(page, "Real Estate");
-  await expect(page.getByRole("status").filter({ hasText: "This section is drafting now (" })).toContainText("It is saved when it finishes, and this screen then offers it for review.");
-  await expect(page.getByRole("button", { name: DRAFT })).toBeDisabled();
+  // The other drafting section's notice links to its page.
+  await expect(notice.getByRole("link", { name: "View its progress" })).toHaveAttribute("href", `/runs/${run}`);
+
+  // The section that is drafting leads to its run page, not to a draft button: from its card, and from the overview's link.
+  await page.goto(overviewUrl());
+  await card(page, "Real Estate").getByRole("button", { name: /Draft section|View review|Resume review/ }).click();
+  await expect(page).toHaveURL(`/runs/${run}`);
+  await expect(page.getByRole("button", { name: DRAFT })).toHaveCount(0);
+  await page.goto(overviewUrl());
+  await page.getByRole("link", { name: "View progress" }).click();
+  await expect(page).toHaveURL(`/runs/${run}`);
+  // The counter is the server's elapsed time counted on locally, so it is there at once after a reload too.
+  await expect(page.getByText(/^Drafting for \d+:\d\d$/)).toBeVisible();
+  await page.reload();
+  await expect(page.getByText(/^Drafting for \d+:\d\d$/)).toBeVisible();
   // A section that calls no provider takes no slot: no notice, and it can be saved.
   await openStart(page, "Company Updates");
   await expect(page.getByText("drafting now", { exact: false })).toHaveCount(0);
@@ -291,6 +302,11 @@ test("T24 a draft holding the one draft slot: the overview and the other section
   release();
   await expect(page.getByRole("button", { name: DRAFT })).toBeEnabled({ timeout: 20_000 });
   await expect(page.getByText("is drafting now", { exact: false })).toHaveCount(0);
+  // It failed while the reader was away: its page says so, and the counter has gone.
+  await page.goto(`/runs/${run}`);
+  await expect(page.getByRole("alert").getByText("The draft stopped.", { exact: false })).toBeVisible();
+  await expect(page.getByText(/^Drafting for/)).toHaveCount(0);
+  await openStart(page, "Focus of the Week");
   await topbar(page).getByRole("button", { name: "Back to all sections" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Drafting Real Estate" })).toHaveCount(0);
 });

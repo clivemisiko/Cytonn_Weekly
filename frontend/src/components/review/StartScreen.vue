@@ -1,17 +1,18 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import { useRouter } from "vue-router";
+import { computed, ref, watch } from "vue";
+import { RouterLink, useRouter } from "vue-router";
 import Button from "@/components/ui/Button.vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import { LINK } from "@/components/ui/button";
 import * as api from "@/lib/api";
-import { isDraftingThis, providerOff, slotTaken, useDraftingPoll, useLiveElapsed } from "@/lib/drafting";
+import { isDraftingThis, providerOff, reattachHref, runHref, slotTaken, useDraftingPoll, useLiveElapsed } from "@/lib/drafting";
 import { elapsed, friendlyTime, weekRange } from "@/lib/format";
 import { draftChartsNote } from "@/lib/charts";
 import { redraftNotes } from "@/lib/redraft";
+import { TITLES_REQUIRED, missingSourcesNote, piecesWithoutSources, usesSources } from "@/lib/sources";
 import { shell, useShellRibbon } from "@/lib/shell";
-import { MAX_TOPIC, topicLength } from "@/lib/topic";
-import type { AppConfig, Drafting, Overview, ReportChoice, Review, SectionSummary } from "@/lib/types";
+import { MAX_SECTIONS, MAX_SECTION_TITLE, MAX_TOPIC, sectionsProblem, sectionTitles, topicLength } from "@/lib/topic";
+import type { AppConfig, Drafting, Overview, ReportChoice, Review, SectionSummary, SourcePiece } from "@/lib/types";
 import PageGrid from "@/components/nav/PageGrid.vue";
 import AnalystPanel from "./analyst/AnalystPanel.vue";
 import InputsPanel from "./InputsPanel.vue";
@@ -19,6 +20,7 @@ import Masthead from "./Masthead.vue";
 import NotablePanel from "./NotablePanel.vue";
 import Notice from "./Notice.vue";
 import RedraftDialog from "./RedraftDialog.vue";
+import SourcesPanel from "./SourcesPanel.vue";
 
 const USES_INPUTS = ["fixed_income", "equities"];
 const MAX_TEXT = 10_000;
@@ -60,6 +62,10 @@ const inputMissing = computed(() => (props.section.needs_topic && !topic.value.t
 // Counted as the API counts it (lib/topic.ts). Nothing is ever cut: an over-long topic stays whole and blocks the draft.
 const topicCount = computed(() => topicLength(topic.value));
 const topicOver = computed(() => props.section.needs_topic && topicCount.value > MAX_TOPIC);
+// Focus of the Week's section titles, one per line, counted and refused as the API does (lib/topic.ts).
+const sections = ref("");
+const sectionCount = computed(() => sectionTitles(sections.value).length);
+const sectionsError = computed(() => (props.section.needs_topic ? sectionsProblem(sections.value) : null));
 // True from the click until the run view takes over (the start call answers at once).
 const starting = ref(false);
 const error = ref<{ message: string; lostConnection: boolean } | null>(null);
@@ -73,6 +79,17 @@ const showsInputs = computed(() => usesInputs.value || (props.report.type === "w
 // Company Updates and the Executive Summary call no LLM: no API budget, no key needed, no draft slot.
 const llm = computed(() => props.section.uses_provider);
 const providerBlocked = computed(() => providerOff(llm.value, props.config));
+// A Bedrock draft is written only from the sources supplied for each piece (the Sources panel); nothing is searched.
+const bedrock = computed(() => usesSources(props.config, props.section));
+const sourcePieces = ref<SourcePiece[] | null>(null);
+const withoutSources = computed(() => (bedrock.value && sourcePieces.value ? piecesWithoutSources(sourcePieces.value) : []));
+// Bedrock has nothing to search, so a Focus needs its section titles typed: the API refuses a draft without them.
+const titlesNeeded = computed(() => bedrock.value && props.section.needs_topic && sectionTitles(sections.value).length === 0);
+const sectionsHint = computed(() =>
+  bedrock.value
+    ? "Amazon Bedrock does not propose titles, because it has nothing to search: type one per line. The tool numbers them Section I, II, III… and each takes its own sources below. End with a “Recommendations and Conclusion” part for the closing section, which is written from the other sections and takes no sources."
+    : "Leave blank and the tool proposes four to six titles from the topic (one model call). Typed titles are used exactly as typed and numbered Section I, II, III… by the tool; end with a \"Recommendations and Conclusion\" part for the closing section.",
+);
 
 // A draft already running on the server (this section's or another's) blocks this one until it finishes.
 const serverDrafting = ref<Drafting | null>(props.drafting);
@@ -88,8 +105,13 @@ useDraftingPoll(serverDrafting, onServerOverview, () => props.report, () => !sta
 const blocked = computed(() => slotTaken(llm.value, serverDrafting.value));
 const mine = computed(() => isDraftingThis(serverDrafting.value, props.section.slug, props.report));
 const seconds = useLiveElapsed(serverDrafting);
+// This section's own draft is running (left and come back, a reload, or started in another tab): its run page shows the
+// steps and the counter, so go there instead of offering a draft. Replace, so Back does not return to this screen.
+const resume = computed(() => (llm.value && !starting.value ? reattachHref(serverDrafting.value, props.section.slug, props.report) : null));
+watch(resume, (to) => to && void router.replace(to), { immediate: true });
 const cannotDraft = computed(
-  () => starting.value || blocked.value || providerBlocked.value || inputMissing.value || topicOver.value || (usesInputs.value && typedPending.value),
+  () =>
+    starting.value || blocked.value || providerBlocked.value || inputMissing.value || topicOver.value || !!sectionsError.value || titlesNeeded.value || (usesInputs.value && typedPending.value),
 );
 
 // Drafting over a section that already has a review asks first (what happens to the earlier one), then drafts.
@@ -108,13 +130,23 @@ async function start() {
   }
   afterCharts();
 }
+// A Bedrock draft with pieces that have no sources says which, first; the coordinator may draft anyway.
+const sourcesNote = ref<string | null>(null);
 function afterCharts() {
+  sourcesNote.value = missingSourcesNote(withoutSources.value);
+  if (!sourcesNote.value) afterSources();
+}
+function afterSources() {
   if (props.saved) confirming.value = true;
   else void draft();
 }
 function chartsConfirmed() {
   chartNote.value = null;
   afterCharts();
+}
+function sourcesConfirmed() {
+  sourcesNote.value = null;
+  afterSources();
 }
 function confirmed() {
   confirming.value = false;
@@ -127,6 +159,7 @@ async function draft() {
   try {
     const { run_id } = await api.startRun(props.section.slug, props.report, {
       topic: props.section.needs_topic ? topic.value.trim() : undefined,
+      sections: props.section.needs_topic && sections.value.trim() ? sections.value : undefined,
       text: props.section.needs_text ? text.value.trim() : undefined,
       provider: llm.value ? props.config.provider : undefined,
     });
@@ -187,9 +220,11 @@ const lists = computed(() => [
 
     <!-- The panel is first in the page's order: what is uploaded and typed there is what the form and the draft button use.
          It is never folded (it holds the uploads' warnings) and, being tall, it does not stick. -->
-    <PageGrid aside-title="Inputs and steps" hide-title aside-first wide-body :sticky="false">
+    <p v-if="resume" role="status" class="mx-auto w-full max-w-275 px-4 py-8 text-sm sm:px-6">Opening the draft that is running…</p>
+    <PageGrid v-else aside-title="Inputs and steps" hide-title aside-first wide-body :sticky="false">
       <div class="space-y-8">
         <AnalystPanel v-if="usesInputs && week" :key="`analyst-${week}`" :week="week" :section="section.slug" :disabled="starting" :refresh="uploads" @pending="(p) => (typedPending = p)" />
+        <SourcesPanel v-if="bedrock" :section="section" :report="report" :titles="sections" :disabled="starting" @pieces="(p) => (sourcePieces = p)" />
         <section aria-labelledby="start-title" class="space-y-6 rounded-lg border border-t-[3px] border-t-primary bg-card p-6">
           <h2 id="start-title" class="sr-only">Start or resume a review</h2>
 
@@ -240,7 +275,11 @@ const lists = computed(() => [
               CYTONN_LLM_PROVIDER=local: DEV MODE. Drafts from the local model are NOT FOR PUBLICATION.
             </Notice>
             <Notice v-if="llm && config.spends_api_budget && !config.provider_problem" tone="info">
-              Drafting provider: {{ config.provider }}. A run spends real API budget (web search and tokens).
+              <template v-if="bedrock">
+                Drafting provider: {{ config.provider }}. A run spends real API budget (model tokens). Nothing is searched: each piece is written only from the sources
+                supplied for it.
+              </template>
+              <template v-else>Drafting provider: {{ config.provider }}. A run spends real API budget (web search and tokens).</template>
             </Notice>
             <Notice v-if="!llm" tone="info">
               {{
@@ -254,9 +293,9 @@ const lists = computed(() => [
             <template v-if="serverDrafting && !starting && llm">
               <Notice v-if="serverDrafting.stale" tone="warn" role="status">
                 <span class="font-semibold">
-                  {{ mine ? "This section" : serverDrafting.title }} has been drafting for
+                  This draft appears to have stopped. {{ mine ? "This section" : serverDrafting.title }} has been drafting for
                   <span class="font-mono tabular-nums">{{ elapsed(seconds) }}</span></span
-                >, longer than any healthy draft takes, and looks stuck. Starting a draft replaces it; its result will be discarded.
+                >, longer than any healthy draft takes. Starting a draft replaces it; its result will be discarded.
               </Notice>
               <Notice v-else tone="info" role="status">
                 <span class="font-semibold">
@@ -268,6 +307,7 @@ const lists = computed(() => [
                     ? "It is saved when it finishes, and this screen then offers it for review."
                     : "Only one draft runs at a time, across every section; drafting here unlocks when it finishes."
                 }}
+                <RouterLink v-if="!mine && runHref(serverDrafting)" :to="runHref(serverDrafting)!" :class="LINK">View its progress</RouterLink>
               </Notice>
             </template>
 
@@ -296,6 +336,27 @@ const lists = computed(() => [
                   Over the limit by <span class="font-mono tabular-nums">{{ (topicCount - MAX_TOPIC).toLocaleString() }}</span>
                   {{ topicCount - MAX_TOPIC === 1 ? "character" : "characters" }}. Shorten it to submit.
                 </span>
+              </p>
+            </div>
+
+            <div v-if="section.needs_topic" class="space-y-1">
+              <label for="focus-sections" class="text-sm font-semibold">Sections (optional)</label>
+              <Textarea
+                id="focus-sections"
+                v-model="sections"
+                name="sections"
+                rows="5"
+                :disabled="starting"
+                :placeholder="'One title per line, e.g.\nOverview of the market\nYields and pricing\nRecommendations and Conclusion'"
+                :aria-invalid="!!sectionsError || undefined"
+                aria-describedby="focus-sections-hint focus-sections-count"
+                class="min-h-28 py-2"
+              />
+              <p id="focus-sections-hint" class="text-xs text-muted-foreground">{{ sectionsHint }}</p>
+              <p v-if="titlesNeeded" role="status" class="text-xs font-medium text-warn-fg">{{ TITLES_REQUIRED }}</p>
+              <p id="focus-sections-count" class="text-xs" :class="sectionsError ? 'font-medium text-flag-fg' : 'text-muted-foreground'">
+                <span class="font-mono tabular-nums">{{ sectionCount }}</span> of {{ MAX_SECTIONS }} sections, each at most {{ MAX_SECTION_TITLE }} characters.
+                <span v-if="sectionsError" role="status">{{ sectionsError.charAt(0).toUpperCase() + sectionsError.slice(1) }}. Shorten or remove it to submit.</span>
               </p>
             </div>
 
@@ -348,6 +409,11 @@ const lists = computed(() => [
                   <span v-else class="flex size-4 items-center justify-center rounded-full bg-warn/20 font-bold text-warn-fg text-[10px]">!</span>
                   <span>Analyst form: {{ typedPending ? 'Unsaved or unconfirmed inputs in form' : 'Inputs confirmed' }}</span>
                 </li>
+                <li v-if="bedrock && sourcePieces" class="flex items-center gap-2">
+                  <span v-if="!withoutSources.length" class="flex size-4 items-center justify-center rounded-full bg-ok/20 font-bold text-ok-fg text-[10px]">✓</span>
+                  <span v-else class="flex size-4 items-center justify-center rounded-full bg-warn/20 font-bold text-warn-fg text-[10px]">!</span>
+                  <span>Sources: {{ withoutSources.length ? `${withoutSources.length} of ${sourcePieces.length} pieces have none yet` : "every piece has at least one" }}</span>
+                </li>
                 <li v-if="blocked" class="flex items-center gap-2 text-warn-fg font-medium">
                   <span class="flex size-4 items-center justify-center rounded-full bg-warn/20 font-bold text-[10px]">⏳</span>
                   <span>Server slot: Busy drafting {{ serverDrafting?.title ?? 'another section' }}</span>
@@ -383,6 +449,15 @@ const lists = computed(() => [
               confirm-label="Draft again"
               @confirm="confirmed"
               @cancel="confirming = false"
+            />
+            <RedraftDialog
+              :open="sourcesNote !== null"
+              title="Some pieces have no sources"
+              :notes="sourcesNote ? [sourcesNote, 'Nothing is searched, so a piece with no sources is not drafted. Supply sources and draft it again, or draft anyway and fill them in afterwards.'] : []"
+              confirm-label="Draft anyway"
+              cancel-label="Go back"
+              @confirm="sourcesConfirmed"
+              @cancel="sourcesNote = null"
             />
             <RedraftDialog
               :open="chartNote !== null"

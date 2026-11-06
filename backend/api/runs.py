@@ -43,8 +43,10 @@ class RunAlreadyRunning(Exception):
 class Run:
     """One draft run.  ``record`` is the observer handed to the builder (``on_event``)."""
 
-    def __init__(self, run_id: str, report_type: str, period: str, section: str, section_title: str, report_title: str):
+    def __init__(self, run_id: str, report_type: str, period: str, section: str, section_title: str, report_title: str,
+                 started_at: float = 0.0):
         self.run_id = run_id
+        self.started_at = started_at  # the API's clock() when it started; elapsed time is the server's, never the browser's
         self.report_type = report_type
         self.period = period
         self.section = section
@@ -128,13 +130,14 @@ class RunRegistry:
         self._runs: dict[str, Run] = {}
         self._keep_ended = keep_ended
 
-    def start(self, report_type: str, period: str, section: str, section_title: str, report_title: str) -> Run:
+    def start(self, report_type: str, period: str, section: str, section_title: str, report_title: str,
+              started_at: float = 0.0) -> Run:
         """Register a new running run, or raise RunAlreadyRunning if this section of this report has one."""
         with self._lock:
             for run in self._runs.values():
                 if run.status == RUNNING and run.key == (report_type, period, section):
                     raise RunAlreadyRunning(run)
-            run = Run(uuid.uuid4().hex, report_type, period, section, section_title, report_title)
+            run = Run(uuid.uuid4().hex, report_type, period, section, section_title, report_title, started_at)
             self._runs[run.run_id] = run
             ended = [r for r in self._runs.values() if r.status != RUNNING]
             for old in ended[: max(0, len(ended) - self._keep_ended)]:
@@ -145,6 +148,15 @@ class RunRegistry:
         """Forget a run that was registered but never started (its draft slot was refused)."""
         with self._lock:
             self._runs.pop(run.run_id, None)
+
+    def running_id(self, report_type: str, period: str, section: str) -> Optional[str]:
+        """The id of the run of this section of this report that has not ended, if any (a draft started by the older
+        synchronous route has none)."""
+        with self._lock:
+            for run in self._runs.values():
+                if run.status == RUNNING and run.key == (report_type, period, section):
+                    return run.run_id
+        return None
 
     def get(self, run_id: str) -> Optional[Run]:
         with self._lock:

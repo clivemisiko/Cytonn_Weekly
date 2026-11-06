@@ -25,6 +25,10 @@ services:
     # HOME moves to the one folder it can write: without it matplotlib's font cache has nowhere
     # to go. Revert both lines once the data folder is chowned to 10001.
     user: "1007:1007"
+    # Drafting with Amazon Bedrock needs no line here: the AWS variables (AWS_REGION, AWS_ACCESS_KEY_ID,
+    # AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN, AWS_BEARER_TOKEN_BEDROCK) and BEDROCK_MODEL_ID reach
+    # the api through the env_file of docker-compose.yml, which this file adds to. env_file is read when the
+    # container is created, so after editing .env run: docker compose up -d --force-recreate api
     environment:
       HOME: /app/data
       MPLCONFIGDIR: /app/data/.mplconfig

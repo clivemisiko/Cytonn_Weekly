@@ -54,8 +54,8 @@ test("T27 a stale draft: shown as stuck, the next draft takes the slot over and 
 
   // Another section: warned, and free to draft.
   await openStart(page, "Digital Payments");
-  const warning = page.getByRole("status").filter({ hasText: /^Real Estate \(Week ending 2026-10-09\) has been drafting for/ });
-  await expect(warning).toContainText("longer than any healthy draft takes, and looks stuck. Starting a draft replaces it; its result will be discarded.");
+  const warning = page.getByRole("status").filter({ hasText: "This draft appears to have stopped. Real Estate (Week ending 2026-10-09) has been drafting for" });
+  await expect(warning).toContainText("longer than any healthy draft takes. Starting a draft replaces it; its result will be discarded.");
   await expect(page.getByRole("button", { name: DRAFT })).toBeEnabled();
   await page.getByRole("button", { name: DRAFT }).click();
   await expect(page.getByRole("heading", { name: "Draft ready for review", level: 2 })).toBeVisible({ timeout: 60_000 });

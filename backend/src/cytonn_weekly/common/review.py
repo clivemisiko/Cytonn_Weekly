@@ -68,6 +68,7 @@ from cytonn_weekly.common.checks import (
     TABLE_SCOPE,
     UNAVAILABLE_SCOPE,
     check_claim,
+    check_piece,
     check_table_block,
     row_subject,
 )
@@ -87,6 +88,7 @@ from cytonn_weekly.digital_payments.coordinator_review import (
     CLEAN,
     FLAGGED,
     NOT_AUTO_VERIFIED,
+    SOURCE_KEYS,
     TABLE_ROW,
     CoordinatorReview,
     ReviewItem,
@@ -98,6 +100,7 @@ UNAVAILABLE_PART = "unavailable_part"
 SUPPLIED_TEXT = "supplied_text"
 COMPUTED_FIGURE = "computed_figure"
 CARRIED_TEXT = "carried_text"
+PIECE_CHECK = "piece_check"   # a Focus lead or conclusion, or a rating in a section: flags about the piece as a whole
 
 ANALYST_ROW_NOTE = ("Not auto-verified: this row's figures match their source exactly, but the source is typed by "
                     "an analyst, not published. Check it against the workbook before accepting.")
@@ -252,9 +255,15 @@ def check_section(content: dict[str, Any], on_event: Optional[Observer] = None) 
                 flags = check_claim(b["id"], n, claim).flags
                 report.flags.extend(flags)
                 flagged_claims += bool(flags)
-            # A piece with no cited claim at all becomes one flagged item (build_review).
-            emit(on_event, CHECK_FINISHED, b.get("headline", ""),
-                 counts={"flagged": flagged_claims if claims else 1, "not_auto_verified": len(claims) - flagged_claims})
+            piece_flags = check_piece(b, content.get("blocks", []))
+            report.flags.extend(piece_flags)
+            if b.get("role") in WRITTEN_ROLES:   # one item for the whole piece, there is no claim
+                counts = {"flagged": 1} if piece_flags else {"not_auto_verified": 1}
+            else:
+                # A piece with no cited claim at all becomes one flagged item (build_review).
+                counts = {"flagged": (flagged_claims if claims else 1) + bool(piece_flags),
+                          "not_auto_verified": len(claims) - flagged_claims}
+            emit(on_event, CHECK_FINISHED, b.get("headline", ""), counts=counts)
         elif b["kind"] == "chart" and b["status"] != "no_workbook":
             # The checks ran when the block was made (charts/block.py); its flags are kept on it.  A chart nothing was
             # read for (no workbook) has none: it is information, not a finding.
@@ -271,6 +280,11 @@ def check_section(content: dict[str, Any], on_event: Optional[Observer] = None) 
     return report
 
 
+WRITTEN_ROLES = ("lead", "conclusion")   # written from the finished sections: no claims (common/checks.ROLES_WRITTEN_FROM_SECTIONS)
+WRITTEN_NOTE = ("Written by the model from the section texts, with no search, so it has no cited claim. Its figures were "
+                "compared with the section bodies and nothing else is checked: read it against the sections.")
+
+
 def _short(text: str) -> str:
     text = " ".join((text or "").split())
     return text if len(text) <= _REF_CHARS else text[: _REF_CHARS - 1].rstrip() + "…"
@@ -278,6 +292,7 @@ def _short(text: str) -> str:
 
 def _claim_context(claim: dict[str, Any]) -> dict[str, Any]:
     context = {k: claim.get(k, "") for k in ("text", "url", "title", "cited_text")}
+    context.update({k: claim[k] for k in SOURCE_KEYS if k in claim})   # a claim quoted from a supplied source
     if claim.get("edited_at"):   # a sentence the reviewer rewrote by hand (weekly/sentence_edit.py)
         context.update(edited_at=claim["edited_at"], was=claim.get("was", ""))
     return context
@@ -388,7 +403,16 @@ def build_review(content: dict[str, Any], report: CheckReport) -> CoordinatorRev
                     ref = f"{b.get('numeral', '')} {b.get('headline', '')}: {_short(e['was'])} (removed by you)".strip()
                     items.append(ReviewItem(kind=CLAIM, ref=ref, status=NOT_AUTO_VERIFIED, detail=REMOVED_NOTE,
                                             context={"text": e["was"], "removed_at": e["at"]}))
-            if not b.get("claims"):
+            piece_flags = by_subject.get((CLAIM_SCOPE, b["id"]), [])
+            used.add((CLAIM_SCOPE, b["id"]))
+            ref = f"{b.get('numeral', '')} {b.get('headline', '')}".strip()
+            if b.get("role") in WRITTEN_ROLES:
+                items.append(ReviewItem(kind=PIECE_CHECK, ref=ref, status=FLAGGED if piece_flags else NOT_AUTO_VERIFIED,
+                                        detail=piece_flags or WRITTEN_NOTE, context={"text": b.get("body_md", "")}))
+            elif piece_flags:
+                items.append(ReviewItem(kind=PIECE_CHECK, ref=ref, status=FLAGGED, detail=piece_flags,
+                                        context={"text": b.get("body_md", "")}))
+            if not b.get("claims") and b.get("role") not in WRITTEN_ROLES:
                 # A drafted piece with no cited claim at all still needs a human look.
                 items.append(ReviewItem(
                     kind=CLAIM, ref=f"{b.get('numeral', '')} {b.get('headline', '')}".strip(), status=FLAGGED,

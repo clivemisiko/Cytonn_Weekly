@@ -45,21 +45,20 @@ import httpx
 
 from cytonn_weekly import env
 from cytonn_weekly.digital_payments.providers.base import (
-    BODY_WORDS,
-    LINK_RE,
-    OPENER,
     OUTLOOK_SYSTEM,
     SCOPE_IR,
     SCOPE_WEB,
-    GENUINE_ANNOUNCEMENT,
-    NOT_GENUINE,
     DraftingProvider,
     HighlightResult,
     OutlookResult,
-    is_about_company,
     outlook_user_message,
-    strip_links,
-    word_count,
+)
+from cytonn_weekly.digital_payments.providers.drafting import (
+    CONTEXT_CHARS_PER_RESULT,
+    HIGHLIGHT_SYSTEM,
+    RESPONSE_SCHEMA,
+    highlight_from_reply,
+    results_message,
 )
 
 MODEL = "phi4-mini"
@@ -70,7 +69,6 @@ OLLAMA_URL = "http://localhost:11434"
 OLLAMA_URL_ENV_VAR = "CYTONN_OLLAMA_URL"
 EXA_URL = "https://api.exa.ai/search"
 NUM_RESULTS = 5
-CONTEXT_CHARS_PER_RESULT = 3000  # enough text per result to draft from
 NUM_CTX = 8192
 # Hard cap on generated tokens for every local model.  A valid highlight reply is ~300-400
 # tokens; without a cap a model that never closes its JSON (seen with MiniCPM5-2B) generates
@@ -220,56 +218,15 @@ def model_label(model: str) -> str:
     return "-".join([name, *parts])
 
 
-_HIGHLIGHT_SYSTEM = f"""\
-You help draft one "Weekly Highlights" item for the Digital Payments section of a \
-weekly investment research report (formal, data-forward, third person) from search results.
-
-Step 1 - judge the material. Decide whether the search results contain a GENUINE \
-COMPANY ANNOUNCEMENT by {{company}} ({GENUINE_ANNOUNCEMENT}). If the results \
-are only {NOT_GENUINE}, that is NOT a genuine \
-announcement. Do not force a draft in that case.
-
-Step 2 - only if genuine: write a short headline and ONE paragraph of {BODY_WORDS[0]} to \
-{BODY_WORDS[1]} words (no fewer than {BODY_WORDS[0]}, no more than {BODY_WORDS[1]}) that begins \
-exactly with "{OPENER} {{company}}". Describe the announcement with concrete stats or \
-quotes from the results, then end with 1-2 sentences of relevance or industry implications \
-that contain no new figures. Use ONLY facts stated in the search results; never add \
-figures, dates, names or claims from your own memory. Embed the source as an inline \
-markdown hyperlink on a natural word or short phrase inside the paragraph, e.g. \
-"released [new research](https://...)", using only URLs given in the results.
-
-Step 3 - claim mapping: list every factual claim in your paragraph together with the \
-exact URL of the single search result that supports it. Use URLs exactly as given. Do \
-not invent URLs.
-
-If the material is not a genuine announcement, set is_genuine_announcement to false, \
-explain briefly in reasoning, and leave headline and paragraph as empty strings and \
-claims as an empty list.
-
-Reply with JSON only."""
-
-_RESPONSE_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "is_genuine_announcement": {"type": "boolean"},
-        "reasoning": {"type": "string"},
-        "headline": {"type": "string"},
-        "paragraph": {"type": "string"},
-        "claims": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {"claim": {"type": "string"}, "url": {"type": "string"}},
-                "required": ["claim", "url"],
-            },
-        },
-    },
-    "required": ["is_genuine_announcement", "reasoning", "headline", "paragraph", "claims"],
-}
+_HIGHLIGHT_SYSTEM = HIGHLIGHT_SYSTEM   # shared with the Bedrock provider: digital_payments/providers/drafting.py
+_RESPONSE_SCHEMA = RESPONSE_SCHEMA
 
 
 class LocalProvider(DraftingProvider):
     """Phi-4-mini (Ollama) + Exa.  ``http_client`` is injectable for tests."""
+
+    WHO = "local model"      # how a warning names the writer
+    LABEL = "local provider"
 
     def __init__(
         self,
@@ -432,7 +389,8 @@ class LocalProvider(DraftingProvider):
             return kept
         return [{**r, "text": truncate_text(r.get("text") or "", s.result_chars)} for r in kept]
 
-    def _chat(self, messages: list[dict[str, str]], schema: Optional[dict] = None) -> str:
+    def _chat(self, messages: list[dict[str, str]], schema: Optional[dict] = None, max_tokens: Optional[int] = None) -> str:
+        # max_tokens is accepted for the narrative provider's calls; Ollama's cap is num_predict
         payload: dict[str, Any] = {
             "model": self.model,
             "stream": False,
@@ -447,111 +405,19 @@ class LocalProvider(DraftingProvider):
         resp.raise_for_status()
         return resp.json()["message"]["content"]
 
-    @staticmethod
-    def _results_message(company: str, results: list[dict[str, Any]]) -> str:
-        blocks = []
-        for i, r in enumerate(results, 1):
-            text = " ".join((r.get("text") or "").split())[:CONTEXT_CHARS_PER_RESULT]
-            blocks.append(
-                f"[Result {i}]\nTitle: {r.get('title') or '(no title)'}\n"
-                f"URL: {r.get('url')}\nPublished: {r.get('publishedDate') or 'n/a'}\nText: {text}"
-            )
-        return f"Company: {company}\n\nSearch results:\n\n" + "\n\n".join(blocks)
-
     def _draft_from_results(
         self, company: str, ir_domain: str, scope: str, aliases: Sequence[str],
         results: list[dict[str, Any]], warnings: list[str],
     ) -> Optional[HighlightResult]:
         raw = self._chat(
             [
-                {"role": "system", "content": _HIGHLIGHT_SYSTEM.replace("{company}", company)},
-                {"role": "user", "content": self._results_message(company, results)},
+                {"role": "system", "content": HIGHLIGHT_SYSTEM.replace("{company}", company)},
+                {"role": "user", "content": results_message(company, results)},
             ],
-            _RESPONSE_SCHEMA,
+            RESPONSE_SCHEMA,
         )
-        try:
-            out = json.loads(raw)
-        except json.JSONDecodeError:
-            warnings.append(f"{company}: local model returned invalid JSON for the {scope} results; discarded")
-            return None
-        if not out.get("is_genuine_announcement"):
-            reason = " ".join((out.get("reasoning") or "").split())
-            warnings.append(
-                f"{company}: local model judged the {scope} results not a genuine announcement ({reason})"
-            )
-            return None
-        paragraph_md = (out.get("paragraph") or "").strip()
-        headline = (out.get("headline") or "").strip().strip("*").strip()
-        if not paragraph_md or not headline:
-            warnings.append(f"{company}: local model said genuine but returned no headline/paragraph; discarded")
-            return None
-
-        by_url = {r.get("url"): r for r in results if r.get("url")}
-        hl_warnings: list[str] = []
-
-        # Keep only links whose URL Exa actually returned.
-        links: list[dict[str, str]] = []
-
-        def _keep(m) -> str:
-            anchor, url = m.group(1), m.group(2)
-            if url in by_url:
-                links.append({"anchor": anchor, "url": url})
-                return m.group(0)
-            hl_warnings.append(f"link to {url} was not in the search results; unlinked")
-            return anchor
-
-        body_md = LINK_RE.sub(_keep, paragraph_md)
-        body = strip_links(body_md)
-        if not is_about_company(body, aliases):
-            warnings.append(f"{company}: discarded a story that is not about the company ({headline!r})")
-            return None
-
-        claims: list[dict[str, str]] = []
-        citations: list[dict[str, str]] = []
-        for c in out.get("claims") or []:
-            url, text = (c.get("url") or "").strip(), strip_links((c.get("claim") or "").strip())
-            if url not in by_url:
-                hl_warnings.append(f"claim cited a URL not in the search results; dropped: {url or '(empty)'}")
-                continue
-            if not text:
-                continue
-            cite = {"url": url, "title": by_url[url].get("title") or "", "cited_text": ""}
-            claims.append({"text": text, **cite})
-            if cite not in citations:
-                citations.append(cite)
-
-        n = word_count(body)
-        if not BODY_WORDS[0] <= n <= BODY_WORDS[1]:
-            hl_warnings.append(f"body is {n} words, outside {BODY_WORDS[0]}-{BODY_WORDS[1]}")
-        if not body.startswith(OPENER):
-            hl_warnings.append(f'body does not open with "{OPENER}"')
-        if not links:
-            hl_warnings.append("no inline source hyperlink in the body")
-        if not claims:
-            hl_warnings.append("no cited claims recorded for this highlight")
-        else:
-            hl_warnings.append(
-                "local provider: claims carry no cited_text (model-mapped URLs only, not provider-cited spans)"
-            )
-        for link in links:
-            published = by_url[link["url"]].get("publishedDate")
-            if published:
-                link["page_age"] = published
-
-        return HighlightResult(
-            company=company,
-            search_scope=scope,
-            ir_domain=ir_domain,
-            drafted_by=self.drafted_by,
-            headline=headline,
-            paragraph=body,
-            paragraph_md=body_md,
-            word_count=n,
-            links=links,
-            claims=claims,
-            citations=citations,
-            warnings=hl_warnings,
-        )
+        return highlight_from_reply(raw, company, ir_domain, scope, aliases, results, warnings,
+                                    who=self.WHO, label=self.LABEL, drafted_by=self.drafted_by)
 
     def find_highlight(
         self,
@@ -593,6 +459,7 @@ class LocalProvider(DraftingProvider):
             [
                 {"role": "system", "content": OUTLOOK_SYSTEM},
                 {"role": "user", "content": outlook_user_message(table_stats, highlights)},
-            ]
+            ],
+            max_tokens=800,   # the Anthropic path's cap
         ).strip()
         return OutlookResult(text=text, stats=table_stats, drafted_by=self.drafted_by)

@@ -10,7 +10,8 @@ import Notice from "@/components/review/Notice.vue";
 import Button from "@/components/ui/Button.vue";
 import { LINK, buttonVariants } from "@/components/ui/button";
 import * as api from "@/lib/api";
-import { STATUS_ORDER, friendlyTime, reportName } from "@/lib/format";
+import { useLiveElapsed } from "@/lib/drafting";
+import { STATUS_ORDER, elapsed, friendlyTime, reportName } from "@/lib/format";
 import { type BackTarget, useBack } from "@/lib/nav";
 import { isTerminal, mergeEvents, overviewHref, stepLines } from "@/lib/run";
 import { shell, useShellRibbon } from "@/lib/shell";
@@ -126,6 +127,12 @@ watch(
   { immediate: true },
 );
 
+// The server's count of how long the draft has run, counted on locally from the read that brought it (not from when
+// this page opened). No tick once the run has ended or looks stuck. Not in the status line: that one is announced.
+const running = computed(() => (run.value?.status === "running" && run.value.elapsed_seconds != null ? { elapsed_seconds: run.value.elapsed_seconds, stale: run.value.stale } : null));
+const seconds = useLiveElapsed(running);
+const stopped = computed(() => running.value?.stale === true && !final.value);
+
 const lines = computed(() => stepLines(events.value));
 const last = computed(() => events.value[events.value.length - 1]);
 const final = computed(() => events.value.find(isTerminal));
@@ -191,6 +198,11 @@ const status = computed(() => {
           <span class="font-semibold">{{ status }}</span>
           <span v-if="!final && feed === 'poll'" class="text-muted-foreground">Live updates are off; checking every 2 seconds.</span>
         </p>
+        <p v-if="running && !final && !stopped" class="font-mono text-sm tabular-nums text-muted-foreground">Drafting for {{ elapsed(seconds) }}</p>
+        <Notice v-if="stopped" tone="warn" role="status">
+          This draft appears to have stopped. It has run for {{ elapsed(seconds) }}, longer than any healthy draft takes. The next draft
+          started, in any section, replaces it, and its result will be discarded.
+        </Notice>
 
         <Notice v-if="feed === 'lost' && !settled" tone="warn" role="alert">
           Connection lost. The draft may still finish. Check the overview before starting another.

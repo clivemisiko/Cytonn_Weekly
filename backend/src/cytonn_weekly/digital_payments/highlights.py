@@ -147,7 +147,9 @@ def draft_highlights(
             style_examples=examples,
         )
         warnings.extend(res.draft_warnings)
-        if res.no_story:
+        if res.no_story and res.reason:   # the provider already put its sentence in draft_warnings
+            emit(on_event, PART_SKIPPED, company["name"], detail=res.reason)
+        elif res.no_story:
             warnings.append(f"{company['name']}: no story found for the week (IR site or web)")
             if priority and res.draft_warnings:
                 warnings.append(

@@ -21,7 +21,7 @@ BAD = "Lending rose to Sh88.8 billion over the quarter."
 
 def drafted(provider=None):
     """A Focus review whose second claim ("Lending rose to Sh99.9 billion.") quotes a figure its cited text lacks."""
-    return sh.focus_review(provider=provider or sh.FakeNarrativeProvider(bad_figure=True))
+    return sh.old_focus_review(provider=provider or sh.FakeNarrativeProvider(bad_figure=True))
 
 
 def flagged_index(review):

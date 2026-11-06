@@ -1,6 +1,8 @@
 """Chooses the narrative provider from the same CYTONN_LLM_PROVIDER switch Digital Payments uses.
 
     (unset) / "anthropic"  -> AnthropicNarrativeProvider, the production default
+    "bedrock"              -> BedrockNarrativeProvider (Claude on Amazon Bedrock; sources supplied by the coordinator
+                              or fetched in code from approved sites; no search service), production
     "local"                -> LocalNarrativeProvider (Ollama + Exa), development only
 
 "local" prints the same conspicuous DEV MODE banner as the Digital Payments
@@ -29,4 +31,8 @@ def get_narrative_provider() -> NarrativeProvider:
         warning = local_warning(model)
         print(f"\n{'*' * len(warning)}\n{warning}\n{'*' * len(warning)}\n", flush=True)
         return LocalNarrativeProvider(model=model)
-    raise ValueError(f"Unknown {ENV_VAR} value {name!r}; expected 'anthropic' or 'local'.")
+    if name == "bedrock":
+        from cytonn_weekly.narrative.bedrock_provider import BedrockNarrativeProvider
+
+        return BedrockNarrativeProvider()
+    raise ValueError(f"Unknown {ENV_VAR} value {name!r}; expected 'anthropic', 'bedrock' or 'local'.")

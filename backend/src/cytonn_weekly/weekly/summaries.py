@@ -37,6 +37,9 @@ def section_summary(section: dict[str, Any]) -> str:
     if isinstance(section.get("summary"), str):
         return section["summary"]
     if "blocks" in section:
+        leads = [b for b in section["blocks"] if b.get("role") == "lead"]   # a Focus: its lead paragraph, not each section's opening
+        if leads:
+            return _fit([_first_paragraph(b.get("body_md", "")) for b in leads])
         return _fit([_first_paragraph(b.get("body_md", "")) for b in section["blocks"] if b.get("kind") == "narrative"])
     # The weekly Digital Payments shape: highlights as items.
     return _fit([_first_paragraph(i.get("body_md", "")) for i in section.get("items", []) if i.get("kind") == "highlight"])

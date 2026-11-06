@@ -53,6 +53,7 @@ def load_env(path: Path | None = None, *, quiet: bool = False) -> list[str]:
 
 
 # The API keys a stale environment variable can silently override (see the module docstring).
+# EXA_API_KEY is checked only when CYTONN_LLM_PROVIDER is local: no other provider reads it.
 API_KEYS = ("EXA_API_KEY", "ANTHROPIC_API_KEY")
 
 
@@ -69,12 +70,15 @@ def ending(secret: str) -> str:
     return f"ending ...{secret[-4:]}" if len(secret) >= 12 else "too short to show any of it"
 
 
-def key_override_warnings(path: Path | None = None, names: tuple[str, ...] = API_KEYS) -> list[str]:
+def key_override_warnings(path: Path | None = None, names: tuple[str, ...] | None = None) -> list[str]:
     """One line per key that the process environment and .env both hold, with different values.
 
     Call it after load_env(): a key only .env holds is by then in the environment too (equal,
     so no line), and a key only the environment holds overrides nothing.
     """
+    if names is None:
+        local = (os.environ.get("CYTONN_LLM_PROVIDER") or "").strip().lower() == "local"
+        names = tuple(n for n in API_KEYS if local or n != "EXA_API_KEY")
     lines = []
     for name in names:
         in_process, in_file = os.environ.get(name), env_file_value(name, path)

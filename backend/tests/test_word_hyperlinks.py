@@ -163,7 +163,7 @@ def test_the_file_name_follows_the_topic_or_the_week():
 
 
 def test_the_focus_title_names_the_file_and_the_document():
-    review = sh.focus_review(topic="SSA Eurobonds")
+    review = sh.old_focus_review(topic="SSA Eurobonds")
     review.report_type, review.period = "weekly", PERIOD
     reviews = [(BY_SLUG["focus"], review)]
     assert export.focus_title(reviews) == "SSA Eurobonds: a development"     # the headline the file prints
@@ -172,7 +172,7 @@ def test_the_focus_title_names_the_file_and_the_document():
 
 
 def _focus(topic, headline):
-    review = sh.focus_review(topic="SSA Eurobonds")
+    review = sh.old_focus_review(topic="SSA Eurobonds")
     review.section["topic"] = topic
     for b in review.section["blocks"]:
         if b["kind"] == "narrative":

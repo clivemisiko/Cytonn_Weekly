@@ -199,8 +199,15 @@ def _claim_ref(numeral: str, h: dict[str, Any], text: str) -> str:
     return f"Highlight {numeral} ({who}): {text}" if text else f"Highlight {numeral} ({who})"
 
 
+# What a claim quoted from a supplied source adds (narrative/bedrock_provider.py): the quote, which source it is and when
+# it was saved. Only a claim that has them carries them, so every other claim's context is as it always was.
+SOURCE_KEYS = ("source_id", "sha256", "fetched_at", "host", "published_date", "origin", "source_flags")
+
+
 def _claim_context(claim: dict[str, Any]) -> dict[str, Any]:
-    return {k: claim.get(k, "") for k in ("text", "url", "title", "cited_text")}
+    context = {k: claim.get(k, "") for k in ("text", "url", "title", "cited_text")}
+    context.update({k: claim[k] for k in SOURCE_KEYS if k in claim})
+    return context
 
 
 def _unverified(ref: str, claim: dict[str, Any]) -> ReviewItem:

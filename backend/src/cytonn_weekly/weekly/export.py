@@ -365,6 +365,8 @@ def _add_blocks(doc, review: CoordinatorReview, charts_root: Optional[Union[Path
             doc.add_heading(block["group_heading"], level=2)
         if kind == "table":
             _add_table_block(doc, block)
+        elif kind == "narrative" and block.get("role"):
+            _add_text(doc, block.get("body_md") or "")   # a Focus part: a section's heading is its group_heading, printed above
         elif kind == "narrative":
             headline = block.get("headline") or block.get("topic") or ""
             if block.get("group"):   # a Real Estate story under its group: "a. <headline>"
@@ -372,6 +374,8 @@ def _add_blocks(doc, review: CoordinatorReview, charts_root: Optional[Union[Path
             else:
                 doc.add_heading(headline, level=2)
             _add_text(doc, block.get("body_md") or "")
+        elif kind == "computed" and block.get("role") == "contents":
+            _add_text(doc, block["body_md"])   # the Focus's contents list: plain lines, one per paragraph
         elif kind == "computed":
             doc.add_heading(block["title"], level=2)
             _add_text(doc, block["body_md"])
@@ -379,7 +383,8 @@ def _add_blocks(doc, review: CoordinatorReview, charts_root: Optional[Union[Path
             if names:
                 small_line(doc, "Source: " + "; ".join(names))
         elif kind == "carried":
-            doc.add_heading(block["title"], level=2)
+            if block.get("role") != "disclaimer":   # the Focus's disclaimer starts with its own word, "Disclaimer:"
+                doc.add_heading(block["title"], level=2)
             if not block.get("edits"):   # a paragraph the reviewer rewrote (sentence_edit.apply_paragraph) is no longer carried text
                 note = _mark(doc, CARRIED_NOTE)
                 note.bold, note.font.color.rgb = True, _RED
@@ -527,7 +532,7 @@ def focus_title(reviews, typed_first: bool = False) -> str:
     for spec, review in reviews:
         if spec.slug == "focus" and review is not None:
             section = review.section
-            piece = next((b for b in section.get("blocks", []) if b.get("kind") == "narrative"), {})
+            piece = next((b for b in section.get("blocks", []) if b.get("kind") == "narrative" and not b.get("role")), {})
             names = [piece.get("headline"), piece.get("topic"), section.get("topic")]
             if typed_first:
                 names.insert(0, section.get("topic"))

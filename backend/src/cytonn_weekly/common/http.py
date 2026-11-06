@@ -8,6 +8,7 @@ requests from unknown clients.
 from __future__ import annotations
 
 from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import Callable, Iterator
 from urllib.parse import quote
 
@@ -67,3 +68,32 @@ def http_get_pdf(url: str) -> bytes:
     if not body.startswith(b"%PDF"):
         raise NotFound(url)
     return body
+
+
+class TooLarge(Exception):
+    """The body is longer than the limit the caller set; nothing past it was read."""
+
+
+@dataclass(frozen=True)
+class Reply:
+    """One HTTP answer, not followed anywhere: the status, the headers (names in lower case) and the body."""
+
+    status: int
+    headers: dict[str, str]
+    body: bytes
+
+
+def http_get_once(url: str, *, max_bytes: int, timeout: float = 20.0) -> Reply:
+    """GET ``url`` once: no redirect is followed (the caller checks where it leads), the body stops at ``max_bytes``
+    (TooLarge), and any status is an answer, not an error.  Network errors propagate."""
+    with httpx.Client(timeout=timeout, follow_redirects=False, headers={"User-Agent": USER_AGENT}) as client:
+        with client.stream("GET", safe_url(url)) as resp:
+            headers = {k.lower(): v for k, v in resp.headers.items()}
+            if (headers.get("content-length") or "0").isdigit() and int(headers["content-length"]) > max_bytes:
+                raise TooLarge(url)
+            body = bytearray()
+            for chunk in resp.iter_bytes():
+                body += chunk
+                if len(body) > max_bytes:
+                    raise TooLarge(url)
+            return Reply(resp.status_code, headers, bytes(body))

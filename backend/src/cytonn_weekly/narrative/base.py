@@ -54,12 +54,22 @@ class NarrativeBrief:
     max_searches: int = 5
     report: str = "weekly"
     window: str = "report week"
+    # Focus of the Week sections: ``headed`` False asks for body paragraphs only (no "### headline"), ``context`` adds
+    # lines to the prompt (the report's section list) and ``max_tokens`` caps the call's output.  The defaults leave
+    # every other prompt and call as it was.
+    headed: bool = True
+    context: str = ""
+    max_tokens: Optional[int] = None
 
 
 class NarrativeProvider(ABC):
     """Swappable backend for brief-driven narrative drafting (Anthropic or local)."""
 
     drafted_by: str
+
+    def complete(self, system: str, prompt: str, *, max_tokens: int) -> str:
+        """One plain model call with no web search: text in, text out (the Focus outline, conclusion and lead)."""
+        raise NotImplementedError(f"{type(self).__name__} cannot make a plain text call")
 
     @abstractmethod
     def draft_piece(self, brief: NarrativeBrief, *, start: date, end: date, today: date) -> HighlightResult:

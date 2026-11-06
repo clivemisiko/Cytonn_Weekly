@@ -33,6 +33,26 @@ def test_factory_defaults_to_anthropic(monkeypatch, capsys):
     assert capsys.readouterr().out == ""
 
 
+def test_llm_model_env_overrides_the_anthropic_model(monkeypatch):
+    from cytonn_weekly.narrative.factory import get_narrative_provider
+
+    monkeypatch.delenv("CYTONN_LLM_PROVIDER", raising=False)
+    monkeypatch.setenv("CYTONN_LLM_MODEL", " claude-opus-5-5 ")
+    for p in (provider_factory.get_provider(), get_narrative_provider()):
+        assert p.model == "claude-opus-5-5" and p.drafted_by == "anthropic:claude-opus-5-5"
+    for blank in ("  ", None):
+        if blank is None:
+            monkeypatch.delenv("CYTONN_LLM_MODEL")
+        else:
+            monkeypatch.setenv("CYTONN_LLM_MODEL", blank)
+        with pytest.raises(ValueError, match="CYTONN_LLM_MODEL is not set"):
+            provider_factory.get_provider()
+        with pytest.raises(ValueError, match="CYTONN_LLM_MODEL is not set"):
+            get_narrative_provider()
+        from api.main import provider_problem
+        assert "CYTONN_LLM_MODEL" in provider_problem()
+
+
 def test_factory_local_prints_warning_every_time(monkeypatch, capsys):
     monkeypatch.setenv("CYTONN_LLM_PROVIDER", "local")
     for _ in range(2):
@@ -258,6 +278,7 @@ def test_a_key_too_short_to_hide_shows_none_of_itself():
 
 
 def test_keys_the_environment_and_dot_env_disagree_on_are_named_once_each(monkeypatch, tmp_path):
+    monkeypatch.setenv("CYTONN_LLM_PROVIDER", "local")   # the Exa key is checked only for the local provider
     dot_env = tmp_path / ".env"
     for name in env.API_KEYS:
         monkeypatch.delenv(name, raising=False)
@@ -295,6 +316,7 @@ def test_keys_the_environment_and_dot_env_disagree_on_are_named_once_each(monkey
 def test_the_api_logs_the_override_once_at_start_and_keeps_the_environments_key(monkeypatch, tmp_path, caplog):
     from api.main import create_app
 
+    monkeypatch.setenv("CYTONN_LLM_PROVIDER", "local")
     dot_env = tmp_path / ".env"
     write_env(dot_env, EXA_API_KEY=KEY_IN_FILE)
     monkeypatch.setattr(env, "ENV_FILE", dot_env)

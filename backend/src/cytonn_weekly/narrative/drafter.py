@@ -57,6 +57,7 @@ def draft_pieces(
     start, end = window or week_window(today)
     pieces: list[dict[str, Any]] = []
     warnings: list[str] = []
+    skipped: dict[str, str] = {}   # brief id -> the provider's own reason, only where it gave one
     for brief in briefs:
         if len(pieces) == target:
             warnings.append(f"{brief.label}: not searched ({target} higher-priority pieces already drafted)")
@@ -64,7 +65,10 @@ def draft_pieces(
         emit(on_event, PIECE_STARTED, brief.label)
         res = provider.draft_piece(brief, start=start, end=end, today=today)
         warnings.extend(res.draft_warnings)
-        if res.no_story:
+        if res.no_story and res.reason:   # the provider already put its sentence in draft_warnings
+            skipped[brief.id] = res.reason
+            emit(on_event, PART_SKIPPED, brief.label, detail=res.reason)
+        elif res.no_story:
             warnings.append(f"{brief.label}: nothing qualifying found for the {brief.window.split()[-1]}")
             emit(on_event, PART_SKIPPED, brief.label,
                  detail=f"Nothing qualifying found for the {brief.window.split()[-1]}.")
@@ -74,5 +78,8 @@ def draft_pieces(
     shortfall = target - len(pieces)
     if shortfall:
         warnings.append(f"only {len(pieces)} of {target} pieces drafted for {start.isoformat()} to {end.isoformat()}")
-    return {"week_start": start.isoformat(), "week_end": end.isoformat(), "pieces": pieces,
-            "shortfall": shortfall, "warnings": warnings}
+    out = {"week_start": start.isoformat(), "week_end": end.isoformat(), "pieces": pieces,
+           "shortfall": shortfall, "warnings": warnings}
+    if skipped:
+        out["skipped"] = skipped
+    return out

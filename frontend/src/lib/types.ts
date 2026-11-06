@@ -9,6 +9,7 @@ export type ItemKind =
   | "supplied_text"
   | "computed_figure"
   | "carried_text"
+  | "piece_check"
   | "chart"
   | "workbook_quarter";
 
@@ -77,6 +78,66 @@ export interface ClaimContext {
   was?: string;
   /** A sentence the reviewer took out: when. */
   removed_at?: string;
+  /** A claim quoted from a supplied source (Bedrock): which saved source, its fingerprint, and where and when it is from. */
+  source_id?: string;
+  sha256?: string;
+  fetched_at?: string;
+  host?: string;
+  published_date?: string;
+  origin?: "fetched" | "pasted";
+  source_flags?: string[];
+}
+
+// ---- Supplied sources (GET/POST/DELETE /api/sources) ----
+
+export interface SourceMeta {
+  id: string;
+  subject: string;
+  /** The Friday the source is filed under. */
+  week_end: string;
+  url: string;
+  host: string;
+  title: string;
+  /** YYYY-MM-DD, or "" when the page does not say and nobody typed it. */
+  published_date: string;
+  /** UTC with an offset; shown in East Africa Time. */
+  fetched_at: string;
+  origin: "fetched" | "pasted";
+  sha256: string;
+  chars: number;
+  flags: string[];
+}
+
+export interface SourcePiece {
+  subject: string;
+  end: string;
+  week_end: string;
+  sources: SourceMeta[];
+}
+
+export interface SourcesListing {
+  section: string;
+  title: string;
+  /** False for a section that is not written from sources (Company Updates, the Executive Summary). */
+  uses_sources: boolean;
+  pieces: SourcePiece[];
+  approved_sites: string[];
+}
+
+export interface AddedSource {
+  source: SourceMeta;
+  subject: string;
+  end: string;
+  week_end: string;
+  sources: SourceMeta[];
+}
+
+/** What one source is added with: a url alone is fetched, a url with a date and text is kept as pasted. */
+export interface SourceInput {
+  url: string;
+  date?: string;
+  text?: string;
+  title?: string;
 }
 
 export interface ReviewItem {
@@ -166,6 +227,7 @@ export interface TableColumn {
 
 export interface TableBlock {
   numeral: string;
+  role?: string;
   /** Real Estate (weekly) only: the group it is printed under, and on the group's first block its heading ("I. Residential Sector"). */
   group?: string;
   group_heading?: string;
@@ -197,6 +259,9 @@ export interface ComputedBlock {
   id: string;
   title: string;
   body_md: string;
+  /** Focus of the Week only: "contents" for the list the tool builds from the section titles. */
+  role?: string;
+  group_heading?: string;
   figures: ComputedFigure[];
   sources: { name: string; url?: string | null }[];
   notes: string[];
@@ -210,6 +275,8 @@ export interface CarriedBlock {
   title: string;
   body_md: string;
   carried_from: { issue_id: number | null; url: string | null; published: string | null };
+  /** Focus of the Week only: "disclaimer". */
+  role?: string;
   /** Set once the reviewer retyped the paragraph by hand (weekly/sentence_edit.py). */
   edits?: BlockEdit[] | null;
 }
@@ -219,6 +286,10 @@ export interface NarrativeBlock {
   /** Real Estate (weekly) only: the group it is printed under, and on the group's first block its heading ("I. Residential Sector"). */
   group?: string;
   group_heading?: string;
+  /** Focus of the Week only: which part of the report this is. A lead and a conclusion are written from the sections, with no cited claim. */
+  role?: "lead" | "section" | "conclusion";
+  /** Focus of the Week only: a plain note for the analyst under a section, not a claim or a flag. */
+  analyst_note?: string;
   kind: "narrative";
   id: string;
   topic: string;
@@ -243,6 +314,8 @@ export interface BlockEdit {
 export interface UnavailableBlock {
   numeral: string;
   kind: "unavailable";
+  role?: string;
+  group_heading?: string;
   id: string;
   title: string;
   reason: string;
@@ -252,6 +325,7 @@ export interface UnavailableBlock {
 /** Text the coordinator supplied (Company Updates): carried verbatim, never drafted or checked. */
 export interface SuppliedBlock {
   numeral: string;
+  role?: string;
   kind: "supplied";
   id: string;
   title: string;
@@ -346,6 +420,10 @@ export interface BlocksSection {
   period_start?: string | null;
   period_end?: string | null;
   topic: string | null;
+  /** Focus of the Week only: the section titles and whether they were typed or proposed, and the model calls the draft made. */
+  outline?: { titles: string[]; source: "typed" | "proposed" };
+  model_calls?: number;
+  api_requests?: number | null;
   pieces_found: number;
   pieces_expected: number;
   shortfall: number;
@@ -660,6 +738,9 @@ export interface Run {
   is_dev_draft: boolean | null;
   dev_mode_label: string | null;
   events: RunEvent[];
+  /** Only while running: the server's count of seconds since it started, and whether that is past the stuck limit. */
+  elapsed_seconds?: number;
+  stale?: boolean;
 }
 
 // ---- The overview (GET /api/sections) ----
@@ -715,6 +796,8 @@ export interface Drafting {
   /** Ran past `stale_after_seconds`: treated as stuck, and the next draft replaces it. */
   stale: boolean;
   stale_after_seconds: number;
+  /** The running draft's run, whose page shows its steps; null for a draft the synchronous route runs. */
+  run_id?: string | null;
 }
 
 export interface Overview {

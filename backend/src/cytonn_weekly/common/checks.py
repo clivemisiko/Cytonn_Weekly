@@ -27,7 +27,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
 
 from cytonn_weekly.checkers.digital_payments import (
     MISMATCH,
@@ -216,3 +216,85 @@ def check_claim(block_id: str, index: int, claim: dict[str, Any]) -> ClaimCheck:
         f"Figures {shown} appear exactly in the cited text. The wording around them is not automatically "
         "checked (task 6b is not built), so read it against the source."
     ))
+
+
+# ---------------------------------------------------------------------------
+# A claim quoted from a supplied source (the Bedrock path)
+# ---------------------------------------------------------------------------
+
+_QUOTE_MARKS = str.maketrans({"\u2018": "'", "\u2019": "'", "\u201a": "'", "\u201b": "'", "\u2032": "'",
+                              "\u201c": '"', "\u201d": '"', "\u201e": '"', "\u201f": '"', "\u2033": '"'})
+_DASHES = str.maketrans({c: "-" for c in "\u2010\u2011\u2012\u2013\u2014\u2015\u2212"})
+
+
+def normalise_quote(text: str) -> str:
+    """Whitespace (a non-breaking space included), quotation marks and dashes made plain, and nothing else: no case
+    folding, no punctuation removed, no word dropped.  Two texts that match after this say the same words."""
+    return " ".join(text.translate(_QUOTE_MARKS).translate(_DASHES).split())
+
+
+def check_sourced_claim(text: str, quote: str, source_id: str, source_texts: Mapping[str, str]) -> Optional[str]:
+    """Why a claim does not hold, as a clause for a warning, or None when it does.
+
+    It holds only if (a) its ``source_id`` is one of the supplied sources, (b) its ``quote`` is in that source's saved
+    text word for word (after ``normalise_quote``), and (c) every number in the claim appears in the quote.  Whether the
+    words around the numbers say what the source means is never judged here.
+    """
+    if not (source_id or "").strip():
+        return "it names no source"
+    if source_id not in source_texts:
+        return f"source {source_id} is not one of the supplied sources"
+    plain = normalise_quote(quote or "")
+    if not plain:
+        return "it gives no quote"
+    if plain not in normalise_quote(source_texts[source_id]):
+        return f"its quote is not in the saved text of source {source_id} word for word"
+    in_quote = set(figures_in(plain))
+    missing = [f for f in figures_in(text) if f not in in_quote]
+    if missing:
+        return f"figure(s) {', '.join(_fmt(f) for f in missing)} are in the claim but not in its quote"
+    return None
+
+
+# ---------------------------------------------------------------------------
+# A drafted piece as a whole (the Focus of the Week's lead, sections and conclusion)
+# ---------------------------------------------------------------------------
+
+JUDGEMENT = "analyst_judgement"   # Flag.kind
+RATING = "rating"                 # Flag.kind
+JUDGEMENT_MESSAGE = "Analyst judgement: confirm the recommendations"
+RATING_RE = re.compile(r"\b(NEUTRAL|POSITIVE|NEGATIVE)\b")
+ROLES_WRITTEN_FROM_SECTIONS = ("lead", "conclusion")   # no search, no claims: written from the finished sections
+
+
+def check_piece(block: dict[str, Any], blocks: list[dict[str, Any]]) -> list[Flag]:
+    """Block-level flags of a drafted piece that has a ``role`` (subject: the block's id, scope: claim).
+
+    * A capitalised rating (NEUTRAL, POSITIVE, NEGATIVE) in any lead, section or conclusion: a rating is Cytonn's own
+      judgement, never the tool's.
+    * A figure in the lead or the conclusion that no section body holds.  Both are written from the sections, so a figure
+      they add came from nowhere the tool can show.
+    * The conclusion is always flagged for the analyst's judgement.
+    """
+    role = block.get("role")
+    if role not in ("lead", "section", "conclusion"):
+        return []
+    text = block.get("body") or ""
+    flags: list[Flag] = []
+
+    def flag(kind: str, message: str) -> None:
+        flags.append(Flag(kind=kind, scope=CLAIM_SCOPE, subject=block["id"], field=None, drafted=text, message=message))
+
+    if role == "conclusion":
+        flag(JUDGEMENT, JUDGEMENT_MESSAGE)
+    ratings = sorted(set(RATING_RE.findall(text)))
+    if ratings:
+        flag(RATING, f"the text gives a rating ({', '.join(ratings)}): a rating is Cytonn's own judgement. "
+                     "Remove it, or confirm it with the analysts")
+    if role in ROLES_WRITTEN_FROM_SECTIONS:
+        known = {f for b in blocks if b.get("role") == "section" for f in figures_in(b.get("body") or "")}
+        new = [f for f in dict.fromkeys(figures_in(text)) if f not in known]
+        if new:
+            what = "lead" if role == "lead" else "conclusion"
+            flag(UNSOURCED, f"figure(s) {', '.join(_fmt(f) for f in new)} in the {what} do not appear in any section body")
+    return flags

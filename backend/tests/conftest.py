@@ -24,6 +24,7 @@ def fake_anthropic_key(monkeypatch):
     """
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-placeholder-not-a-real-key")
     monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    monkeypatch.setenv("CYTONN_LLM_MODEL", "claude-sonnet-5-5")  # no default exists; anthropic mode refuses without it
 
 
 # Settings a developer's shell may carry, and that the Docker container always carries
@@ -88,6 +89,14 @@ def isolated_weekly_inputs(tmp_path, monkeypatch):
     from cytonn_weekly.weekly import inputs
 
     monkeypatch.setattr(inputs, "_DEFAULT_ROOT", tmp_path / "inputs" / "weekly")
+
+
+@pytest.fixture(autouse=True)
+def isolated_sources(tmp_path, monkeypatch):
+    """The sources a Bedrock draft is written from default to a folder under the real data directory; every test gets its own."""
+    from cytonn_weekly.common import sources
+
+    monkeypatch.setattr(sources, "_DEFAULT_ROOT", tmp_path / "inputs" / "sources")
 
 
 @pytest.fixture(autouse=True)

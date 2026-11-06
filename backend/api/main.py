@@ -60,15 +60,17 @@ from pydantic import BaseModel, Field
 
 from cytonn_weekly.charts import store as chart_store
 from cytonn_weekly.charts.block import set_team_chart
+from cytonn_weekly.common import sources as source_store
 from cytonn_weekly.common.run_events import RUN_STARTED, describe, redact, review_counts, safe_describe, user_message
 from cytonn_weekly.digital_payments import review_run, review_store
 from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview, rejected_draft_notes
 from cytonn_weekly.digital_payments.provider_factory import ENV_VAR as PROVIDER_ENV_VAR
 from cytonn_weekly.digital_payments.providers.local_provider import EXA_KEY_ENV_VAR, EXA_KEY_MISSING, SearchKeyError
 from cytonn_weekly.env import key_override_warnings, load_env
-from cytonn_weekly.focus.review_run import clean_topic
+from cytonn_weekly.focus.review_run import clean_sections, clean_topic
 from cytonn_weekly import db as database
 from cytonn_weekly import notable
+from cytonn_weekly.narrative import bedrock_provider
 from cytonn_weekly.notable import store as notable_store
 from cytonn_weekly.notable.registry import Detector, DetectorContext, run_detectors
 from cytonn_weekly.notable.suggestion import MAX_HEADLINE
@@ -84,6 +86,7 @@ from cytonn_weekly.report_sections import (
     sections_for,
     spec_for,
 )
+from cytonn_weekly.source_pieces import pieces_for
 from cytonn_weekly.report_types import (
     COMPANION,
     REPORT_TYPES,
@@ -105,7 +108,7 @@ from cytonn_weekly.weekly.week import NotAFriday, Week, latest_friday
 
 from api.problems import ProblemError, problem_handler
 from api.draft_slot import DRAFT_STALE_AFTER_SECONDS, Claim, DraftBusy, DraftSlot, busy_message
-from api.runs import SSE_KEEPALIVE_SECONDS, Run, RunAlreadyRunning, RunRegistry
+from api.runs import RUNNING, SSE_KEEPALIVE_SECONDS, Run, RunAlreadyRunning, RunRegistry
 from api.serialize import DEV_MODE_LABEL, is_dev_draft, serialize_review
 
 log = logging.getLogger(__name__)
@@ -118,6 +121,12 @@ DISCARDED_AS_STUCK = (
     "This draft ran so long that it was treated as stuck, and a newer draft replaced it. Its result was not saved. "
     "Open the section to see the newer draft."
 )
+
+PROVIDERS = ("anthropic", "bedrock", "local")
+SECTIONS_REQUIRED = (
+    "With Amazon Bedrock the model searches nothing, so it cannot propose the section titles from the topic alone. Type "
+    "the section titles for this Focus (one a line, up to 8), supply the pages to read for each, then start the draft.")
+
 
 def configured_provider() -> str:
     return (os.environ.get(PROVIDER_ENV_VAR) or "anthropic").strip().lower()
@@ -132,7 +141,7 @@ def failure_message(exc: BaseException) -> str:
     by its type.  Any configured secret that an error message happens to quote is removed
     before it is recorded.
     """
-    if isinstance(exc, (ValueError, SearchKeyError)):
+    if isinstance(exc, (ValueError, SearchKeyError, bedrock_provider.BedrockError)):
         text = " ".join(str(exc).split())
     else:
         text = user_message(exc)
@@ -154,14 +163,18 @@ def provider_problem() -> Optional[str]:
     a missing key is known here; a key Exa refuses is reported by the search itself.
     """
     provider = configured_provider()
-    if provider not in ("anthropic", "local"):
-        return f"Unknown {PROVIDER_ENV_VAR} value {provider!r}; expected 'anthropic' or 'local'."
+    if provider not in PROVIDERS:
+        return f"Unknown {PROVIDER_ENV_VAR} value {provider!r}; expected 'anthropic', 'bedrock' or 'local'."
+    if provider == "bedrock":
+        return bedrock_provider.env_problem()
     if provider == "anthropic" and not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
         return (
             "Production drafting needs ANTHROPIC_API_KEY, and none is set (in .env or the shell). Add the key once "
             f"API budget is approved, or set {PROVIDER_ENV_VAR}=local to draft in dev mode (Ollama + Exa, never "
             "for publication). Restart the API after changing .env."
         )
+    if provider == "anthropic" and not (os.environ.get("CYTONN_LLM_MODEL") or "").strip():
+        return "CYTONN_LLM_MODEL is not set (in .env or the shell). Set it to the Claude model to draft with. Restart the API after changing .env."
     if provider == "local" and not (os.environ.get(EXA_KEY_ENV_VAR) or "").strip():
         return EXA_KEY_MISSING
     return None
@@ -205,10 +218,27 @@ class DraftRequest(BaseModel):
     # No length here: clean_topic() is the one place a topic's length is judged (resolve_draft calls it),
     # so the API and the pipeline refuse the same topics in the same words.
     topic: Optional[str] = None
+    # Focus of the Week: the section titles, one per line. Like the topic, judged by one function (clean_sections).
+    sections: Optional[str] = None
     text: Optional[str] = Field(default=None, max_length=10_000)
     report_type: ReportType = WEEKLY
     period: Optional[str] = Field(default=None, max_length=40)
     kind: Optional[str] = Field(default=None, max_length=40)
+
+
+class SourceBody(BaseModel):
+    """One source for one piece of one section.  With no ``text`` and no ``date`` the page at ``url`` is fetched; with them
+    the pasted text is kept.  ``sections`` is the Focus's typed titles, which name its pieces."""
+
+    section: str = Field(max_length=40)
+    subject: str = Field(max_length=200)
+    report_type: ReportType = WEEKLY
+    period: Optional[str] = Field(default=None, max_length=40)
+    sections: Optional[str] = Field(default=None, max_length=4000)
+    url: str = Field(max_length=2000)
+    date: Optional[str] = Field(default=None, max_length=20)
+    text: Optional[str] = Field(default=None, max_length=1_000_000)   # source_store.from_paste judges the length, in words
+    title: Optional[str] = Field(default=None, max_length=300)
 
 
 class InputNotes(BaseModel):
@@ -289,6 +319,8 @@ def create_app(
     fetch_usd_rates: Callable[[], dict] = cbk_rates.fetch_usd_rates,
     notable_registry: Optional[Mapping[str, Sequence[Detector]]] = None,
     charts_root: Optional[Union[Path, str]] = None,
+    sources_root: Optional[Union[Path, str]] = None,
+    fetch_source: Callable[..., source_store.SourceText] = source_store.fetch_page,
 ) -> FastAPI:
     """Build the app.  ``db_path`` defaults to data/app.db; tests pass a temp file.
 
@@ -301,6 +333,8 @@ def create_app(
     (tests pass a fake, so none reaches CBK).  ``export_root`` is where exported weekly reports
     are written (default: under the data directory).  ``charts_root`` is where each saved review's chart files are
     kept, ``<run_id>/<chart_id>.png`` and ``.json`` (default: under the data directory; charts/store.py).
+    ``sources_root`` is where the sources a Bedrock draft is written from are kept (default: under the data directory;
+    common/sources.py) and ``fetch_source`` how one is fetched (tests pass a fake, so none reaches a site).
 
     ``notable_registry`` is where the "Notable this week" detectors come from (section slug -> detectors).  Left out it is
     the real registry, which is empty: the real app shows no suggestion.  Only a caller that passes one, as the end-to-end
@@ -317,6 +351,8 @@ def create_app(
         # A key left in a Windows or shell variable beats .env, so editing .env would change nothing: say so once.
         for line in key_override_warnings():
             log.warning(line)
+    if configured_provider() == "bedrock":   # outside the .env branch: a container has no .env file, only its variables
+        log.warning(bedrock_provider.startup_line())
 
     database.target(db_path)  # refuses to start when CYTONN_REQUIRE_POSTGRES=1 and there is no PostgreSQL URL (db.py)
 
@@ -438,9 +474,17 @@ def create_app(
                 topic = clean_topic(topic)  # whitespace-normalized; over focus.review_run.MAX_TOPIC_CHARS is refused
             except ValueError as exc:
                 raise ProblemError(422, str(exc), "draft_topic_invalid")
+        titles: tuple[str, ...] = ()
+        if spec.needs_topic and body.sections and body.sections.strip():
+            try:
+                titles = tuple(clean_sections(body.sections))   # over MAX_SECTIONS or MAX_SECTION_TITLE is refused, never cut
+            except ValueError as exc:
+                raise ProblemError(422, str(exc), "draft_input_invalid")
+        if spec.needs_topic and not titles and configured_provider() == "bedrock":
+            raise ProblemError(409, SECTIONS_REQUIRED, "draft_sections_required")
         if spec.needs_text and not (body.text and body.text.strip()):
             raise ProblemError(422, f"Paste the text for {spec.title} first, then start the draft.", "draft_text_missing")
-        ctx = DraftContext(report_type=report_type, period=period, topic=topic, text=body.text, db_path=db_path,
+        ctx = DraftContext(report_type=report_type, period=period, topic=topic, sections=titles, text=body.text, db_path=db_path,
                            week_ending=week_ending_of(period) if report_type == WEEKLY else None, inputs_root=root)
         return spec, ctx, report_type, period
 
@@ -497,10 +541,10 @@ def create_app(
         provider = (os.environ.get(PROVIDER_ENV_VAR) or "anthropic").strip().lower()
         return {
             "provider": provider,
-            "provider_valid": provider in ("anthropic", "local"),
+            "provider_valid": provider in PROVIDERS,
             "dev_mode": provider == "local",
             "dev_mode_label": DEV_MODE_LABEL,
-            "spends_api_budget": provider == "anthropic",
+            "spends_api_budget": provider in ("anthropic", "bedrock"),
             "provider_problem": provider_problem(),
         }
 
@@ -557,12 +601,12 @@ def create_app(
         without one); a companion report lists its sections once a kind is given.
         """
         period, kind = chosen_report(report_type, period, kind)
-        runs = latest_runs(db_path, report_type, period)
+        newest = latest_runs(db_path, report_type, period)
         today = date.today()
         out = []
         for spec in sections_for(report_type, kind):
             latest = None
-            run = runs.get(spec.slug)
+            run = newest.get(spec.slug)
             if run is not None:
                 review = load(run["run_id"])
                 s = serialize_review(review)
@@ -590,7 +634,10 @@ def create_app(
                   "suggested_week_ending": latest_friday(today).isoformat()}
         # The draft running right now, if any (one at a time across every section and report): it
         # is not saved until it finishes, so without this the overview could not show it at all.
-        return {"today": today.isoformat(), "drafting": draft_slot.status(), "report": report,
+        drafting = draft_slot.status()
+        if drafting:  # lets the screen link to the running draft's page; None for a draft the synchronous route runs
+            drafting["run_id"] = runs.running_id(drafting["report_type"], drafting["period"], drafting["slug"])
+        return {"today": today.isoformat(), "drafting": drafting, "report": report,
                 "report_types": report_types(), "companion_kinds": companion_kinds(), "sections": out}
 
     @app.get("/api/reviews/{run_id}")
@@ -938,6 +985,120 @@ def create_app(
             raise HTTPException(404, f"no stored input {stored_name!r} for the week ending {week.ending.isoformat()}")
         return weekly_inputs.status(week, root)
 
+
+    # -- the sources a Bedrock draft is written from --------------------------
+
+    sources_dir = Path(sources_root) if sources_root is not None else None
+
+    def refuse_while_drafting() -> None:
+        """A draft reads the saved sources as it goes, so none may change under it.  The slot is one draft at a time across
+        every section, so this refuses while any draft holds it (a stuck one, past the stale limit, does not count).
+        ponytail: not narrowed to the section being drafted; do that if a long draft of another section gets in the way."""
+        held = draft_slot.status()
+        if held and not held["stale"]:
+            raise HTTPException(409, f"{held['title']} is being drafted right now, so sources cannot be added or removed until "
+                                     "it finishes. Wait for it, then try again.")
+
+    def source_piece(section: str, subject: str, report_type: str, period: Optional[str], typed: Optional[str]):
+        """(the section's spec, the normalized period, the piece) a source is for, or a plain refusal (404, 422)."""
+        period, _ = chosen_report(report_type, period, None)
+        spec = spec_for(report_type, section)
+        if spec is None:
+            raise HTTPException(404, f"no section {section!r} in the {TYPES[report_type].title}")
+        if not spec.available or not uses_provider(spec):
+            raise HTTPException(422, f"{spec.title} is not written from sources, so there is nothing to supply for it.")
+        try:
+            titles = clean_sections(typed) if spec.needs_topic and typed and typed.strip() else []
+            pieces = pieces_for(report_type, period, section, sections=titles or ([subject] if spec.needs_topic else []),
+                                today=date.today())
+        except ValueError as exc:
+            raise HTTPException(422, str(exc))
+        if pieces is None:
+            raise HTTPException(422, f"{spec.title} has no pieces to supply sources for.")
+        key = source_store.subject_key(subject)
+        piece = next((p for p in pieces if source_store.subject_key(p.subject) == key), None)
+        if piece is None:
+            if spec.needs_topic:
+                raise HTTPException(422, f"{subject!r} is not a section title you typed, or it is the closing part, which is "
+                                         "written from the other sections and takes no sources.")
+            raise HTTPException(422, f"{subject!r} is not a piece of {spec.title}. Its pieces are: "
+                                     f"{', '.join(p.subject for p in pieces) or 'none yet'}.")
+        return spec, period, piece
+
+    def source_meta(piece, items: list[source_store.SourceText]) -> dict:
+        return {"subject": piece.subject, "end": piece.end.isoformat(),
+                "week_end": latest_friday(piece.end).isoformat(), "sources": [s.meta() for s in items]}
+
+    @app.get("/api/sources")
+    def list_sources(
+        section: str = Query(max_length=40),
+        report_type: ReportType = Query(default=WEEKLY),
+        period: Optional[str] = Query(default=None, max_length=40),
+        subject: Optional[str] = Query(default=None, max_length=200),
+        sections: Optional[str] = Query(default=None, max_length=4000),
+    ) -> dict:
+        """The pieces of one section (or the one named by ``subject``) with the sources saved for each.  ``sections`` is the
+        Focus's typed titles, which are what name its pieces."""
+        if subject:
+            spec, _, first = source_piece(section, subject, report_type, period, sections)
+            found = [first]
+        else:
+            period, _ = chosen_report(report_type, period, None)
+            spec = spec_for(report_type, section)
+            if spec is None:
+                raise HTTPException(404, f"no section {section!r} in the {TYPES[report_type].title}")
+            if not spec.available or not uses_provider(spec):
+                return {"section": section, "title": spec.title, "uses_sources": False, "pieces": [],
+                        "approved_sites": list(source_store.APPROVED_SITES)}
+            try:
+                titles = clean_sections(sections) if spec.needs_topic and sections and sections.strip() else []
+                found = pieces_for(report_type, period, section, sections=titles, today=date.today()) or []
+            except ValueError as exc:
+                raise HTTPException(422, str(exc))
+        try:
+            pieces = [source_meta(p, source_store.list_for(p.subject, p.end, sources_dir)) for p in found]
+        except source_store.SourceError as exc:
+            raise HTTPException(409, str(exc))
+        return {"section": section, "title": spec.title, "uses_sources": True, "pieces": pieces,
+                "approved_sites": list(source_store.APPROVED_SITES)}
+
+    @app.post("/api/sources")
+    def add_source(body: SourceBody) -> dict:
+        """Keep one source for a piece: with no ``text`` and no ``date`` the page at ``url`` is fetched (approved sites only);
+        with them, the pasted text is kept as it is, under the address and date given.  422 with the reason if it is refused."""
+        spec, period, piece = source_piece(body.section, body.subject, body.report_type, body.period, body.sections)
+        refuse_while_drafting()
+        pasted = bool((body.text or "").strip() or (body.date or "").strip())
+        try:
+            if pasted:
+                added = source_store.from_paste(body.url, body.date or "", body.text or "", piece.subject, piece.end,
+                                                title=body.title or "", root=sources_dir)
+            else:
+                added = fetch_source(body.url, piece.subject, piece.end, root=sources_dir)
+            items = source_store.list_for(piece.subject, piece.end, sources_dir)
+        except source_store.SourceError as exc:
+            raise HTTPException(422, str(exc))
+        return {"source": added.meta(), **source_meta(piece, items)}
+
+    @app.get("/api/sources/{source_id}/text")
+    def source_text(source_id: str) -> Response:
+        """The saved text of one source, as plain text: what the model was shown and what its quotes are checked against."""
+        try:
+            src = source_store.get(source_id, sources_dir)
+        except source_store.SourceError as exc:
+            raise HTTPException(409, str(exc))
+        if src is None:
+            raise HTTPException(404, f"no saved source {source_id!r}")
+        return Response(src.text, media_type="text/plain; charset=utf-8",
+                        headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+
+    @app.delete("/api/sources/{source_id}")
+    def delete_source(source_id: str) -> dict:
+        refuse_while_drafting()
+        if not source_store.remove(source_id, sources_dir):
+            raise HTTPException(404, f"no saved source {source_id!r}")
+        return {"removed": source_id}
+
     # -- writes -----------------------------------------------------------
 
     @app.post("/api/reviews/draft")
@@ -1001,7 +1162,7 @@ def create_app(
                 "will use, then start it again.",
                 "draft_mode_changed")
         try:
-            run = runs.start(report_type, period, spec.slug, spec.title, TYPES[report_type].title)
+            run = runs.start(report_type, period, spec.slug, spec.title, TYPES[report_type].title, clock())
         except RunAlreadyRunning:
             raise ProblemError(
                 409,
@@ -1021,7 +1182,12 @@ def create_app(
     @app.get("/api/runs/{run_id}")
     def get_run(run_id: str) -> dict:
         """The run's status, every event so far, and (once finished) the saved review's id and dev-draft mark."""
-        return find_run(run_id).to_dict()
+        run = find_run(run_id)
+        out = run.to_dict()
+        if run.status == RUNNING:  # the server's count, so a screen that opens late or reloads still shows the true time
+            out["elapsed_seconds"] = max(0, int(clock() - run.started_at))
+            out["stale"] = out["elapsed_seconds"] >= draft_stale_after
+        return out
 
     @app.get("/api/runs/{run_id}/events")
     def run_events(run_id: str) -> StreamingResponse:
