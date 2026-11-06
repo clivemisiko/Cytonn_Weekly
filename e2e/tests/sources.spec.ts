@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { API, DRAFT, PERIOD, VARIANT, openStart } from "./helpers";
+import { API, DRAFT, PERIOD, VARIANT, card, overviewUrl } from "./helpers";
 
 // The Sources panel of a Bedrock draft. Runs only on the "bedrock" start of the test API (E2E_VARIANT=bedrock, see
 // e2e/serve_e2e.py): the provider is Bedrock with invented settings, the model is a fake client that quotes the first
@@ -20,8 +20,15 @@ test.beforeEach(async ({ request }) => {
 
 const group = (page: Page, subject: string) => page.getByRole("group", { name: `Sources for ${subject}` });
 
+// The start screen whether or not an earlier test left a saved Focus review: the card offers "Draft again" then.
+async function openFocusStart(page: Page) {
+  await page.goto(overviewUrl());
+  await card(page, "Focus of the Week").getByRole("button", { name: /Draft section|Draft again/ }).click();
+  await expect(page.getByRole("heading", { name: "Focus of the Week: coordinator review", level: 1 })).toBeVisible();
+}
+
 async function openFocus(page: Page) {
-  await openStart(page, "Focus of the Week");
+  await openFocusStart(page);
   await page.getByLabel("This week’s topic").fill("SYNTHETIC bedrock topic");
   await page.getByLabel("Sections (optional)").fill(TITLES);
 }
@@ -39,7 +46,7 @@ test("T107 a Bedrock start screen: the mode is production, not dev, and the Sour
   const config = await (await request.get(`${API}/api/config`)).json();
   expect(config).toMatchObject({ provider: "bedrock", dev_mode: false, provider_problem: null });
   await page.setViewportSize({ width: 1366, height: 800 });
-  await openStart(page, "Focus of the Week");
+  await openFocusStart(page);
   await expect(page.getByText("Production · bedrock")).toBeVisible();
   await expect(page.getByText("DEV MODE", { exact: false })).toHaveCount(0);
   await expect(page.getByText("Nothing is searched: each piece is written only from the sources supplied for it.", { exact: false })).toBeVisible();
