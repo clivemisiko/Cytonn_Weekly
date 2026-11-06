@@ -46,6 +46,7 @@ SOCIAL_DOMAINS = ("x.com", "twitter.com", "facebook.com", "instagram.com", "tikt
 
 NOT_ON_LIST = "host not on the approved list"       # the off_list flag, on a fetched source and a pasted one
 INSECURE = "Not secure: the page could have been altered in transit"   # the insecure flag: fetched over http://
+TEXT_FROM_SEARCH = "Text supplied by the search service"   # the text_from_search flag: the page itself could not be read
 MAX_BYTES = 5 * 1024 * 1024
 MAX_PASTE_CHARS = 200_000
 MIN_CHARS = 400        # shorter than this is a stub or an error page, not an article
@@ -391,8 +392,22 @@ def get(source_id: str, root: Optional[Path] = None) -> Optional[SourceText]:
     return _load(*found) if found else None
 
 
+def _read_dismissed(folder: Path) -> list[dict[str, str]]:
+    try:
+        return json.loads((folder / "dismissed.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):   # absent or unreadable: nothing is dismissed, and the next removal rewrites it
+        return []
+
+
+def dismissed(subject: str, week_end: date, root: Optional[Path] = None) -> set[str]:
+    """The addresses removed from a piece's automatically found sources: a later gather does not bring them back."""
+    key = subject_key(subject)
+    return {d["url"] for d in _read_dismissed(_folder(week_end, root)) if d.get("subject") == key}
+
+
 def remove(source_id: str, root: Optional[Path] = None) -> bool:
-    """Delete one source and its files; False when there is none."""
+    """Delete one source and its files; False when there is none.  A source found automatically is also recorded in
+    dismissed.json (by piece and address) so a later gather skips it; a pasted or fetched-by-hand one is not."""
     with _LOCK:
         found = _find(source_id, root)
         if not found:
@@ -402,6 +417,11 @@ def remove(source_id: str, root: Optional[Path] = None) -> bool:
         for name in (f"{source_id}.txt", meta.get("raw") or ""):
             if name:
                 (folder / name).unlink(missing_ok=True)
+        if meta.get("origin") == "found":
+            tmp = folder / "dismissed.json.tmp"
+            tmp.write_text(json.dumps(_read_dismissed(folder) + [{"subject": subject_key(meta["subject"]), "url": meta["url"]}],
+                                      indent=2), encoding="utf-8")
+            os.replace(tmp, folder / "dismissed.json")
     return True
 
 
@@ -413,8 +433,11 @@ def _now() -> str:
 
 def fetch_page(url: str, subject: str, week_end: date, *, http_get: Callable[..., http.Reply] = http.http_get_once,
                resolve: Callable[[str], list[str]] = _resolve, root: Optional[Path] = None,
-               now: Callable[[], str] = _now) -> SourceText:
+               now: Callable[[], str] = _now, origin: str = "fetched", fallback_date: str = "") -> SourceText:
     """Fetch one page from any site, keep its readable text, and list it for ``subject``.
+
+    ``origin`` is "found" for a page the gather step chose; ``fallback_date`` (YYYY-MM-DD) is the date used only when the
+    page states none of its own (a PDF never does).
 
     ``http_get(url, max_bytes=...)`` answers once and follows nothing (common/http.http_get_once); this function
     follows at most MAX_HOPS redirects itself, each only to the same host, and applies every rule to each address.
@@ -476,15 +499,17 @@ def fetch_page(url: str, subject: str, week_end: date, *, http_get: Callable[...
     sha = _sha(body)
     src = SourceText(id=_id(subject, current, sha), subject=" ".join(subject.split()),
                      week_end=latest_friday(week_end).isoformat(), url=current, host=host,
-                     title=title or current.rsplit("/", 1)[-1] or host, published_date=published, fetched_at=now(),
-                     origin="fetched", text=text, sha256=sha, chars=len(text),
+                     title=title or current.rsplit("/", 1)[-1] or host, published_date=published or fallback_date,
+                     fetched_at=now(), origin=origin, text=text, sha256=sha, chars=len(text),
                      flags=list_flags(host) + ([INSECURE] if current.lower().startswith("http://") else []))
     return _save(src, body, raw_name, root)
 
 
 def from_paste(url: str, date_text: str, text: str, subject: str, week_end: date, *, title: str = "",
-               root: Optional[Path] = None, now: Callable[[], str] = _now) -> SourceText:
-    """Keep text the coordinator pasted, exactly as given, with the address and date they say it came from."""
+               root: Optional[Path] = None, now: Callable[[], str] = _now, origin: str = "pasted",
+               extra_flags: tuple[str, ...] = ()) -> SourceText:
+    """Keep text the coordinator pasted, exactly as given, with the address and date they say it came from.
+    The gather step uses it with origin "found" and the text_from_search flag for a page it could not fetch."""
     if not subject.strip():
         raise SourceError(NO_SUBJECT)
     url = (url or "").strip()
@@ -510,6 +535,6 @@ def from_paste(url: str, date_text: str, text: str, subject: str, week_end: date
     src = SourceText(id=_id(subject, url, sha), subject=" ".join(subject.split()),
                      week_end=latest_friday(week_end).isoformat(), url=url, host=host,
                      title=" ".join((title or "").split()) or host, published_date=published, fetched_at=now(),
-                     origin="pasted", text=text, sha256=sha, chars=len(text),
-                     flags=list_flags(host))
+                     origin=origin, text=text, sha256=sha, chars=len(text),
+                     flags=list_flags(host) + list(extra_flags))
     return _save(src, None, "", root)

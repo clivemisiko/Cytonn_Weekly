@@ -84,7 +84,7 @@ export interface ClaimContext {
   fetched_at?: string;
   host?: string;
   published_date?: string;
-  origin?: "fetched" | "pasted";
+  origin?: "fetched" | "pasted" | "found";
   source_flags?: string[];
 }
 
@@ -102,7 +102,7 @@ export interface SourceMeta {
   published_date: string;
   /** UTC with an offset; shown in East Africa Time. */
   fetched_at: string;
-  origin: "fetched" | "pasted";
+  origin: "fetched" | "pasted" | "found";
   sha256: string;
   chars: number;
   flags: string[];
@@ -126,6 +126,17 @@ export interface SourcesListing {
 
 export interface AddedSource {
   source: SourceMeta;
+  subject: string;
+  end: string;
+  week_end: string;
+  sources: SourceMeta[];
+}
+
+/** POST /api/sources/gather: the pages the gather step saved, why it looked at nothing (or null), and the piece's sources. */
+export interface Gathered {
+  found: number;
+  reason: string | null;
+  added: SourceMeta[];
   subject: string;
   end: string;
   week_end: string;
@@ -708,7 +719,10 @@ export type RunEventKind =
   | "check_started"
   | "check_finished"
   | "run_finished"
-  | "run_failed";
+  | "run_failed"
+  | "sources_looking"
+  | "sources_found"
+  | "sources_search_unavailable";
 
 /** One real step of a draft, as the pipeline reported it (common/run_events.py). */
 export interface RunEvent {

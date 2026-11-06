@@ -30,14 +30,14 @@ const error = ref<string | null>(null);
 const saved = ref<string | null>(null);
 const off = computed(() => props.disabled || busy.value);
 
-async function run(work: () => Promise<{ sources: SourceMeta[]; source?: SourceMeta }>, done: () => void) {
+async function run(work: () => Promise<{ sources: SourceMeta[]; source?: SourceMeta; note?: string }>, done: () => void) {
   error.value = null;
   saved.value = null;
   busy.value = true;
   try {
     const res = await work();
     emit("update", res.sources);
-    saved.value = res.source ? `Saved ${res.source.title} (${res.source.host}).` : "Removed.";
+    saved.value = res.note ?? (res.source ? `Saved ${res.source.title} (${res.source.host}).` : "Removed.");
     done();
   } catch (err) {
     // The API's own sentence, shown as it stands: why it was refused and what to do instead.
@@ -72,6 +72,15 @@ const pasteIt = () =>
       open.value = false;
     },
   );
+const lookAgain = () =>
+  run(
+    async () => {
+      const res = await api.gatherSources(props.slug, props.report, props.piece.subject, props.titles);
+      const note = res.reason ?? (res.found ? `Found ${res.found} ${res.found === 1 ? "page" : "pages"}` : "Nothing found");
+      return { sources: res.sources, note };
+    },
+    () => undefined,
+  );
 const remove = (s: SourceMeta) =>
   run(async () => {
     await api.removeSource(s.id);
@@ -104,6 +113,10 @@ const remove = (s: SourceMeta) =>
         </div>
       </li>
     </ul>
+
+    <div>
+      <Button size="sm" variant="outline" :disabled="off" :aria-label="`Look again for sources for ${piece.subject}`" @click="lookAgain">Look again</Button>
+    </div>
 
     <details :open="open" class="rounded-md border" @toggle="open = ($event.target as HTMLDetailsElement).open">
       <summary class="cursor-pointer rounded-md px-3 py-2 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring">Add a source</summary>

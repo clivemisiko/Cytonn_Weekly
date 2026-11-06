@@ -60,6 +60,7 @@ from pydantic import BaseModel, Field
 
 from cytonn_weekly.charts import store as chart_store
 from cytonn_weekly.charts.block import set_team_chart
+from cytonn_weekly.common import gather as source_gather
 from cytonn_weekly.common import sources as source_store
 from cytonn_weekly.common.run_events import RUN_STARTED, describe, redact, review_counts, safe_describe, user_message
 from cytonn_weekly.digital_payments import review_run, review_store
@@ -241,6 +242,16 @@ class SourceBody(BaseModel):
     title: Optional[str] = Field(default=None, max_length=300)
 
 
+class GatherBody(BaseModel):
+    """Look again for the sources of one piece (the same gather step a draft runs)."""
+
+    section: str = Field(max_length=40)
+    subject: str = Field(max_length=200)
+    report_type: ReportType = WEEKLY
+    period: Optional[str] = Field(default=None, max_length=40)
+    sections: Optional[str] = Field(default=None, max_length=4000)
+
+
 class InputNotes(BaseModel):
     """What the coordinator types beside the week's files.  A field left out is kept; blank clears it."""
 
@@ -321,6 +332,7 @@ def create_app(
     charts_root: Optional[Union[Path, str]] = None,
     sources_root: Optional[Union[Path, str]] = None,
     fetch_source: Callable[..., source_store.SourceText] = source_store.fetch_page,
+    search_sources: source_gather.Search = source_gather.exa_search,
 ) -> FastAPI:
     """Build the app.  ``db_path`` defaults to data/app.db; tests pass a temp file.
 
@@ -335,6 +347,7 @@ def create_app(
     kept, ``<run_id>/<chart_id>.png`` and ``.json`` (default: under the data directory; charts/store.py).
     ``sources_root`` is where the sources a Bedrock draft is written from are kept (default: under the data directory;
     common/sources.py) and ``fetch_source`` how one is fetched (tests pass a fake, so none reaches a site).
+    ``search_sources`` is how the gather step searches for them (common/gather.py; Exa by default, tests pass a fake).
 
     ``notable_registry`` is where the "Notable this week" detectors come from (section slug -> detectors).  Left out it is
     the real registry, which is empty: the real app shows no suggestion.  Only a caller that passes one, as the end-to-end
@@ -503,6 +516,8 @@ def create_app(
         is ``run_failed`` with the reason.
         """
         run.record(RUN_STARTED, spec.title)
+        if claim is not None and configured_provider() == "bedrock":
+            gather_for(spec, ctx, run.record)   # never raises: a draft goes ahead with whatever sources are saved
         try:
             review = stamp(spec.build(replace(ctx, on_event=run.record)), ctx.report_type, ctx.period)
         except BaseException as exc:
@@ -1095,9 +1110,56 @@ def create_app(
     @app.delete("/api/sources/{source_id}")
     def delete_source(source_id: str) -> dict:
         refuse_while_drafting()
+        try:
+            gone = source_store.get(source_id, sources_dir)
+        except source_store.SourceError:
+            gone = None
         if not source_store.remove(source_id, sources_dir):
             raise HTTPException(404, f"no saved source {source_id!r}")
+        if gone:   # the first look after a removal is not held back by the cooldown
+            gather_stamps.pop((gone.week_end, source_store.subject_key(gone.subject)), None)
         return {"removed": source_id}
+
+    gather_stamps: dict[tuple[str, str], float] = {}   # (Friday, piece) -> when it was last looked for, in memory only
+    gather_cooldown = 3600.0
+
+    def gather_for(spec: SectionSpec, ctx: DraftContext, on_event: Callable[..., object]) -> None:
+        """The gather step at the start of a Bedrock run: search for the sources of each piece of the section."""
+        try:
+            pieces = pieces_for(ctx.report_type, ctx.period, spec.slug, sections=ctx.sections, today=date.today()) or []
+            _, looked = source_gather.gather(pieces, search=search_sources, fetch=fetch_source, root=sources_dir, on_event=on_event)
+            for p in pieces if looked else []:
+                gather_stamps[(latest_friday(p.end).isoformat(), source_store.subject_key(p.subject))] = clock()
+        except Exception as exc:  # noqa: BLE001 - gathering never fails a draft
+            log.warning("gathering sources for %s was skipped: %s", spec.slug, type(exc).__name__)
+
+    @app.post("/api/sources/gather")
+    def gather_sources(body: GatherBody) -> dict:
+        """Run the gather step for one piece. 409 while a draft holds the slot. Once an hour per piece, except the first
+        look after a source is removed. Answers with what was saved, how many, and the piece's sources."""
+        _, _, piece = source_piece(body.section, body.subject, body.report_type, body.period, body.sections)
+        refuse_while_drafting()
+        key = (latest_friday(piece.end).isoformat(), source_store.subject_key(piece.subject))
+        limits = source_gather.limits_from_env()
+        reason, saved = None, []
+        try:
+            have = source_store.list_for(piece.subject, piece.end, sources_dir)
+            last = gather_stamps.get(key)
+            if len(have) >= limits.enough:
+                reason = f"This piece already has {len(have)} sources, so none were looked for."
+            elif last is not None and clock() - last < gather_cooldown:
+                reason = "Sources were looked for less than an hour ago. Add one by hand, or look again later."
+            else:
+                saved, looked = source_gather.gather([piece], search=search_sources, fetch=fetch_source, root=sources_dir,
+                                                     limits=limits)
+                if looked:
+                    gather_stamps[key] = clock()
+                else:
+                    reason = source_gather.NOT_CONFIGURED
+            items = source_store.list_for(piece.subject, piece.end, sources_dir)
+        except source_store.SourceError as exc:
+            raise HTTPException(409, str(exc))
+        return {"found": len(saved), "reason": reason, "added": [s.meta() for s in saved], **source_meta(piece, items)}
 
     # -- writes -----------------------------------------------------------
 

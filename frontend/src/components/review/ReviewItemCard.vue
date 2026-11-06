@@ -6,7 +6,7 @@ import Textarea from "@/components/ui/Textarea.vue";
 import { sourceTextUrl } from "@/lib/api";
 import { KIND_LABELS, friendlyTime, pyRepr, resolutionKey } from "@/lib/format";
 import { READ_ONLY } from "@/lib/previous";
-import { NOT_ON_LIST, claimSource } from "@/lib/sources";
+import { NOT_ON_LIST, TEXT_FROM_SEARCH, claimSource } from "@/lib/sources";
 import type { Flag, Resolution, Review, ReviewItem } from "@/lib/types";
 import EditSentence from "./EditSentence.vue";
 import FixFromFile from "./FixFromFile.vue";
@@ -98,6 +98,9 @@ const cells = (flag: Flag): [string, string][] => [
       <span v-if="source?.offList" class="inline-flex items-center gap-1 text-xs font-medium text-warn-fg">
         <PhWarning weight="bold" class="size-3.5" aria-hidden="true" />{{ NOT_ON_LIST }}
       </span>
+      <span v-if="source?.textFromSearch" class="inline-flex items-center gap-1 text-xs font-medium text-warn-fg">
+        <PhWarning weight="bold" class="size-3.5" aria-hidden="true" />{{ TEXT_FROM_SEARCH }}
+      </span>
       <span v-if="ctx.edited_at" class="inline-flex items-center gap-1 text-xs font-medium">
         <PhPencilSimple weight="bold" class="size-3.5" aria-hidden="true" />Edited by you, {{ friendlyTime(ctx.edited_at) }}
       </span>
@@ -160,12 +163,13 @@ const cells = (flag: Flag): [string, string][] => [
         <dd class="min-w-0 [overflow-wrap:anywhere]">
           <span class="font-mono">{{ source.host }}</span> · {{ source.date }}
           <span v-if="source.offList" class="font-medium text-warn-fg"> · {{ NOT_ON_LIST }}</span>
+          <span v-if="source.textFromSearch" class="font-medium text-warn-fg"> · {{ TEXT_FROM_SEARCH }}</span>
         </dd>
         <dt class="eyebrow">Quote</dt>
         <dd class="min-w-0 [overflow-wrap:anywhere]">“{{ source.quote }}” <span class="text-xs text-muted-foreground">(checked word for word against the saved text)</span></dd>
         <dt class="eyebrow">Saved copy</dt>
         <dd class="min-w-0 text-xs text-muted-foreground [overflow-wrap:anywhere]">
-          {{ source.origin === "fetched" ? "Fetched" : "Pasted" }} {{ source.savedAt }} · fingerprint <span class="font-mono">{{ source.fingerprint }}</span> ·
+          {{ source.origin === "found" ? "Found automatically" : source.origin === "fetched" ? "Fetched" : "Pasted" }} {{ source.savedAt }} · fingerprint <span class="font-mono">{{ source.fingerprint }}</span> ·
           <a :href="sourceTextUrl(source.id)" target="_blank" rel="noopener noreferrer" class="text-link underline decoration-link/40 underline-offset-2 hover:decoration-link">View saved text</a>
         </dd>
       </dl>

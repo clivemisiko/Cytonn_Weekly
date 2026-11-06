@@ -35,6 +35,13 @@ services:
       CYTONN_LOCAL_RESULT_CHARS: ${CYTONN_LOCAL_RESULT_CHARS:-}
       CYTONN_LOCAL_NUM_THREAD: ${CYTONN_LOCAL_NUM_THREAD:-}
       CYTONN_LOCAL_NUM_PREDICT: ${CYTONN_LOCAL_NUM_PREDICT:-}
+      # The search service that gathers sources for a Bedrock draft, and its limits (see .env.example). Names only: a
+      # value is taken from the environment or .env when one is set, and nothing is passed when it is not.
+      EXA_API_KEY:
+      CYTONN_SOURCES_ENOUGH:
+      CYTONN_SOURCES_MAX_QUERIES:
+      CYTONN_SOURCES_MAX_PAGES:
+      CYTONN_SOURCES_GATHER_SECONDS:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

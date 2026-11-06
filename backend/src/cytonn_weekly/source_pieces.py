@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional, Sequence
 
 from cytonn_weekly.report_types import ANNUAL, HALF_YEAR, QUARTERLY, WEEKLY, normalize_period, week_ending_of
@@ -19,6 +19,12 @@ class Piece:
 
     subject: str
     end: date
+    start: Optional[date] = None        # first day of the piece's window; None is the six days up to ``end`` (a weekly piece)
+    domains: tuple[str, ...] = ()       # the brief's preferred domains, which the gather step tries first
+
+    @property
+    def window(self) -> tuple[date, date]:
+        return self.start or self.end - timedelta(days=6), self.end
 
 
 # A section's periodic module, by slug; each has briefs(ctx) with the labels the draft will ask about.
@@ -42,16 +48,16 @@ def pieces_for(report_type: str, period: str, slug: str, *, sections: Sequence[s
         friday = week_ending_of(period) or latest_friday(today)
         if slug == "fixed_income":
             from cytonn_weekly.fixed_income.weekly import BRIEFS
-            return [Piece(b.label, friday) for b in BRIEFS]
+            return [Piece(b.label, friday, domains=tuple(b.preferred_domains)) for b in BRIEFS]
         if slug == "equities":
             from cytonn_weekly.equities.review_run import BRIEFS
-            return [Piece(b.label, friday) for b in BRIEFS]
+            return [Piece(b.label, friday, domains=tuple(b.preferred_domains)) for b in BRIEFS]
         if slug == "real_estate":
             from cytonn_weekly.real_estate.review_run import BRIEFS
-            return [Piece(b.label, friday) for b in BRIEFS]
+            return [Piece(b.label, friday, domains=tuple(b.preferred_domains)) for b in BRIEFS]
         if slug == "digital_payments":
             from cytonn_weekly.digital_payments.highlights import HIGHLIGHT_COMPANIES
-            return [Piece(c["name"], friday) for c in HIGHLIGHT_COMPANIES]
+            return [Piece(c["name"], friday, domains=(c["ir_domain"],)) for c in HIGHLIGHT_COMPANIES]
         if slug == "focus":
             from cytonn_weekly.focus.review_run import clean_title, is_closing
             titles = [clean_title(t) for t in sections]
@@ -67,10 +73,11 @@ def pieces_for(report_type: str, period: str, slug: str, *, sections: Sequence[s
         from cytonn_weekly.periodic.digital_payments import other_highlights_brief
 
         brief, window = other_highlights_brief(ctx)
-        return [Piece(c["name"], ctx.today) for c in HIGHLIGHT_COMPANIES] + [Piece(brief.label, window[1])]
+        return ([Piece(c["name"], ctx.today, domains=(c["ir_domain"],)) for c in HIGHLIGHT_COMPANIES]
+                + [Piece(brief.label, window[1], window[0], tuple(brief.preferred_domains))])
     if slug in _PERIODIC:
         import importlib
 
         module = importlib.import_module(f"cytonn_weekly.periodic.{_PERIODIC[slug]}")
-        return [Piece(b.label, ctx.end) for b in module.briefs(ctx)]
+        return [Piece(b.label, ctx.end, ctx.start, tuple(b.preferred_domains)) for b in module.briefs(ctx)]
     return None

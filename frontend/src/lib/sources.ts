@@ -34,12 +34,18 @@ export const dateLabel = (iso: string) => (iso ? friendlyDate(iso) : "no date gi
 
 export const charsLabel = (n: number) => `${n.toLocaleString("en-GB")} characters`;
 
+/** The text_from_search flag the API puts on a found source whose page could not be read: the search service's text was kept instead. */
+export const TEXT_FROM_SEARCH = "Text supplied by the search service";
+
+/** How a source came to be saved, in the words of its facts line and the review. */
+export const ORIGIN_WORDS = { fetched: "fetched", pasted: "pasted", found: "found automatically" } as const;
+
 /** One saved source's facts as separate short strings, for a list. */
 export function sourceFacts(s: SourceMeta): string[] {
   return [
     dateLabel(s.published_date),
     charsLabel(s.chars),
-    s.origin === "fetched" ? `fetched ${friendlyTime(s.fetched_at)}` : `pasted ${friendlyTime(s.fetched_at)}`,
+    `${ORIGIN_WORDS[s.origin]} ${friendlyTime(s.fetched_at)}`,
     `fingerprint ${hashPrefix(s.sha256)}`,
   ];
 }
@@ -53,11 +59,12 @@ export interface ClaimSource {
   host: string;
   date: string;
   quote: string;
-  origin: "fetched" | "pasted";
+  origin: "fetched" | "pasted" | "found";
   savedAt: string;
   fingerprint: string;
   flags: string[];
   offList: boolean;
+  textFromSearch: boolean;
 }
 
 export function claimSource(ctx: ClaimContext): ClaimSource | null {
@@ -73,6 +80,7 @@ export function claimSource(ctx: ClaimContext): ClaimSource | null {
     fingerprint: hashPrefix(ctx.sha256 ?? ""),
     flags,
     offList: flags.includes(NOT_ON_LIST),
+    textFromSearch: flags.includes(TEXT_FROM_SEARCH),
   };
 }
 
