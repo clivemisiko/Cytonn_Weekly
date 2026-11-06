@@ -138,7 +138,6 @@ describe("draft again", () => {
   const config = (provider_problem: string | null) => ({ provider_problem }) as unknown as AppConfig;
   const running = (over: Partial<Drafting> = {}) =>
     ({ slug: "real_estate", title: "Real Estate (Week ending 2026-10-09)", report_type: "weekly", period: "Week ending 2026-10-09", stale: false, ...over }) as Drafting;
-  const weekly = { type: "weekly", period: "Week ending 2026-10-09", kind: null } as const;
 
   it("is off only while this section is itself running or queued, or the provider cannot run", () => {
     const mine = running({ slug: "equities", title: "Equities" });
