@@ -46,6 +46,7 @@ import logging
 import os
 import re
 import threading
+import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable, Iterable, Optional, TypeVar
@@ -233,12 +234,14 @@ def fetch_source(on_event: Optional[Observer], label: str, fetch: Callable[..., 
     if on_event is None:
         return fetch(*args)
     emit(on_event, SOURCE_STARTED, label)
+    began = time.monotonic()
     try:
         result = fetch(*args)
     except Exception as exc:
-        emit(on_event, SOURCE_FAILED, label, detail=user_message(exc))
+        emit(on_event, SOURCE_FAILED, label, detail=f"{user_message(exc)} ({time.monotonic() - began:.1f} s)")
         raise
-    emit(on_event, SOURCE_FINISHED, label)
+    saved = "from saved copy, " if getattr(result, "from_saved_copy", False) else ""
+    emit(on_event, SOURCE_FINISHED, label, detail=f"{saved}{time.monotonic() - began:.1f} s")
     return result
 
 
