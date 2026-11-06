@@ -2,7 +2,8 @@
 import { PhCaretDown } from "@phosphor-icons/vue";
 import { computed, ref, useId } from "vue";
 import Button from "@/components/ui/Button.vue";
-import type { CompanionKind, ReportChoice, ReportType, ReportTypeInfo } from "@/lib/types";
+import { weekChoiceLabel } from "@/lib/previous";
+import type { CompanionKind, ReportChoice, ReportType, ReportTypeInfo, WeekChoice } from "@/lib/types";
 
 const FIELD =
   "flex h-10 w-full rounded-md border border-input bg-card px-3 text-sm transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-60 aria-invalid:border-flag aria-invalid:ring-3 aria-invalid:ring-flag/20";
@@ -12,6 +13,8 @@ const props = defineProps<{
   current: ReportChoice;
   types: ReportTypeInfo[];
   kinds: CompanionKind[];
+  /** The weeks to choose from (the coming Friday and the last eight); none hides the selector. */
+  weeks?: WeekChoice[];
   /** Resolves to an error message to show beside the period, or null once the overview has switched. */
   onApply: (next: ReportChoice) => Promise<string | null>;
 }>();
@@ -53,6 +56,14 @@ async function apply() {
   const message = await props.onApply({ type: type.value, period: period.value.trim(), kind: type.value === "companion" ? kind.value : null });
   busy.value = false;
   error.value = message;
+}
+
+const weekInList = computed(() => (props.weeks ?? []).some((w) => w.period === props.current.period));
+
+/** Choosing a week from the list applies it at once, as the address bar would. */
+function chooseWeek(next: string) {
+  period.value = next;
+  void apply();
 }
 
 const periodLabel = computed(() => (type.value === "companion" ? "Weekly issue it rides with" : info.value?.period_required ? "Period" : "Issue (optional)"));
@@ -115,6 +126,16 @@ const hint = computed(() => {
       <Button type="submit" size="lg" :variant="dirty ? 'default' : 'outline'" :disabled="busy" class="@min-[30rem]:col-span-2 @min-[30rem]:justify-self-start @min-[41rem]:col-span-1">
         {{ busy ? "Loading…" : "Show sections" }}
       </Button>
+    </div>
+    <div v-if="current.type === 'weekly' && weeks?.length" class="space-y-1 pt-4">
+      <label :for="`${id}-week`" class="text-sm font-semibold">Week to draft</label>
+      <div class="relative max-w-[26rem]">
+        <select :id="`${id}-week`" :value="current.period" :disabled="busy" :class="[FIELD, 'appearance-none pr-9']" @change="chooseWeek(($event.target as HTMLSelectElement).value)">
+          <option v-if="!weekInList" :value="current.period">{{ current.period || "Weekly report with no week" }}</option>
+          <option v-for="w in weeks" :key="w.period" :value="w.period">{{ weekChoiceLabel(w) }}</option>
+        </select>
+        <PhCaretDown weight="bold" :class="CARET" aria-hidden="true" />
+      </div>
     </div>
     <p :id="`${id}-hint`" :role="error ? 'alert' : undefined" class="pt-2 text-xs" :class="error ? 'font-semibold text-flag-fg' : 'text-muted-foreground'">
       {{ error ?? hint }}

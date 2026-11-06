@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { APPROVED_BANNER, DEV_LABEL, NO_WEEKS, defaultReport, fullyApproved, openingReport, weekRow } from "./previous";
-import type { LatestRun, Overview, PreviousWeek } from "./types";
+import { APPROVED_BANNER, DEV_LABEL, NO_WEEKS, defaultReport, fullyApproved, openingReport, rememberWeek, rememberedWeek, weekChoiceLabel, weekRow } from "./previous";
+import type { LatestRun, Overview, PreviousWeek, WeekChoice } from "./types";
 
 const SLUGS = ["company_updates", "fixed_income", "equities", "real_estate", "digital_payments", "focus"];
 const counts = { total: 0, unresolved: 0, fix_needed: 0 };
@@ -37,7 +37,7 @@ const week = (over: Partial<PreviousWeek> = {}): PreviousWeek => ({
 describe("the approved-week banner", () => {
   it("shows when every section's newest run is approved", () => {
     expect(fullyApproved(overview(() => run("approved")))).toBe(true);
-    expect(APPROVED_BANNER).toBe("This week is fully approved. Find it under Previous reports.");
+    expect(APPROVED_BANNER).toBe("All six sections of this week are approved. The read-only archive and the Word export are under Previous reports.");
   });
 
   it("does not show when one section is in review, rejected or not drafted", () => {
@@ -53,15 +53,41 @@ describe("the approved-week banner", () => {
 });
 
 describe("the overview's default week", () => {
-  const weeks = { weeks: [], next_week_ending: null, default_week_ending: "2026-10-16" };
+  const weeks = { weeks: [], next_week_ending: null, default_week_ending: "2026-10-16", choices: [] };
 
-  it("is the API's default week, labelled", async () => {
+  it("is the API's default week, labelled, when this browser chose none", async () => {
     expect(defaultReport("2026-10-16")).toEqual({ type: "weekly", period: "Week ending 2026-10-16", kind: null });
-    expect(await openingReport(() => Promise.resolve(weeks))).toEqual({ type: "weekly", period: "Week ending 2026-10-16", kind: null });
+    expect(await openingReport(() => Promise.resolve(weeks), null)).toEqual({ type: "weekly", period: "Week ending 2026-10-16", kind: null });
+  });
+
+  it("is the week this browser last chose, without reading the route", async () => {
+    const read = () => Promise.reject(new Error("must not be read"));
+    expect(await openingReport(read, "Week ending 2026-10-09")).toEqual({ type: "weekly", period: "Week ending 2026-10-09", kind: null });
   });
 
   it("falls back to the unlabelled weekly report when the route cannot be read", async () => {
-    expect(await openingReport(() => Promise.reject(new Error("unreachable")))).toEqual({ type: "weekly", period: "", kind: null });
+    expect(await openingReport(() => Promise.reject(new Error("unreachable")), null)).toEqual({ type: "weekly", period: "", kind: null });
+  });
+
+  it("remembers a chosen week and ignores anything that is not one, or storage that throws", () => {
+    const store = new Map<string, string>();
+    const storage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) };
+    expect(rememberedWeek(storage)).toBeNull();
+    rememberWeek("Week ending 2026-10-09", storage);
+    expect(rememberedWeek(storage)).toBe("Week ending 2026-10-09");
+    rememberWeek("Q3'2026", storage);
+    expect(rememberedWeek(storage)).toBe("Week ending 2026-10-09");
+    const broken = { getItem: () => { throw new Error("blocked"); }, setItem: () => { throw new Error("blocked"); } };
+    expect(rememberedWeek(broken)).toBeNull();
+    expect(() => rememberWeek("Week ending 2026-10-09", broken)).not.toThrow();
+    expect(rememberedWeek(null)).toBeNull();
+  });
+
+  it("says each week's state in words", () => {
+    const choice = (over: Partial<WeekChoice>): WeekChoice => ({ week_ending: "2026-10-09", period: "Week ending 2026-10-09", status: "not_started", approved: 0, total: 6, ...over });
+    expect(weekChoiceLabel(choice({}))).toBe("9 Oct 2026, not started");
+    expect(weekChoiceLabel(choice({ status: "in_progress", approved: 4 }))).toBe("9 Oct 2026, 4 of 6 approved");
+    expect(weekChoiceLabel(choice({ status: "approved", approved: 6 }))).toBe("9 Oct 2026, all six approved");
   });
 });
 

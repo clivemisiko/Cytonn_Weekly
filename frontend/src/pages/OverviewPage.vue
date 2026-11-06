@@ -13,9 +13,9 @@ import Button from "@/components/ui/Button.vue";
 import * as api from "@/lib/api";
 import { draftingList } from "@/lib/drafting";
 import { BACK_HOME, type BackTarget, useBack } from "@/lib/nav";
-import { openingReport } from "@/lib/previous";
+import { openingReport, rememberWeek } from "@/lib/previous";
 import { shell, useShellActions, useShellHere } from "@/lib/shell";
-import { type AppConfig, type Drafting, type Overview, REPORT_TYPES, type ReportChoice, type ReportType, type Review, type SectionSummary } from "@/lib/types";
+import { type AppConfig, type Drafting, type Overview, REPORT_TYPES, type ReportChoice, type ReportType, type Review, type SectionSummary, type WeekChoice } from "@/lib/types";
 
 type Phase =
   | { name: "booting"; target?: "overview" | "review" | "start" }
@@ -72,6 +72,17 @@ function reportToUrl(next: ReportChoice, reviewId: number | null = null, section
   void router.replace({ path: route.path, query });
 }
 
+/** The weeks the selector lists, read with every overview shown; empty when the route cannot be read. */
+const weekChoices = shallowRef<WeekChoice[]>([]);
+async function loadWeekChoices() {
+  try {
+    const next = (await api.getPreviousWeeks()).choices ?? [];
+    if (live) weekChoices.value = next;
+  } catch {
+    if (live) weekChoices.value = [];
+  }
+}
+
 /** The report as the API normalized it ("q3 2026" comes back as "Q3'2026"). */
 const normalized = (overview: Overview): ReportChoice => ({ type: overview.report.type, period: overview.report.period, kind: overview.report.kind });
 
@@ -96,6 +107,7 @@ function show(next: Phase) {
   if (next.name === "overview") {
     report.value = normalized(next.overview);
     reportToUrl(report.value);
+    void loadWeekChoices();
     shell.config.value = next.config;
     shell.setOverview(next.overview); // the rail takes the very payload the cards are built from
   }
@@ -176,6 +188,7 @@ async function chooseReport(next: ReportChoice): Promise<string | null> {
   if (now.name !== "overview") return null;
   try {
     show({ ...now, overview: await api.getOverview(next) });
+    rememberWeek(report.value.type === "weekly" ? report.value.period : "");
     return null;
   } catch (err) {
     return messageOf(err);
@@ -248,6 +261,7 @@ useShellHere(() => {
 /** On a start screen, switch the weekly report to the week ending on another Friday and show that week's section. */
 async function chooseWeek(slug: string, weekEnding: string) {
   report.value = { type: "weekly", period: api.weekPeriod(weekEnding), kind: null };
+  rememberWeek(report.value.period);
   reportToUrl(report.value, null, slug);
   set(await fetchStart(slug));
 }
@@ -302,6 +316,7 @@ const key = computed(() => {
         :overview="phase.overview"
         :config="phase.config"
         :report="report"
+        :weeks="weekChoices"
         :on-report="chooseReport"
         @open="openSection"
         @redraft="(slug) => openSection(slug, false)"
