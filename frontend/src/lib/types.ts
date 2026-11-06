@@ -9,13 +9,9 @@ export type ItemKind =
   | "supplied_text"
   | "computed_figure"
   | "carried_text"
-<<<<<<< HEAD
   | "piece_check"
-  | "chart";
-=======
   | "chart"
   | "workbook_quarter";
->>>>>>> origin/main
 
 // ---- Report types (report_types.py): which report a review belongs to ----
 
