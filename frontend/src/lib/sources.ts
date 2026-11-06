@@ -51,11 +51,12 @@ export function sourcePageHref(id: string, quote?: string, review?: number): str
 
 // The same tolerance as the quote checker (backend common/checks.normalise_quote): whitespace runs, quotation marks and dashes
 // made plain, and nothing else (no case folding, no punctuation removed).
-const FOLD: Record<string, string> = {
-  ...Object.fromEntries([..."‘’‚‛′"].map((c) => [c, "'"])),
-  ...Object.fromEntries([..."“”„‟″"].map((c) => [c, '"'])),
-  ...Object.fromEntries([..."‐‑‒–—―−"].map((c) => [c, "-"])),
-};
+const plainOf = (to: string, ...codes: number[]) => codes.map((c) => [String.fromCodePoint(c), to] as const);
+const FOLD: Record<string, string> = Object.fromEntries([
+  ...plainOf("'", 0x2018, 0x2019, 0x201a, 0x201b, 0x2032),
+  ...plainOf('"', 0x201c, 0x201d, 0x201e, 0x201f, 0x2033),
+  ...plainOf("-", 0x2010, 0x2011, 0x2012, 0x2013, 0x2014, 0x2015, 0x2212),
+]);
 
 function fold(s: string): { text: string; at: number[] } {
   let text = "";
