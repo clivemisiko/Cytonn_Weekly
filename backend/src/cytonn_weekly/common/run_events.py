@@ -47,6 +47,7 @@ import os
 import re
 import threading
 import time
+import traceback
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable, Iterable, Optional, TypeVar
@@ -173,6 +174,12 @@ def safe_describe(exc: BaseException) -> str:
     return type(exc).__name__ if database.is_postgres_error(exc) else redact(describe(exc))
 
 
+def frames(exc: BaseException) -> str:
+    """For a log line: the exception's class and its stack frames (file, line, function), never its message."""
+    where = " <- ".join(f"{f.filename}:{f.lineno} {f.name}" for f in reversed(traceback.extract_tb(exc.__traceback__)))
+    return f"{type(exc).__name__} at {where}"
+
+
 CREDIT_TOO_LOW = "credit balance is too low"
 CREDIT_EMPTY = ("The Anthropic credit balance is empty, so drafting cannot continue. Ask whoever manages Billing to add "
                 "credit. Trying again will not help until they do.")
@@ -229,6 +236,12 @@ def user_message(exc: BaseException) -> str:
             "The site may be down; try again later.")
 
 
+def _took(began: float, before: str = "", after: str = "") -> str:
+    """The seconds since ``began`` (wrapped in ``before`` and ``after``), or nothing when under one second."""
+    seconds = time.monotonic() - began
+    return f"{before}{seconds:.1f} s{after}" if seconds >= 1 else ""
+
+
 def fetch_source(on_event: Optional[Observer], label: str, fetch: Callable[..., T], *args: Any) -> T:
     """Call ``fetch(*args)``, reporting it as one named source.  Its result and its errors are untouched."""
     if on_event is None:
@@ -238,10 +251,10 @@ def fetch_source(on_event: Optional[Observer], label: str, fetch: Callable[..., 
     try:
         result = fetch(*args)
     except Exception as exc:
-        emit(on_event, SOURCE_FAILED, label, detail=f"{user_message(exc)} ({time.monotonic() - began:.1f} s)")
+        emit(on_event, SOURCE_FAILED, label, detail=user_message(exc) + _took(began, " (", ")"))
         raise
-    saved = "from saved copy, " if getattr(result, "from_saved_copy", False) else ""
-    emit(on_event, SOURCE_FINISHED, label, detail=f"{saved}{time.monotonic() - began:.1f} s")
+    saved = "from saved copy" if getattr(result, "from_saved_copy", False) else ""
+    emit(on_event, SOURCE_FINISHED, label, detail=(saved + _took(began, ", " if saved else "")) or None)
     return result
 
 
