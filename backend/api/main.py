@@ -1095,6 +1095,17 @@ def create_app(
             raise HTTPException(422, str(exc))
         return {"source": added.meta(), **source_meta(piece, items)}
 
+    @app.get("/api/sources/{source_id}")
+    def source_facts(source_id: str) -> dict:
+        """One saved source's facts: what the list route returns for it, without the text (that is /text)."""
+        try:
+            src = source_store.get(source_id, sources_dir)
+        except source_store.SourceError as exc:
+            raise HTTPException(409, str(exc))
+        if src is None:
+            raise HTTPException(404, f"no saved source {source_id!r}")
+        return src.meta()
+
     @app.get("/api/sources/{source_id}/text")
     def source_text(source_id: str) -> Response:
         """The saved text of one source, as plain text: what the model was shown and what its quotes are checked against."""

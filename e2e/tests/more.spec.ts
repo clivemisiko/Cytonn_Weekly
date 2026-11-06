@@ -17,7 +17,7 @@ const inputsPanel = (page: import("@playwright/test").Page) => page.locator("sec
 const analystPanel = (page: import("@playwright/test").Page) => page.locator("section", { has: page.getByRole("heading", { name: "Weekly analyst inputs" }) }).first();
 
 test("T17 inputs: remove a report and upload it again, Fetch from CBK (from a saved file), the two notes boxes", async ({ page, request }) => {
-  await openStart(page, "Fixed Income");
+  await openStart(page, "Equities"); // the KCB daily reports are Equities' input
   const panel = inputsPanel(page);
   await expect(panel.getByText("5 of 5 received")).toBeVisible();
 
@@ -25,7 +25,7 @@ test("T17 inputs: remove a report and upload it again, Fetch from CBK (from a sa
   await panel.getByRole("button", { name: "Remove Monday’s report" }).click();
   await expect(panel.getByText("4 of 5 received")).toBeVisible();
   await expect(panel.getByText("Missing", { exact: true })).toBeVisible();
-  await panel.locator('input[type="file"]').nth(2).setInputFiles(join(REPO, "backend", "data", "demo", "inputs", "SYNTHETIC_KCB_daily_2026-10-05.pdf"));
+  await panel.locator('input[type="file"]').nth(1).setInputFiles(join(REPO, "backend", "data", "demo", "inputs", "SYNTHETIC_KCB_daily_2026-10-05.pdf"));
   await expect(panel.getByText("5 of 5 received")).toBeVisible();
   await expect(panel.getByRole("alert")).toHaveCount(0);
 

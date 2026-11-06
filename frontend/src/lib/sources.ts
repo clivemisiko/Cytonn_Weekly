@@ -40,6 +40,54 @@ export const TEXT_FROM_SEARCH = "Text supplied by the search service";
 /** How a source came to be saved, in the words of its facts line and the review. */
 export const ORIGIN_WORDS = { fetched: "fetched", pasted: "pasted", found: "found automatically" } as const;
 
+/** Where a saved source is read as a styled page; `quote` is highlighted and `review` is the run the Back button returns to. */
+export function sourcePageHref(id: string, quote?: string, review?: number): string {
+  const q = new URLSearchParams();
+  if (quote) q.set("quote", quote);
+  if (review !== undefined) q.set("review", String(review));
+  const query = q.toString();
+  return `/sources/${encodeURIComponent(id)}${query ? `?${query}` : ""}`;
+}
+
+// The same tolerance as the quote checker (backend common/checks.normalise_quote): whitespace runs, quotation marks and dashes
+// made plain, and nothing else (no case folding, no punctuation removed).
+const plainOf = (to: string, ...codes: number[]) => codes.map((c) => [String.fromCodePoint(c), to] as const);
+const FOLD: Record<string, string> = Object.fromEntries([
+  ...plainOf("'", 0x2018, 0x2019, 0x201a, 0x201b, 0x2032),
+  ...plainOf('"', 0x201c, 0x201d, 0x201e, 0x201f, 0x2033),
+  ...plainOf("-", 0x2010, 0x2011, 0x2012, 0x2013, 0x2014, 0x2015, 0x2212),
+]);
+
+function fold(s: string): { text: string; at: number[] } {
+  let text = "";
+  const at: number[] = []; // for each folded character, where it came from in `s`
+  let gap = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (/\s/.test(c)) {
+      gap = text.length > 0;
+      continue;
+    }
+    if (gap) {
+      text += " ";
+      at.push(i);
+      gap = false;
+    }
+    text += FOLD[c] ?? c;
+    at.push(i);
+  }
+  return { text, at };
+}
+
+/** Where `quote` is in `text` as saved ([start, end) in `text`), or null when it cannot be found. */
+export function locateQuote(text: string, quote: string): { start: number; end: number } | null {
+  const q = fold(quote).text;
+  if (!q) return null;
+  const t = fold(text);
+  const i = t.text.indexOf(q);
+  return i < 0 ? null : { start: t.at[i], end: t.at[i + q.length - 1] + 1 };
+}
+
 /** One saved source's facts as separate short strings, for a list. */
 export function sourceFacts(s: SourceMeta): string[] {
   return [

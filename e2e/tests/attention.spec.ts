@@ -63,7 +63,7 @@ test("T88 Escape and Close shut the dialog; focus goes back where it was, or to 
 test("T89 an inline problem opens no dialog: the page goes to the refusal and focuses it", async ({ page }) => {
   await openStart(page, "Fixed Income");
   const panel = page.locator('[data-attention="inputs-panel"]');
-  await panel.locator('input[type="file"]').nth(5).setInputFiles({ name: "not-a-pdf.pdf", mimeType: "application/pdf", buffer: Buffer.from("hello") });
+  await panel.locator('input[type="file"]').nth(2).setInputFiles({ name: "not-a-pdf.pdf", mimeType: "application/pdf", buffer: Buffer.from("hello") });
   const refusal = panel.getByRole("alert").filter({ hasText: "not-a-pdf.pdf: NSE yield curve: this is not a PDF file" });
   await expect(refusal).toBeVisible();
   await expect(refusal).toBeFocused();
@@ -134,7 +134,7 @@ test("T93 screenshots of the dialog (light, dark, 390px) and of an inline proble
   await page.emulateMedia({ colorScheme: "light" });
   await openStart(page, "Fixed Income");
   const panel = page.locator('[data-attention="inputs-panel"]');
-  await panel.locator('input[type="file"]').nth(5).setInputFiles({ name: "not-a-pdf.pdf", mimeType: "application/pdf", buffer: Buffer.from("hello") });
+  await panel.locator('input[type="file"]').nth(2).setInputFiles({ name: "not-a-pdf.pdf", mimeType: "application/pdf", buffer: Buffer.from("hello") });
   const refusal = panel.getByRole("alert").filter({ hasText: "not-a-pdf.pdf" });
   await expect(refusal).toBeFocused();
   await expect(refusal).toBeInViewport({ ratio: 1 });
@@ -149,7 +149,7 @@ const outline = (loc: ReturnType<Page["locator"]>) =>
 async function refuseUpload(page: Page) {
   await openStart(page, "Fixed Income");
   const panel = page.locator('[data-attention="inputs-panel"]');
-  await panel.locator('input[type="file"]').nth(5).setInputFiles({ name: "not-a-pdf.pdf", mimeType: "application/pdf", buffer: Buffer.from("hello") });
+  await panel.locator('input[type="file"]').nth(2).setInputFiles({ name: "not-a-pdf.pdf", mimeType: "application/pdf", buffer: Buffer.from("hello") });
   return panel.locator("[data-problem]").filter({ hasText: "not-a-pdf.pdf" });
 }
 

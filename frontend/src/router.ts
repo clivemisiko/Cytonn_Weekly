@@ -24,6 +24,7 @@ export const router = createRouter({
       redirect: (to) => ({ path: "/overview", query: { ...to.query, review: to.params.reviewId } }),
     },
     { path: "/runs/:runId", component: () => import("./pages/RunPage.vue"), props: true },
+    { path: "/sources/:sourceId", component: () => import("./pages/SourcePage.vue"), props: true },
     { path: "/:rest(.*)*", component: () => import("./pages/NotFoundPage.vue") },
   ],
 });

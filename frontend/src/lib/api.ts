@@ -18,6 +18,7 @@ import type {
   Run,
   SentenceResult,
   SourceInput,
+  SourceMeta,
   SourcesListing,
   WeeklyInputs,
   Gathered,
@@ -207,6 +208,21 @@ export const gatherSources = (slug: string, report: ReportChoice, subject: strin
   }, UPLOAD_TIMEOUT_MS);
 
 export const removeSource =(id: string) => request<{ removed: string }>(`/api/sources/${encodeURIComponent(id)}`, { method: "DELETE" });
+
+/** One saved source's facts (the list route's entry for it, without the text). 404 for an id the API does not have. */
+export const getSource = (id: string) => request<SourceMeta>(`/api/sources/${encodeURIComponent(id)}`);
+
+/** One saved source's text exactly as saved: the raw route, read by the source page (never shown as the route's own page). */
+export async function getSourceText(id: string): Promise<string> {
+  let res: Response;
+  try {
+    res = await fetch(sourceTextUrl(id), { cache: "no-store" });
+  } catch {
+    throw new ApiError(`Could not reach the review API at ${API_NAME}.`, null);
+  }
+  if (!res.ok) throw new ApiError(res.status === 404 ? "The saved text of this source could not be found." : "The saved text could not be read.", res.status);
+  return res.text();
+}
 
 /** Where one source's saved text is served as plain text (a link, never fetched by the app). */
 export const sourceTextUrl = (id: string) => `${API_BASE}/api/sources/${encodeURIComponent(id)}/text`;

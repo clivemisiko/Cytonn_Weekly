@@ -4,7 +4,7 @@ import { computed, ref } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import * as api from "@/lib/api";
-import { ADDRESS_PLACEHOLDER, NO_SOURCES_YET, normalizeAddress, sourceFacts } from "@/lib/sources";
+import { ADDRESS_PLACEHOLDER, NO_SOURCES_YET, normalizeAddress, sourceFacts, sourcePageHref } from "@/lib/sources";
 import type { ReportChoice, SourceMeta, SourcePiece } from "@/lib/types";
 import Notice from "./Notice.vue";
 
@@ -106,7 +106,7 @@ const remove = (s: SourceMeta) =>
           <PhWarning weight="bold" class="mt-0.5 size-4 shrink-0" aria-hidden="true" />{{ s.flags.join("; ") }}
         </p>
         <div class="flex flex-wrap items-center gap-3 pt-1 text-xs">
-          <a :href="api.sourceTextUrl(s.id)" target="_blank" rel="noopener noreferrer" class="text-link underline decoration-link/40 underline-offset-2 hover:decoration-link">
+          <a :href="sourcePageHref(s.id)" target="_blank" rel="noopener noreferrer" class="text-link underline decoration-link/40 underline-offset-2 hover:decoration-link">
             View saved text<PhArrowSquareOut weight="bold" class="ml-1 inline size-4 align-[-3px]" aria-hidden="true" /><span class="sr-only"> of {{ s.title }}</span>
           </a>
           <Button size="sm" variant="outline" :disabled="off" :aria-label="`Remove ${s.title} from ${piece.subject}`" @click="remove(s)">Remove</Button>

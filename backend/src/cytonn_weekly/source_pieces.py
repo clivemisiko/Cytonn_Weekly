@@ -21,6 +21,7 @@ class Piece:
     end: date
     start: Optional[date] = None        # first day of the piece's window; None is the six days up to ``end`` (a weekly piece)
     domains: tuple[str, ...] = ()       # the brief's preferred domains, which the gather step tries first
+    market: bool = True                 # False for a global company: the gather step adds no market name to its query
 
     @property
     def window(self) -> tuple[date, date]:
@@ -57,7 +58,7 @@ def pieces_for(report_type: str, period: str, slug: str, *, sections: Sequence[s
             return [Piece(b.label, friday, domains=tuple(b.preferred_domains)) for b in BRIEFS]
         if slug == "digital_payments":
             from cytonn_weekly.digital_payments.highlights import HIGHLIGHT_COMPANIES
-            return [Piece(c["name"], friday, domains=(c["ir_domain"],)) for c in HIGHLIGHT_COMPANIES]
+            return [Piece(c["name"], friday, domains=(c["ir_domain"],), market=False) for c in HIGHLIGHT_COMPANIES]
         if slug == "focus":
             from cytonn_weekly.focus.review_run import clean_title, is_closing
             titles = [clean_title(t) for t in sections]
@@ -73,8 +74,8 @@ def pieces_for(report_type: str, period: str, slug: str, *, sections: Sequence[s
         from cytonn_weekly.periodic.digital_payments import other_highlights_brief
 
         brief, window = other_highlights_brief(ctx)
-        return ([Piece(c["name"], ctx.today, domains=(c["ir_domain"],)) for c in HIGHLIGHT_COMPANIES]
-                + [Piece(brief.label, window[1], window[0], tuple(brief.preferred_domains))])
+        return ([Piece(c["name"], ctx.today, domains=(c["ir_domain"],), market=False) for c in HIGHLIGHT_COMPANIES]
+                + [Piece(brief.label, window[1], window[0], tuple(brief.preferred_domains), market=False)])
     if slug in _PERIODIC:
         import importlib
 
