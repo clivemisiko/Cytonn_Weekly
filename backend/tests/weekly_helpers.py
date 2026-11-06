@@ -473,8 +473,24 @@ def printed(review) -> dict[str, Any]:
             view["raw"] = [{k: v for k, v in r.items() if not k.startswith("_")} for r in b["source_rows"]]
             view["export_grid"] = b.get("export_grid")
         blocks.append(view)
-    return {"blocks": blocks, "summary": review.section["summary"],
+    return {"blocks": _tidy(blocks), "summary": review.section["summary"],
             "items": [(i.ref, i.status) for i in review.review_items]}
+
+
+def _tidy(value: Any) -> Any:
+    """Floats to 10 significant digits: far below anything a figure shows, above binary noise.
+
+    A workbook cell can hold noise (-42.00000000000001 for the -42.0 it shows, and the form cleans it to 12 digits
+    on display, ``analyst._clean``); a typed figure cannot, nor can a ratio worked out from one.  A comparison of
+    the two runs must not count that as a difference.
+    """
+    if isinstance(value, float):
+        return float(f"{value:.10g}")
+    if isinstance(value, dict):
+        return {k: _tidy(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return type(value)(_tidy(v) for v in value)
+    return value
 
 
 def no_draft(briefs, target, **kwargs) -> dict[str, Any]:

@@ -261,8 +261,13 @@ def test_typing_the_synthetic_workbooks_figures_gives_the_same_sections(tmp_path
     # The rest are the synthetic workbook's own weekly sums, which disagree with what KCB's figures give: flagged with
     # the workbook, and with nothing to disagree once the workbook is gone.
     others = {ref: change for ref, change in changed.items() if ref not in OCR_ONLY}
+    # CBK's Table 6 is read first for the indices, and the real bulletin's last-week levels differ from the synthetic
+    # workbook's invented ones, so the three week-on-week changes the workbook can disagree with go the same way.
     assert set(others) == {"Market Performance: equities turnover: Equities turnover over the week",
-                           "Market Performance: foreign investors: Foreign investors' net position over the week"}
+                           "Market Performance: foreign investors: Foreign investors' net position over the week",
+                           "Market Performance: NASI week-on-week change",
+                           "Market Performance: NSE 20 week-on-week change",
+                           "Market Performance: NSE 25 week-on-week change"}
     assert all(was == "flagged" for was, _ in others.values())
     for i in equities.review_items:
         if i.ref.split(" (")[0] in others:
