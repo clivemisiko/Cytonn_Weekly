@@ -101,7 +101,8 @@ def test_the_route_returns_the_list_and_the_next_week(tmp_path):
     body = client.get("/api/previous/weekly").json()
     assert body["next_week_ending"] == "2026-10-09" and [w["period"] for w in body["weeks"]] == ["Week ending 2026-10-02"]
     friday = latest_friday(date.today())
-    assert body["default_week_ending"] == max(date(2026, 10, 9), friday).isoformat()
+    assert body["default_week_ending"] == friday.isoformat()   # approvals never move it
+    assert len(body["choices"]) == 9 and body["choices"][1]["week_ending"] == friday.isoformat()
 
 
 def test_no_approved_week_opens_on_the_latest_friday_and_is_never_null(tmp_path):
@@ -112,22 +113,36 @@ def test_no_approved_week_opens_on_the_latest_friday_and_is_never_null(tmp_path)
     assert body["next_week_ending"] is None and body["default_week_ending"] == latest_friday(date.today()).isoformat()
 
 
-def test_the_week_after_the_latest_approved_wins_when_it_is_later_than_the_latest_friday(tmp_path):
+def test_a_week_approved_ahead_of_the_calendar_does_not_move_the_default(tmp_path):
     db = tmp_path / "app.db"
     _week(db, "2026-10-16")                                   # approved ahead of the calendar
     out = export.approved_weeks(db, today=date(2026, 10, 12))  # latest Friday 9 Oct
-    assert out["next_week_ending"] == "2026-10-23" and out["default_week_ending"] == "2026-10-23"
+    assert out["next_week_ending"] == "2026-10-23" and out["default_week_ending"] == "2026-10-09"
 
 
-def test_an_older_approved_week_gives_the_latest_friday_so_a_skipped_week_is_not_reopened(tmp_path):
+def test_an_older_approved_week_leaves_the_default_on_the_latest_friday(tmp_path):
     db = tmp_path / "app.db"
     _week(db, "2026-10-02")
     out = export.approved_weeks(db, today=date(2026, 10, 19))  # latest Friday 16 Oct; 9 Oct was skipped
     assert out["next_week_ending"] == "2026-10-09" and out["default_week_ending"] == "2026-10-16"
 
 
-def test_the_latest_friday_approved_gives_the_friday_after(tmp_path):
+def test_the_latest_friday_approved_stays_the_default(tmp_path):
     db = tmp_path / "app.db"
     _week(db, "2026-10-09")
     out = export.approved_weeks(db, today=date(2026, 10, 9))   # a Friday: it is its own latest Friday
-    assert out["next_week_ending"] == "2026-10-16" and out["default_week_ending"] == "2026-10-16"
+    assert out["next_week_ending"] == "2026-10-16" and out["default_week_ending"] == "2026-10-09"
+
+
+def test_the_choices_are_the_coming_friday_and_the_last_eight_with_their_status(tmp_path):
+    db = tmp_path / "app.db"
+    _week(db, "2026-10-09")                                    # all six approved
+    _week(db, "2026-10-02", skip=("focus", "equities"))        # four approved
+    out = export.approved_weeks(db, today=date(2026, 10, 14))["choices"]   # latest Friday 9 Oct
+    assert [c["week_ending"] for c in out][:3] == ["2026-10-16", "2026-10-09", "2026-10-02"] and len(out) == 9
+    assert out[-1]["week_ending"] == "2026-08-21"
+    by = {c["week_ending"]: c for c in out}
+    assert by["2026-10-16"]["status"] == "not_started" and by["2026-10-16"]["approved"] == 0
+    assert by["2026-10-09"]["status"] == "approved" and by["2026-10-09"]["approved"] == by["2026-10-09"]["total"] == 6
+    assert by["2026-10-02"]["status"] == "in_progress" and by["2026-10-02"]["approved"] == 4
+    assert by["2026-10-02"]["period"] == "Week ending 2026-10-02"
