@@ -4,7 +4,7 @@ import { computed, ref } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import * as api from "@/lib/api";
-import { NO_SOURCES_YET, normalizeAddress, sourceFacts } from "@/lib/sources";
+import { ADDRESS_PLACEHOLDER, NO_SOURCES_YET, normalizeAddress, sourceFacts } from "@/lib/sources";
 import type { ReportChoice, SourceMeta, SourcePiece } from "@/lib/types";
 import Notice from "./Notice.vue";
 
@@ -110,7 +110,7 @@ const remove = (s: SourceMeta) =>
       <div class="space-y-5 border-t p-3">
         <form class="space-y-2" @submit.prevent="fetchIt">
           <label :for="`fetch-${uid}`" class="text-sm font-semibold">Address (URL) to fetch</label>
-          <input :id="`fetch-${uid}`" v-model="fetchUrl" type="text" inputmode="url" autocomplete="off" :disabled="off" placeholder="knightfrank.com/research/report" class="flex h-10 w-full rounded-md border border-input bg-card px-3 text-sm transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-60" :aria-describedby="`fetch-hint-${uid}`" />
+          <input :id="`fetch-${uid}`" v-model="fetchUrl" type="text" inputmode="url" autocomplete="off" :disabled="off" :placeholder="ADDRESS_PLACEHOLDER" class="flex h-10 w-full rounded-md border border-input bg-card px-3 text-sm transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-60" :aria-describedby="`fetch-hint-${uid}`" />
           <p :id="`fetch-hint-${uid}`" class="text-xs text-muted-foreground">A link with or without https:// works. Give the page that holds the facts, not the site’s home page. Only pages on the approved sites are fetched; for any other page, paste its text below.</p>
           <Button type="submit" variant="outline" :disabled="off">Fetch page</Button>
         </form>

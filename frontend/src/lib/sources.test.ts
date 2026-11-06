@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { friendlyDate } from "./format";
 import {
+  ADDRESS_PLACEHOLDER,
   ADDRESS_EMPTY,
   ADDRESS_SPACES,
   NOT_ON_LIST,
@@ -128,5 +129,12 @@ describe("normalizeAddress", () => {
     expect(normalizeAddress("")).toEqual({ error: ADDRESS_EMPTY });
     expect(normalizeAddress("   ")).toEqual({ error: ADDRESS_EMPTY });
     expect(normalizeAddress("knight frank.com")).toEqual({ error: ADDRESS_SPACES });
+  });
+});
+
+describe("the address box hint", () => {
+  it("names no real site, because the same box serves every section", () => {
+    expect(ADDRESS_PLACEHOLDER).toMatch(/example\./);
+    expect(normalizeAddress(ADDRESS_PLACEHOLDER)).toEqual({ url: `https://${ADDRESS_PLACEHOLDER}` });
   });
 });

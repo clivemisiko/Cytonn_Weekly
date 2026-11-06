@@ -34,7 +34,7 @@ APPROVED_SITES = (
     "nse.co.ke", "cma.or.ke",
     # Real Estate: banking and housing bodies, tourism, and the research houses the team named
     "kba.co.ke", "kmrc.co.ke", "housing.go.ke", "bomayangu.go.ke", "tourism.go.ke", "ktb.go.ke",
-    "knightfrank.com", "content.knightfrank.com", "hassconsult.co.ke",
+    "knightfrank.com", "content.knightfrank.com", "knightfrank.co.ke", "hassconsult.co.ke",
     # Multilateral lenders
     "imf.org", "worldbank.org",
     # The team's preferred news sites (real_estate.review_run.PREFERRED_SITES)

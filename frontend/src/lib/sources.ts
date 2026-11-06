@@ -7,6 +7,9 @@ export const SOURCES_PROVIDER = "bedrock";
 /** The flag the API puts on pasted text from a host off the approved list; the review shows it as it stands. */
 export const NOT_ON_LIST = "host not on the approved list";
 
+/** The hint in every piece's address box. Generic on purpose: the same box serves every section, so it names no site. */
+export const ADDRESS_PLACEHOLDER = "www.example.org/the-page";
+
 export const NO_SOURCES_YET = "No sources yet: this piece will come back unavailable";
 
 /** Whether this section's start screen asks for sources: only when the draft is written from them. */
