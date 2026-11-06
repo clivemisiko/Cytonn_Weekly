@@ -121,7 +121,7 @@ def _digital_payments(ctx: DraftContext) -> CoordinatorReview:
 
         found = WeeklyInputs(Week(ctx.week_ending), ctx.inputs_root).dp_book
         book = {} if found is None else {"workbook": found}
-    return build_digital_payments_review(**_as_of(ctx), **_table_as_at(ctx), **_observer(ctx), **book)
+    return build_digital_payments_review(**_as_of(ctx), **_observer(ctx), **book)
 
 
 def _company_updates(ctx: DraftContext) -> CoordinatorReview:
