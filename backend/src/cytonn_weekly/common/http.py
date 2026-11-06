@@ -7,15 +7,17 @@ requests from unknown clients.
 
 from __future__ import annotations
 
+import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Callable, Iterator
+from typing import Any, Callable, Iterator
 from urllib.parse import quote
 
 import httpx
 
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128 Safari/537.36"
-TIMEOUT = 60
+TIMEOUT = 30   # one request, including its retry, never holds a draft longer than this
 
 
 class NotFound(Exception):
@@ -28,7 +30,25 @@ def safe_url(url: str) -> str:
 
 
 def _client() -> httpx.Client:
-    return httpx.Client(timeout=TIMEOUT, follow_redirects=True, headers={"User-Agent": USER_AGENT})
+    # httpx times each phase, and each address a host resolves to, on its own (afx's four addresses took 4 x 60 s)
+    return httpx.Client(timeout=httpx.Timeout(TIMEOUT, connect=8), follow_redirects=True, headers={"User-Agent": USER_AGENT})
+
+
+def _capped(url: str, call: Callable[[], Any]) -> Any:
+    """``call()`` within TIMEOUT seconds in all, tried a second time only if the first failed quickly."""
+    deadline = time.monotonic() + TIMEOUT
+    for attempt in (1, 2):
+        pool = ThreadPoolExecutor(1)
+        try:
+            return pool.submit(call).result(max(deadline - time.monotonic(), 0.1))
+        except FutureTimeout:   # ponytail: the abandoned thread ends at httpx's own timeouts
+            raise httpx.ConnectTimeout(f"no answer in {TIMEOUT} s", request=httpx.Request("GET", safe_url(url))) from None
+        except httpx.TransportError:
+            if attempt == 2 or time.monotonic() >= deadline:
+                raise
+        finally:
+            pool.shutdown(wait=False)
+    raise AssertionError("unreachable")
 
 
 def _get(client: httpx.Client, url: str) -> bytes:
@@ -41,25 +61,31 @@ def _get(client: httpx.Client, url: str) -> bytes:
 
 def http_get(url: str) -> bytes:
     """GET ``url`` and return the body; NotFound on 404, httpx errors for anything else."""
-    with _client() as client:
-        return _get(client, url)
+    def once() -> bytes:
+        with _client() as client:
+            return _get(client, url)
+
+    return _capped(url, once)
 
 
 def http_head(url: str) -> dict[str, str]:
     """HEAD ``url``: its response headers, names in lower case (size and modification time, without the body)."""
-    with _client() as client:
-        resp = client.head(safe_url(url))
-        if resp.status_code == 404:
-            raise NotFound(url)
-        resp.raise_for_status()
-        return {k.lower(): v for k, v in resp.headers.items()}
+    def once() -> dict[str, str]:
+        with _client() as client:
+            resp = client.head(safe_url(url))
+            if resp.status_code == 404:
+                raise NotFound(url)
+            resp.raise_for_status()
+            return {k.lower(): v for k, v in resp.headers.items()}
+
+    return _capped(url, once)
 
 
 @contextmanager
 def http_session() -> Iterator[Callable[[str], bytes]]:
     """A ``get`` like http_get that keeps one connection open, for a fetcher reading many pages of one site."""
     with _client() as client:
-        yield lambda url: _get(client, url)
+        yield lambda url: _capped(url, lambda: _get(client, url))
 
 
 def http_get_pdf(url: str) -> bytes:

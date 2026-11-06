@@ -91,6 +91,7 @@ class IndexBox:
     list_date: Optional[date]                       # the date printed at the top of the list
     values: dict[str, float] = field(default_factory=dict)
     problems: list[str] = field(default_factory=list)
+    from_saved_copy: bool = field(default=False, compare=False)   # set when read back from the cache, not stored in it
 
     def to_dict(self) -> dict[str, Any]:
         return {"list_date": self.list_date.isoformat() if self.list_date else None, "values": self.values,

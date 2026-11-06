@@ -344,13 +344,13 @@ def test_a_connection_failure_is_worded_for_the_coordinator():
     handshake = "_ssl.c:983: The handshake operation timed out"
     for exc in (httpx.ConnectTimeout(handshake, request=request), anthropic.APITimeoutError(request=request)):
         message = failure_message(exc)
-        assert message.startswith("Could not reach api.exa.ai: it did not answer in time.")
+        assert message.startswith("The server could not reach api.exa.ai: it did not answer in time.")
         assert "try again" in message
         assert "_ssl" not in message and "ConnectTimeout" not in message and "sk-test" not in message
     assert failure_message(httpx.ConnectError("refused", request=request)).startswith(
-        "Could not reach api.exa.ai: it could not be reached.")
+        "The server could not reach api.exa.ai: it could not be reached.")
     # an error that carries no request (httpx raises when asked for it) still gets a plain message
-    assert failure_message(httpx.ConnectTimeout(handshake)).startswith("Could not reach an outside service:")
+    assert failure_message(httpx.ConnectTimeout(handshake)).startswith("The server could not reach an outside service:")
     # anything that is not a connection failure is named by its type, as before
     assert failure_message(KeyError("x")) == "An unexpected error occurred ('x'). Try again; if it happens again, report it with the section name."
 
