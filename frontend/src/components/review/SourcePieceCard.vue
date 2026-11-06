@@ -111,7 +111,7 @@ const remove = (s: SourceMeta) =>
         <form class="space-y-2" @submit.prevent="fetchIt">
           <label :for="`fetch-${uid}`" class="text-sm font-semibold">Address (URL) to fetch</label>
           <input :id="`fetch-${uid}`" v-model="fetchUrl" type="text" inputmode="url" autocomplete="off" :disabled="off" :placeholder="ADDRESS_PLACEHOLDER" class="flex h-10 w-full rounded-md border border-input bg-card px-3 text-sm transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-60" :aria-describedby="`fetch-hint-${uid}`" />
-          <p :id="`fetch-hint-${uid}`" class="text-xs text-muted-foreground">A link with or without https:// works. Give the page that holds the facts, not the site’s home page. Only pages on the approved sites are fetched; for any other page, paste its text below.</p>
+          <p :id="`fetch-hint-${uid}`" class="text-xs text-muted-foreground">A link with or without http:// or https:// works. Give the page that holds the facts, not the site’s home page. A page on a site we do not know is fetched too and marked so, and an http:// page is marked not secure. If a page cannot be fetched, paste its text below.</p>
           <Button type="submit" variant="outline" :disabled="off">Fetch page</Button>
         </form>
 
@@ -123,7 +123,7 @@ const remove = (s: SourceMeta) =>
           <input :id="`paste-date-${uid}`" v-model="pasteDate" type="date" :disabled="off" class="flex h-10 w-full rounded-md border border-input bg-card px-3 text-sm transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-60 sm:max-w-56" />
           <label :for="`paste-text-${uid}`" class="text-xs text-muted-foreground">Pasted text</label>
           <Textarea :id="`paste-text-${uid}`" v-model="pasteText" rows="6" :disabled="off" placeholder="Paste the page’s text exactly as it reads…" class="min-h-32 py-2" />
-          <p class="text-xs text-muted-foreground">It is kept exactly as pasted. Text from a site off the approved list is kept too, and marked so on the review.</p>
+          <p class="text-xs text-muted-foreground">It is kept exactly as pasted. Text from a site we do not know is kept too, and marked so on the review.</p>
           <Button type="submit" variant="outline" :disabled="off || !pasteUrl.trim() || !pasteDate || !pasteText.trim()">Save pasted text</Button>
         </form>
       </div>

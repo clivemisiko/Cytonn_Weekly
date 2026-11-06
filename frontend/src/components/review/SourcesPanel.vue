@@ -90,7 +90,7 @@ const sites = computed(() => listing.value?.approved_sites ?? []);
       <h2 id="sources-title" class="text-lg font-semibold">Sources</h2>
       <p class="text-sm text-muted-foreground">
         Amazon Bedrock writes only from the pages you supply here, and nothing is searched. Give each piece the pages to read: paste a page’s text with its address
-        and date, or fetch a page from an approved site. Every quote a claim uses is checked against the saved text, and you see it on the review.
+        and date, or fetch a page from any site. Every quote a claim uses is checked against the saved text, and you see it on the review.
       </p>
     </div>
 
@@ -113,7 +113,7 @@ const sites = computed(() => listing.value?.approved_sites ?? []);
     </ul>
 
     <details v-if="sites.length" class="text-sm">
-      <summary class="cursor-pointer rounded-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring">Approved sites ({{ sites.length }})</summary>
+      <summary class="cursor-pointer rounded-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring">Known sites ({{ sites.length }})</summary>
       <ul class="mt-2 grid gap-x-6 gap-y-1 font-mono text-xs sm:grid-cols-2">
         <li v-for="s in sites" :key="s" class="[overflow-wrap:anywhere]">{{ s }}</li>
       </ul>
