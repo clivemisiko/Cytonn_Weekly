@@ -78,3 +78,14 @@ export const NEEDS_TITLES = "Type the section titles in the form below. Each one
 
 /** A Bedrock draft of a section with no typed titles is refused by the API; the screen says so before the click. */
 export const TITLES_REQUIRED = "Amazon Bedrock does not propose section titles, because it has nothing to search. Type them under Sections.";
+
+export const ADDRESS_EMPTY = "Type the address of the page to fetch.";
+export const ADDRESS_SPACES = "An address has no spaces in it. Check it and try again.";
+
+// A bare domain or a link without a scheme gets https://; any address that names a scheme is sent as typed, so the API refuses a non-https one in its own words.
+export function normalizeAddress(raw: string): { url: string } | { error: string } {
+  const v = raw.trim();
+  if (!v) return { error: ADDRESS_EMPTY };
+  if (/\s/.test(v)) return { error: ADDRESS_SPACES };
+  return { url: /^[a-z][a-z\d+.-]*:\/\//i.test(v) ? v : `https://${v}` };
+}

@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { friendlyDate } from "./format";
 import {
+  ADDRESS_EMPTY,
+  ADDRESS_SPACES,
   NOT_ON_LIST,
   charsLabel,
   claimSource,
   dateLabel,
   hashPrefix,
   isPaste,
+  normalizeAddress,
   missingSourcesNote,
   piecesWithoutSources,
   sourceFacts,
@@ -108,5 +111,22 @@ describe("claimSource", () => {
   it("has no off-list mark when the flags are empty or absent", () => {
     expect(claimSource({ source_id: "x", source_flags: [] })?.offList).toBe(false);
     expect(claimSource({ source_id: "x" })?.offList).toBe(false);
+  });
+});
+
+describe("normalizeAddress", () => {
+  it.each([
+    ["knightfrank.com", "https://knightfrank.com"],
+    ["www.knightfrank.com/research/x", "https://www.knightfrank.com/research/x"],
+    ["https://www.imf.org/en/news", "https://www.imf.org/en/news"],
+    ["http://www.centralbank.go.ke/p", "http://www.centralbank.go.ke/p"],
+    ["  knightfrank.com/a  ", "https://knightfrank.com/a"],
+    ["ftp://example.com/f", "ftp://example.com/f"],
+  ])("%j gives %s", (raw, url) => expect(normalizeAddress(raw)).toEqual({ url }));
+
+  it("refuses an empty value and one with spaces inside", () => {
+    expect(normalizeAddress("")).toEqual({ error: ADDRESS_EMPTY });
+    expect(normalizeAddress("   ")).toEqual({ error: ADDRESS_EMPTY });
+    expect(normalizeAddress("knight frank.com")).toEqual({ error: ADDRESS_SPACES });
   });
 });
