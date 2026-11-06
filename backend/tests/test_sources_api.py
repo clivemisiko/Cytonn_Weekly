@@ -73,6 +73,35 @@ def test_a_markets_review_lists_its_own_pieces_filed_under_the_period_end(client
     assert {p["week_end"] for p in body["pieces"]} == {"2026-09-25"}     # the Friday on or before the quarter's last day
 
 
+@pytest.fixture
+def another_day(monkeypatch):
+    """The route's own 'today' is a Monday that is none of the Fridays asked for, so a period that was dropped would show."""
+    class Monday(date):
+        @classmethod
+        def today(cls):
+            return date(2026, 11, 9)
+
+    monkeypatch.setattr("api.main.date", Monday)
+
+
+@pytest.mark.parametrize("subject", [None, SUBJECT])
+def test_a_weekly_listing_keeps_the_period_it_was_asked_for(client, another_day, subject):
+    extra = {"subject": subject} if subject else {}
+    pieces = listing(client, **extra).json()["pieces"]
+    assert [p["subject"] for p in pieces] == ([SUBJECT] if subject else [p.subject for p in REAL_ESTATE])
+    assert {(p["end"], p["week_end"]) for p in pieces} == {("2026-10-02", "2026-10-02")}
+
+
+@pytest.mark.parametrize("subject", [None, "Inflation"])
+def test_a_quarterly_listing_keeps_the_period_it_was_asked_for(client, another_day, subject):
+    extra = {"subject": subject} if subject else {}
+    res = client.get("/api/sources", params={"section": "kenya_macro", "report_type": "quarterly", "period": "Q3'2026", **extra})
+    assert res.status_code == 200
+    pieces = res.json()["pieces"]
+    assert [p["subject"] for p in pieces] == (["Inflation"] if subject else [p["subject"] for p in pieces]) and len(pieces) >= 1
+    assert {(p["end"], p["week_end"]) for p in pieces} == {("2026-09-30", "2026-09-25")}
+
+
 def test_digital_payments_lists_its_five_companies(client):
     body = client.get("/api/sources", params={"section": "digital_payments", "period": PERIOD}).json()
     assert [p["subject"] for p in body["pieces"]] == ["Visa", "Mastercard", "American Express", "PayPal", "Circle"]

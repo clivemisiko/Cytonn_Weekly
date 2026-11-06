@@ -1039,8 +1039,10 @@ def create_app(
     ) -> dict:
         """The pieces of one section (or the one named by ``subject``) with the sources saved for each.  ``sections`` is the
         Focus's typed titles, which are what name its pieces."""
-        spec, period, first = source_piece(section, subject, report_type, period, sections) if subject else (None, None, None)
-        if spec is None:
+        if subject:
+            spec, _, first = source_piece(section, subject, report_type, period, sections)
+            found = [first]
+        else:
             period, _ = chosen_report(report_type, period, None)
             spec = spec_for(report_type, section)
             if spec is None:
@@ -1053,8 +1055,6 @@ def create_app(
                 found = pieces_for(report_type, period, section, sections=titles, today=date.today()) or []
             except ValueError as exc:
                 raise HTTPException(422, str(exc))
-        else:
-            found = [first]
         try:
             pieces = [source_meta(p, source_store.list_for(p.subject, p.end, sources_dir)) for p in found]
         except source_store.SourceError as exc:
