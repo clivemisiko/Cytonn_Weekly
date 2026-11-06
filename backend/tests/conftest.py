@@ -107,6 +107,16 @@ def isolated_chart_files(tmp_path, monkeypatch):
     monkeypatch.setattr(store, "_DEFAULT_ROOT", tmp_path / "charts")
 
 
+@pytest.fixture(autouse=True)
+def no_bedrock_waiting(monkeypatch):
+    """One attempt and no shared cool-off, so a test of a failed Bedrock call never sleeps; a test of the retry sets the
+    variable itself and passes a fake ``sleep``."""
+    from cytonn_weekly.narrative import bedrock_provider
+
+    monkeypatch.setenv("CYTONN_BEDROCK_RETRIES", "1")
+    monkeypatch.setattr(bedrock_provider, "_cool_until", 0.0)
+
+
 _LOCAL_HOSTS = ("127.0.0.1", "::1", "localhost")
 _ALLOWED_HOSTS: set = set()  # host names a test module has opted into, besides loopback; empty unless one does
 

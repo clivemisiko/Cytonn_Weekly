@@ -43,6 +43,8 @@ services:
       CYTONN_SOURCES_MAX_PAGES:
       CYTONN_SOURCES_GATHER_SECONDS:
       CYTONN_SOURCES_MARKET:
+      CYTONN_BEDROCK_RETRIES:
+      CYTONN_BEDROCK_RETRY_BASE_SECONDS:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

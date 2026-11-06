@@ -55,6 +55,8 @@ function textOf(e: RunEvent): string {
       return `Found ${e.detail ?? "0 pages"} for ${stop(e.label)}`;
     case "sources_search_unavailable":
       return `Did not look for sources.${then(e.detail)}`;
+    case "retrying":
+      return `${stop(e.label)}${then(e.detail)}`;
   }
 }
 
@@ -103,7 +105,7 @@ export function stepLines(events: RunEvent[]): StepLine[] {
         ? "working"
         : e.kind === "run_failed" || e.kind === "source_failed"
           ? "failed"
-          : e.kind === "sources_search_unavailable"
+          : e.kind === "sources_search_unavailable" || e.kind === "retrying"
             ? "skipped"
             : closes?.mark ?? "done",
       active: false,

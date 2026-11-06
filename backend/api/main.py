@@ -62,7 +62,7 @@ from cytonn_weekly.charts import store as chart_store
 from cytonn_weekly.charts.block import set_team_chart
 from cytonn_weekly.common import gather as source_gather
 from cytonn_weekly.common import sources as source_store
-from cytonn_weekly.common.run_events import RUN_STARTED, describe, redact, review_counts, safe_describe, user_message
+from cytonn_weekly.common.run_events import RUN_STARTED, current_observer, describe, redact, review_counts, safe_describe, user_message
 from cytonn_weekly.digital_payments import review_run, review_store
 from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview, rejected_draft_notes
 from cytonn_weekly.digital_payments.provider_factory import ENV_VAR as PROVIDER_ENV_VAR
@@ -516,6 +516,7 @@ def create_app(
         is ``run_failed`` with the reason.
         """
         run.record(RUN_STARTED, spec.title)
+        current_observer.set(run.record)   # this thread's draft: a provider that waits and retries reports it here
         if claim is not None and configured_provider() == "bedrock":
             gather_for(spec, ctx, run.record)   # never raises: a draft goes ahead with whatever sources are saved
         try:

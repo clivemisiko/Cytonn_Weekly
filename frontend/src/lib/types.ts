@@ -722,7 +722,8 @@ export type RunEventKind =
   | "run_failed"
   | "sources_looking"
   | "sources_found"
-  | "sources_search_unavailable";
+  | "sources_search_unavailable"
+  | "retrying";
 
 /** One real step of a draft, as the pipeline reported it (common/run_events.py). */
 export interface RunEvent {
