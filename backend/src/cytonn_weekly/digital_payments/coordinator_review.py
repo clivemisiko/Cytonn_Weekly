@@ -41,6 +41,7 @@ from cytonn_weekly.checkers.digital_payments import NOT_IMPLEMENTED, CheckReport
 TABLE_ROW = "table_row"
 OUTLOOK_STAT = "outlook_stat"
 HIGHLIGHT_CLAIM = "highlight_claim"
+WORKBOOK_QUARTER = "workbook_quarter"
 
 # ReviewItem.status
 FLAGGED = "flagged"
@@ -69,7 +70,7 @@ _REF_CLAIM_CHARS = 80
 class ReviewItem:
     """One checkable unit awaiting the coordinator's resolution."""
 
-    kind: str                       # TABLE_ROW | OUTLOOK_STAT | HIGHLIGHT_CLAIM
+    kind: str                       # TABLE_ROW | OUTLOOK_STAT | HIGHLIGHT_CLAIM | WORKBOOK_QUARTER
     ref: str                        # human-readable label
     status: str                     # FLAGGED | CLEAN | NOT_AUTO_VERIFIED
     # FLAGGED: the checker's Flag objects for this unit (a table row can carry

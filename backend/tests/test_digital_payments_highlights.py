@@ -127,6 +127,37 @@ def test_lower_priority_company_fills_in_when_a_higher_one_has_no_news():
     assert any("Mastercard: no story found" in w for w in d["warnings"])
 
 
+def test_three_priority_stories_plus_one_filler():
+    client = NewsClient(all_ir_news(companies=["Visa", "Mastercard", "PayPal", "Circle"]))
+    d = dh.draft_highlights(provider=AnthropicProvider(client=client), today=TODAY)
+    assert {c for c, _ in client.scopes()} >= set(PRIORITY[:4])   # all four priority companies were searched
+    assert [h["company"] for h in d["highlights"]] == ["Visa", "Mastercard", "PayPal", "Circle"] and d["shortfall"] == 0
+    assert not any("only" in w and "of 4" in w for w in d["warnings"])
+
+
+def test_every_priority_company_that_released_appears():
+    for released in (["Visa"], ["Mastercard", "PayPal"], ["Visa", "Mastercard", "American Express", "PayPal"]):
+        d = dh.draft_highlights(provider=AnthropicProvider(client=NewsClient(all_ir_news(companies=released))), today=TODAY)
+        assert [h["company"] for h in d["highlights"]] == released
+
+
+def test_a_priority_search_that_found_but_discarded_a_result_cannot_be_confirmed():
+    class Provider:
+        drafted_by = "test"
+
+        def find_highlight(self, company, ir_domain, **kw):
+            from cytonn_weekly.digital_payments.providers.base import HighlightResult
+
+            return HighlightResult(company=company, search_scope=None, ir_domain=ir_domain, drafted_by="test",
+                                   no_story=True, draft_warnings=[f"{company}: a story was discarded as not about the company"])
+
+    d = dh.draft_highlights(provider=Provider(), today=TODAY)
+    assert d["highlights"] == []
+    for name in PRIORITY[:4]:
+        assert any(f"{name}: a result was found but discarded" in w and "check its releases by hand" in w for w in d["warnings"])
+    assert not any("Circle: a result was found but discarded" in w for w in d["warnings"])
+
+
 def test_block_and_global_payments_are_never_searched_or_used():
     news = all_ir_news(companies=["Visa"])
     # Even if the model volunteers Block / Global Payments news, it must never surface.

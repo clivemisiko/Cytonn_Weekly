@@ -10,7 +10,8 @@ export type ItemKind =
   | "computed_figure"
   | "carried_text"
   | "piece_check"
-  | "chart";
+  | "chart"
+  | "workbook_quarter";
 
 // ---- Report types (report_types.py): which report a review belongs to ----
 

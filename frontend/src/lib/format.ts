@@ -33,6 +33,7 @@ export const KIND_LABELS: Record<ItemKind, string> = {
   computed_figure: "Computed figure",
   carried_text: "Carried forward",
   piece_check: "Whole piece",
+  workbook_quarter: "Workbook quarter",
   chart: "Chart",
 };
 
