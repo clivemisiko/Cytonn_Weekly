@@ -32,6 +32,13 @@ services:
     environment:
       HOME: /app/data
       MPLCONFIGDIR: /app/data/.mplconfig
+      # Source gathering for a Bedrock draft (see .env.example). Names only: a value comes from the environment or the
+      # env_file when one is set, and nothing is passed when it is not. Force-recreate the api after editing .env.
+      EXA_API_KEY:
+      CYTONN_SOURCES_ENOUGH:
+      CYTONN_SOURCES_MAX_QUERIES:
+      CYTONN_SOURCES_MAX_PAGES:
+      CYTONN_SOURCES_GATHER_SECONDS:
 
   web:
     image: ghcr.io/clivemisiko/cytonn-weekly-web:${IMAGE_TAG:-latest}

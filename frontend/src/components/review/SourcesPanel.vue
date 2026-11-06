@@ -89,8 +89,9 @@ const sites = computed(() => listing.value?.approved_sites ?? []);
     <div class="space-y-1">
       <h2 id="sources-title" class="text-lg font-semibold">Sources</h2>
       <p class="text-sm text-muted-foreground">
-        Amazon Bedrock writes only from the pages you supply here, and nothing is searched. Give each piece the pages to read: paste a page’s text with its address
-        and date, or fetch a page from any site. Every quote a claim uses is checked against the saved text, and you see it on the review.
+        Amazon Bedrock writes only from the pages saved here; it has no search of its own. The tool looks for sources itself when a draft starts, and you can add
+        more: paste a page’s text with its address and date, or fetch a page from its address. Remove any page you do not want. Every quote a claim uses is
+        checked against the saved text, and you see it on the review.
       </p>
     </div>
 

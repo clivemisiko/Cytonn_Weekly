@@ -105,6 +105,7 @@ describe("claimSource", () => {
       origin: "pasted",
       savedAt: "6 Nov 2026, 12:00 EAT",
       fingerprint: "ffffffff",
+      textFromSearch: false,
       flags: [NOT_ON_LIST],
       offList: true,
     });

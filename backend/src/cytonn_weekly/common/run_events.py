@@ -34,6 +34,10 @@ Kinds, and what each one means:
   piece's claims checked against their cited text.  ``check_finished`` carries how many
   review items that check produces per status, using the statuses the review model
   already has (``clean``, ``flagged``, ``not_auto_verified``).
+* ``sources_looking`` / ``sources_found``: the gather step of a Bedrock draft (common/gather.py) searching for one piece's
+  sources, labelled with the piece's subject; ``sources_found`` carries how many pages it saved in ``detail``.  A piece that
+  already had enough sources emits neither.  ``sources_search_unavailable``: the search service is not configured, so no
+  piece was searched (emitted once).
 """
 
 from __future__ import annotations
@@ -64,9 +68,12 @@ CHECK_STARTED = "check_started"
 CHECK_FINISHED = "check_finished"
 RUN_FINISHED = "run_finished"
 RUN_FAILED = "run_failed"
+SOURCES_LOOKING = "sources_looking"
+SOURCES_FOUND = "sources_found"
+SOURCES_SEARCH_UNAVAILABLE = "sources_search_unavailable"
 
 KINDS = (RUN_STARTED, SOURCE_STARTED, SOURCE_FINISHED, SOURCE_FAILED, PIECE_STARTED, PIECE_FINISHED, PART_SKIPPED,
-         CHECK_STARTED, CHECK_FINISHED, RUN_FINISHED, RUN_FAILED)
+         CHECK_STARTED, CHECK_FINISHED, RUN_FINISHED, RUN_FAILED, SOURCES_LOOKING, SOURCES_FOUND, SOURCES_SEARCH_UNAVAILABLE)
 TERMINAL = (RUN_FINISHED, RUN_FAILED)
 
 # The review model's statuses (digital_payments/coordinator_review.py), which the counts are keyed by.

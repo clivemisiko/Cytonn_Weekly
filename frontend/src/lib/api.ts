@@ -20,6 +20,7 @@ import type {
   SourceInput,
   SourcesListing,
   WeeklyInputs,
+  Gathered,
 } from "./types";
 
 /** Empty by default: the page calls its own origin, and Vite proxies /api to the backend (vite.config.ts). */
@@ -198,7 +199,14 @@ export const addSource = (slug: string, report: ReportChoice, subject: string, i
     }),
   });
 
-export const removeSource = (id: string) => request<{ removed: string }>(`/api/sources/${encodeURIComponent(id)}`, { method: "DELETE" });
+/** Look again for one piece's sources (the gather step a draft runs). Refused while a draft is running; once an hour per piece. */
+export const gatherSources = (slug: string, report: ReportChoice, subject: string, sections?: string) =>
+  request<Gathered>("/api/sources/gather", {
+    method: "POST",
+    body: JSON.stringify({ section: slug, subject, report_type: report.type, period: report.period || null, sections: sections?.trim() ? sections : null }),
+  }, UPLOAD_TIMEOUT_MS);
+
+export const removeSource =(id: string) => request<{ removed: string }>(`/api/sources/${encodeURIComponent(id)}`, { method: "DELETE" });
 
 /** Where one source's saved text is served as plain text (a link, never fetched by the app). */
 export const sourceTextUrl = (id: string) => `${API_BASE}/api/sources/${encodeURIComponent(id)}/text`;
