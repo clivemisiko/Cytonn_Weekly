@@ -9,7 +9,7 @@ import { type SectionState, draftAgainOff, draftingFor, draftingList, isLive, st
 import { friendlyDate, plural, reportName } from "@/lib/format";
 import { APPROVED_BANNER, fullyApproved } from "@/lib/previous";
 import { useShellRibbon } from "@/lib/shell";
-import type { AppConfig, ExportStatus, Overview, ReportChoice } from "@/lib/types";
+import type { AppConfig, ExportStatus, Overview, ReportChoice, WeekChoice } from "@/lib/types";
 import DraftingBanner from "./DraftingBanner.vue";
 import ExportBar from "./ExportBar.vue";
 import Masthead from "./Masthead.vue";
@@ -22,6 +22,8 @@ const props = defineProps<{
   config: AppConfig;
   /** The report on screen, as the API normalized it. */
   report: ReportChoice;
+  /** The weeks the selector lists; empty until read, or when the route cannot be read. */
+  weeks?: WeekChoice[];
   /** Switch to another report: resolves to an error to show in the picker, or null once switched. */
   onReport: (next: ReportChoice) => Promise<string | null>;
 }>();
@@ -94,6 +96,7 @@ const flagged = computed(() =>
         :current="report"
         :types="overview.report_types"
         :kinds="overview.companion_kinds"
+        :weeks="weeks"
         :on-apply="onReport"
       />
       <Notice v-if="config.dev_mode" role="alert" class="font-semibold">
@@ -111,7 +114,7 @@ const flagged = computed(() =>
       </div>
       <DraftingBanner v-for="d in live" :key="d.run_id ?? `${d.report_type}${d.period}${d.slug}`" :drafting="d" />
       <Notice v-if="fullyApproved(overview)" tone="info" role="status">
-        <span>{{ APPROVED_BANNER }} <RouterLink to="/previous" :class="LINK">Open Previous reports</RouterLink></span>
+        <span>{{ APPROVED_BANNER }} <RouterLink to="/previous" :class="LINK">Previous reports</RouterLink></span>
       </Notice>
       <Notice v-if="overview.report.type === 'companion'" tone="info">
         Companion research reports ride inside a weekly issue as its Focus of the Week. Every section below is Cytonn’s own

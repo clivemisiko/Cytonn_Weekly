@@ -137,10 +137,27 @@ def require_all_approved(reviews: list[tuple[SectionSpec, Optional[CoordinatorRe
     return [(spec, review) for spec, review in reviews if review is not None]
 
 
+def week_choices(db_path: Optional[Union[Path, str]], today: Optional[date] = None) -> list[dict[str, Any]]:
+    """The weeks a coordinator can choose to draft, newest first: the coming Friday and the last eight, each with how many
+    of the six sections' newest runs (the export's grouping) are approved and a status: not_started, in_progress or approved."""
+    friday = latest_friday(today or date.today())
+    out = []
+    for n in range(1, -8, -1):
+        ending = friday + timedelta(days=7 * n)
+        period = f"Week ending {ending.isoformat()}"
+        runs = latest_runs(db_path, WEEKLY, period)
+        approved = sum(1 for spec in SECTIONS if runs.get(spec.slug, {}).get("decision") == APPROVED)
+        status = "approved" if approved == len(SECTIONS) else "in_progress" if runs else "not_started"
+        out.append({"week_ending": ending.isoformat(), "period": period, "status": status,
+                    "approved": approved, "total": len(SECTIONS)})
+    return out
+
+
 def approved_weeks(db_path: Optional[Union[Path, str]], today: Optional[date] = None) -> dict[str, Any]:
     """Every weekly period whose six sections' newest runs are all approved, newest week first, and the week after
     the latest of them (``next_week_ending``, None when no week is fully approved). ``default_week_ending``, never
-    None, is the week the overview opens on: the later of that week and the latest Friday, or the latest Friday.
+    None, is the latest Friday: approvals never move it, the coordinator chooses the week (``choices``, see
+    ``week_choices``).
 
     A week is a period label, grouped exactly as the export groups it (``weekly_reviews``); its week ending is the
     one the export's chart uploads read (``export_week``)."""
@@ -160,9 +177,9 @@ def approved_weeks(db_path: Optional[Union[Path, str]], today: Optional[date] = 
     weeks.sort(key=lambda w: (w["week_ending"], w["approved_at"]), reverse=True)
     latest = date.fromisoformat(weeks[0]["week_ending"]) if weeks else None
     after = latest + timedelta(days=7) if latest else None
-    friday = latest_friday(today or date.today())
     return {"weeks": weeks, "next_week_ending": after.isoformat() if after else None,
-            "default_week_ending": max(after, friday).isoformat() if after else friday.isoformat()}
+            "default_week_ending": latest_friday(today or date.today()).isoformat(),
+            "choices": week_choices(db_path, today)}
 
 
 def refuse_to_send(reviews: list[tuple[SectionSpec, CoordinatorReview]]) -> None:

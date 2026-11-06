@@ -506,12 +506,23 @@ export interface PreviousWeek {
   sections: { slug: string; title: string; run_id: number }[];
 }
 
+/** One week the coordinator can choose to draft: the coming Friday or one of the last eight. */
+export interface WeekChoice {
+  week_ending: string;
+  period: string;
+  status: "not_started" | "in_progress" | "approved";
+  approved: number;
+  total: number;
+}
+
 export interface PreviousWeeks {
   weeks: PreviousWeek[];
-  /** The week after the latest fully approved one: where the overview opens. Null when none is approved. */
+  /** The week after the latest fully approved one. Null when none is approved. */
   next_week_ending: string | null;
-  /** The week the overview opens on when the address names no report: never null. */
+  /** The latest Friday: where the overview opens when nothing was chosen. Approvals never move it. Never null. */
   default_week_ending: string;
+  /** The coming Friday and the last eight, newest first, with how far each has got. */
+  choices: WeekChoice[];
 }
 
 /** What a re-check from an uploaded file did: each changed figure old then new, and what was left as it was. */

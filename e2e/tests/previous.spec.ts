@@ -9,7 +9,7 @@ test("T106 Previous reports is a rail item with its own page, empty until a week
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto("/overview");
   const rail = page.getByRole("navigation", { name: "Report sections" });
-  await expect(page.getByText("This week is fully approved. Find it under Previous reports.")).toHaveCount(0);
+  await expect(page.getByText("All six sections of this week are approved.")).toHaveCount(0);
   await rail.getByRole("button", { name: "Previous reports" }).click();
   await expect(page).toHaveURL(/\/previous$/);
   await expect(page.getByRole("heading", { name: "Previous reports", level: 1 })).toBeVisible();
@@ -20,6 +20,8 @@ test("T106 Previous reports is a rail item with its own page, empty until a week
     route.fulfill({
       json: {
         next_week_ending: "2026-10-16",
+        default_week_ending: "2026-10-09",
+        choices: [],
         weeks: [{ period: "Week ending 2026-10-09", week_ending: "2026-10-09", approved_at: "2026-10-12T07:30:00+00:00", is_dev_draft: true, can_export: true, sections: [] }],
       },
     }),
