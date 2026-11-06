@@ -1134,7 +1134,8 @@ def create_app(
 
     def source_meta(piece, items: list[source_store.SourceText]) -> dict:
         return {"subject": piece.subject, "end": piece.end.isoformat(),
-                "week_end": latest_friday(piece.end).isoformat(), "sources": [s.meta() for s in items]}
+                "week_end": latest_friday(piece.end).isoformat(), "sources": [s.meta() for s in items],
+                "gather": source_store.last_look(piece.subject, piece.end, sources_dir)}
 
     @app.get("/api/sources")
     def list_sources(
