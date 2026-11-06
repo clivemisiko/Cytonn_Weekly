@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { friendlyDate } from "./format";
 import {
   NOT_ON_LIST,
   charsLabel,
@@ -95,7 +96,7 @@ describe("claimSource", () => {
     expect(got).toEqual({
       id: "a1b2c3d4",
       host: "blog.example.com",
-      date: "30 Sep 2026",
+      date: friendlyDate("2026-09-30"),
       quote: "paid $5 million",
       origin: "pasted",
       savedAt: "6 Nov 2026, 12:00 EAT",
