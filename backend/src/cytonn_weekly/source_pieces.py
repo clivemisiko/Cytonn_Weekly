@@ -19,7 +19,7 @@ class Piece:
 
     subject: str
     end: date
-    start: Optional[date] = None        # first day of the piece's window; None is the six days up to ``end`` (a weekly piece)
+    start: Optional[date] = field(default=None, compare=False)        # first day of the piece's window; None is the six days up to ``end`` (a weekly piece)
     domains: tuple[str, ...] = field(default=(), compare=False)       # the brief's preferred domains, which the gather step tries first
     market: bool = field(default=True, compare=False)                 # False for a global company: the gather step adds no market name to its query
 
