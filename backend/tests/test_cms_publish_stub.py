@@ -1,7 +1,7 @@
 """The CMS publish stub (api/cms_publish.py): what it refuses, that it is blocked, and that it touches nothing.
 
 Reviews are the helpers' real ones (tests/review_helpers.py, section_helpers.py,
-periodic_helpers.py), approved the way a coordinator would.  Every call to the stub runs
+periodic_helpers.py), approved the way an analyst would.  Every call to the stub runs
 inside ``sealed()``, which fails the test if anything opens a file for writing, changes
 the file system, opens a database, connects a socket or starts an SMTP session.
 """

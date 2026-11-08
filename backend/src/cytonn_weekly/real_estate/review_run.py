@@ -1,4 +1,4 @@
-"""Runs the Real Estate pipeline up to the coordinator's review.
+"""Runs the Real Estate pipeline up to the analyst's review.
 
     draft rotating subsections -> fetch REIT prices -> compose -> check -> review
 

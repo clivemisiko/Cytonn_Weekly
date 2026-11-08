@@ -1,13 +1,13 @@
-"""Word-doc summary of an approved Digital Payments review, for Edwin and Liz.
+"""Word-doc summary of an approved Digital Payments review, for its recipients.
 
-CLAUDE.md's process flow: after the coordinator's accuracy pass and before publish,
-Edwin and Liz (insight recipients, not approvers) get a Word doc of the
-coordinator-checked values for their own awareness.  This module produces that file
+CLAUDE.md's process flow: after the analyst's accuracy pass and before publish,
+The summary's recipients (insight only, not approvers) get a Word doc of the
+analyst-checked values for their own awareness.  This module produces that file
 and stops there; getting it to them (email, shared drive) is not built.
 
 Only an APPROVED review produces a document.  A missing, in-progress or rejected
 review raises SummaryNotAllowed, so a draft can never be mistaken for the checked
-version.  The document carries the drafted section as the coordinator approved it
+version.  The document carries the drafted section as the analyst approved it
 (highlights, table, outlook) and none of the review mechanics: no flags,
 resolutions or notes.
 
@@ -217,7 +217,7 @@ def build_summary_document(review: CoordinatorReview):
     r.bold, r.font.size, r.font.color.rgb = True, Pt(20), _INK
     p.paragraph_format.space_after = Pt(2)
     _small(doc, f"Report week {_fmt_date(sec['week_start'])} to {_fmt_date(sec['week_end'])}", bold=True)
-    _small(doc, f"Checked and approved by the coordinator on {_fmt_date(review.decided_at)}. "
+    _small(doc, f"Checked and approved by the analyst on {_fmt_date(review.decided_at)}. "
                 "For your awareness ahead of publication.")
 
     found = sum(1 for it in sec["items"] if it.get("kind") == "highlight")

@@ -1,18 +1,18 @@
-"""Coordinator review model for the Digital Payments section (backlog task 8).
+"""Analyst review model for the Digital Payments section (backlog task 8).
 
 Turns compose_section()'s output plus the checking layer's CheckReport into one
 flat list of ReviewItems, one per checkable unit (a table row, an outlook stat,
-or a highlight claim), so the coordinator's single accuracy pass has something
+or a highlight claim), so the analyst's single accuracy pass has something
 concrete to resolve.  The tool never approves anything: the only thing this
-module computes is whether the coordinator's own resolutions allow an approval
-decision, and ``decide()`` records the coordinator's call.
+module computes is whether the analyst's own resolutions allow an approval
+decision, and ``decide()`` records the analyst's call.
 
 Statuses
 --------
 * ``flagged``           -- the checker raised a mismatch / missing / unsourced /
                            sources_disagree flag for it.
 * ``clean``             -- checked with no flag.  Still listed, so the
-                           coordinator sees full coverage and not just problems.
+                           analyst sees full coverage and not just problems.
 * ``not_auto_verified`` -- every highlight claim, until task 6b exists.  This is
                            deliberately not a flag: nothing was found wrong, the
                            tool just has not checked it.
@@ -68,7 +68,7 @@ _REF_CLAIM_CHARS = 80
 
 @dataclass
 class ReviewItem:
-    """One checkable unit awaiting the coordinator's resolution."""
+    """One checkable unit awaiting the analyst's resolution."""
 
     kind: str                       # TABLE_ROW | OUTLOOK_STAT | HIGHLIGHT_CLAIM | WORKBOOK_QUARTER
     ref: str                        # human-readable label
@@ -79,11 +79,11 @@ class ReviewItem:
     resolution: Optional[str] = None  # None | ACCEPT | FIX_NEEDED
     resolution_note: Optional[str] = None
     # HIGHLIGHT_CLAIM only: the claim as drafted ({text, url, title, cited_text}), so the
-    # coordinator can open the source and check it by hand.  Empty for other kinds.
+    # analyst can open the source and check it by hand.  Empty for other kinds.
     context: dict[str, Any] = field(default_factory=dict)
 
     def resolve(self, resolution: Optional[str], note: Optional[str] = None) -> None:
-        """Record the coordinator's call (``None`` clears it)."""
+        """Record the analyst's call (``None`` clears it)."""
         if resolution is not None and resolution not in RESOLUTIONS:
             raise ValueError(f"resolution must be one of {RESOLUTIONS} or None, got {resolution!r}")
         self.resolution = resolution
@@ -129,10 +129,10 @@ class CoordinatorReview:
         return [i for i in self.review_items if i.status == status]
 
     def accept_all_clean(self) -> int:
-        """Accept every CLEAN item the coordinator has not resolved yet; return how many.
+        """Accept every CLEAN item the analyst has not resolved yet; return how many.
 
         Touches nothing else: flagged and not_auto_verified items always need an
-        individual call, and a clean item the coordinator already resolved (say, as
+        individual call, and a clean item the analyst already resolved (say, as
         fix_needed because they spotted something the checker could not) is left alone.
         """
         n = 0
@@ -143,11 +143,11 @@ class CoordinatorReview:
         return n
 
     def decide(self, decision: str) -> None:
-        """Record the coordinator's final call, once.
+        """Record the analyst's final call, once.
 
         "approved" requires ``is_approvable``.  "rejected" is always allowed:
         ``fix_needed`` makes the review unapprovable, and sending it back is
-        exactly what a coordinator does then, so gating rejection on
+        exactly what an analyst does then, so gating rejection on
         approvability would make it impossible when it is needed most.
         """
         if decision not in (APPROVED, REJECTED):
@@ -166,7 +166,7 @@ class CoordinatorReview:
 
 
 def rejected_draft_notes(previous: Optional[CoordinatorReview]) -> Optional[dict[str, Any]]:
-    """What the coordinator said about a rejected draft, for the next draft of the same section.
+    """What the analyst said about a rejected draft, for the next draft of the same section.
 
     Only when ``previous`` (the run just before) was rejected, and only its items marked fix_needed
     or carrying a note (a note on an accepted item is kept too).  None otherwise.  Read-only: it is
@@ -218,7 +218,7 @@ def _unverified(ref: str, claim: dict[str, Any]) -> ReviewItem:
 
 
 def build_coordinator_review(compose_result: dict[str, Any], check_report: CheckReport) -> CoordinatorReview:
-    """Build the coordinator's review items from compose_section() and its CheckReport.
+    """Build the analyst's review items from compose_section() and its CheckReport.
 
     CheckReport holds only flags and a count of figures compared; it records
     nothing about what passed.  "Clean" is therefore derived: every unit that

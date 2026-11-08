@@ -186,7 +186,7 @@ def test_a_point_dated_after_the_ceiling_is_not_drawn_and_not_removed():
     saturday = read(newest=FRIDAY + timedelta(days=1))
     for s in (ahead, saturday):
         assert kinds(s) == ["future"] and cells(s, "future") == ("B8",) and not s.drawn
-        assert len(s.points) == 60            # the row is flagged, not taken out for the coordinator
+        assert len(s.points) == 60            # the row is flagged, not taken out for the analyst
 
 
 # ---------------------------------------------------------------------------

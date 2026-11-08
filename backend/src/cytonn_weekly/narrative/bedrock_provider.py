@@ -85,7 +85,7 @@ SOURCED_SCHEMA["properties"]["claims"]["items"] = {
 
 
 class BedrockError(RuntimeError):
-    """Written for the coordinator and shown as it stands (api/main.failure_message); never holds a secret."""
+    """Written for the analyst and shown as it stands (api/main.failure_message); never holds a secret."""
 
 
 def _clean(name: str) -> str:

@@ -1,4 +1,4 @@
-"""FastAPI app for the coordinator review of every report section.
+"""FastAPI app for the analyst review of every report section.
 
 Digital Payments was the first section and keeps its original endpoints
 (/api/reviews/latest, /api/reviews/draft), which are the weekly report's.  Every
@@ -13,7 +13,7 @@ for any of them.  /api/report-types lists the types and the companion report kin
 (common/run_events.py) and /api/runs/{run_id} returns the same as plain JSON.  The runs
 live in memory only (api/runs.py).  The synchronous draft routes above are unchanged.
 
-/api/inputs/weekly/{week_ending} is "This week's inputs": the files a coordinator uploads
+/api/inputs/weekly/{week_ending} is "This week's inputs": the files an analyst uploads
 for one report week (cytonn_weekly/weekly/inputs.py).  An upload is sent as the request
 body itself (no multipart form), checked, and kept under the data directory.
 /api/inputs/weekly/{week_ending}/analyst is the "Weekly analyst inputs" form beside them: the
@@ -42,7 +42,7 @@ three guards the store does not provide on its own:
   forever.  Seats, queue and run registry are in this process's memory: the API must run as
   one process (threads), never several workers.
 
-The tool never approves anything: /decide only records the coordinator's call, and
+The tool never approves anything: /decide only records the analyst's call, and
 CoordinatorReview.decide() decides whether it is allowed.
 """
 
@@ -142,7 +142,7 @@ def configured_provider() -> str:
 def failure_message(exc: BaseException) -> str:
     """Why a run stopped, as one line for the screen: the error's own message, no traceback, no secrets.
 
-    A ValueError is the pipeline talking to the coordinator (an unusable topic, sections not
+    A ValueError is the pipeline talking to the analyst (an unusable topic, sections not
     yet approved), so its message stands alone, as the draft route shows it; so is a
     SearchKeyError (the web-search key is missing or was refused).  Anything else is named
     by its type.  Any configured secret that an error message happens to quote is removed
@@ -164,7 +164,7 @@ def provider_problem() -> Optional[str]:
 
     Checked before a draft claims the slot or fetches anything: without it, a production
     draft with no key fetched every source first and then failed inside the Anthropic SDK
-    with "Could not resolve authentication method", which tells a coordinator nothing.
+    with "Could not resolve authentication method", which tells an analyst nothing.
     Local mode is checked the same way for its web-search key: every section but Digital
     Payments searches afresh each draft, and Digital Payments' cache lasts one day.  Only
     a missing key is known here; a key Exa refuses is reported by the search itself.
@@ -259,7 +259,7 @@ class GatherBody(BaseModel):
 
 
 class InputNotes(BaseModel):
-    """What the coordinator types beside the week's files.  A field left out is kept; blank clears it."""
+    """What the analyst types beside the week's files.  A field left out is kept; blank clears it."""
 
     bidding_range: Optional[str] = Field(default=None, max_length=weekly_inputs.MAX_NOTE)
     previous_issue: Optional[str] = Field(default=None, max_length=weekly_inputs.MAX_NOTE)
@@ -304,9 +304,9 @@ class RunRequest(DraftRequest):
     """POST /api/runs: the draft route's inputs, with the section in the body.
 
     ``provider`` is optional and only ever a check: the provider the screen told the
-    coordinator a draft would use ("anthropic" spends API budget, "local" is dev mode).
+    analyst a draft would use ("anthropic" spends API budget, "local" is dev mode).
     If the API is configured for a different one, the run is refused rather than started
-    on a provider the coordinator did not see.  It never selects the provider; only
+    on a provider the analyst did not see.  It never selects the provider; only
     CYTONN_LLM_PROVIDER does.
     """
 
@@ -375,7 +375,7 @@ def create_app(
 
     database.target(db_path)  # refuses to start when CYTONN_REQUIRE_POSTGRES=1 and there is no PostgreSQL URL (db.py)
 
-    app = FastAPI(title="Cytonn Weekly: coordinator review")
+    app = FastAPI(title="Cytonn Weekly: analyst review")
     app.add_exception_handler(ProblemError, problem_handler)
     origins = [o.strip() for o in os.environ.get(CORS_ENV_VAR, DEFAULT_WEB_ORIGINS).split(",") if o.strip()]
     # Content-Disposition is exposed so the web app can read the exported report's file name.
@@ -976,7 +976,7 @@ def create_app(
             data, url = fetch_bulletin(week.ending)
         except LookupError as exc:
             raise ProblemError(404, f"{exc}. CBK may not have published it yet: try again later, or upload the PDF yourself.", "bulletin_not_published")
-        except Exception as exc:  # noqa: BLE001 - shown to the coordinator, not swallowed
+        except Exception as exc:  # noqa: BLE001 - shown to the analyst, not swallowed
             raise ProblemError(502, f"The bulletin could not be fetched from CBK. {failure_message(exc)} You can also upload "
                                      "the PDF yourself.", "bulletin_fetch_failed")
         try:
@@ -1070,7 +1070,7 @@ def create_app(
     def export_weekly(period: Optional[str] = Query(default=None, max_length=40)) -> FileResponse:
         """Write the approved weekly report and return the .docx.  409, naming each section, unless all are approved.
 
-        Nothing is sent or published: the file is handed to the coordinator who asked for it.  A dev-mode
+        Nothing is sent or published: the file is handed to the analyst who asked for it.  A dev-mode
         draft is exported with its watermark and banner.
         """
         normalized = weekly_period(period)
@@ -1279,7 +1279,7 @@ def create_app(
         def build() -> CoordinatorReview:
             try:
                 return review_run.build_digital_payments_review()
-            except Exception as exc:  # noqa: BLE001 - shown to the coordinator, not swallowed
+            except Exception as exc:  # noqa: BLE001 - shown to the analyst, not swallowed
                 raise ProblemError(502, f"The draft stopped. {failure_message(exc)}", "draft_failed")
 
         return run_draft("digital_payments", build)
@@ -1301,7 +1301,7 @@ def create_app(
                 raise ProblemError(409, str(exc), "draft_sections_not_approved")
             except ValueError as exc:  # e.g. an unusable Focus topic, or missing Company Updates text
                 raise ProblemError(422, str(exc), "draft_input_invalid")
-            except Exception as exc:  # noqa: BLE001 - shown to the coordinator, not swallowed
+            except Exception as exc:  # noqa: BLE001 - shown to the analyst, not swallowed
                 raise ProblemError(502, f"The draft stopped. {failure_message(exc)}", "draft_failed")
 
         if not uses_provider(spec):

@@ -217,7 +217,7 @@ def anthropic_problem(exc: BaseException) -> Optional[tuple[str, bool]]:
 
 
 def user_message(exc: BaseException) -> str:
-    """``describe`` for the screen: a connection failure is worded for a coordinator, anything else as ``describe``.
+    """``describe`` for the screen: a connection failure is worded for an analyst, anything else as ``describe``.
 
     "ConnectTimeout: _ssl.c:983: The handshake operation timed out" names neither the service nor
     what to do.  httpx's errors, and the Anthropic SDK's, which wrap them, carry the request, so

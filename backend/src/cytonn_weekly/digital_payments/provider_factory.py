@@ -1,7 +1,7 @@
 """Chooses the drafting provider from the CYTONN_LLM_PROVIDER environment variable.
 
     (unset) / "anthropic"  -> AnthropicProvider, the production default
-    "bedrock"              -> BedrockProvider (Claude on Amazon Bedrock; sources supplied by the coordinator
+    "bedrock"              -> BedrockProvider (Claude on Amazon Bedrock; sources supplied by the analyst
                               or fetched in code from approved sites; no search service), production
     "local"                -> LocalProvider (Ollama + Exa), development only
 

@@ -330,7 +330,7 @@ def test_a_failure_message_carries_no_traceback_and_no_secret(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-0123456789abcdef")
     message = failure_message(RuntimeError("401 for key sk-test-0123456789abcdef\n  at line 3"))
     assert message == "An unexpected error occurred (401 for key [redacted] at line 3). Try again; if it happens again, report it with the section name."
-    # a ValueError is the pipeline talking to the coordinator: its message stands alone, as the draft route shows it
+    # a ValueError is the pipeline talking to the analyst: its message stands alone, as the draft route shows it
     assert failure_message(ValueError("the topic is 900 characters")) == "the topic is 900 characters"
     assert failure_message(executive_summary.SectionsNotApproved(["Equities (not drafted)"])).startswith(
         "The Executive Summary is composed from approved sections only.")

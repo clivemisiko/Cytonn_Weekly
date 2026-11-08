@@ -301,7 +301,7 @@ def test_missing_inputs_leave_named_unavailable_parts(tmp_path):
         "not been typed under \"Weekly analyst inputs\", and the equities workbook for this week is not among this week's inputs.")
     assert by["universe_of_coverage"]["reason"].startswith("The Universe of Coverage inputs have not been typed")
     assert by["foreign"]["reason"].startswith("No foreign net flow was found for Monday 28 September")
-    # No workbook: no chart, said as information in the section and asking nothing of the coordinator (no review item).
+    # No workbook: no chart, said as information in the section and asking nothing of the analyst (no review item).
     assert [(by[c]["kind"], by[c]["status"]) for c in ("chart_nasi_pe", "chart_nasi_yield")] == [("chart", "no_workbook")] * 2
     assert by["chart_nasi_pe"]["reason"] == by["chart_nasi_yield"]["reason"] == eqw.NEED_WORKBOOK_FOR_CHARTS[0]
     assert {i.status for i in review.review_items} == {"flagged"} and len(review.review_items) == 8

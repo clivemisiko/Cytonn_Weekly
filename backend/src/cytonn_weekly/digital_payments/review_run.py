@@ -1,4 +1,4 @@
-"""Runs the Digital Payments pipeline end to end up to the coordinator's review.
+"""Runs the Digital Payments pipeline end to end up to the analyst's review.
 
     fetch table -> draft highlights -> draft outlook -> compose -> check -> review
 

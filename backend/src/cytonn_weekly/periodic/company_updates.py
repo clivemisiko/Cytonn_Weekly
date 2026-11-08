@@ -1,9 +1,9 @@
-"""Company Updates: Cytonn's own promotional copy, supplied by the coordinator and never drafted.
+"""Company Updates: Cytonn's own promotional copy, supplied by the analyst and never drafted.
 
 Real structure, the same in every issue read (the weekly #38.2026 and the Q3'2026, H1'2026
 and FY'2025 reviews): "Investment Updates:" (the Cytonn Money Market Fund's weekly rate,
 the Wealth Management Training, pension products) and "Hospitality Updates:" (Cysuites
-offers).  None of it comes from a public source the tool could check, so the coordinator
+offers).  None of it comes from a public source the tool could check, so the analyst
 pastes the text and it is carried verbatim as one review item.
 """
 
@@ -23,7 +23,7 @@ STUBS = ()
 
 
 def build_company_updates_review(ctx: PeriodContext, on_event: Optional[Observer] = None) -> CoordinatorReview:
-    """Raises ValueError (shown to the coordinator) when no text was supplied.
+    """Raises ValueError (shown to the analyst) when no text was supplied.
 
     ``on_event`` is accepted like every builder's and never called: nothing is fetched,
     drafted or checked here, so a run of this section has no step of its own to report.

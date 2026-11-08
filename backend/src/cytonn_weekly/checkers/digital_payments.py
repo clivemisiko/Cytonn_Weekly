@@ -12,7 +12,7 @@ trace to a source, with no LLM calls:
   so a human must choose; it does not imply the draft is wrong).
 * Only figures are checked.  Prose in the outlook and highlights is never
   marked verified here.  The tool never approves anything: the report is just
-  flags and counts for the coordinator.
+  flags and counts for the analyst.
 
 Extension points for later work:
 * Task 6b: verify_highlight_claim() is a stub that returns a NOT_IMPLEMENTED
@@ -106,7 +106,7 @@ class SourceValue:
 
 @dataclass
 class Flag:
-    """One finding for the coordinator.  Never an approval, only a flag."""
+    """One finding for the analyst.  Never an approval, only a flag."""
 
     kind: str                       # MISMATCH | MISSING | UNSOURCED | SOURCES_DISAGREE | NOT_IMPLEMENTED
     scope: str                      # "table" | "outlook" | "highlight"

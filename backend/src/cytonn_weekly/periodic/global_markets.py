@@ -6,7 +6,7 @@ Economic Outlook), Global Commodities Market Performance (the World Bank commodi
 indices, as a chart), Global Equities Market Performance (as a chart).  There is no table.
 
 All three are drafted with citations, preferring the World Bank and IMF for growth and
-commodities.  The charts are listed for the coordinator; the tool does not draw them.
+commodities.  The charts are listed for the analyst; the tool does not draw them.
 """
 
 from __future__ import annotations

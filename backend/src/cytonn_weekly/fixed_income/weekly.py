@@ -1315,7 +1315,7 @@ def build_fixed_income_review(
     """
     week = week_for(week_ending, today)
     inputs = inputs or WeeklyInputs(week, inputs_root)
-    week = week.with_as_at(inputs.week.as_at_set)   # the as-at date the coordinator set for the week, if any
+    week = week.with_as_at(inputs.week.as_at_set)   # the as-at date the analyst set for the week, if any
     fetchers = fetchers or Fetchers()
     problems: list[str] = []
     warnings: list[str] = [week.holiday_note] if week.holiday_note else []

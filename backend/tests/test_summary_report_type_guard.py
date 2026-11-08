@@ -48,7 +48,7 @@ def smtp(monkeypatch):
     monkeypatch.setenv("CYTONN_SMTP_HOST", "smtp.example.com")
     monkeypatch.setenv("CYTONN_SMTP_USER", "tool@example.com")
     monkeypatch.setenv("CYTONN_SMTP_PASSWORD", "s3cret")
-    monkeypatch.setenv("CYTONN_SUMMARY_RECIPIENTS", "edwin@example.com")
+    monkeypatch.setenv("CYTONN_SUMMARY_RECIPIENTS", "first@example.com")
     return SimpleNamespace(cls=cls)
 
 
@@ -76,7 +76,7 @@ def test_email_summary_refuses_a_non_weekly_review_and_never_touches_smtp(build,
     path = tmp_path / "out.docx"
     path.write_bytes(b"not a real docx")
     with pytest.raises(sm.SummaryNotAllowed, match=f"is a {report_type} review"):
-        dl.email_summary(path, review, recipients=["edwin@example.com"])
+        dl.email_summary(path, review, recipients=["first@example.com"])
     smtp.cls.assert_not_called()
 
 

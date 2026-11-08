@@ -1,4 +1,4 @@
-"""Email the latest approved Word summary of a report section to its insight recipients (Edwin and Liz).
+"""Email the latest approved Word summary of a report section to its insight recipients.
 
 Sends REAL email once real SMTP credentials are in .env, so it never sends by default:
 

@@ -1,7 +1,7 @@
 """The approved weekly report as one Word file, in the real issue's order.
 
 Allowed only when **every** weekly section of the week is approved: the tool never
-publishes anything a coordinator has not signed off, and a half-approved report is not a
+publishes anything an analyst has not signed off, and a half-approved report is not a
 report.  The file is for whoever lays the issue out and loads it into the CMS; nothing
 here sends or publishes it (publishing to the CMS is still a blocked stub).
 
@@ -10,9 +10,9 @@ What it holds, read from Cytonn Weekly #38.2026 (cytonnreport.com issue 891):
 * the six sections under the issue's own headings, in its order;
 * every table as a Word table, with its source line and footnotes;
 * each chart the real issue carries, where the issue puts it: the tool's own picture (6.0 in wide, with a line under it
-  saying it is from the analyst workbook and not verified) for a chart it drew and the coordinator approved, otherwise
+  saying it is from the analyst workbook and not verified) for a chart it drew and the analyst approved, otherwise
   "[Chart to add: <caption>]" for the team's own chart (``_chart`` says each case);
-* text carried forward from the previous issue marked as such, and a part the coordinator
+* text carried forward from the previous issue marked as such, and a part the analyst
   approved as missing named as missing, so neither can pass for finished copy;
 * "Executive Summary:" on page 1, after the title, as the published issue (#41.2026) prints it: each section's summary
   as one paragraph led by the section's name in bold, a section with no summary left out.
@@ -138,7 +138,7 @@ def require_all_approved(reviews: list[tuple[SectionSpec, Optional[CoordinatorRe
 
 
 def week_choices(db_path: Optional[Union[Path, str]], today: Optional[date] = None) -> list[dict[str, Any]]:
-    """The weeks a coordinator can choose to draft, newest first: the coming Friday and the last eight, each with how many
+    """The weeks an analyst can choose to draft, newest first: the coming Friday and the last eight, each with how many
     of the six sections' newest runs (the export's grouping) are approved and a status: not_started, in_progress or approved."""
     friday = latest_friday(today or date.today())
     out = []
@@ -156,7 +156,7 @@ def week_choices(db_path: Optional[Union[Path, str]], today: Optional[date] = No
 def approved_weeks(db_path: Optional[Union[Path, str]], today: Optional[date] = None) -> dict[str, Any]:
     """Every weekly period whose six sections' newest runs are all approved, newest week first, and the week after
     the latest of them (``next_week_ending``, None when no week is fully approved). ``default_week_ending``, never
-    None, is the latest Friday: approvals never move it, the coordinator chooses the week (``choices``, see
+    None, is the latest Friday: approvals never move it, the analyst chooses the week (``choices``, see
     ``week_choices``).
 
     A week is a period label, grouped exactly as the export groups it (``weekly_reviews``); its week ending is the
@@ -334,8 +334,8 @@ def _chart(doc, caption: str, chart: Optional[dict[str, Any]], review: Coordinat
     * The tool's chart was drawn, is still the one in use and its stored picture verifies (the same SHA-256 check as the
       review screen's route): the picture, 6.0 in wide, with the caption as its alt text and, in its own paragraph, the
       line saying where its history comes from.
-    * The coordinator chose the team's own chart, or no workbook was uploaded: the placeholder and nothing else.
-    * A workbook was uploaded but the chart was not drawn (the coordinator accepted it as missing): the placeholder and,
+    * The analyst chose the team's own chart, or no workbook was uploaded: the placeholder and nothing else.
+    * A workbook was uploaded but the chart was not drawn (the analyst accepted it as missing): the placeholder and,
       in red, why.
     * The picture is drawn but its file is changed or missing now: the placeholder and a red line, never a picture
       that cannot be verified.
@@ -499,7 +499,7 @@ def build_weekly_document(reviews: list[tuple[SectionSpec, CoordinatorReview]], 
     title(doc, report_title(period))
     decided = max((review.decided_at or "" for _, review in reviews), default="")
     on = f" (last on {day_text(date.fromisoformat(decided[:10]))})" if decided else ""
-    small_line(doc, f"Every section checked and approved by the coordinator{on}. "
+    small_line(doc, f"Every section checked and approved by the analyst{on}. "
                 "Charts are added by hand where marked; text marked as carried forward must be edited before publishing.")
     executive_summary(doc, SUMMARY_HEADING, [(HEADINGS.get(spec.slug, spec.title), summary_text(review.section))
                                              for spec, review in reviews])
@@ -542,9 +542,9 @@ def slug(text: str) -> str:
 
 
 def focus_title(reviews, typed_first: bool = False) -> str:
-    """The Focus of the Week title as the Word file prints it: its piece's headline, else the coordinator's topic.
+    """The Focus of the Week title as the Word file prints it: its piece's headline, else the analyst's topic.
 
-    ``typed_first``: the topic the coordinator typed (the section's ``topic``) first, then the headline; the file
+    ``typed_first``: the topic the analyst typed (the section's ``topic``) first, then the headline; the file
     name uses this, because the headline is drafted and changes on every redraft."""
     for spec, review in reviews:
         if spec.slug == "focus" and review is not None:

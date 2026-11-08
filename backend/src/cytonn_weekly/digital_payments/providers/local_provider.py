@@ -88,7 +88,7 @@ EXA_KEY_MISSING = (
 
 
 class SearchKeyError(RuntimeError):
-    """The web-search key is missing, or Exa refused it.  Its message is written for the coordinator and is shown
+    """The web-search key is missing, or Exa refused it.  Its message is written for the analyst and is shown
     as it stands (api/main.failure_message); it never holds more than the last four characters of a key."""
 
 
@@ -311,7 +311,7 @@ class LocalProvider(DraftingProvider):
         key = self._exa_key()
         resp = self._http.post(EXA_URL, headers={"x-api-key": key, "Content-Type": "application/json"}, json=body)
         if resp.status_code in (401, 403):
-            # httpx's own text for this ("Client error '401 Unauthorized' for url ...") tells a coordinator nothing
+            # httpx's own text for this ("Client error '401 Unauthorized' for url ...") tells an analyst nothing
             raise SearchKeyError(exa_key_refused(key))
         resp.raise_for_status()
         return resp.json().get("results", [])

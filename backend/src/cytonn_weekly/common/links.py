@@ -1,7 +1,7 @@
 """Find text that is, or may be, a web link: text analysis only.
 
 Nothing here fetches, opens or resolves an address, or contacts a domain it finds.  Used on the
-coordinator's pasted Company Updates text, so the reviewer sees each link before it is published.
+analyst's pasted Company Updates text, so the reviewer sees each link before it is published.
 
 ``find_links(text)`` returns each hit with the text matched (hidden characters left out), its
 1-based character position in ``text``, a confidence (``LINK`` or ``POSSIBLE``), a kind

@@ -61,7 +61,7 @@ def require_friday(day: date) -> date:
 class Week:
     """One report week, named by the Friday it ends on, even when that Friday is a market holiday.
 
-    Its figures are as at ``as_at``: the last trading day Monday to Friday, or the day the coordinator set.
+    Its figures are as at ``as_at``: the last trading day Monday to Friday, or the day the analyst set.
     """
 
     ending: date
@@ -86,7 +86,7 @@ class Week:
 
     @property
     def as_at(self) -> date:
-        """The day this week's prices and rates are as at (the Friday, unless it was closed or the coordinator chose another)."""
+        """The day this week's prices and rates are as at (the Friday, unless it was closed or the analyst chose another)."""
         if self.as_at_set is not None:
             return self.as_at_set
         shut = closures()

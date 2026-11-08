@@ -10,7 +10,7 @@ also links eleven per-bank earnings notes as separate PDFs.
 
 Each is structured in numbered sections of Cytonn's own analysis (below, verbatim), which
 the tool does not have, so none is drafted.  The weekly Focus of the Week section can still
-draft a cited piece on the same topic from a topic the coordinator types; it does not
+draft a cited piece on the same topic from a topic the analyst types; it does not
 follow these structures.
 """
 

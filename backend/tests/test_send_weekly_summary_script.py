@@ -23,7 +23,7 @@ _spec = importlib.util.spec_from_file_location("send_weekly_summary", SCRIPT)
 script = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(script)
 
-EDWIN, LIZ = "edwin@example.com", "liz@example.com"
+FIRST, SECOND = "first@example.com", "second@example.com"
 SMTP_VARS = ("CYTONN_SMTP_HOST", "CYTONN_SMTP_PORT", "CYTONN_SMTP_USER", "CYTONN_SMTP_PASSWORD",
              "CYTONN_SMTP_FROM", "CYTONN_SUMMARY_RECIPIENTS")
 
@@ -36,7 +36,7 @@ def configured(monkeypatch, tmp_path):
     monkeypatch.setenv("CYTONN_SMTP_HOST", "smtp.example.com")
     monkeypatch.setenv("CYTONN_SMTP_USER", "tool@example.com")
     monkeypatch.setenv("CYTONN_SMTP_PASSWORD", "s3cret")
-    monkeypatch.setenv("CYTONN_SUMMARY_RECIPIENTS", f"{EDWIN}, {LIZ}")
+    monkeypatch.setenv("CYTONN_SUMMARY_RECIPIENTS", f"{FIRST}, {SECOND}")
     monkeypatch.setattr(sm, "SUMMARY_DIR", tmp_path / "summaries")
 
 
@@ -69,7 +69,7 @@ def test_without_yes_it_previews_and_sends_nothing(db, smtp, capsys):
     assert script.main([], db_path=db) == 0
     out = capsys.readouterr().out
     assert "digital_payments" in out and f"Review run:   {review.run_id}" in out
-    assert "Approval:     approved" in out and f"{EDWIN}, {LIZ}" in out
+    assert "Approval:     approved" in out and f"{FIRST}, {SECOND}" in out
     assert "Re-run with --yes" in out
     smtp.cls.assert_not_called()
     assert not sm.SUMMARY_DIR.exists()  # preview writes no file either
@@ -79,7 +79,7 @@ def test_yes_sends_the_previewed_approved_summary(db, smtp, capsys):
     review = saved(db, make_review())
     assert script.main(["--yes"], db_path=db) == 0
     smtp.server.send_message.assert_called_once()
-    assert smtp.server.send_message.call_args.kwargs["to_addrs"] == [EDWIN, LIZ]
+    assert smtp.server.send_message.call_args.kwargs["to_addrs"] == [FIRST, SECOND]
     assert sm.default_summary_path(review).is_file()
     assert "Sent" in capsys.readouterr().out
 

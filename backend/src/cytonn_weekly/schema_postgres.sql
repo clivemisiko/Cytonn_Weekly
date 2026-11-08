@@ -29,7 +29,7 @@ VALUES
 ON CONFLICT (name) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
--- coordinator_reviews: one row per drafted-and-checked section awaiting (or past) the coordinator's accuracy review.
+-- coordinator_reviews: one row per drafted-and-checked section awaiting (or past) the analyst's accuracy review.
 -- Content and items are JSON text; only what is looked up by gets a column.  Once a decision is recorded the row is
 -- frozen (review_store refuses to change it).
 -- ---------------------------------------------------------------------------
@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS coordinator_reviews (
     run_date      TEXT    NOT NULL,
     created_at    TEXT    NOT NULL,   -- ISO-8601 UTC
     updated_at    TEXT    NOT NULL,   -- ISO-8601 UTC, last save
-    -- NULL until the coordinator decides; set together with decided_at.
+    -- NULL until the analyst decides; set together with decided_at.
     decision      TEXT    CHECK (decision IN ('approved', 'rejected') OR decision IS NULL),
     decided_at    TEXT,
     -- compose_section() output, written once and never changed.

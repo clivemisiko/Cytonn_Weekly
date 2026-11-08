@@ -50,9 +50,9 @@ REQUIRE_POSTGRES = ("CYTONN_REQUIRE_POSTGRES=1 is set (the Docker app), but CYTO
 DEFAULT_SCHEMA = "cytonn"
 MIN_SQLITE = (3, 39, 0)  # IS NOT DISTINCT FROM; RETURNING needs 3.35 and ON CONFLICT 3.24
 
-# What a coordinator is told when PostgreSQL cannot be used, whatever the driver said.
+# What an analyst is told when PostgreSQL cannot be used, whatever the driver said.
 UNREACHABLE = "Could not reach the database. Check CYTONN_DATABASE_URL and the network."
-# What a coordinator is told when the server was reached and refused the request; no detail, the driver's words can name the host.
+# What an analyst is told when the server was reached and refused the request; no detail, the driver's words can name the host.
 REJECTED = "The database rejected the request. See the server log."
 # SQLSTATEs that mean the connection, not the request: class 08 (connection exception), 57P01 to 57P03 (shutdown, crash,
 # cannot connect now) and 53300 (too many connections).  Any other state on an OperationalError (deadlock, cancelled, disk full) is a rejection.
@@ -361,7 +361,7 @@ def _held_connection(url: str, schema: str):
 
 def _connect_postgres(url: str) -> Db:
     # ponytail: one connection per process, one caller at a time (all database work is serialised); a pool
-    # (psycopg_pool) is the upgrade if more than one coordinator ever works at once.
+    # (psycopg_pool) is the upgrade if more than one analyst ever works at once.
     schema = schema_name()
     url = _postgres_url(url)  # refused here, before the lock, if it is not usable
     if not _held_lock.acquire(timeout=LOCK_TIMEOUT_SECONDS):

@@ -3,7 +3,7 @@
 Digital Payments' ``DraftingProvider`` (digital_payments/providers/base.py) is
 company-shaped: one company, its investor relations domain, one highlight.  The
 other sections draft from a *brief* instead - a theme to search for this week
-(Real Estate: "mortgage lending"), or the coordinator's chosen topic (Focus).
+(Real Estate: "mortgage lending"), or the analyst's chosen topic (Focus).
 ``NarrativeProvider`` is that same contract with a brief in place of a company:
 
 * it returns the existing ``HighlightResult`` unchanged (``company`` holds the
@@ -32,7 +32,7 @@ from cytonn_weekly.digital_payments.providers.base import HighlightResult
 class NarrativeBrief:
     """What to search for and how to write it up.
 
-    ``label``: short name shown to the coordinator ("Residential and mortgage lending").
+    ``label``: short name shown to the analyst ("Residential and mortgage lending").
     ``focus``: what qualifies, in a sentence the model is given verbatim.
     ``preferred_domains``: searched first; the open web only if they yield nothing.
     ``blocked_domains``: never searched in the open-web pass (the preferred pass is limited to its own list).

@@ -22,7 +22,7 @@ How the previous issue is found (checked 2026-10-09):
 * A Cytonn Monthly takes the weekly's Sunday slot, so it is the previous issue of the week after
   it.  It is chosen exactly as any issue is; only its ``kind`` says what it is (``MONTHLY_MARKERS``).
 
-A coordinator can also paste the previous issue's address; it is resolved the same way.
+An analyst can also paste the previous issue's address; it is resolved the same way.
 """
 
 from __future__ import annotations
@@ -146,7 +146,7 @@ def _search(text: str, get: Getter) -> list[dict[str, Any]]:
 
 
 def resolve_issue_id(reference: str, get: Getter = http_get) -> int:
-    """An issue id from what a coordinator pasted: the id itself, an API address, or a page address."""
+    """An issue id from what an analyst pasted: the id itself, an API address, or a page address."""
     return _resolve(reference, get)[0]
 
 
@@ -203,7 +203,7 @@ def _has_fuller_twin(candidate: Issue, candidate_id: int, floor: int, issue_at: 
 def find_previous_issue(week_ending: date, get: Getter = http_get, reference: Optional[str] = None) -> Issue:
     """The issue to carry text forward from, for the week ending ``week_ending``.
 
-    With ``reference`` (an id or address the coordinator pasted) it is that issue.  Otherwise
+    With ``reference`` (an id or address the analyst pasted) it is that issue.  Otherwise
     the newest issue published on or before ``week_ending``, passing over any stripped twin of
     an issue (``skipped_twins`` names them).  PreviousIssueError if none within the newest
     ``MAX_WALK`` ids; the look-ahead for a twin stays inside them too.

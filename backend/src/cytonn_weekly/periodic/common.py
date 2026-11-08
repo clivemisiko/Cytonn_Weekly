@@ -41,14 +41,14 @@ REFERENCE_ISSUES = {
 
 @dataclass(frozen=True)
 class PeriodContext:
-    """One Markets Review draft: which report, which period, and what the coordinator supplied."""
+    """One Markets Review draft: which report, which period, and what the analyst supplied."""
 
     report_type: str
     period: str
     start: date
     end: date
     today: date
-    text: Optional[str] = None                       # Company Updates only: the coordinator's text
+    text: Optional[str] = None                       # Company Updates only: the analyst's text
     db_path: Optional[Union[Path, str]] = None       # Executive Summary only: where the approved sections are
 
     @classmethod
@@ -92,7 +92,7 @@ class Stub:
 
     ``fetch`` is the module's own function that raises NotImplementedError with the
     module's ``*_BLOCKED_REASON`` (the documented-stub pattern); ``block()`` is how the
-    coordinator sees it: an ``unavailable`` block they must explicitly acknowledge.
+    analyst sees it: an ``unavailable`` block they must explicitly acknowledge.
     """
 
     id: str
