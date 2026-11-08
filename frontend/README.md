@@ -1,6 +1,6 @@
 # Cytonn Weekly web app
 
-The coordinator's web app: the landing page, the overview with its start and review screens, and the draft run view.
+The analyst's web app: the landing page, the overview with its start and review screens, and the draft run view.
 It replaced the Next.js app that lived in this folder until 2026-10-13 (kept at the local git tag
 `last-next-frontend`). `PARITY.md` is the checklist it was built against, kept as a record.
 

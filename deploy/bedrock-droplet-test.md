@@ -1,6 +1,6 @@
 # Testing a Bedrock draft on the droplet
 
-A Bedrock draft is written only from pages the coordinator supplies for each piece (pasted with a URL and a date, or fetched from a site on the approved list). The tool looks for sources itself when a draft starts (it needs `EXA_API_KEY`), and the coordinator can add more. Code checks that every quote is in the saved page word for word and that every figure in a claim is in its quote. Without `EXA_API_KEY` nothing is searched and a piece with no source comes back unavailable.
+A Bedrock draft is written only from pages the analyst supplies for each piece (pasted with a URL and a date, or fetched from a site on the approved list). The tool looks for sources itself when a draft starts (it needs `EXA_API_KEY`), and the analyst can add more. Code checks that every quote is in the saved page word for word and that every figure in a claim is in its quote. Without `EXA_API_KEY` nothing is searched and a piece with no source comes back unavailable.
 
 Times on screen are East Africa Time. Reports are named by week ending date.
 

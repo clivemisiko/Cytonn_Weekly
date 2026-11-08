@@ -8,7 +8,7 @@ See [CLAUDE.md](CLAUDE.md) for full project context and the task backlog.
 
 ### What it does
 
-The tool drafts the first version of the weekly Cytonn Weekly report. It pulls data from public sources and from the files the analysts send, maps it into the report's existing format, checks every figure, and hands a coordinator a draft to review instead of a blank page. The tool never approves anything: one coordinator approves each section.
+The tool drafts the first version of the weekly Cytonn Weekly report. It pulls data from public sources and from the files the analysts send, maps it into the report's existing format, checks every figure, and hands an analyst a draft to review instead of a blank page. The tool never approves anything: one analyst approves each section.
 
 ### Process flow
 
@@ -16,10 +16,10 @@ The tool drafts the first version of the weekly Cytonn Weekly report. It pulls d
 flowchart LR
     A[Sources and uploads] --> B[Draft each section]
     B --> C[Check every figure]
-    C --> D[Coordinator review<br/>approve or reject per section]
-    D --> E[Word summary by email<br/>Digital Payments only]
-    D --> F[Export approved week<br/>as one .docx]
-    F -.not built.-> G[CMS publish<br/>Playwright]
+    C --> D[Analyst review<br/>approve or reject per section]
+    D --> F[Analyst exports approved week<br/>as one .docx]
+    F --> E[Coordinator reviews<br/>the whole document]
+    E -.not built.-> G[CMS publish<br/>Playwright]
     G -.not built.-> H[Distribute]
 ```
 
@@ -60,13 +60,13 @@ flowchart TB
 | Section registry | `report_types.py`, `report_sections.py` | One list per report type (weekly, quarterly, half-year, annual, companion). A review's key is (report type, period, section). |
 | Drafting layer | `backend/src/cytonn_weekly/<section>/` | Per-section fetchers for tables, and an LLM provider for narrative, written only from search results with every claim cited. |
 | Checking layer | `checkers/`, `common/checks.py` | Exact-match of every table figure and every claim's figures against the normalized source, with rounding half up. Missing parts become flags. |
-| Review model | `coordinator_review.py`, `review_store.py` | `CoordinatorReview` with one item per figure, claim or missing part. Status (machine) is separate from resolution (coordinator). A decided review is frozen. |
+| Review model | `coordinator_review.py`, `review_store.py` | `CoordinatorReview` with one item per figure, claim or missing part. Status (machine) is separate from resolution (analyst). A decided review is frozen. |
 | Weekly inputs | `weekly/` | Upload store, readers for the workbooks, KCB reports, CBK bulletin and NSE price list (OCR), the analyst inputs form, and the Word export. |
 | Storage | `db.py`, `schema.sql` | SQLite by default, PostgreSQL (Supabase) when `CYTONN_DATABASE_URL` is set. Uploads, charts and exports are files under the data folder. |
 
 ### The six weekly sections
 
-Company Updates (the coordinator's pasted text, carried verbatim), Fixed Income, Equities, Real Estate, Digital Payments and Focus of the Week. Digital Payments has its own content shape; every other section is built from generic blocks (`table`, `narrative`, `computed`, `carried`, `supplied`, `unavailable`). Both end as the same `CoordinatorReview`.
+Company Updates (the analyst's pasted text, carried verbatim), Fixed Income, Equities, Real Estate, Digital Payments and Focus of the Week. Digital Payments has its own content shape; every other section is built from generic blocks (`table`, `narrative`, `computed`, `carried`, `supplied`, `unavailable`). Both end as the same `CoordinatorReview`.
 
 ### Design decisions
 
@@ -96,7 +96,7 @@ playwright install chromium
 python -m pytest -q            # the test suite
 ```
 
-## Coordinator review screen (Digital Payments)
+## Analyst review screen (Digital Payments)
 
 A FastAPI layer (`backend/api/`) over `review_store`, `review_run` and `coordinator_review`, and a Vue app (`frontend/`) that talks to it. Run both:
 
