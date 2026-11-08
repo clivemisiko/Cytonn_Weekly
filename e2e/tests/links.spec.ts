@@ -15,7 +15,7 @@ async function draftAndOpen(page: Page, period: string, text: string) {
   await page.getByRole("button", { name: "Save your text as the section" }).click();
   await expect(page.getByRole("heading", { name: "Draft ready for review", level: 2 })).toBeVisible();
   await page.getByRole("link", { name: "Open review" }).click();
-  await expect(page.getByRole("heading", { name: "Company Updates: coordinator review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Company Updates: analyst review", level: 1 })).toBeVisible();
 }
 
 test("T40 a link in Company Updates is flagged as plain text, and the section can still be approved", async ({ page }) => {

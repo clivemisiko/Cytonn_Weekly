@@ -20,14 +20,14 @@ const topbar = (page: Page) => page.getByRole("navigation", { name: "App" });
 
 async function openOverview(page: Page) {
   await page.goto(OVERVIEW);
-  await expect(page.getByRole("heading", { name: "Coordinator review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Analyst review", level: 1 })).toBeVisible();
 }
 
 /** A section's start screen, from the overview card's own button. */
 async function openStart(page: Page, title: string, button: RegExp = /Draft section|Add your text/) {
   await openOverview(page);
   await card(page, title).getByRole("button", { name: button }).click();
-  await expect(page.getByRole("heading", { name: `${title}: coordinator review`, level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: `${title}: analyst review`, level: 1 })).toBeVisible();
 }
 
 test.skip(!!process.env.E2E_VARIANT, "runs on the default test backend");
@@ -46,12 +46,12 @@ test("T01 landing page loads, with Home current and Back disabled", async ({ pag
   await expect(topbar(page).getByRole("button", { name: "Back (this is the start screen)" })).toBeDisabled();
   await page.getByRole("link", { name: "Continue without signing in" }).click();
   await expect(page).toHaveURL(DEFAULT_WEEK); // a bare /overview opens on a labelled week
-  await expect(page.getByRole("heading", { name: "Coordinator review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Analyst review", level: 1 })).toBeVisible();
 });
 
 test("T02 an old bookmark of a report at / goes to the overview with its query kept", async ({ page }) => {
   await page.goto(`/?report=weekly&period=${encodeURIComponent(PERIOD)}`);
-  await expect(page.getByRole("heading", { name: "Coordinator review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Analyst review", level: 1 })).toBeVisible();
   const url = new URL(page.url());
   expect(url.pathname).toBe("/overview");
   expect(url.searchParams.get("report")).toBe("weekly");
@@ -78,7 +78,7 @@ test("T03 overview lists the six weekly sections, the dev mark and the export ga
 
 test("T04 report picker shows the API's refusal, switches report, keeps it on reload; Back from the overview goes Home", async ({ page }) => {
   await page.goto("/overview");
-  await expect(page.getByRole("heading", { name: "Coordinator review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Analyst review", level: 1 })).toBeVisible();
   await page.getByLabel("Report type").selectOption("quarterly");
   await expect(page.getByLabel("Period", { exact: true })).toHaveValue("Q3'2026");
   await page.getByLabel("Period", { exact: true }).fill("Q2'2026");
@@ -149,7 +149,7 @@ test("T06 top bar stays in view after scrolling; Back goes to the section list, 
   await expect.poll(async () => (await page.locator("header").first().boundingBox())?.y).toBe(0);
   expect((await page.locator("header").first().boundingBox())?.height).toBe(44);
   await topbar(page).getByRole("button", { name: "Back to all sections" }).click();
-  await expect(page.getByRole("heading", { name: "Coordinator review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Analyst review", level: 1 })).toBeVisible();
   expect(new URL(page.url()).searchParams.get("period")).toBe(PERIOD);
   await expect(card(page, "Equities")).toBeVisible();
 
@@ -281,7 +281,7 @@ test("T09 Company Updates: run to done, open the review, Approve is gated, the d
   await expect(page).toHaveURL(/\/runs\//);
   await page.getByRole("link", { name: "Open review" }).click();
 
-  await expect(page.getByRole("heading", { name: "Company Updates: coordinator review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Company Updates: analyst review", level: 1 })).toBeVisible();
   companyReview = new URL(page.url()).searchParams.get("review") ?? "";
   expect(companyReview).toMatch(/^\d+$/);
   const approve = page.getByRole("button", { name: "Approve", exact: true });
@@ -354,7 +354,7 @@ test("T11 a stopped run shows the error text and the way back", async ({ page })
   await expect(page.getByRole("log", { name: "Steps of this draft" }).getByRole("listitem").last()).toContainText("Failed: The draft stopped.");
   await expect(page.getByRole("heading", { name: "Draft ready for review" })).toHaveCount(0);
   await page.getByRole("link", { name: "Back to overview" }).click();
-  await expect(page.getByRole("heading", { name: "Coordinator review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Analyst review", level: 1 })).toBeVisible();
   expect(new URL(page.url()).searchParams.get("period")).toBe(PERIOD);
   await expect(card(page, "Real Estate").getByText("Not drafted for w/e 9 Oct 2026")).toBeVisible();
 });
@@ -382,7 +382,7 @@ test("T12 Fixed Income: run view steps to done, review lists the three statuses,
   await expect(tiles).toContainText("Clean");
   await page.getByRole("link", { name: "Open review" }).click();
 
-  await expect(page.getByRole("heading", { name: "Fixed Income: coordinator review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Fixed Income: analyst review", level: 1 })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Review items", level: 2 })).toBeVisible();
   const flaggedHead = page.getByRole("button", { name: /^! Flagged by the checker \(\d+\)$|^Flagged by the checker \(\d+\)$/ });
   const unverifiedHead = page.getByRole("button", { name: /Not automatically verified \(\d+\)$/ });
@@ -454,7 +454,7 @@ test("T13 Equities: run to done and its review opens with items", async ({ page 
   await expect(page.getByRole("heading", { name: "Equities: draft run", level: 1 })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Draft ready for review", level: 2 })).toBeVisible({ timeout: RUN_TIMEOUT });
   await page.getByRole("link", { name: "Open review" }).click();
-  await expect(page.getByRole("heading", { name: "Equities: coordinator review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Equities: analyst review", level: 1 })).toBeVisible();
   expect(await page.locator("li[data-status]").count()).toBeGreaterThan(0);
   await expect(page.getByRole("button", { name: /Flagged by the checker \(\d+\)$/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeDisabled();

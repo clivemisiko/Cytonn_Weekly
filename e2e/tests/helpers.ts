@@ -18,7 +18,7 @@ export const topbar = (page: Page) => page.getByRole("navigation", { name: "App"
 export async function openStart(page: Page, title: string, period = PERIOD, type = "weekly") {
   await page.goto(overviewUrl(period, type));
   await card(page, title).getByRole("button", { name: /Draft section|Add your text|Compose summary|View review|Resume review/ }).click();
-  await expect(page.getByRole("heading", { name: `${title}: coordinator review`, level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: `${title}: analyst review`, level: 1 })).toBeVisible();
 }
 
 /**

@@ -112,7 +112,7 @@ describe("shell store", () => {
     expect(states(shell).fixed_income).toBe("in_review");
     expect(shell.approved.value).toBe(1);
 
-    // The coordinator rejects Fixed Income: the screen says every state is unknown until the payload is read again.
+    // The analyst rejects Fixed Income: the screen says every state is unknown until the payload is read again.
     served = overview({ company_updates: "approved", fixed_income: "rejected" });
     shell.invalidate();
     expect(states(shell)).toEqual({ company_updates: null, fixed_income: null, equities: null, real_estate: null });

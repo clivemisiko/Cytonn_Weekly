@@ -153,7 +153,7 @@ describe("draft again", () => {
     expect(draftAgainOff(section(false), mine, config("No key."))).toBeNull();
   });
 
-  it("tells a coordinator what happens to the earlier review, and about the export only after an approval", () => {
+  it("tells an analyst what happens to the earlier review, and about the export only after an approval", () => {
     expect(redraftNotes({ run_id: 7, decision: "rejected" }, "weekly", false)).toEqual([
       "The earlier review (run 7, rejected) stays saved and read-only.",
       "The new draft becomes the current one and starts undecided.",

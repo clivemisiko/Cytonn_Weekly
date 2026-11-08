@@ -1,5 +1,5 @@
 <script setup lang="ts">
-withDefaults(defineProps<{ title?: string; wide?: boolean; flush?: boolean }>(), { title: "Digital Payments: coordinator review", wide: false, flush: false });
+withDefaults(defineProps<{ title?: string; wide?: boolean; flush?: boolean }>(), { title: "Digital Payments: analyst review", wide: false, flush: false });
 </script>
 
 <template>

@@ -22,7 +22,7 @@ async function draftCompanyUpdates(request: APIRequestContext, period: string, t
 
 async function openReview(page: Page, period: string, runId: number) {
   await page.goto(`${overviewUrl(period)}&review=${runId}`);
-  await expect(page.getByRole("heading", { name: "Company Updates: coordinator review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Company Updates: analyst review", level: 1 })).toBeVisible();
 }
 
 test("T37 a rejected draft’s fix-needed item and its note are listed on the next draft, with the run number", async ({ page, request }) => {

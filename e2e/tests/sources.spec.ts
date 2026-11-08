@@ -24,7 +24,7 @@ const group = (page: Page, subject: string) => page.getByRole("group", { name: `
 async function openFocusStart(page: Page) {
   await page.goto(overviewUrl());
   await card(page, "Focus of the Week").getByRole("button", { name: /Draft section|Draft again/ }).click();
-  await expect(page.getByRole("heading", { name: "Focus of the Week: coordinator review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Focus of the Week: analyst review", level: 1 })).toBeVisible();
 }
 
 async function openFocus(page: Page) {
@@ -171,7 +171,7 @@ test("T112 a never-searched piece is calm, and only a piece a search found nothi
   await expect(group(page, "Market performance").getByText("Nothing found yet", { exact: false })).toHaveCount(0);
   await expect(page.getByText("a search found nothing for 1 of 2 pieces", { exact: false })).toBeVisible();
 
-  await expect(page.getByRole("button", { name: DRAFT })).toBeEnabled(); // the coordinator decides
+  await expect(page.getByRole("button", { name: DRAFT })).toBeEnabled(); // the analyst decides
   await page.getByRole("button", { name: DRAFT }).click();
   const dialog = page.getByRole("dialog", { name: "Some pieces have no sources" });
   await expect(dialog).toContainText("“Overview of the topic”: the last search found nothing and no source was added, so it will come back unavailable.");
@@ -190,7 +190,7 @@ test("T113 a drafted piece shows its source host, date and verified quote, and a
   await expect(page).toHaveURL(/\/runs\//);
   await expect(page.getByRole("heading", { name: "Draft ready for review", level: 2 })).toBeVisible({ timeout: 60_000 });
   await page.getByRole("link", { name: "Open review" }).click();
-  await expect(page.getByRole("heading", { name: "Focus of the Week: coordinator review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Focus of the Week: analyst review", level: 1 })).toBeVisible();
   await expect(page.getByText("DEV MODE", { exact: false })).toHaveCount(0); // a Bedrock draft is a production draft
 
   await page.getByRole("button", { name: "Expand all" }).click();

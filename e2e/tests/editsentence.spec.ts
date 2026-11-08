@@ -24,7 +24,7 @@ async function draftFocus(request: APIRequestContext, period: string): Promise<n
 
 async function open(page: Page, period: string, runId: number) {
   await page.goto(`${overviewUrl(period)}&review=${runId}`);
-  await expect(page.getByRole("heading", { name: "Focus of the Week: coordinator review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Focus of the Week: analyst review", level: 1 })).toBeVisible();
 }
 
 const flagged = (page: Page) => page.locator('li[data-status="flagged"]');

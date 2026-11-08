@@ -102,7 +102,7 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
         </ul>
       </section>
 
-      <!-- The real issue's charts for this section. The tool does not draw them, so they are listed for the coordinator
+      <!-- The real issue's charts for this section. The tool does not draw them, so they are listed for the analyst
            to add by hand, with the issue they were read from. A note, not a review item. -->
       <section
         v-if="section.chart_notes && section.chart_notes.length > 0"
@@ -178,7 +178,7 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
         </template>
       </section>
 
-      <!-- Text the coordinator supplied (Company Updates), shown as written. Never drafted, never checked. -->
+      <!-- Text the analyst supplied (Company Updates), shown as written. Never drafted, never checked. -->
       <article v-else-if="b.kind === 'supplied'" :class="PIECE" :aria-labelledby="`blk-${b.id}`">
         <h3 :id="`blk-${b.id}`" :class="HEAD">
           <Numeral v-if="b.numeral || !b.role">{{ b.numeral }}</Numeral>

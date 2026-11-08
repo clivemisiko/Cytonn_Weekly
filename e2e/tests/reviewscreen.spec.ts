@@ -21,7 +21,7 @@ test("T72 the review items are the panel beside the draft and never fold, the st
   await page.setViewportSize({ width: 1366, height: 768 });
   await page.goto(overviewUrl(period));
   await card(page, "Digital Payments").getByRole("button", { name: "Resume review" }).click();
-  await expect(page.getByRole("heading", { name: "Digital Payments: coordinator review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Digital Payments: analyst review", level: 1 })).toBeVisible();
   const items = page.getByRole("complementary", { name: "Review items" });
   const draft = page.locator("section", { has: page.getByRole("heading", { name: /^Drafted section: / }) }).first();
   await expect(items.getByRole("heading", { name: "Review items", level: 2 })).toBeVisible();

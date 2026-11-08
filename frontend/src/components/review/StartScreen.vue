@@ -27,7 +27,7 @@ const MAX_TEXT = 10_000;
 
 /**
  * One section's start: what a run does (the section's own steps, from the API), the report and period it is for, its
- * current saved review to resume, and the draft button. Focus of the Week also takes the coordinator's topic and
+ * current saved review to resume, and the draft button. Focus of the Week also takes the analyst's topic and
  * Company Updates their text; the tool never picks the one or writes the other.
  *
  * The draft button starts a run (POST /api/runs) and goes to its run view (/runs/{run_id}), which shows the draft's
@@ -131,7 +131,7 @@ async function start() {
   }
   afterCharts();
 }
-// A Bedrock draft says first which pieces a search has already found nothing for; the coordinator may draft anyway. With none, no question is asked.
+// A Bedrock draft says first which pieces a search has already found nothing for; the analyst may draft anyway. With none, no question is asked.
 const sourcesNote = ref<string | null>(null);
 function afterCharts() {
   sourcesNote.value = missingSourcesNote(nothingFound.value);
@@ -214,7 +214,7 @@ const lists = computed(() => [
 
 <template>
   <div>
-    <Masthead wide :title="`${section.title}: coordinator review`">
+    <Masthead wide :title="`${section.title}: analyst review`">
       <template v-if="!weekly" #meta><span class="font-mono">{{ report.period }}</span></template>
       {{ weekly ? "Draft this week’s section, check it, and review it here." : `Draft ${thisRun} section, check it, and review it here.` }}
     </Masthead>

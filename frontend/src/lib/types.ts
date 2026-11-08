@@ -18,7 +18,7 @@ export type ItemKind =
 export const REPORT_TYPES = ["weekly", "monthly", "quarterly", "half_year", "annual", "companion"] as const;
 export type ReportType = (typeof REPORT_TYPES)[number];
 
-/** What the coordinator picked: a report type, its period label, and (companion reports only) which report. */
+/** What the analyst picked: a report type, its period label, and (companion reports only) which report. */
 export interface ReportChoice {
   type: ReportType;
   period: string;
@@ -343,7 +343,7 @@ export interface UnavailableBlock {
   unblock: string;
 }
 
-/** Text the coordinator supplied (Company Updates): carried verbatim, never drafted or checked. */
+/** Text the analyst supplied (Company Updates): carried verbatim, never drafted or checked. */
 export interface SuppliedBlock {
   numeral: string;
   role?: string;
@@ -367,7 +367,7 @@ export interface ChartDefect {
 /**
  * A chart the tool draws from the analyst workbook (charts/block.py). Metadata only: the picture and the series come from their
  * own routes. `no_workbook` means no workbook was uploaded, so nothing was read: information, with no review item.
- * `use_team_chart` is true while the coordinator has set the tool's chart aside for the team's own.
+ * `use_team_chart` is true while the analyst has set the tool's chart aside for the team's own.
  */
 export interface ChartBlock {
   numeral: string;
@@ -516,7 +516,7 @@ export interface PreviousWeek {
   sections: { slug: string; title: string; run_id: number }[];
 }
 
-/** One week the coordinator can choose to draft: the coming Friday or one of the last eight. */
+/** One week the analyst can choose to draft: the coming Friday or one of the last eight. */
 export interface WeekChoice {
   week_ending: string;
   period: string;
@@ -804,7 +804,7 @@ export interface SectionSummary {
   title: string;
   available: boolean;
   needs_topic: boolean;
-  /** Company Updates: the coordinator pastes the text; nothing is drafted. */
+  /** Company Updates: the analyst pastes the text; nothing is drafted. */
   needs_text: boolean;
   /** Executive Summary: composed only once every other section of this report and period is approved. */
   requires_approved: boolean;

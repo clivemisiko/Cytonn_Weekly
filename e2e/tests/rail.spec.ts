@@ -13,7 +13,7 @@ test.describe.configure({ mode: "serial" });
 const json = { "Content-Type": "application/json" };
 const TITLES = ["Company Updates", "Fixed Income", "Equities", "Real Estate", "Digital Payments", "Focus of the Week"];
 const rail = (page: Page) => page.getByRole("navigation", { name: "Report sections" });
-const heading = (title: string) => ({ name: `${title}: coordinator review`, level: 1 }) as const;
+const heading = (title: string) => ({ name: `${title}: analyst review`, level: 1 }) as const;
 
 /** Company Updates drafted through the API for that week (it calls no model); left in review. */
 async function draftCompanyUpdates(request: APIRequestContext, period: string, text: string) {
@@ -88,7 +88,7 @@ test("T60 a section opens from the rail, from the overview and from another sect
   await expect(rail(page).getByRole("button", { name: "Company Updates, Not drafted" })).not.toHaveAttribute("aria-current", "page");
 
   await rail(page).getByRole("button", { name: "Overview", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Coordinator review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Analyst review", level: 1 })).toBeVisible();
   await expect(rail(page).getByRole("button", { name: "Overview", exact: true })).toHaveAttribute("aria-current", "page");
   await expect(rail(page).getByRole("progressbar")).toHaveCount(0);
 });
@@ -126,7 +126,7 @@ test("T62 on the run view the rail's sections do nothing and say so; its Overvie
 
   await rail(page).getByRole("button", { name: "Overview", exact: true }).click();
   await expect(page).toHaveURL(/\/overview/);
-  await expect(page.getByRole("heading", { name: "Coordinator review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Analyst review", level: 1 })).toBeVisible();
 });
 
 test("T63 a rejection changes the rail's state at once and leaves the approved count where it was", async ({ page, request }) => {

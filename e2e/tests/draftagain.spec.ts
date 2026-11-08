@@ -13,7 +13,7 @@ test.describe.configure({ mode: "serial" });
 test.afterEach(() => void release());
 
 const json = { "Content-Type": "application/json" };
-const HEADING = { name: "Company Updates: coordinator review", level: 1 } as const;
+const HEADING = { name: "Company Updates: analyst review", level: 1 } as const;
 
 /** Company Updates drafted through the API for that week; the run's id. */
 async function draftCompanyUpdates(request: APIRequestContext, period: string, text: string): Promise<number> {
