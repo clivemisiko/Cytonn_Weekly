@@ -129,7 +129,7 @@ def test_markets_review_specs_carry_the_real_issue(report_type):
 
 
 def test_q3_chart_checklist_matches_the_issue():
-    """Q3'2026 has 23 chart images (cytonnreport.com, read 2026-10-05); every one is listed for the coordinator."""
+    """Q3'2026 has 23 chart images (cytonnreport.com, read 2026-10-05); every one is listed for the analyst."""
     total = sum(len(s.charts) for s in rs.sections_for("quarterly"))
     assert total == 23
     assert "Bond Issuances" not in " ".join(rs.spec_for("quarterly", "fixed_income").charts)  # tables are not charts

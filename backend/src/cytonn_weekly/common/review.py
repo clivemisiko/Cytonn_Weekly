@@ -1,4 +1,4 @@
-"""Section content and coordinator review for every section after Digital Payments.
+"""Section content and analyst review for every section after Digital Payments.
 
 Reuses the Digital Payments review model as-is: ``ReviewItem`` and
 ``CoordinatorReview`` (coordinator_review.py) were already section-agnostic, and
@@ -28,8 +28,8 @@ Block kinds:
                      warnings, drafted_by, search_scope, topic}.
 * ``unavailable`` -- a part of the real report this tool cannot draft yet: {id, numeral, title,
                      reason, unblock}.  It still becomes a review item, so a section cannot be
-                     approved without the coordinator explicitly acknowledging what is missing.
-* ``supplied``    -- text the coordinator typed in, carried verbatim and never drafted or checked
+                     approved without the analyst explicitly acknowledging what is missing.
+* ``supplied``    -- text the analyst typed in, carried verbatim and never drafted or checked
                      (Company Updates, Cytonn's own promotional copy): {id, numeral, title, body_md,
                      supplied_by}.  It is one review item, never marked verified.
 * ``computed``    -- a paragraph the tool worked out from published figures (common/computed.py):
@@ -50,7 +50,7 @@ second readings handed to the table check, which flags any that disagree.
 The quarterly, half-year and annual reviews (periodic/) add, at the top level,
 ``report_type``, ``period``, ``period_start``/``period_end`` and ``chart_notes``: the real
 issue's chart titles for that section, which the tool does not generate and the
-coordinator adds by hand.
+analyst adds by hand.
 
 Statuses keep their Digital Payments meaning: ``flagged`` (a checker flag), ``clean``
 (checked, no flag), ``not_auto_verified`` (a drafted claim: its figures may have been
@@ -303,12 +303,12 @@ REMOVED_NOTE = ("Removed by you. The sentence is no longer in the draft. Read th
 
 
 def supplied_item(b: dict[str, Any]) -> ReviewItem:
-    """The coordinator's own text: one item, never verified, and flagged when it holds a web link.
+    """The analyst's own text: one item, never verified, and flagged when it holds a web link.
 
     A certain link (an http address, www., a markdown or HTML link, a shortener) makes the item
     flagged, every hit one line; only possible ones (a bare domain, an email address, "click here"
     with no link) leave it not auto-verified, with the lines under the usual note.  Nothing is
-    fetched or opened, and the text is never changed.  Neither blocks approval: the coordinator
+    fetched or opened, and the text is never changed.  Neither blocks approval: the analyst
     resolves the item as usual.
     """
     ref, context = f"{b['title']} (supplied by you)", {"text": b.get("body_md", "")}

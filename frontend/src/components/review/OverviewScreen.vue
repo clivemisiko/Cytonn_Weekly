@@ -85,7 +85,7 @@ const flagged = computed(() =>
 
 <template>
   <PageGrid aside-title="Report status" storage-key="overview">
-    <Masthead flush title="Coordinator review">
+    <Masthead flush title="Analyst review">
       <template #meta>Today {{ friendlyDate(overview.today) }}</template>
       {{ kind ? `${kind.title}: ` : `${name}: ` }}{{ plural(overview.sections.length, "report section") }}. Each is drafted, checked and approved or rejected on its own.
     </Masthead>

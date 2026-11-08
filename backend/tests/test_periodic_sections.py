@@ -171,7 +171,7 @@ def test_each_section_builds_with_its_period_and_charts(report_type, period, slu
     sec = review.section
     assert (sec["section"], sec["report_type"], sec["period"]) == (slug, report_type, period)
     assert sec["period_start"] < sec["period_end"]
-    # Every missing part is a flagged item the coordinator must acknowledge; nothing is silently left out.
+    # Every missing part is a flagged item the analyst must acknowledge; nothing is silently left out.
     unavailable = [b for b in sec["blocks"] if b["kind"] == "unavailable"]
     assert len([i for i in review.review_items if i.kind == "unavailable_part"]) == len(unavailable)
     assert all(i.status == FLAGGED for i in review.review_items if i.kind == "unavailable_part")

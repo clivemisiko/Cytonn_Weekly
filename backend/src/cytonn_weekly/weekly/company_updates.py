@@ -1,4 +1,4 @@
-"""The weekly report's Company Updates: Cytonn's own copy, pasted by the coordinator and carried verbatim.
+"""The weekly report's Company Updates: Cytonn's own copy, pasted by the analyst and carried verbatim.
 
 #38.2026 opens with "Company updates": "Investment Updates:" (the Cytonn Money Market
 Fund's weekly rate, the Wealth Management Training, pension products) and "Hospitality
@@ -25,7 +25,7 @@ TITLE = "Company Updates"
 
 def build_company_updates_weekly_review(text: str, week_ending: Optional[date] = None, today: Optional[date] = None,
                                         on_event: Optional[Observer] = None) -> CoordinatorReview:
-    """Raises ValueError (shown to the coordinator) when no text was supplied.
+    """Raises ValueError (shown to the analyst) when no text was supplied.
 
     ``on_event`` is accepted like every builder's and never called: nothing is fetched,
     drafted or checked here.

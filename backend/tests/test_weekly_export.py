@@ -124,7 +124,7 @@ def test_the_export_is_refused_until_every_section_is_approved(tmp_path, built):
 def test_the_report_has_the_real_order_and_headings_with_a_summary_per_section(week, tmp_path):
     assert export.export_status(week, PERIOD)["ready"] is True
     path = export.write_weekly_report(week, PERIOD, tmp_path / "out")
-    assert path.name == "ssa-eurobonds-cytonn-weekly.docx"   # the Focus topic the coordinator typed
+    assert path.name == "ssa-eurobonds-cytonn-weekly.docx"   # the Focus topic the analyst typed
     doc, text = _text(path)
     headings = [p.text for p in doc.paragraphs if p.style.name == "Heading 1"]
     assert headings == ["Executive Summary:"] + ORDER
@@ -267,7 +267,7 @@ def test_the_api_reports_readiness_and_returns_the_file(week, tmp_path):
 
 
 def test_nothing_in_the_app_sends_or_publishes_the_export():
-    """The export hands a file to the coordinator; the CMS publish step is still the untouched stub."""
+    """The export hands a file to the analyst; the CMS publish step is still the untouched stub."""
     import inspect
 
     from api import cms_publish
@@ -373,7 +373,7 @@ def test_the_approval_line_writes_its_date_as_the_app_does(week, tmp_path):
     line = text[1]
     reviews = export.require_all_approved(export.weekly_reviews(week, PERIOD))
     last = max(review.decided_at for _, review in reviews)
-    assert line.startswith(f"Every section checked and approved by the coordinator (last on {day_text(date.fromisoformat(last[:10]))}). ")
+    assert line.startswith(f"Every section checked and approved by the analyst (last on {day_text(date.fromisoformat(last[:10]))}). ")
     assert re.search(r"\(last on \d{1,2} [A-Z][a-z]{2} \d{4}\)", line) and not re.search(r"\d{4}-\d{2}-\d{2}", line)
 
 

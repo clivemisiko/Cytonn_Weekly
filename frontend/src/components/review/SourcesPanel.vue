@@ -10,7 +10,7 @@ import SourcePieceCard from "./SourcePieceCard.vue";
 /**
  * The pages each piece of this section is written from (Amazon Bedrock drafts only; the screen shows it for no other
  * provider). The tool searches for them when a draft starts and the analyst can add more; a piece with no source comes
- * back unavailable, and every quote it uses is checked against the saved text. The panel holds what a coordinator must
+ * back unavailable, and every quote it uses is checked against the saved text. The panel holds what an analyst must
  * act on, so it never folds.
  */
 const props = defineProps<{

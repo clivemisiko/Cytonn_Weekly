@@ -267,7 +267,7 @@ def test_afx_down_is_reported_and_the_equities_draft_goes_on_without_its_tables(
     assert not [b for b in review.section["blocks"] if b["kind"] == "table"]
     assert [b for b in review.section["blocks"] if b["kind"] == "narrative"]
     assert any("could not be reached" in w for w in review.section["warnings"])
-    # each missing table is a flagged item the coordinator has to acknowledge
+    # each missing table is a flagged item the analyst has to acknowledge
     assert sum(1 for i in review.review_items if i.status == "flagged") >= len(TABLE_TITLES)
     assert not review.is_approvable
 

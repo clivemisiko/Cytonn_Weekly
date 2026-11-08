@@ -57,10 +57,10 @@ class SourceUnreachable(RuntimeError):
     """afx stopped answering part-way through the per-ticker pages."""
 SOURCE_NAME = "afx.kwayisi.org"
 
-# afx being down (no answer, or an HTTP error status) must not cost the coordinator the
+# afx being down (no answer, or an HTTP error status) must not cost the analyst the
 # whole section: the cited highlights do not depend on it.  The review runs catch these,
 # and only these, and put each afx table in the draft as an ``unavailable`` part the
-# coordinator has to acknowledge.  Anything else (a page that no longer parses, a bug)
+# analyst has to acknowledge.  Anything else (a page that no longer parses, a bug)
 # still fails the run, because that is not an outage and a retry will not cure it.
 SOURCE_DOWN_ERRORS = (SourceUnreachable, httpx.HTTPError, TimeoutError, ConnectionError)
 DOWN_UNBLOCK = (

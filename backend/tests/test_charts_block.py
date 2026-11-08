@@ -54,7 +54,7 @@ def test_with_no_workbook_each_chart_is_information_and_makes_no_review_item():
         ("chart", "chart_nasi_yield", "no_workbook", MISSING_BOOK[0], MISSING_BOOK[1])]
     assert files == {} and [b["png_sha256"] for b in blocks] == [None, None] and chart_parts(blocks[0]) == []
     assert events == [(PART_SKIPPED, "NASI P/E chart", MISSING_BOOK[0]), (PART_SKIPPED, "NASI dividend yield chart", MISSING_BOOK[0])]
-    assert review_of(blocks).review_items == []                     # nothing for the coordinator to resolve, and nothing flagged
+    assert review_of(blocks).review_items == []                     # nothing for the analyst to resolve, and nothing flagged
     assert [chart_counts(b) for b in blocks] == [{CLEAN: 0, FLAGGED: 0, NOT_AUTO_VERIFIED: 0}] * 2
 
 
@@ -64,7 +64,7 @@ def test_no_workbook_does_not_hold_up_approval_but_a_workbook_that_cannot_give_t
     review = review_of([other, *none])
     assert len(review.review_items) == 1 and not review.is_approvable
     review.review_items[0].resolve("accept")
-    assert review.is_approvable                                        # the charts asked nothing of the coordinator
+    assert review.is_approvable                                        # the charts asked nothing of the analyst
     for name, kw in (("stale", {"newest": day(1)}), ("short", {"weeks": 10}), ("future", {"newest": FRIDAY + timedelta(days=7)}),
                      ("missing sheet", {"edit": lambda ws: setattr(ws, "title", "NASI PE & Dividend Yield")})):
         blocks, _ = make(**kw)

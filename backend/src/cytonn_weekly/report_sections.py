@@ -5,7 +5,7 @@ CoordinatorReview.  A review's key is (report type, period, section slug), so th
 slug in two report types (the weekly "fixed_income" and the Q3'2026 "fixed_income") is
 two different reviews.  This registry only says, per report type and slug: the display
 title, whether a draft can run today (and if not, what blocks it), whether the
-coordinator must supply a topic or text, the steps a run takes, the real report's own
+analyst must supply a topic or text, the steps a run takes, the real report's own
 subsection headings and charts, and the function that builds the review.
 
 Orders are the real reports' own (CLAUDE.md, "Report types", records where each was read):
@@ -13,7 +13,7 @@ Orders are the real reports' own (CLAUDE.md, "Report types", records where each 
 * weekly: Company Updates, Fixed Income, Equities, Real Estate, Digital Payments Weekly
   Highlights, Focus of the Week, as #38.2026 orders them (``SECTIONS`` and ``BY_SLUG`` are
   this list).  Fixed Income and Equities are worked out from the week's uploaded inputs
-  (weekly/inputs.py) and published sources; Company Updates is the coordinator's own text.
+  (weekly/inputs.py) and published sources; Company Updates is the analyst's own text.
 * quarterly and half_year: Executive Summary, Company Updates, Global Markets Review,
   Sub-Saharan Africa Region Review, Kenya Macro Economic Review, Fixed Income, Equities,
   Real Estate, Digital Payments.
@@ -38,7 +38,7 @@ from cytonn_weekly.report_types import ANNUAL, COMPANION, HALF_YEAR, MONTHLY, QU
 
 @dataclass(frozen=True)
 class DraftContext:
-    """What one draft run is for: the report and period, and anything the coordinator supplied."""
+    """What one draft run is for: the report and period, and anything the analyst supplied."""
 
     report_type: str = WEEKLY
     period: str = ""
@@ -67,7 +67,7 @@ class SectionSpec:
     unblock: str = ""           # unavailable only: what would unblock it
     built_parts: tuple[str, ...] = field(default_factory=tuple)  # unavailable only: what already exists
     build: Optional[Callable[[DraftContext], CoordinatorReview]] = None
-    needs_text: bool = False         # Company Updates: the coordinator pastes the text
+    needs_text: bool = False         # Company Updates: the analyst pastes the text
     requires_approved: bool = False  # Executive Summary: composed from the other sections once approved
     subsections: tuple[str, ...] = ()  # the real issue's own headings for this section, verbatim
     charts: tuple[str, ...] = ()       # the real issue's charts, which the tool does not draw

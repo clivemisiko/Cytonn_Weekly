@@ -129,8 +129,8 @@ _CHART_FIELDS = ("numeral", "kind", "id", "chart_id", "title", "caption", "statu
 
 
 def _charts_to_add_by_hand(review: CoordinatorReview) -> list[str]:
-    """The real issue's chart captions for the coordinator to add by hand: all of them except a chart the tool drew and the
-    coordinator has not set aside for the team's own."""
+    """The real issue's chart captions for the analyst to add by hand: all of them except a chart the tool drew and the
+    analyst has not set aside for the team's own."""
     sec = review.section
     drawn = {b["caption"] for b in sec.get("blocks", []) if b.get("kind") == "chart" and b.get("status") == "drawn"
              and not team_chart_chosen(review, b["chart_id"])}

@@ -3,7 +3,7 @@ import { VARIANT, startRun } from "./helpers";
 
 /**
  * The run view's layout: the steps and what came of the run in the feed, the run's facts in the panel beside it (below
- * the feed when the window is narrow), and nothing the coordinator has to see in the panel: the status, the failure and
+ * the feed when the window is narrow), and nothing the analyst has to see in the panel: the status, the failure and
  * the ways back to the overview stay in the feed. This file has its own run on a freshly restored test backend
  * (`playwright test runview`).
  */

@@ -67,7 +67,7 @@ describe("chart card facts", () => {
 });
 
 describe("the team's own chart action", () => {
-  it("is named as the coordinator reads it, and turns into taking it back", () => {
+  it("is named as the analyst reads it, and turns into taking it back", () => {
     expect(teamChartAction(drawn).label).toBe("Use the team's own chart");
     expect(teamChartAction(drawn).help).toContain("Word file keeps the placeholder");
     expect(teamChartAction({ ...drawn, use_team_chart: true }).label).toBe("Use the tool's chart again");

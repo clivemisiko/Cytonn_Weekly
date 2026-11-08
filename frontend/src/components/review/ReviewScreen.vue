@@ -56,7 +56,7 @@ function subline(c: StatusCounts): string {
 
 <template>
   <div>
-    <Masthead wide :title="`${review.section_title}: coordinator review`">
+    <Masthead wide :title="`${review.section_title}: analyst review`">
       <template #meta>
         <template v-if="review.period && review.report_type !== 'weekly'">
           {{ review.report_title }}, <span class="font-mono">{{ review.period }}</span

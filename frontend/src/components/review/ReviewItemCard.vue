@@ -33,7 +33,7 @@ const pending = ref<Resolution | undefined>(undefined);
 let latest = 0;
 const shown = computed(() => (pending.value !== undefined ? pending.value : props.item.resolution));
 
-// The note box is the coordinator's own until it is committed; a server refresh must not overwrite typing.
+// The note box is the analyst's own until it is committed; a server refresh must not overwrite typing.
 const note = ref(serverNote.value);
 const dirty = ref(false);
 watch(serverNote, (next) => {

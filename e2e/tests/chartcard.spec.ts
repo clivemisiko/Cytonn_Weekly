@@ -45,7 +45,7 @@ async function draft(request: APIRequestContext, friday: string): Promise<number
 
 async function open(page: Page, id: number) {
   await page.goto(`/overview?review=${id}`);
-  await expect(page.getByRole("heading", { name: "Equities: coordinator review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Equities: analyst review", level: 1 })).toBeVisible();
 }
 
 const cards = (page: Page) => page.locator("[data-chart-block]");

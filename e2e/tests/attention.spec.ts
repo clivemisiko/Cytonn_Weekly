@@ -89,7 +89,7 @@ test("T91 a review change the API refuses as already decided: the dialog, then S
   await page.getByRole("button", { name: "Save your text as the section" }).click();
   await expect(page.getByRole("heading", { name: "Draft ready for review", level: 2 })).toBeVisible();
   await page.getByRole("link", { name: "Open review" }).click();
-  await expect(page.getByRole("heading", { name: "Company Updates: coordinator review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Company Updates: analyst review", level: 1 })).toBeVisible();
 
   const decided = "This section was already approved (review 1), so it cannot be changed. Reload the page to see the decision.";
   await page.route("**/api/reviews/*/items/*", (route) =>

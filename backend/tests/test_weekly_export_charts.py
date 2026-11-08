@@ -145,7 +145,7 @@ def test_a_chart_not_drawn_but_accepted_as_missing_keeps_the_placeholder_and_say
     # the red line follows its placeholder
     t = texts(doc)
     assert t.index(lines[0][0]) == t.index(f"[Chart to add: {CAPTIONS[0]}]") + 1
-    # choosing the team's own chart for it says nothing in red: the placeholder is what the coordinator wants
+    # choosing the team's own chart for it says nothing in red: the placeholder is what the analyst wants
     chosen, folder2 = approved(tmp_path / "team", newest=day(1), team=("nasi_pe", "nasi_yield"))
     assert red_lines(document(chosen, folder2)) == []
 

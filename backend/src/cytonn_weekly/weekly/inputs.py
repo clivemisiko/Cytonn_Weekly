@@ -1,6 +1,6 @@
-"""This week's inputs: the files a coordinator uploads for one report week, and where they are kept.
+"""This week's inputs: the files an analyst uploads for one report week, and where they are kept.
 
-Each Friday the analysts send their workbooks and the KCB IB reports; the coordinator
+Each Friday the analysts send their workbooks and the KCB IB reports; the analyst
 uploads them on the start screen.  They are kept under the data directory, never in the
 repository tree::
 
@@ -9,7 +9,7 @@ repository tree::
         kcb_daily_<date>.pdf     (one per trading day, named by the date printed in it)
         kcb_weekly.pdf           cbk_bulletin.pdf        nse_yield_curve.pdf
         manifest.json            (what each stored file is and the date read from it)
-        notes.json               (what the coordinator typed: the bidding range, the previous issue)
+        notes.json               (what the analyst typed: the bidding range, the previous issue)
 
 An upload is checked before it is stored: its size, that it is the kind of file its slot
 takes (a PDF or an Excel workbook, by its first bytes, not its name), and that it reads as
@@ -52,7 +52,7 @@ MAX_NOTE = 2000
 
 
 class InputError(ValueError):
-    """An upload that is refused, with the reason shown to the coordinator."""
+    """An upload that is refused, with the reason shown to the analyst."""
 
 
 @dataclass(frozen=True)
@@ -344,7 +344,7 @@ class WeeklyInputs:
         self.week = week
         self.root = root
         self._cache: dict[str, Any] = {}
-        typed = self.notes.get("as_at")   # the as-at date the coordinator set for the week, if any
+        typed = self.notes.get("as_at")   # the as-at date the analyst set for the week, if any
         if typed:
             self.week = week.with_as_at(date.fromisoformat(typed))
 

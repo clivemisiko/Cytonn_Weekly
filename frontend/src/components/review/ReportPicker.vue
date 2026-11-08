@@ -41,7 +41,7 @@ function chooseType(next: ReportType) {
   else period.value = nextInfo?.suggested_period ?? "";
 }
 
-/** Another companion report: its own issue replaces the last one's, unless the coordinator typed a different one. */
+/** Another companion report: its own issue replaces the last one's, unless the analyst typed a different one. */
 function chooseKind(next: string) {
   const before = kind.value;
   kind.value = next;

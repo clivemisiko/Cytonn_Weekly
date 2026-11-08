@@ -1,4 +1,4 @@
-"""Tests for cytonn_weekly.digital_payments.delivery (emailing the Edwin/Liz Word summary).
+"""Tests for cytonn_weekly.digital_payments.delivery (emailing the Word summary).
 
 Reviews are real CoordinatorReviews built by the real pipeline code on fake edges
 (review_helpers), saved to a real temp SQLite file, with the real .docx written to
@@ -20,7 +20,7 @@ from cytonn_weekly.digital_payments import delivery as dl
 from cytonn_weekly.digital_payments import review_store as rs
 from cytonn_weekly.digital_payments import summary as sm
 
-EDWIN, LIZ = "edwin@example.com", "liz@example.com"
+FIRST, SECOND = "first@example.com", "second@example.com"
 SMTP_VARS = ("CYTONN_SMTP_HOST", "CYTONN_SMTP_PORT", "CYTONN_SMTP_USER", "CYTONN_SMTP_PASSWORD",
              "CYTONN_SMTP_FROM", "CYTONN_SUMMARY_RECIPIENTS")
 
@@ -38,7 +38,7 @@ def smtp_env(monkeypatch):
     monkeypatch.setenv("CYTONN_SMTP_HOST", "smtp.example.com")
     monkeypatch.setenv("CYTONN_SMTP_USER", "tool@example.com")
     monkeypatch.setenv("CYTONN_SMTP_PASSWORD", "s3cret")
-    monkeypatch.setenv("CYTONN_SUMMARY_RECIPIENTS", f"{EDWIN}, {LIZ}")
+    monkeypatch.setenv("CYTONN_SUMMARY_RECIPIENTS", f"{FIRST}, {SECOND}")
 
 
 @pytest.fixture
@@ -99,8 +99,8 @@ def test_approved_review_is_emailed_with_the_docx_attached(db, tmp_path, smtp, s
     smtp.server.login.assert_called_once_with("tool@example.com", "s3cret")
     smtp.server.send_message.assert_called_once()
     msg, kwargs = sent_message(smtp)
-    assert kwargs == {"from_addr": "tool@example.com", "to_addrs": [EDWIN, LIZ]}
-    assert msg["To"] == f"{EDWIN}, {LIZ}" and msg["From"] == "tool@example.com"
+    assert kwargs == {"from_addr": "tool@example.com", "to_addrs": [FIRST, SECOND]}
+    assert msg["To"] == f"{FIRST}, {SECOND}" and msg["From"] == "tool@example.com"
 
     att = the_attachment(msg)
     assert att.get_content_type() == dl.DOCX_MAINTYPE + "/" + dl.DOCX_SUBTYPE
@@ -123,7 +123,7 @@ def test_subject_names_the_report_week_and_the_body_is_a_short_note(db, tmp_path
     msg, _ = sent_message(smtp)
     assert msg["Subject"] == "Cytonn Weekly: Digital Payments summary, week 24 Sep 2026 to 30 Sep 2026"
     body = msg.get_body(preferencelist=("plain",)).get_content()
-    assert "attached" in body and "for your awareness" in body and "coordinator-checked" in body
+    assert "attached" in body and "for your awareness" in body and "analyst-checked" in body
     assert sm._fmt_date(review.decided_at) in body
 
 
@@ -153,9 +153,9 @@ def test_nothing_in_the_message_but_the_summary_itself(db, tmp_path, smtp, smtp_
 # ---------------------------------------------------------------------------
 
 def test_recipients_from_the_environment_are_stripped_and_empties_dropped(monkeypatch):
-    monkeypatch.setenv("CYTONN_SUMMARY_RECIPIENTS", f"  {EDWIN} , ,{LIZ},, ")
-    assert dl.resolve_recipients() == [EDWIN, LIZ]
-    assert dl.resolve_recipients([f" {LIZ} ", "", "  "]) == [LIZ]
+    monkeypatch.setenv("CYTONN_SUMMARY_RECIPIENTS", f"  {FIRST} , ,{SECOND},, ")
+    assert dl.resolve_recipients() == [FIRST, SECOND]
+    assert dl.resolve_recipients([f" {SECOND} ", "", "  "]) == [SECOND]
 
 
 def test_no_recipients_configured_raises_and_sends_nothing(db, tmp_path, smtp, monkeypatch):
@@ -213,7 +213,7 @@ def test_unusable_smtp_configuration_raises_naming_the_variable(monkeypatch):
 
 
 def test_bad_smtp_configuration_sends_nothing(db, tmp_path, smtp, monkeypatch):
-    monkeypatch.setenv("CYTONN_SUMMARY_RECIPIENTS", EDWIN)  # recipients fine, host missing
+    monkeypatch.setenv("CYTONN_SUMMARY_RECIPIENTS", FIRST)  # recipients fine, host missing
     review = approved_review(db)
     with pytest.raises(ValueError, match="CYTONN_SMTP_HOST"):
         dl.email_summary(written_summary(review, tmp_path), review)
@@ -223,7 +223,7 @@ def test_bad_smtp_configuration_sends_nothing(db, tmp_path, smtp, monkeypatch):
 def test_no_login_is_attempted_when_no_smtp_user_is_configured(db, tmp_path, smtp, monkeypatch):
     monkeypatch.setenv("CYTONN_SMTP_HOST", "relay.internal")
     monkeypatch.setenv("CYTONN_SMTP_FROM", "reports@example.com")
-    monkeypatch.setenv("CYTONN_SUMMARY_RECIPIENTS", EDWIN)
+    monkeypatch.setenv("CYTONN_SUMMARY_RECIPIENTS", FIRST)
     review = approved_review(db)
     dl.email_summary(written_summary(review, tmp_path), review)
     smtp.server.starttls.assert_called_once()
@@ -241,7 +241,7 @@ def test_dev_mode_review_is_blocked_even_with_explicit_recipients(db, tmp_path, 
     with pytest.raises(dl.DevModeDeliveryBlocked):
         dl.email_summary(path, review)
     with pytest.raises(dl.DevModeDeliveryBlocked):
-        dl.email_summary(path, review, recipients=[EDWIN, LIZ])
+        dl.email_summary(path, review, recipients=[FIRST, SECOND])
     smtp.cls.assert_not_called()
 
 
@@ -262,7 +262,7 @@ def test_one_local_draft_in_an_otherwise_production_review_still_blocks(db, tmp_
     approve(review)
     assert dl.is_dev_mode_review(review)
     with pytest.raises(dl.DevModeDeliveryBlocked):
-        dl.email_summary(written_summary(review, tmp_path), review, recipients=[EDWIN])
+        dl.email_summary(written_summary(review, tmp_path), review, recipients=[FIRST])
     smtp.cls.assert_not_called()
 
 
@@ -273,7 +273,7 @@ def test_a_production_review_is_not_dev_mode(db):
 def test_deliver_latest_summary_blocks_a_dev_mode_review(db, tmp_path, smtp, smtp_env):
     approved_review(db, provider=LocalFakeProvider())
     with pytest.raises(dl.DevModeDeliveryBlocked):
-        dl.deliver_latest_summary(db_path=db, out_path=tmp_path / "out.docx", recipients=[EDWIN])
+        dl.deliver_latest_summary(db_path=db, out_path=tmp_path / "out.docx", recipients=[FIRST])
     smtp.cls.assert_not_called()
 
 
@@ -304,7 +304,7 @@ def test_deliver_latest_summary_writes_then_sends_and_returns_the_path(db, tmp_p
     path = dl.deliver_latest_summary(db_path=db, out_path=out)
     assert path == out and out.is_file()
     msg, kwargs = sent_message(smtp)
-    assert kwargs["to_addrs"] == [EDWIN, LIZ]
+    assert kwargs["to_addrs"] == [FIRST, SECOND]
     assert the_attachment(msg).get_content() == out.read_bytes()
     assert the_attachment(msg).get_filename() == sm.default_summary_path(review).name
 

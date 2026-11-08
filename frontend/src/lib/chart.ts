@@ -1,7 +1,7 @@
 import { friendlyDate } from "./format";
 import type { ChartBlock, ChartSeriesFile } from "./types";
 
-/** The card's state in words (never by colour alone): what the coordinator is looking at and why. */
+/** The card's state in words (never by colour alone): what the analyst is looking at and why. */
 export function chartState(block: ChartBlock): { key: "team" | "drawn" | "not_drawn" | "no_workbook"; label: string } {
   if (block.status === "no_workbook") return { key: "no_workbook", label: "No workbook uploaded" };
   if (block.use_team_chart) return { key: "team", label: "Using the team's own chart" };
@@ -10,7 +10,7 @@ export function chartState(block: ChartBlock): { key: "team" | "drawn" | "not_dr
 }
 
 /**
- * One row of facts under the picture, in the order the coordinator checks them. Only for a chart that was drawn: a stale or
+ * One row of facts under the picture, in the order the analyst checks them. Only for a chart that was drawn: a stale or
  * rejected series still carries its last value and average, but presenting them as the chart's would read as this week's.
  */
 export function chartFacts(block: ChartBlock): { label: string; value: string }[] {
@@ -32,7 +32,7 @@ export function provenanceLine(block: ChartBlock): string {
   return `${s.provenance[0].toUpperCase()}${s.provenance.slice(1)} (${where}).`;
 }
 
-/** The choice the coordinator can make on a chart: the button's name, and what it does, in the card's own words. */
+/** The choice the analyst can make on a chart: the button's name, and what it does, in the card's own words. */
 export function teamChartAction(block: ChartBlock): { label: string; help: string } {
   return block.use_team_chart
     ? {

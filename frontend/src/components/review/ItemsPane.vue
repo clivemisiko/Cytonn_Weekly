@@ -72,7 +72,7 @@ const shared = computed(() => {
       </div>
     </div>
 
-    <!-- Quick filter pill bar: lets coordinator jump straight to what needs their attention -->
+    <!-- Quick filter pill bar: lets analyst jump straight to what needs their attention -->
     <div class="flex flex-wrap items-center gap-1.5 rounded-lg border border-border/80 bg-muted/50 p-1 text-xs">
       <button
         type="button"

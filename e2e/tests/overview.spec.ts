@@ -40,7 +40,7 @@ test("T66 the report-status panel folds, stays folded after a reload, and is bel
   await expect(page.getByRole("button", { name: "Export weekly report" })).toBeHidden();
   expect((await panel.boundingBox())!.width).toBeLessThan(80); // a strip
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Coordinator review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Analyst review", level: 1 })).toBeVisible();
   await expect(panel.getByRole("button", { name: "Show Report status" })).toBeVisible(); // remembered in this browser
   await expect(tally).toBeHidden();
 

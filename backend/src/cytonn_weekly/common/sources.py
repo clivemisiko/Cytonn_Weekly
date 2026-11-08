@@ -93,7 +93,7 @@ _DATE_KEYS = {"article:published_time", "og:article:published_time", "datepublis
 
 
 class SourceError(ValueError):
-    """Written for the coordinator and shown as it stands; never holds a stack trace or a secret."""
+    """Written for the analyst and shown as it stands; never holds a stack trace or a secret."""
 
 
 @dataclass
@@ -471,7 +471,7 @@ def fetch_page(url: str, subject: str, week_end: date, *, http_get: Callable[...
 
     ``http_get(url, max_bytes=...)`` answers once and follows nothing (common/http.http_get_once); this function
     follows at most MAX_HOPS redirects itself, each only to the same host, and applies every rule to each address.
-    SourceError says, in the coordinator's terms, why a page was not kept.
+    SourceError says, in the analyst's terms, why a page was not kept.
     ponytail: the address is resolved before the request, so a DNS answer that changes between the two (rebinding) is not
     caught; pin the checked IP in the connection if that matters. TLS is verified by httpx and cannot be turned off.
     """
@@ -485,7 +485,7 @@ def fetch_page(url: str, subject: str, week_end: date, *, http_get: Callable[...
             reply = http_get(current, max_bytes=MAX_BYTES)
         except http.TooLarge:
             raise SourceError(TOO_LARGE.format(mb=MAX_BYTES // (1024 * 1024))) from None
-        except Exception as exc:  # noqa: BLE001 - the coordinator gets a sentence, the log gets the class
+        except Exception as exc:  # noqa: BLE001 - the analyst gets a sentence, the log gets the class
             if _certificate_failed(exc):
                 raise SourceError(CERTIFICATE.format(host=host)) from None
             log.warning("fetch of %s failed: %s", host, type(exc).__name__)
@@ -538,7 +538,7 @@ def fetch_page(url: str, subject: str, week_end: date, *, http_get: Callable[...
 def from_paste(url: str, date_text: str, text: str, subject: str, week_end: date, *, title: str = "",
                root: Optional[Path] = None, now: Callable[[], str] = _now, origin: str = "pasted",
                extra_flags: tuple[str, ...] = ()) -> SourceText:
-    """Keep text the coordinator pasted, exactly as given, with the address and date they say it came from.
+    """Keep text the analyst pasted, exactly as given, with the address and date they say it came from.
     The gather step uses it with origin "found" and the text_from_search flag for a page it could not fetch."""
     if not subject.strip():
         raise SourceError(NO_SUBJECT)

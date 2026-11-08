@@ -1,4 +1,4 @@
-"""Tests for the FastAPI layer over the coordinator review (api/main.py, api/serialize.py).
+"""Tests for the FastAPI layer over the analyst review (api/main.py, api/serialize.py).
 
 Driven with FastAPI's TestClient against a real SQLite file (each test gets its own, built
 from the project's cytonn_weekly/schema.sql).  Reviews come from the real draft/compose/check code

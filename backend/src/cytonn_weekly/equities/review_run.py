@@ -1,4 +1,4 @@
-"""Runs the Equities pipeline up to the coordinator's review.
+"""Runs the Equities pipeline up to the analyst's review.
 
     fetch market performance -> draft weekly highlights -> compose -> check -> review
 

@@ -1,4 +1,4 @@
-"""HTTP layer over the Digital Payments coordinator review (replaces the Streamlit screen).
+"""HTTP layer over the Digital Payments analyst review (replaces the Streamlit screen).
 
 A thin wrapper around cytonn_weekly.digital_payments.review_store, review_run and
 coordinator_review.  It holds no review logic of its own; see api/main.py for the

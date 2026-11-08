@@ -436,7 +436,7 @@ def fi_workbook_bytes(week: Week = WEEK, updated: bool = True, funds: Optional[l
 
 
 def typed_from_workbooks(week: Week, root: Path, section: Optional[str] = None) -> dict[str, Any]:
-    """What a coordinator would type to stand in for the workbooks stored under ``root``.
+    """What an analyst would type to stand in for the workbooks stored under ``root``.
 
     Every item of the weekly analyst inputs form, with the value the uploaded workbook holds
     for it (as the form shows it), ready for ``analyst.save_form``.  Used to check that typing

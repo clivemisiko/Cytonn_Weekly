@@ -112,7 +112,7 @@ def test_the_date_comes_from_a_time_element_when_there_is_no_meta_tag_and_is_emp
     dated = article().replace(b"<h1>", b'<time datetime="2026-11-04">4 Nov</time><h1>')
     assert fetch(Getter(reply(dated)), root=tmp_path).published_date == "2026-11-04"
     undated = fetch(Getter(reply(article(body=PARAGRAPH * 4))), root=tmp_path)
-    assert undated.published_date == ""            # never guessed; the coordinator types it
+    assert undated.published_date == ""            # never guessed; the analyst types it
 
 
 def test_a_pdf_is_read_with_pdfplumber(tmp_path, monkeypatch):

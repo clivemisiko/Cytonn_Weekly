@@ -1,7 +1,7 @@
-"""Email delivery of the Digital Payments Word-doc summary to Edwin and Liz.
+"""Email delivery of the Digital Payments Word-doc summary to its recipients.
 
 summary.py produces the .docx and stops there; this module is the missing last step
-of that part of the process flow: getting the coordinator-checked summary into the
+of that part of the process flow: getting the analyst-checked summary into the
 insight recipients' inboxes before publish.  Stdlib only (smtplib + email).
 
 Two safety rules, neither with an override:
@@ -15,7 +15,7 @@ Two safety rules, neither with an override:
   the caller passes ``recipients`` explicitly.
 
 An SMTP failure is never swallowed: every smtplib/OSError propagates, so the
-coordinator learns a send failed instead of assuming it went out.
+analyst learns a send failed instead of assuming it went out.
 
 Configuration (library code reads os.environ only; entrypoints call env.load_env()
 first)::
@@ -139,7 +139,7 @@ def build_message(
     msg["From"] = sender
     msg["To"] = ", ".join(recipients)
     msg.set_content(
-        f"Digital Payments weekly summary attached, for your awareness: coordinator-checked "
+        f"Digital Payments weekly summary attached, for your awareness: analyst-checked "
         f"values as of {summary._fmt_date(review.decided_at)}.\n\n"
         f"Report week {week}. For information only; no action or sign-off is needed.\n"
     )
