@@ -55,16 +55,16 @@ const nothing = computed(() => {
     ? `The last draft stopped. ${d?.reason ?? ""}`.trim()
     : d
       ? d.stale
-        ? "A draft has run far longer than it should and looks stuck. Drafting again replaces it."
+        ? "This draft has exceeded normal runtime and may have stalled. Drafting again will replace it."
         : queued.value
-          ? "Waiting for a free drafting seat; it starts by itself."
+          ? "Queued for drafting; processing will begin automatically once a worker is available."
           : "Drafting now; the review shows here when it finishes."
-      : `Nothing drafted ${when(props.period)}.`;
+      : `No draft generated yet ${when(props.period)}.`;
   return (
     first +
     (r ? ` The last review (run ${r.run_id}, ${friendlyDate(r.run_date)}) was ${r.decision ?? "left in progress"}.` : "") +
     (props.s.needs_topic ? " Drafting asks for this week’s topic." : "") +
-    (props.s.requires_approved ? " Composed from the other sections once every one of them is approved." : "")
+    (props.s.requires_approved ? " Compiled from the other report sections once all five are approved." : "")
   );
 });
 
@@ -119,7 +119,7 @@ const lists = computed(() =>
                 :class="[CHIP_BASE, drafting.stale ? 'border-warn/40 bg-warn/10 text-warn-fg' : 'border-input bg-muted text-foreground', 'shadow-2xs']"
               >
                 <PhCircleNotch weight="bold" class="size-3" :class="!drafting.stale && !queued && 'animate-spin motion-reduce:animate-none'" aria-hidden="true" />
-                {{ drafting.stale ? "Looks stuck" : draftingStatus(drafting) }}
+                {{ drafting.stale ? "Stalled" : draftingStatus(drafting) }}
                 <span v-if="!queued" class="font-mono font-medium tabular-nums">{{ elapsed(seconds) }}</span>
               </span>
               <p v-if="drafting && !failed && !queued && step" class="text-xs text-muted-foreground">{{ step }}</p>

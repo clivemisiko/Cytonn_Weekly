@@ -142,7 +142,7 @@ test("T70 the export's dev-mode notice is in the feed right under the dev-mode n
   await expect(panel.getByText("The export carries a DEV MODE watermark")).toHaveCount(0); // not in the panel
   await expect(panel.getByRole("button", { name: "Export weekly report" })).toBeVisible(); // the button is
 
-  const dev = page.getByRole("alert").filter({ hasText: "CYTONN_LLM_PROVIDER=local: DEV MODE." });
+  const dev = page.getByRole("alert").filter({ hasText: "Development Mode Active (Local Model)" });
   const above = (await dev.boundingBox())!;
   const below = (await notice.boundingBox())!;
   expect(below.y).toBeGreaterThan(above.y + above.height - 1); // after it

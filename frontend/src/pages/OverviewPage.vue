@@ -300,11 +300,10 @@ const key = computed(() => {
         <Masthead title="Analyst review" />
         <div class="mx-auto w-full max-w-275 px-4 py-8 sm:px-6">
           <div class="max-w-xl">
-            <h2 class="text-lg font-semibold">The review API is not reachable</h2>
+            <h2 class="text-lg font-semibold">Unable to connect to the report review service</h2>
             <Notice role="alert" class="mt-4 font-medium">{{ phase.message }}</Notice>
             <p class="mt-4 text-sm text-muted-foreground">
-              Start it from the repo root with <code class="rounded-sm bg-muted px-1 py-0.5 font-mono text-xs">uvicorn api.main:app --port 8000</code>.
-              To point this app at another address, set <code class="rounded-sm bg-muted px-1 py-0.5 font-mono text-xs">VITE_API_TARGET</code>.
+              Please check your network connection or verify that the backend server is running. If this issue persists, please contact your system administrator.
             </p>
             <Button class="mt-6" size="lg" @click="home">Try again</Button>
           </div>

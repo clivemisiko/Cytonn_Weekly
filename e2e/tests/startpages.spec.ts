@@ -18,7 +18,7 @@ test("T76 the start page is one centred card holding what it always said, and no
   await expect(page.getByRole("heading", { name: /^Good (morning|afternoon|evening)\. Welcome to Cytonn Weekly\.$/, level: 2 })).toBeVisible();
   const card = page.locator("main > div");
   for (const part of [
-    page.getByText("Ready. Nothing is drafted until you ask."),
+    page.getByText("Ready to draft. Choose a report below to begin."),
     page.getByRole("button", { name: "Sign in with Cytonn SSO" }),
     page.getByText("Not connected yet.", { exact: true }),
     page.getByRole("link", { name: "Continue without signing in" }),

@@ -225,8 +225,7 @@ const status = computed(() => {
         </div>
         <p v-if="running && !final && !stopped" class="font-mono text-sm tabular-nums text-muted-foreground">Drafting for {{ elapsed(seconds) }}</p>
         <Notice v-if="stopped" tone="warn" role="status">
-          This draft appears to have stopped. It has run for {{ elapsed(seconds) }}, longer than any healthy draft takes. A draft
-          that finds every seat taken replaces it, and its result will be discarded.
+          This draft run is taking longer than expected and may have stalled (elapsed time: {{ elapsed(seconds) }}). You can return to the Overview to restart the draft or cancel it.
         </Notice>
 
         <Notice v-if="feed === 'lost' && !settled" tone="warn" role="alert">
@@ -282,7 +281,7 @@ const status = computed(() => {
         </section>
 
         <div v-if="failed && final" class="space-y-3">
-          <Notice role="alert" class="font-medium">The draft stopped.{{ final.detail ? ` ${final.detail}` : "" }}</Notice>
+          <Notice role="alert" class="font-medium">Drafting could not be completed.{{ final.detail ? ` Reason: ${final.detail}` : " Please try drafting the section again." }}</Notice>
           <p class="text-sm">
             <RouterLink :to="backHref" :class="LINK">Back to overview</RouterLink>
           </p>

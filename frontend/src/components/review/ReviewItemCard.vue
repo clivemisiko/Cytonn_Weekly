@@ -95,7 +95,7 @@ const cells = (flag: Flag): [string, string][] => [
       <span class="text-sm font-semibold">{{ item.ref }}</span>
       <span class="text-xs text-muted-foreground">{{ KIND_LABELS[item.kind] ?? item.kind }}</span>
       <span v-if="source?.offList" class="inline-flex items-center gap-1 text-xs font-medium text-warn-fg">
-        <PhWarning weight="bold" class="size-3.5" aria-hidden="true" />{{ NOT_ON_LIST }}
+        <PhWarning weight="bold" class="size-3.5" aria-hidden="true" />Unverified Source Domain
       </span>
       <span v-if="source?.textFromSearch" class="inline-flex items-center gap-1 text-xs font-medium text-warn-fg">
         <PhWarning weight="bold" class="size-3.5" aria-hidden="true" />{{ TEXT_FROM_SEARCH }}
@@ -149,7 +149,7 @@ const cells = (flag: Flag): [string, string][] => [
       </div>
       <blockquote v-if="ctx.text" class="border-l-2 border-input pl-3 text-sm text-foreground/85">{{ ctx.text }}</blockquote>
       <p v-if="ctx.edited_at" class="text-xs text-muted-foreground [overflow-wrap:anywhere]">
-        Your wording replaced: "{{ ctx.was }}". The source below was cited for the earlier wording, so read it to check that it supports yours.
+        Original text: "{{ ctx.was }}". Please verify that the cited source below accurately supports your revised wording.
       </p>
       <p v-if="safeUrl" class="text-sm">
         Source:
@@ -161,11 +161,11 @@ const cells = (flag: Flag): [string, string][] => [
         <dt class="eyebrow">Source</dt>
         <dd class="min-w-0 [overflow-wrap:anywhere]">
           <span class="font-mono">{{ source.host }}</span> · {{ source.date }}
-          <span v-if="source.offList" class="font-medium text-warn-fg"> · {{ NOT_ON_LIST }}</span>
+          <span v-if="source.offList" class="font-medium text-warn-fg"> · Unverified Source Domain</span>
           <span v-if="source.textFromSearch" class="font-medium text-warn-fg"> · {{ TEXT_FROM_SEARCH }}</span>
         </dd>
         <dt class="eyebrow">Quote</dt>
-        <dd class="min-w-0 [overflow-wrap:anywhere]">“{{ source.quote }}” <span class="text-xs text-muted-foreground">(checked word for word against the saved text)</span></dd>
+        <dd class="min-w-0 [overflow-wrap:anywhere]">“{{ source.quote }}” <span class="text-xs text-muted-foreground">(verified word-for-word against the saved document)</span></dd>
         <dt class="eyebrow">Saved copy</dt>
         <dd class="min-w-0 text-xs text-muted-foreground [overflow-wrap:anywhere]">
           {{ source.origin === "found" ? "Found automatically" : source.origin === "fetched" ? "Fetched" : "Pasted" }} {{ source.savedAt }} · fingerprint <span class="font-mono">{{ source.fingerprint }}</span> ·
@@ -181,7 +181,7 @@ const cells = (flag: Flag): [string, string][] => [
               {{ input.origin === "ocr" ? "read by OCR from " : "" }}{{ input.source }}{{ input.second ? `; also ${String(input.second.value)} in ${input.second.source}` : "" }}
             </span>
           </li>
-          <li v-if="inputs.length > 12" class="text-muted-foreground">and {{ inputs.length - 12 }} more inputs of the same kind.</li>
+          <li v-if="inputs.length > 12" class="text-muted-foreground">and {{ inputs.length - 12 }} additional inputs of this type.</li>
         </ul>
       </div>
       <p v-if="ctx.note && ctx.note !== detailText" data-testid="item-note" class="text-xs whitespace-pre-line text-muted-foreground [overflow-wrap:anywhere]">{{ ctx.note }}</p>

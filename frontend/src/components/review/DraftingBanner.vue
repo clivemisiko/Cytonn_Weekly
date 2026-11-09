@@ -13,9 +13,8 @@ const seconds = useLiveElapsed(() => props.drafting);
 
 <template>
   <Notice v-if="drafting.stale" tone="warn" role="status">
-    <span class="font-semibold">{{ drafting.title }} has been drafting for {{ elapsed(seconds) }}</span> (started
-    {{ friendlyTime(drafting.started_at) }}), longer than any healthy draft takes. It looks stuck: a draft that finds every
-    seat taken replaces it, and its result will be discarded.
+    <span class="font-semibold">{{ drafting.title }} has been running for {{ elapsed(seconds) }}</span> (started
+    {{ friendlyTime(drafting.started_at) }}) and appears to be stalled. You can review the progress log or restart drafting from the section screen.
     <RouterLink v-if="runHref(drafting)" :to="runHref(drafting)!" :class="LINK">View progress</RouterLink>
   </Notice>
   <div v-else role="status" class="flex flex-col gap-2 rounded-lg border border-input bg-muted px-4 py-3 sm:flex-row sm:items-center sm:gap-4">

@@ -14,9 +14,9 @@ export const ADDRESS_PLACEHOLDER = "www.example.org/the-page";
 export const NOT_LOOKED_YET = "Sources are found automatically when you draft.";
 export const LOOKING = "Looking for sources…";
 /** The only warning a piece gets: a search ran, found nothing, and no source was added. */
-export const NOTHING_FOUND = "Nothing found yet for this piece. Add a link or paste text, or it will come back unavailable.";
+export const NOTHING_FOUND = "No sources found for this topic yet. Please provide a web link or paste reference text to ensure it can be drafted.";
 /** The search service is not set up: nothing to warn about, only something to know. */
-export const SEARCH_NOT_SET_UP = "The search service is not set up here, so sources are not found automatically. Add a link or paste text.";
+export const SEARCH_NOT_SET_UP = "Automated search is not enabled for this environment. Please provide a web link or paste reference text manually.";
 
 export type PieceState = "has_sources" | "never_looked" | "nothing_found" | "not_set_up";
 
@@ -155,10 +155,10 @@ export function claimSource(ctx: ClaimContext): ClaimSource | null {
 export const NEEDS_TITLES = "Type the section titles in the form below. Each one, except a closing “Recommendations and Conclusion” part, takes its own sources.";
 
 /** A Bedrock draft of a section with no typed titles is refused by the API; the screen says so before the click. */
-export const TITLES_REQUIRED = "Amazon Bedrock does not propose section titles, because it has nothing to search. Type them under Sections.";
+export const TITLES_REQUIRED = "Section titles must be specified before drafting. Enter your section titles under Sections above.";
 
-export const ADDRESS_EMPTY = "Type the address of the page to fetch.";
-export const ADDRESS_SPACES = "An address has no spaces in it. Check it and try again.";
+export const ADDRESS_EMPTY = "Please enter the webpage address (URL) to fetch.";
+export const ADDRESS_SPACES = "Web addresses cannot contain spaces. Please check the URL and try again.";
 
 // A bare domain or a link without a scheme gets https://; any address that names a scheme is sent as typed, so the API refuses a scheme other than http and https in its own words.
 export function normalizeAddress(raw: string): { url: string } | { error: string } {

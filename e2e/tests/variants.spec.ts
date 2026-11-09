@@ -58,7 +58,7 @@ test("T27 a stale draft: shown as stuck, the next draft takes the slot over and 
   // The stuck draft ends later; it was replaced, so it ends as stopped and saves nothing.
   release();
   await page.goto(`/runs/${stuck}`);
-  await expect(page.getByRole("alert").filter({ hasText: "The draft stopped." })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("alert").filter({ hasText: "Drafting could not be completed." })).toBeVisible({ timeout: 20_000 });
   await page.goto(overviewUrl());
   await expect(card(page, "Real Estate")).toContainText("Not drafted for w/e 9 Oct 2026");
   await expect(card(page, "Digital Payments")).toContainText("In review");

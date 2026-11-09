@@ -86,7 +86,7 @@ const nothingFound = computed(() => (bedrock.value && sourcePieces.value ? piece
 const titlesNeeded = computed(() => bedrock.value && props.section.needs_topic && sectionTitles(sections.value).length === 0);
 const sectionsHint = computed(() =>
   bedrock.value
-    ? "Amazon Bedrock does not propose titles, because it has nothing to search: type one per line. The tool numbers them Section I, II, III… and each takes its own sources below. End with a “Recommendations and Conclusion” part for the closing section, which is written from the other sections and takes no sources."
+    ? "Enter custom section titles, one per line (e.g. Overview, Market Performance, Recommendations and Conclusion). The tool numbers them Section I, II, III… and each draws from its own verified sources below. End with a “Recommendations and Conclusion” part for the closing section."
     : "Leave blank and the tool proposes four to six titles from the topic (one model call). Typed titles are used exactly as typed and numbered Section I, II, III… by the tool; end with a \"Recommendations and Conclusion\" part for the closing section.",
 );
 
@@ -257,7 +257,7 @@ const lists = computed(() => [
             <p class="text-sm">
               {{
                 saved
-                  ? "Or start over with a new draft. The saved review stays in the database either way."
+                  ? "Or create a new draft. The existing review will remain safely saved in your archive."
                   : section.requires_approved
                     ? `Not composed ${forWhen} yet. It is built only from sections you have approved.`
                     : `No review ${forWhen} yet. Draft ${thisRun} ${section.title} section, check it, and review it here.`
@@ -266,26 +266,26 @@ const lists = computed(() => [
 
             <Notice v-if="providerBlocked" role="alert" class="font-medium">{{ config.provider_problem }} Drafting is off until then.</Notice>
             <Notice v-if="config.dev_mode && llm" role="alert" class="font-semibold">
-              CYTONN_LLM_PROVIDER=local: DEV MODE. Drafts from the local model are NOT FOR PUBLICATION.
+              Development Mode Active (Local Model): Drafts generated in this mode are for testing purposes only and are not approved for publication.
             </Notice>
             <Notice v-if="llm && config.spends_api_budget && !config.provider_problem" tone="info">
               <template v-if="bedrock">
-                Drafting provider: {{ config.provider }}. A run spends real API budget (model tokens). The tool looks for sources itself when you draft, and each piece is
-                written only from the sources saved for it. You can add more.
+                Drafting Engine: {{ config.provider }}. This action will query the AI model and retrieve relevant source documents. Each piece is
+                written only from its saved sources. You can add more at any time.
               </template>
-              <template v-else>Drafting provider: {{ config.provider }}. A run spends real API budget (web search and tokens).</template>
+              <template v-else>Drafting Engine: {{ config.provider }}. This action will query the AI model and search for relevant source materials.</template>
             </Notice>
             <Notice v-if="!llm" tone="info">
-              Nothing is searched or drafted: each approved section’s lead piece is carried with its sources and checked again.
+              Executive Summary synthesis: Content is compiled from your approved sections along with their verified sources and checked for consistency.
             </Notice>
 
             <!-- A draft already running on the server (started from another tab, or before this screen was opened). -->
             <template v-if="serverDrafting && isLive(serverDrafting) && !starting && llm">
               <Notice v-if="serverDrafting.stale" tone="warn" role="status">
                 <span class="font-semibold">
-                  This draft appears to have stopped. This section has been drafting for
+                  This draft run appears to have stalled. This section has been drafting for
                   <span class="font-mono tabular-nums">{{ elapsed(seconds) }}</span></span
-                >, longer than any healthy draft takes. Starting a draft replaces it; its result will be discarded.
+                >. Starting a new draft will replace it.
               </Notice>
               <Notice v-else tone="info" role="status">
                 <span class="font-semibold">
@@ -322,8 +322,8 @@ const lists = computed(() => [
               <p id="focus-topic-count" class="text-xs" :class="topicOver ? 'font-medium text-flag-fg' : 'text-muted-foreground'">
                 <span class="font-mono tabular-nums">{{ topicCount.toLocaleString() }}</span> of {{ MAX_TOPIC.toLocaleString() }} characters.
                 <span v-if="topicOver" role="status">
-                  Over the limit by <span class="font-mono tabular-nums">{{ (topicCount - MAX_TOPIC).toLocaleString() }}</span>
-                  {{ topicCount - MAX_TOPIC === 1 ? "character" : "characters" }}. Shorten it to submit.
+                  Please shorten the topic by <span class="font-mono tabular-nums">{{ (topicCount - MAX_TOPIC).toLocaleString() }}</span>
+                  {{ topicCount - MAX_TOPIC === 1 ? "character" : "characters" }} to proceed.
                 </span>
               </p>
             </div>
@@ -345,7 +345,7 @@ const lists = computed(() => [
               <p v-if="titlesNeeded" role="status" class="text-xs font-medium text-warn-fg">{{ TITLES_REQUIRED }}</p>
               <p id="focus-sections-count" class="text-xs" :class="sectionsError ? 'font-medium text-flag-fg' : 'text-muted-foreground'">
                 <span class="font-mono tabular-nums">{{ sectionCount }}</span> of {{ MAX_SECTIONS }} sections, each at most {{ MAX_SECTION_TITLE }} characters.
-                <span v-if="sectionsError" role="status">{{ sectionsError.charAt(0).toUpperCase() + sectionsError.slice(1) }}. Shorten or remove it to submit.</span>
+                <span v-if="sectionsError" role="status">{{ sectionsError.charAt(0).toUpperCase() + sectionsError.slice(1) }}. Please shorten or remove the indicated section title to proceed.</span>
               </p>
             </div>
 
@@ -398,8 +398,7 @@ const lists = computed(() => [
               {{ draftLabel }}
             </Button>
             <p v-if="usesInputs && typedPending" id="typed-pending" role="status" class="text-xs font-medium text-warn-fg">
-              Something under “Weekly analyst inputs” is not saved yet, or was carried or suggested and still needs
-              confirming. Finish it there before drafting.
+              You have unsaved changes or unconfirmed suggestions in Weekly Analyst Inputs. Please save or confirm all pending values before drafting.
             </p>
 
             <div v-if="error" class="rise-in space-y-2">

@@ -105,7 +105,7 @@ test("T19 analyst inputs: start from last week’s form; a weekly figure waits t
     await expect(panel.locator("#analyst-placements")).toHaveValue("9.5");
     await expect(panel.getByText("This changes every week. Last week’s value is not used in a draft until you confirm it for this week or type this week’s.")).toBeVisible();
     await expect(draft).toBeDisabled();
-    await expect(page.getByText("Something under “Weekly analyst inputs” is not saved yet", { exact: false })).toBeVisible();
+    await expect(page.getByText("You have unsaved changes or unconfirmed suggestions in Weekly Analyst Inputs", { exact: false })).toBeVisible();
     // A slow-changing table is carried and used at once, marked as carried.
     await expect(panel.getByText("Carried from week ending 9 Oct 2026, 5 rows", { exact: true })).toBeVisible();
     await expect(panel.getByText("Shaded cells with a dashed edge are carried from week ending 9 Oct 2026. Type over any that changed.")).toBeVisible();
@@ -295,7 +295,7 @@ test("T24 a section that is drafting says so on its own card and run page; anoth
   release();
   await expect.poll(async () => (await (await request.get(`${API}/api/runs/${run}`)).json()).status).toBe("failed");
   await page.goto(`/runs/${run}`);
-  await expect(page.getByRole("alert").getByText("The draft stopped.", { exact: false })).toBeVisible();
+  await expect(page.getByRole("alert").getByText("Drafting could not be completed.", { exact: false })).toBeVisible();
   await expect(page.getByText(/^Drafting for/)).toHaveCount(0);
   // The overview then shows the failure on the section's card, and no banner for a draft that is no longer running.
   await page.goto(overviewUrl());
@@ -311,7 +311,7 @@ test("T25 Executive Summary: refused until every section is approved, then compo
   await expect(page.getByText("Nothing is searched or drafted: each approved section’s lead piece is carried with its sources and checked again.")).toBeVisible();
   await page.getByRole("button", { name: `Compose the ${Q3} summary` }).click();
   // Nothing is approved yet: the run stops and names each section.
-  const stopped = page.getByRole("alert").filter({ hasText: "The draft stopped." });
+  const stopped = page.getByRole("alert").filter({ hasText: "Drafting could not be completed." });
   await expect(stopped).toContainText("The Executive Summary is composed from approved sections only. Still to approve:");
   await expect(stopped).toContainText("Fixed Income");
 

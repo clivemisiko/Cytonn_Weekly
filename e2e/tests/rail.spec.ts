@@ -111,7 +111,7 @@ test("T61 the rail asks first when something typed is unsaved, as Home and Back 
   });
   await rail(page).getByRole("button", { name: "Equities, Not drafted" }).click();
   await expect.poll(() => questions.length).toBe(1);
-  expect(questions[0]).toBe('Something typed under "Weekly analyst inputs" is not saved yet. Leave this page and lose it?');
+  expect(questions[0]).toBe('You have unsaved changes in Weekly Analyst Inputs. Are you sure you want to leave without saving?');
   await expect(page.getByRole("heading", heading("Fixed Income"))).toBeVisible();
   await expect(placements).toHaveValue("9.25"); // Cancel: still here, typing intact
 

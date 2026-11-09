@@ -76,18 +76,16 @@ async function send() {
     <form v-if="phase === 'editing'" class="basis-full space-y-2" @submit.prevent="ask('edit')">
       <label :for="boxId" class="block text-sm font-medium">Your {{ noun }}</label>
       <p v-if="paragraph" :id="`${boxId}-help`" class="text-xs text-muted-foreground">
-        Plain text only: no links or formatting, and line breaks become spaces, so a list becomes one paragraph. Saving creates a new version of the
-        section; this one stays saved. The checker has no source for what you write, so you must read every figure in it against its source by hand.
+        Plain text only: links and formatting will be removed, and line breaks will be converted to spaces. Saving creates a new revision while preserving the current version. Figures entered manually must be verified against their underlying sources.
       </p>
       <p v-else :id="`${boxId}-help`" class="text-xs text-muted-foreground">
-        Plain text only: no links or formatting. Saving creates a new version of the section; this one stays saved. A figure that is not in the source
-        cited for the earlier wording stays flagged, and you can then accept it knowingly.
+        Plain text only: no links or formatting. Saving creates a new revision while preserving the current version. Figures not supported by the original cited source will remain flagged for your manual review and verification.
       </p>
       <Textarea :id="boxId" v-model="text" :rows="paragraph ? '8' : '3'" autocomplete="off" :aria-describedby="`${boxId}-help ${boxId}-count`" :aria-invalid="check.over > 0" class="resize-y" />
       <p :id="`${boxId}-count`" class="text-xs" :class="check.over ? 'font-medium text-flag-fg' : 'text-muted-foreground'">
         {{ check.length }} of {{ limit }} characters<template v-if="check.over">. Over the limit by {{ check.over }} {{ check.over === 1 ? "character" : "characters" }}.</template>
       </p>
-      <p v-if="check.same && !check.empty" class="text-xs text-muted-foreground">Change the {{ noun }} to save it.</p>
+      <p v-if="check.same && !check.empty" class="text-xs text-muted-foreground">No changes detected. Modify the {{ noun }} to save a new version.</p>
       <div class="flex flex-wrap gap-2">
         <Button type="submit" size="sm" :disabled="!check.ok">Save as a new version</Button>
         <Button size="sm" variant="outline" @click="cancel">Cancel</Button>

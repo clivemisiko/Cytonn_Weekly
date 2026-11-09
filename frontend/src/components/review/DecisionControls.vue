@@ -13,7 +13,7 @@ const COPY: Record<Decision, { title: string; body: string; confirm: string }> =
   },
   rejected: {
     title: "Reject this section?",
-    body: "The draft is sent back and frozen as it is. This is recorded once and cannot be changed; a new draft would have to be run.",
+    body: "Rejecting this section locks the current draft as rejected. To revise this section later, a new draft run will need to be started.",
     confirm: "Reject",
   },
 };

@@ -66,7 +66,7 @@ function chooseWeek(next: string) {
   void apply();
 }
 
-const periodLabel = computed(() => (type.value === "companion" ? "Weekly issue it rides with" : info.value?.period_required ? "Period" : "Issue (optional)"));
+const periodLabel = computed(() => (type.value === "companion" ? "Associated Weekly Report Issue" : info.value?.period_required ? "Period" : "Issue (optional)"));
 const hint = computed(() => {
   if (type.value === "companion") {
     const k = props.kinds.find((x) => x.slug === kind.value);
@@ -95,7 +95,7 @@ const hint = computed(() => {
 
       <!-- Its own full-width row: the reports' titles are long, and a native select cannot wrap them. -->
       <div v-if="type === 'companion'" class="space-y-1 @min-[30rem]:col-span-2 @min-[41rem]:col-span-full @min-[41rem]:row-start-2">
-        <label :for="`${id}-kind`" class="text-sm font-semibold">Which report</label>
+        <label :for="`${id}-kind`" class="text-sm font-semibold">Report Edition</label>
         <div class="relative">
           <select :id="`${id}-kind`" :value="kind" :disabled="busy" :class="[FIELD, 'appearance-none pr-9']" @change="chooseKind(($event.target as HTMLSelectElement).value)">
             <option v-for="k in kinds" :key="k.slug" :value="k.slug">{{ k.title }}</option>
@@ -131,7 +131,7 @@ const hint = computed(() => {
       <label :for="`${id}-week`" class="text-sm font-semibold">Week to draft</label>
       <div class="relative max-w-[26rem]">
         <select :id="`${id}-week`" :value="current.period" :disabled="busy" :class="[FIELD, 'appearance-none pr-9']" @change="chooseWeek(($event.target as HTMLSelectElement).value)">
-          <option v-if="!weekInList" :value="current.period">{{ current.period || "Weekly report with no week" }}</option>
+          <option v-if="!weekInList" :value="current.period">{{ current.period || "Unspecified Week (Current Default)" }}</option>
           <option v-for="w in weeks" :key="w.period" :value="w.period">{{ weekChoiceLabel(w) }}</option>
         </select>
         <PhCaretDown weight="bold" :class="CARET" aria-hidden="true" />

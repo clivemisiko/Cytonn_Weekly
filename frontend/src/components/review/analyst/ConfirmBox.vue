@@ -13,7 +13,7 @@ const emit = defineEmits<{ confirm: [] }>();
       {{
         carried?.from === "suggested"
           ? "A suggestion only. It is not used in a draft until you confirm it or type the figure yourself."
-          : "This changes every week. Last week’s value is not used in a draft until you confirm it for this week or type this week’s."
+          : "This value updates weekly. Please confirm last week’s figure or enter the updated value for this week."
       }}
     </p>
     <p v-if="carried?.note" class="text-xs [overflow-wrap:anywhere]">{{ carried.note }}</p>

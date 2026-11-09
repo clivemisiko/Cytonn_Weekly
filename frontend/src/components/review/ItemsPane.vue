@@ -196,7 +196,7 @@ const shared = computed(() => {
             <span v-if="shared.count < shared.of" class="font-medium">For {{ shared.count }} of these {{ shared.of }} items: </span>{{ shared.text }}
           </p>
           <p v-if="itemsOf(status).length === 0" class="pt-3 text-sm text-muted-foreground">
-            {{ filter !== 'all' ? 'No items match the current filter.' : 'None.' }}
+            {{ filter !== 'all' ? 'No items match the current filter.' : 'No items in this category.' }}
           </p>
           <ul v-else class="space-y-3 pt-3">
             <ReviewItemCard

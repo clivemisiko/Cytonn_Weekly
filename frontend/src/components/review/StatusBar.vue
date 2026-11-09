@@ -65,7 +65,7 @@ const fraction = computed(() => (progress.value.total ? progress.value.resolved 
           </span>
           <span v-else-if="review.is_approvable" class="flex items-center gap-2 text-ok-fg">
             <PhCheckCircle weight="bold" class="size-4 shrink-0" aria-hidden="true" />
-            <span>Approvable: every item is resolved and none needs a fix.</span>
+            <span>Ready for approval: All review items have been resolved.</span>
           </span>
           <!-- The unresolved count is the bar's headline, so this line says only what still stands in the way. -->
           <span v-else class="flex items-center gap-2 text-warn-fg">
@@ -83,7 +83,7 @@ const fraction = computed(() => (progress.value.total ? progress.value.resolved 
         <Notice data-problem class="mt-3 font-medium">{{ decisionError }}</Notice>
       </div>
       <div v-if="saveError" role="alert" class="rise-in overflow-hidden">
-        <Notice data-problem class="mt-3 font-medium">NOT SAVED: {{ saveError }} Your last change did not reach the server, so the screen now shows what the server holds. Make the change again.</Notice>
+        <Notice data-problem class="mt-3 font-medium">Changes could not be saved: {{ saveError }}. The section has been restored to the last saved version. Please re-enter your changes.</Notice>
       </div>
     </div>
   </div>

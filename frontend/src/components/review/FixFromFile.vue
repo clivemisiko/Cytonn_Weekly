@@ -80,7 +80,7 @@ async function picked(event: Event) {
     <span v-if="phase === 'working'" role="status" class="text-xs text-muted-foreground">Uploading and re-checking the figures…</span>
 
     <fieldset v-if="phase === 'asking'" class="basis-full space-y-1">
-      <legend class="text-sm font-medium">Which file is it?</legend>
+      <legend class="text-sm font-medium">Select the file type to replace</legend>
       <label v-for="s in slots" :key="s.slug" class="flex items-center gap-2 text-sm">
         <input v-model="chosen" type="radio" :name="`fix-slot-${item.index}`" :value="s.slug" class="size-4" />
         {{ s.title }}

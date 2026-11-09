@@ -76,7 +76,7 @@ const open = (next: boolean) => {
       >
         <div class="flex flex-col gap-2">
           <AlertDialogTitle class="font-heading text-lg leading-snug font-semibold">{{ dialogProblem?.headline }}</AlertDialogTitle>
-          <AlertDialogDescription class="text-sm text-muted-foreground">The details are shown on the page.</AlertDialogDescription>
+          <AlertDialogDescription class="text-sm text-muted-foreground">Please review the highlighted section on the screen to resolve this issue.</AlertDialogDescription>
         </div>
         <div ref="footer" class="-mx-6 -mb-6 flex flex-col-reverse gap-2 rounded-b-lg border-t bg-muted px-6 py-4 sm:flex-row sm:justify-end">
           <AlertDialogCancel as-child>
