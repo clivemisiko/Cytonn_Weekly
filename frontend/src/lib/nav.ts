@@ -1,7 +1,7 @@
 import { type MaybeRefOrGetter, onUnmounted, shallowRef, toValue, watchEffect } from "vue";
 
-/** The start screen: where Home always goes, and where Back goes when a page names nowhere better. */
-export const HOME = "/";
+/** The workspace home: where the top bar's Home button goes, and the primary dashboard. */
+export const HOME = "/overview";
 
 /**
  * Where the top bar's Back button goes from the page on screen. Each page says so itself (useBack), because most of

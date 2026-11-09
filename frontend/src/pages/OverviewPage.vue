@@ -12,7 +12,7 @@ import StartSkeleton from "@/components/review/StartSkeleton.vue";
 import Button from "@/components/ui/Button.vue";
 import * as api from "@/lib/api";
 import { draftingList } from "@/lib/drafting";
-import { BACK_HOME, type BackTarget, useBack } from "@/lib/nav";
+import { BACK_NONE, type BackTarget, useBack } from "@/lib/nav";
 import { openingReport, rememberWeek } from "@/lib/previous";
 import { shell, useShellActions, useShellHere } from "@/lib/shell";
 import { type AppConfig, type Drafting, type Overview, REPORT_TYPES, type ReportChoice, type ReportType, type Review, type SectionSummary, type WeekChoice } from "@/lib/types";
@@ -177,10 +177,10 @@ function home() {
   void fetchOverview(report.value).then(show);
 }
 
-// The top bar's Back: from a section's start screen or an open review, to this report's list of sections (as the
-// masthead's own back link did before the bar); from the list itself, Home.
+// The top bar's Back: from a section's start screen or an open review, to this report's list of sections.
+// From the list of sections itself, Back is disabled as overview is the top-level workspace.
 const TO_SECTIONS: BackTarget = { kind: "go", to: "all sections", go: home };
-useBack(() => (phase.value.name === "start" || phase.value.name === "review" ? TO_SECTIONS : BACK_HOME));
+useBack(() => (phase.value.name === "start" || phase.value.name === "review" ? TO_SECTIONS : BACK_NONE));
 
 /** Switch the overview to another report. A period the API rejects stays in the picker with the API's reason. */
 async function chooseReport(next: ReportChoice): Promise<string | null> {
