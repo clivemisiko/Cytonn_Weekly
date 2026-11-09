@@ -269,11 +269,10 @@ def test_an_executive_summary_run_is_only_its_start_and_its_end(client):
     assert sum(run["events"][-1]["counts"].values()) > 0
 
 
-def test_company_updates_runs_with_no_provider_and_no_draft_slot(client, monkeypatch):
+def test_the_executive_summary_runs_with_no_provider_and_no_draft_slot(client, monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY")
-    run = run_to_end(client, section="company_updates", text="Investment Updates: demo.", **Q3)
-    assert kinds(run) == ["run_started", "run_finished"]
-    assert run["events"][-1]["counts"] == {"clean": 0, "flagged": 0, "not_auto_verified": 1}
+    run = run_to_end(client, section="executive_summary", **Q3)   # no section approved yet: it stops at once, with no key needed
+    assert kinds(run) == ["run_started", "run_failed"] and run["status"] == "failed"
 
 
 def test_a_development_provider_run_is_reported_as_a_dev_draft(client, db, monkeypatch):
@@ -384,7 +383,7 @@ def test_a_run_is_refused_for_the_reasons_a_draft_is(client, monkeypatch):
          "/api/sections/reits.section_1/draft", {"report_type": "companion", "period": "#33.2026", "kind": "reits"},
          409),  # unavailable (a companion report's sections are stubs)
         ({"section": "focus"}, "/api/sections/focus/draft", None, 422),  # no topic
-        ({"section": "company_updates", **Q3}, "/api/sections/company_updates/draft", Q3, 422),  # no text
+        ({"section": "company_updates", **Q3}, "/api/sections/company_updates/draft", Q3, 404),  # no such section
         ({"section": "equities", "report_type": "companion", "kind": "nope"}, "/api/sections/equities/draft",
          {"report_type": "companion", "kind": "nope"}, 422),
     ]
@@ -437,7 +436,7 @@ def test_a_second_run_of_the_same_section_is_refused_while_the_first_is_running(
         running_cancel = client.post(f"/api/runs/{first}/cancel")
         assert running_cancel.status_code == 409 and "cannot be stopped" in running_cancel.json()["detail"]
         # a section that calls no provider takes no seat
-        assert run_to_end(client, section="company_updates", text="Demo.", **Q3)["status"] == "finished"
+        assert run_to_end(client, section="executive_summary", **Q3)["status"] == "failed"   # ends at once, without waiting for a seat
         assert client.get(f"/api/runs/{first}").json()["status"] == "running"
     finally:
         provider.release.set()

@@ -37,7 +37,7 @@ def pieces_for(report_type: str, period: str, slug: str, *, sections: Sequence[s
                today: Optional[date] = None) -> Optional[list[Piece]]:
     """The pieces a section's draft will ask the provider about, with the day each is asked as of.
 
-    None: the section calls no provider (Company Updates, the Executive Summary) or is not drafted yet. An empty list: the
+    None: the section calls no provider (the Executive Summary) or is not drafted yet. An empty list: the
     section has pieces but none can be named yet (a Focus with no typed section titles). ``sections`` is the Focus's typed
     titles, as a draft takes them. Read from the same briefs and company list the builders use, and the dates they pass:
     the weekly sections' Friday (weekly Fixed Income and Equities pass the week ending; Real Estate, Digital Payments and

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { APPROVED_BANNER, DEV_LABEL, NO_WEEKS, defaultReport, fullyApproved, openingReport, rememberWeek, rememberedWeek, weekChoiceLabel, weekRow } from "./previous";
 import type { LatestRun, Overview, PreviousWeek, WeekChoice } from "./types";
 
-const SLUGS = ["company_updates", "fixed_income", "equities", "real_estate", "digital_payments", "focus"];
+const SLUGS = ["fixed_income", "equities", "real_estate", "digital_payments", "focus"];
 const counts = { total: 0, unresolved: 0, fix_needed: 0 };
 
 function run(decision: "approved" | "rejected" | null, current = true): LatestRun {
@@ -23,7 +23,7 @@ function overview(latest: (slug: string) => LatestRun | null, type: "weekly" | "
     report_types: [],
     companion_kinds: [],
     sections: SLUGS.map((slug) => ({
-      slug, title: slug, available: true, needs_topic: false, needs_text: false, requires_approved: false, uses_provider: false,
+      slug, title: slug, available: true, needs_topic: false, requires_approved: false, uses_provider: false,
       reason: null, unblock: null, built_parts: [], subsections: [], charts: [], steps: [], latest: latest(slug),
     })),
   } as Overview;
@@ -37,7 +37,7 @@ const week = (over: Partial<PreviousWeek> = {}): PreviousWeek => ({
 describe("the approved-week banner", () => {
   it("shows when every section's newest run is approved", () => {
     expect(fullyApproved(overview(() => run("approved")))).toBe(true);
-    expect(APPROVED_BANNER).toBe("All six sections of this week are approved. The read-only archive and the Word export are under Previous reports.");
+    expect(APPROVED_BANNER).toBe("All five sections of this week are approved. The read-only archive and the Word export are under Previous reports.");
   });
 
   it("does not show when one section is in review, rejected or not drafted", () => {
@@ -84,10 +84,10 @@ describe("the overview's default week", () => {
   });
 
   it("says each week's state in words", () => {
-    const choice = (over: Partial<WeekChoice>): WeekChoice => ({ week_ending: "2026-10-09", period: "Week ending 2026-10-09", status: "not_started", approved: 0, total: 6, ...over });
+    const choice = (over: Partial<WeekChoice>): WeekChoice => ({ week_ending: "2026-10-09", period: "Week ending 2026-10-09", status: "not_started", approved: 0, total: 5, ...over });
     expect(weekChoiceLabel(choice({}))).toBe("9 Oct 2026, not started");
-    expect(weekChoiceLabel(choice({ status: "in_progress", approved: 4 }))).toBe("9 Oct 2026, 4 of 6 approved");
-    expect(weekChoiceLabel(choice({ status: "approved", approved: 6 }))).toBe("9 Oct 2026, all six approved");
+    expect(weekChoiceLabel(choice({ status: "in_progress", approved: 4 }))).toBe("9 Oct 2026, 4 of 5 approved");
+    expect(weekChoiceLabel(choice({ status: "approved", approved: 5 }))).toBe("9 Oct 2026, all five approved");
   });
 });
 
@@ -95,7 +95,7 @@ describe("the Previous reports list", () => {
   it("says each row's state in words", () => {
     const row = weekRow(week());
     expect(row.title).toBe("Week ending 9 Oct 2026");
-    expect(row.status).toBe("All six approved");
+    expect(row.status).toBe("All five approved");
     expect(row.approved).toBe("Last approved 12 Oct 2026, 10:30 EAT");
     expect(row.dev).toBeNull();
   });

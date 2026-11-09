@@ -11,26 +11,32 @@ test.skip(!!VARIANT, "runs on the default test backend");
 test.describe.configure({ mode: "serial" });
 
 const json = { "Content-Type": "application/json" };
-const TITLES = ["Company Updates", "Fixed Income", "Equities", "Real Estate", "Digital Payments", "Focus of the Week"];
+const TITLES = ["Fixed Income", "Equities", "Real Estate", "Digital Payments", "Focus of the Week"];
 const rail = (page: Page) => page.getByRole("navigation", { name: "Report sections" });
 const heading = (title: string) => ({ name: `${title}: analyst review`, level: 1 }) as const;
 
-/** Company Updates drafted through the API for that week (it calls no model); left in review. */
-async function draftCompanyUpdates(request: APIRequestContext, period: string, text: string) {
-  const res = await request.post(`${API}/api/sections/company_updates/draft`, { headers: json, data: { report_type: "weekly", period, text } });
+/** Digital Payments drafted through the API for that week; with `accept`, every item is accepted too. Left undecided. */
+async function draftPayments(request: APIRequestContext, period: string, accept = false) {
+  const res = await request.post(`${API}/api/sections/digital_payments/draft`, { headers: json, data: { report_type: "weekly", period }, timeout: 120_000 });
   expect(res.status(), await res.text()).toBe(200);
+  if (!accept) return;
+  const review = await res.json();
+  for (const item of review.review_items) {
+    const patched = await request.patch(`${API}/api/reviews/${review.run_id}/items/${item.index}`, { headers: json, data: { resolution: "accept" } });
+    expect(patched.ok()).toBe(true);
+  }
 }
 
-/** From the overview of that week, open Company Updates' review and wait for the screen. */
+/** From the overview of that week, open Digital Payments' review and wait for the screen. */
 async function openReview(page: Page, period: string) {
   await page.setViewportSize({ width: 1366, height: 768 });
   await page.goto(overviewUrl(period));
-  await expect(rail(page).getByRole("button", { name: "Company Updates, In review" })).toBeVisible();
-  await card(page, "Company Updates").getByRole("button", { name: "Resume review" }).click();
-  await expect(page.getByRole("heading", heading("Company Updates"))).toBeVisible();
+  await expect(rail(page).getByRole("button", { name: "Digital Payments, In review" })).toBeVisible();
+  await card(page, "Digital Payments").getByRole("button", { name: "Resume review" }).click();
+  await expect(page.getByRole("heading", heading("Digital Payments"))).toBeVisible();
 }
 
-test("T59 the rail lists the six sections with their state; it is a full rail, a narrow strip or absent by width, and sits under the dev ribbon", async ({ page }) => {
+test("T59 the rail lists the five sections with their state; it is a full rail, a narrow strip or absent by width, and sits under the dev ribbon", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 768 });
   await page.goto(overviewUrl());
   const nav = rail(page);
@@ -74,18 +80,18 @@ test("T59 the rail lists the six sections with their state; it is a full rail, a
 test("T60 a section opens from the rail, from the overview and from another section, and the rail marks the one on screen", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 768 });
   await page.goto(overviewUrl());
-  await rail(page).getByRole("button", { name: "Company Updates, Not drafted" }).click();
-  await expect(page.getByRole("heading", heading("Company Updates"))).toBeVisible();
-  await expect(rail(page).getByRole("button", { name: "Company Updates, Not drafted, this section is on screen" })).toHaveAttribute("aria-current", "page");
-  await expect(rail(page).getByText("0 of 6 sections approved")).toBeVisible();
+  await rail(page).getByRole("button", { name: "Digital Payments, Not drafted" }).click();
+  await expect(page.getByRole("heading", heading("Digital Payments"))).toBeVisible();
+  await expect(rail(page).getByRole("button", { name: "Digital Payments, Not drafted, this section is on screen" })).toHaveAttribute("aria-current", "page");
+  await expect(rail(page).getByText("0 of 5 sections approved")).toBeVisible();
   await expect(rail(page).getByRole("progressbar", { name: "Sections approved" })).toHaveAttribute("aria-valuenow", "0");
-  await expect(rail(page).getByText("Export unlocks when all 6 are approved.")).toBeVisible();
+  await expect(rail(page).getByText("Export unlocks when all 5 are approved.")).toBeVisible();
   await expect(rail(page).getByText("Dev mode · local model")).toBeVisible();
 
   await rail(page).getByRole("button", { name: "Real Estate, Not drafted" }).click();
   await expect(page.getByRole("heading", heading("Real Estate"))).toBeVisible();
   await expect(rail(page).getByRole("button", { name: /^Real Estate, Not drafted, this section is on screen$/ })).toHaveAttribute("aria-current", "page");
-  await expect(rail(page).getByRole("button", { name: "Company Updates, Not drafted" })).not.toHaveAttribute("aria-current", "page");
+  await expect(rail(page).getByRole("button", { name: "Digital Payments, Not drafted" })).not.toHaveAttribute("aria-current", "page");
 
   await rail(page).getByRole("button", { name: "Overview", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Analyst review", level: 1 })).toBeVisible();
@@ -131,45 +137,43 @@ test("T62 on the run view the rail's sections do nothing and say so; its Overvie
 
 test("T63 a rejection changes the rail's state at once and leaves the approved count where it was", async ({ page, request }) => {
   const period = "Week ending 2026-11-13";
-  await draftCompanyUpdates(request, period, "Investment Updates:\nSYNTHETIC e2e text, to be rejected.");
+  await draftPayments(request, period);
   await openReview(page, period);
-  await expect(rail(page).getByText("0 of 6 sections approved")).toBeVisible();
+  await expect(rail(page).getByText("0 of 5 sections approved")).toBeVisible();
 
   await page.getByRole("button", { name: "Reject", exact: true }).click();
   await page.getByRole("dialog", { name: "Reject this section?" }).getByRole("button", { name: "Reject", exact: true }).click();
   await expect(page.getByText("Rejected and locked")).toBeVisible();
-  await expect(rail(page).getByRole("button", { name: "Company Updates, Rejected, this section is on screen" })).toBeVisible();
-  await expect(rail(page).getByText("0 of 6 sections approved")).toBeVisible(); // a rejected section is not an approved one
+  await expect(rail(page).getByRole("button", { name: "Digital Payments, Rejected, this section is on screen" })).toBeVisible();
+  await expect(rail(page).getByText("0 of 5 sections approved")).toBeVisible(); // a rejected section is not an approved one
 
   await page.getByRole("button", { name: "Back to all sections" }).last().click();
-  await expect(card(page, "Company Updates")).toContainText("Rejected"); // the overview says the same
-  await expect(rail(page).getByRole("button", { name: "Company Updates, Rejected" })).toBeVisible();
+  await expect(card(page, "Digital Payments")).toContainText("Rejected"); // the overview says the same
+  await expect(rail(page).getByRole("button", { name: "Digital Payments, Rejected" })).toBeVisible();
 });
 
 test("T64 an approval changes the rail's state and its approved count", async ({ page, request }) => {
   const period = "Week ending 2026-11-20";
-  await draftCompanyUpdates(request, period, "Investment Updates:\nSYNTHETIC e2e text, to be approved.");
+  await draftPayments(request, period, true);
   await openReview(page, period);
-  await page.getByRole("radio", { name: "Accept", exact: true }).click();
   await page.getByRole("button", { name: "Approve", exact: true }).click();
   await page.getByRole("dialog", { name: "Approve this section?" }).getByRole("button", { name: "Approve", exact: true }).click();
   await expect(page.getByText("Approved and locked")).toBeVisible();
-  await expect(rail(page).getByRole("button", { name: "Company Updates, Approved, this section is on screen" })).toBeVisible();
-  await expect(rail(page).getByText("1 of 6 sections approved")).toBeVisible();
+  await expect(rail(page).getByRole("button", { name: "Digital Payments, Approved, this section is on screen" })).toBeVisible();
+  await expect(rail(page).getByText("1 of 5 sections approved")).toBeVisible();
   await expect(rail(page).getByRole("progressbar", { name: "Sections approved" })).toHaveAttribute("aria-valuenow", "1");
 });
 
 test("T65 when the sections cannot be read again, every state is the neutral mark and the count is not known", async ({ page, request }) => {
   const period = "Week ending 2026-11-27";
-  await draftCompanyUpdates(request, period, "Investment Updates:\nSYNTHETIC e2e text, decided while the API's list is down.");
+  await draftPayments(request, period, true);
   await openReview(page, period);
   await page.route(/\/api\/sections(\?|$)/, (route) => route.abort());
-  await page.getByRole("radio", { name: "Accept", exact: true }).click();
   await page.getByRole("button", { name: "Approve", exact: true }).click();
   await page.getByRole("dialog", { name: "Approve this section?" }).getByRole("button", { name: "Approve", exact: true }).click();
   await expect(page.getByText("Approved and locked")).toBeVisible(); // the decision itself went through
   // The rail does not go on saying "In review": it says it does not know.
-  await expect(rail(page).getByRole("button", { name: "Company Updates, State not known, this section is on screen" })).toBeVisible();
+  await expect(rail(page).getByRole("button", { name: "Digital Payments, State not known, this section is on screen" })).toBeVisible();
   await expect(rail(page).getByRole("button", { name: "Fixed Income, State not known, open the overview first" })).toHaveCount(0); // the overview page is still here, so it is not inert
   await expect(rail(page).getByRole("button", { name: "Fixed Income, State not known" })).toBeVisible();
   await expect(rail(page).getByText("Approved count not known")).toBeVisible();
@@ -178,7 +182,7 @@ test("T65 when the sections cannot be read again, every state is the neutral mar
 
 test("T69 the dev ribbon is the shell's: on the overview, a start screen and a review of a dev draft, never on the start page, and the review's sticky bar sits below it", async ({ page, request }) => {
   const period = "Week ending 2026-12-11";
-  await draftCompanyUpdates(request, period, "Investment Updates:\nSYNTHETIC e2e text, for the ribbon.");
+  await draftPayments(request, period);
   await page.setViewportSize({ width: 1366, height: 500 });
   const ribbon = page.getByRole("status").filter({ hasText: "DEV MODE DRAFT" });
 
@@ -200,8 +204,8 @@ test("T69 the dev ribbon is the shell's: on the overview, a start screen and a r
     await route.fulfill({ response, json: body });
   });
   await page.goto(overviewUrl(period));
-  await card(page, "Company Updates").getByRole("button", { name: "Resume review" }).click();
-  await expect(page.getByRole("heading", heading("Company Updates"))).toBeVisible();
+  await card(page, "Digital Payments").getByRole("button", { name: "Resume review" }).click();
+  await expect(page.getByRole("heading", heading("Digital Payments"))).toBeVisible();
   const reviewRibbon = page.getByRole("status").filter({ hasText: "DEV MODE DRAFT (stub)" });
   await expect(reviewRibbon).toBeVisible();
   expect(Math.round((await reviewRibbon.boundingBox())!.y)).toBe(44);

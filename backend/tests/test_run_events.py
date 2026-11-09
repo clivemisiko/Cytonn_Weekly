@@ -33,12 +33,8 @@ BUILDERS = {
     "weekly equities": lambda on_event=None: sh.equities_review(on_event=on_event),
     "weekly real_estate": lambda on_event=None: sh.real_estate_review(on_event=on_event),
     "weekly focus": lambda on_event=None: sh.focus_review(on_event=on_event),
-    "company_updates": lambda on_event=None: ph.company_updates_review(on_event=on_event),
     **{f"quarterly {slug}": (lambda on_event=None, _b=b: _b(on_event=on_event)) for slug, b in ph.BUILDERS.items()},
 }
-# Sections whose builder has no step of its own to report (see their docstrings).
-NO_SUB_STEPS = {"company_updates"}
-
 
 def snapshot(review):
     return {"section": review.section, "items": [i.to_dict() for i in review.review_items],
@@ -111,7 +107,7 @@ def test_on_event_none_leaves_the_builders_output_unchanged(name):
     assert snapshot(build(on_event=None)) == plain
     log = ev.EventLog()
     assert snapshot(build(on_event=log)) == plain
-    assert bool(log.events) == (name not in NO_SUB_STEPS)
+    assert log.events
 
 
 @pytest.mark.parametrize("name", BUILDERS)
@@ -125,7 +121,7 @@ def test_a_raising_observer_does_not_break_the_draft(name, caplog):
     build = BUILDERS[name]
     with caplog.at_level(logging.CRITICAL):  # the swallowed errors are logged; keep the test output quiet
         assert snapshot(build(on_event=broken)) == snapshot(build())
-    assert bool(calls) == (name not in NO_SUB_STEPS)
+    assert calls
 
 
 # ---------------------------------------------------------------------------
@@ -327,11 +323,9 @@ def test_each_unreadable_cbk_pdf_is_a_failed_source():
     assert all("not captured" in e.detail for e in failed)
 
 
-def test_the_executive_summary_and_company_updates_have_no_step_to_report(tmp_path):
-    """Composed or carried in one step: their builders never call the observer, so a run is only its start and end."""
+def test_the_executive_summary_has_no_step_to_report(tmp_path):
+    """Composed in one step: its builder never calls the observer, so a run is only its start and end."""
     log = ev.EventLog()
-    ph.company_updates_review(on_event=log)
-    assert log.events == []
     with pytest.raises(executive_summary.SectionsNotApproved):
         executive_summary.build_executive_summary_review(ph.ctx(db_path=tmp_path / "app.db"), on_event=log)
     assert log.events == []

@@ -32,7 +32,6 @@ PROBLEMS: dict[str, tuple[str, Optional[str]]] = {
     "draft_section_unavailable": ("This section cannot be drafted yet", "start-draft"),
     "draft_topic_missing": ("Type the topic before you start the draft", "start-draft"),
     "draft_topic_invalid": ("The topic is too long", "start-draft"),
-    "draft_text_missing": ("Paste the text before you start the draft", "start-draft"),
     "drafting_off": ("Drafting is switched off", "start-draft"),
     "draft_busy": ("Another draft is running", "start-draft"),
     "draft_already_running": ("This section is already being drafted", "start-draft"),

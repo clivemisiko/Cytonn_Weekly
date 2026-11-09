@@ -3,10 +3,10 @@ import { createShell } from "./shell";
 import type { Drafting, LatestRun, Overview, ReportChoice, SectionSummary } from "./types";
 
 const TITLES: Record<string, string> = {
-  company_updates: "Company Updates",
   fixed_income: "Fixed Income",
   equities: "Equities",
   real_estate: "Real Estate",
+  digital_payments: "Digital Payments",
 };
 const WEEK = "Week ending 2026-10-09";
 const counts = { total: 0, unresolved: 0, fix_needed: 0 };
@@ -34,7 +34,6 @@ function section(slug: string, latest: LatestRun | null = null, available = true
     title: TITLES[slug],
     available,
     needs_topic: false,
-    needs_text: false,
     requires_approved: false,
     uses_provider: true,
     reason: null,
@@ -75,8 +74,8 @@ describe("shell store", () => {
 
   it("takes each section's state and the approved count from the overview payload, as the overview's own tally does", () => {
     const shell = createShell(never);
-    shell.setOverview(overview({ company_updates: "approved", fixed_income: "open", equities: "rejected" }));
-    expect(states(shell)).toEqual({ company_updates: "approved", fixed_income: "in_review", equities: "rejected", real_estate: "not_drafted" });
+    shell.setOverview(overview({ digital_payments: "approved", fixed_income: "open", equities: "rejected" }));
+    expect(states(shell)).toEqual({ digital_payments: "approved", fixed_income: "in_review", equities: "rejected", real_estate: "not_drafted" });
     expect(shell.approved.value).toBe(1);
     expect(shell.total.value).toBe(4);
   });
@@ -84,9 +83,9 @@ describe("shell store", () => {
   it("marks an unavailable section as such, and a section being drafted as drafting, only in the report it is drafting for", () => {
     const shell = createShell(never);
     const o = overview({}, { slug: "fixed_income", title: "Fixed Income", report_type: "weekly", period: WEEK, started_at: "", elapsed_seconds: 5, stale: false, stale_after_seconds: 3600 });
-    o.sections[3] = section("real_estate", null, false);
+    o.sections[2] = section("real_estate", null, false);
     shell.setOverview(o);
-    expect(states(shell)).toEqual({ company_updates: "not_drafted", fixed_income: "drafting", equities: "not_drafted", real_estate: "unavailable" });
+    expect(states(shell)).toEqual({ digital_payments: "not_drafted", fixed_income: "drafting", equities: "not_drafted", real_estate: "unavailable" });
     const other = overview({}, { slug: "fixed_income", title: "Fixed Income", report_type: "quarterly", period: "Q3'2026", started_at: "", elapsed_seconds: 5, stale: false, stale_after_seconds: 3600 });
     shell.setOverview(other);
     expect(states(shell).fixed_income).toBe("not_drafted");
@@ -98,12 +97,12 @@ describe("shell store", () => {
     const o = overview({});
     o.drafting_list = [entry("fixed_income", "running"), entry("equities", "running"), entry("real_estate", "queued")];
     shell.setOverview(o);
-    expect(states(shell)).toEqual({ company_updates: "not_drafted", fixed_income: "drafting", equities: "drafting", real_estate: "queued" });
+    expect(states(shell)).toEqual({ digital_payments: "not_drafted", fixed_income: "drafting", equities: "drafting", real_estate: "queued" });
   });
 
   it("updates after a rejection: unknown at once, then the rejected state, with the approved count unchanged", async () => {
     const reads: ReportChoice[] = [];
-    let served = overview({ company_updates: "approved", fixed_income: "open" });
+    let served = overview({ digital_payments: "approved", fixed_income: "open" });
     const shell = createShell(async (report) => {
       reads.push(report);
       return served;
@@ -113,20 +112,20 @@ describe("shell store", () => {
     expect(shell.approved.value).toBe(1);
 
     // The analyst rejects Fixed Income: the screen says every state is unknown until the payload is read again.
-    served = overview({ company_updates: "approved", fixed_income: "rejected" });
+    served = overview({ digital_payments: "approved", fixed_income: "rejected" });
     shell.invalidate();
-    expect(states(shell)).toEqual({ company_updates: null, fixed_income: null, equities: null, real_estate: null });
+    expect(states(shell)).toEqual({ digital_payments: null, fixed_income: null, equities: null, real_estate: null });
     expect(shell.approved.value).toBeNull();
-    expect(shell.sections.value.map((s) => s.title)).toEqual(["Company Updates", "Fixed Income", "Equities", "Real Estate"]); // still listed
+    expect(shell.sections.value.map((s) => s.title)).toEqual(["Fixed Income", "Equities", "Real Estate", "Digital Payments"]); // still listed
 
     await shell.refreshFor("weekly", WEEK);
     expect(reads).toEqual([{ type: "weekly", period: WEEK, kind: null }]);
     expect(states(shell).fixed_income).toBe("rejected");
-    expect(states(shell).company_updates).toBe("approved");
+    expect(states(shell).digital_payments).toBe("approved");
     expect(shell.approved.value).toBe(1); // a rejected section is not an approved one
 
     // Then it is drafted again and approved: the count follows.
-    served = overview({ company_updates: "approved", fixed_income: "approved" });
+    served = overview({ digital_payments: "approved", fixed_income: "approved" });
     shell.invalidate();
     await shell.refreshFor("weekly", WEEK);
     expect(shell.approved.value).toBe(2);
@@ -134,7 +133,7 @@ describe("shell store", () => {
 
   it("leaves every state unknown when a read fails, never the earlier ones", async () => {
     const shell = createShell(() => Promise.reject(new Error("API down")));
-    shell.setOverview(overview({ company_updates: "approved" }));
+    shell.setOverview(overview({ digital_payments: "approved" }));
     await shell.refresh({ type: "weekly", period: WEEK, kind: null });
     expect(Object.values(states(shell))).toEqual([null, null, null, null]);
     expect(shell.approved.value).toBeNull();

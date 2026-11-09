@@ -32,7 +32,7 @@ test("T66 the report-status panel folds, stays folded after a reload, and is bel
   const tally = page.getByRole("group", { name: "Sections by state" });
   await expect(tally).toBeVisible();
   await expect(page.getByRole("button", { name: "Export weekly report" })).toBeVisible();
-  const feed = (await card(page, "Company Updates").boundingBox())!;
+  const feed = (await card(page, "Fixed Income").boundingBox())!;
   expect((await panel.boundingBox())!.x).toBeGreaterThan(feed.x + feed.width); // beside the feed, on its right
 
   await panel.getByRole("button", { name: "Hide Report status" }).click();
@@ -52,7 +52,7 @@ test("T66 the report-status panel folds, stays folded after a reload, and is bel
   await page.setViewportSize({ width: 1024, height: 768 });
   await expect(panel.getByRole("button", { name: /Report status$/ })).toBeHidden();
   await expect(tally).toBeVisible();
-  const narrowFeed = (await card(page, "Company Updates").boundingBox())!;
+  const narrowFeed = (await card(page, "Fixed Income").boundingBox())!;
   expect((await panel.boundingBox())!.y).toBeGreaterThan(narrowFeed.y);
 });
 
@@ -85,10 +85,10 @@ test("T67 a card shows what the payload says, and folding the group keeps the fl
   await expect(fi.getByText("3 flagged")).toBeVisible();
   await expect(fi.getByRole("button", { name: "Resume review" })).toBeVisible();
   await expect(fi.getByRole("button", { name: "Draft again" })).toBeVisible();
-  await expect(card(page, "Company Updates").getByRole("button")).toHaveText(["Add your text"]);
+  await expect(card(page, "Equities").getByRole("button")).toHaveText(["Draft section"]);
 
   // The group's heading says how many are approved and how many items are flagged; folding it hides the cards, not that.
-  const group = page.getByRole("button", { name: "Week ending 9 Oct 2026 · 0 of 6 approved" });
+  const group = page.getByRole("button", { name: "Week ending 9 Oct 2026 · 0 of 5 approved" });
   await expect(page.getByText("3 flagged").filter({ visible: true })).toHaveCount(2); // the heading's and the card's
   await group.click();
   await expect(fi).toBeHidden();
@@ -115,7 +115,7 @@ test("T68 an unavailable section's reason and what unblocks it are always in ful
   await expect(re.getByText("Unblocked by:")).toBeVisible();
   await expect(re.getByText("SYNTHETIC unblock: someone supplies the sample.")).toBeVisible();
   await expect(re.getByRole("button")).toHaveCount(0); // nothing can be done to it
-  await expect(page.getByRole("group", { name: "Sections by state" })).toContainText("Not available yet1 / 6");
+  await expect(page.getByRole("group", { name: "Sections by state" })).toContainText("Not available yet1 / 5");
 
   await expect(re.getByText("SYNTHETIC built part one")).toBeHidden();
   await re.locator("summary").click();
@@ -176,7 +176,7 @@ test("T108 the weekly export's notices go when the picker switches to the Monthl
   await page.getByLabel("Report type").selectOption("monthly");
   await page.getByLabel("Period", { exact: true }).fill("Oct'2026");
   await page.getByRole("button", { name: "Show sections" }).click();
-  await expect(page.getByText("Monthly, Oct'2026: 5 report sections.", { exact: false })).toBeVisible();
+  await expect(page.getByText("Monthly, Oct'2026: 4 report sections.", { exact: false })).toBeVisible();
   await expect(charts).toHaveCount(0);
   await expect(watermark).toHaveCount(0);
 

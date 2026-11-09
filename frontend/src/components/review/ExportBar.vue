@@ -67,7 +67,7 @@ const iconOf = (state: string) => (state === "approved" ? PhCheck : state === "r
         <p class="text-sm leading-relaxed text-muted-foreground">
           {{
             status?.ready
-              ? "Every section is approved. The Word file has the six sections in the issue’s order, tables, chart placeholders and each section’s summary for the CMS."
+              ? "Every section is approved. The Word file has the five sections in the issue’s order, tables, chart placeholders and each section’s summary for the CMS."
               : `Available once every section is approved: ${waiting.length} of ${status?.sections.length ?? 6} still to go.`
           }}
         </p>

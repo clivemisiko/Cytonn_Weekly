@@ -7,7 +7,7 @@ here sends or publishes it (publishing to the CMS is still a blocked stub).
 
 What it holds, read from Cytonn Weekly #38.2026 (cytonnreport.com issue 891):
 
-* the six sections under the issue's own headings, in its order;
+* the five sections under the issue's own headings, in its order;
 * every table as a Word table, with its source line and footnotes;
 * each chart the real issue carries, where the issue puts it: the tool's own picture (6.0 in wide, with a line under it
   saying it is from the analyst workbook and not verified) for a chart it drew and the analyst approved, otherwise
@@ -79,7 +79,7 @@ PICTURE_UNVERIFIED = "[Chart not drawn: the stored picture could not be verified
 UPLOAD_UNREADABLE = "[Chart image not used: the uploaded picture could not be read. Upload it again.]"
 
 # The issue's own section headings (#38.2026).
-HEADINGS = {"company_updates": "Company Updates", "fixed_income": "Fixed Income", "equities": "Equities",
+HEADINGS = {"fixed_income": "Fixed Income", "equities": "Equities",
             "real_estate": "Real Estate", "digital_payments": "Digital Payments Weekly Highlights", "focus": "Focus of the Week"}
 
 _RED = RGBColor(0xC0, 0x00, 0x00)
@@ -139,7 +139,7 @@ def require_all_approved(reviews: list[tuple[SectionSpec, Optional[CoordinatorRe
 
 def week_choices(db_path: Optional[Union[Path, str]], today: Optional[date] = None) -> list[dict[str, Any]]:
     """The weeks an analyst can choose to draft, newest first: the coming Friday and the last eight, each with how many
-    of the six sections' newest runs (the export's grouping) are approved and a status: not_started, in_progress or approved."""
+    of the five sections' newest runs (the export's grouping) are approved and a status: not_started, in_progress or approved."""
     friday = latest_friday(today or date.today())
     out = []
     for n in range(1, -8, -1):
@@ -154,7 +154,7 @@ def week_choices(db_path: Optional[Union[Path, str]], today: Optional[date] = No
 
 
 def approved_weeks(db_path: Optional[Union[Path, str]], today: Optional[date] = None) -> dict[str, Any]:
-    """Every weekly period whose six sections' newest runs are all approved, newest week first, and the week after
+    """Every weekly period whose five sections' newest runs are all approved, newest week first, and the week after
     the latest of them (``next_week_ending``, None when no week is fully approved). ``default_week_ending``, never
     None, is the latest Friday: approvals never move it, the analyst chooses the week (``choices``, see
     ``week_choices``).

@@ -35,7 +35,7 @@ shell.invalidate(); // this page hands the rail no report, so no section's state
 const one = (v: unknown) => (Array.isArray(v) ? v[0] : v) as string | undefined;
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
-/** The list (no query), one week's six sections (?period=), or one of its reviews read only (?review=). */
+/** The list (no query), one week's five sections (?period=), or one of its reviews read only (?review=). */
 async function load() {
   const reviewId = Number(one(route.query.review));
   const period = one(route.query.period);
@@ -122,7 +122,7 @@ const weekTitle = computed(() => {
           </div>
 
           <template v-if="phase.name === 'list'">
-            <p class="text-sm text-muted-foreground">Weekly reports whose six sections are all approved, newest first. Each opens read only.</p>
+            <p class="text-sm text-muted-foreground">Weekly reports whose five sections are all approved, newest first. Each opens read only.</p>
             <div v-if="phase.weeks.length === 0" class="rounded-lg border bg-card p-6">
               <p class="text-sm">{{ NO_WEEKS }}</p>
             </div>

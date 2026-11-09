@@ -129,7 +129,6 @@ def test_a_draft_that_cannot_start(client, monkeypatch):
     expect(client.post("/api/runs", json={"section": "focus"}), 422, "draft_topic_missing", "Type a topic")
     expect(client.post("/api/runs", json={"section": "focus", "topic": "x" * 600}), 422, "draft_topic_invalid",
            "the limit is 500")
-    expect(client.post("/api/runs", json={"section": "company_updates"}), 422, "draft_text_missing", "Paste the text")
     expect(client.post("/api/sections/reits.section_1/draft",
                        json={"report_type": "companion", "period": "#33.2026", "kind": "reits"}), 409,
            "draft_section_unavailable", "cannot be drafted yet")

@@ -1,6 +1,5 @@
 <script setup lang="ts">
 const SECTIONS = [
-  "Company Updates",
   "Fixed Income",
   "Equities",
   "Real Estate",
@@ -76,7 +75,7 @@ const TALLIES = ["Approved", "In review", "Not drafted", "Rejected", "Not availa
           </div>
         </div>
 
-        <!-- Section Rows Skeletons: 6 Realistic Cards -->
+        <!-- Section Rows Skeletons: 5 Realistic Cards -->
         <ol class="space-y-4">
           <li
             v-for="(name, index) in SECTIONS"
@@ -148,7 +147,7 @@ const TALLIES = ["Approved", "In review", "Not drafted", "Rejected", "Not availa
           </div>
           <div class="h-10 w-full rounded-md bg-border/60 animate-pulse" />
           <div class="flex flex-wrap gap-1.5 pt-1">
-            <div v-for="i in 6" :key="i" class="h-5 w-24 rounded-full bg-border/35 animate-pulse" />
+            <div v-for="i in 5" :key="i" class="h-5 w-24 rounded-full bg-border/35 animate-pulse" />
           </div>
         </section>
       </aside>

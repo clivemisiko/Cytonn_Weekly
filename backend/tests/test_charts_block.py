@@ -59,7 +59,7 @@ def test_with_no_workbook_each_chart_is_information_and_makes_no_review_item():
 
 
 def test_no_workbook_does_not_hold_up_approval_but_a_workbook_that_cannot_give_the_chart_does():
-    other = {"kind": "supplied", "id": "company_updates", "title": "Company updates", "body_md": "Invented text.", "supplied_by": "coordinator"}
+    other = {"kind": "supplied", "id": "bidding_range", "title": "Bidding range", "body_md": "Invented text.", "supplied_by": "coordinator"}
     none, _ = chart_blocks(None, "Equities workbook", FRIDAY, QUOTED, MISSING_BOOK)
     review = review_of([other, *none])
     assert len(review.review_items) == 1 and not review.is_approvable

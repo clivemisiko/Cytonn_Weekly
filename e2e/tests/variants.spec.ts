@@ -31,12 +31,9 @@ test("T26 a provider problem: said on the start screen, drafting is off, and the
   expect(refused.status()).toBe(409);
   expect((await refused.json()).detail).toContain(config.provider_problem);
 
-  // A section that calls no provider is not affected.
-  await openStart(page, "Company Updates");
+  // A section that calls no provider (the Executive Summary) is not affected.
+  await openStart(page, "Executive Summary", "Q3'2026", "quarterly");
   await expect(page.getByText("Drafting is off until then.", { exact: false })).toHaveCount(0);
-  await page.getByLabel("Your Company Updates text").fill("Investment Updates:\nSYNTHETIC e2e text.");
-  await page.getByRole("button", { name: "Save your text as the section" }).click();
-  await expect(page.getByRole("heading", { name: "Draft ready for review", level: 2 })).toBeVisible();
 });
 
 test("T27 a stale draft: shown as stuck, the next draft takes the slot over and the stuck one's result is discarded", async ({ page, request }) => {

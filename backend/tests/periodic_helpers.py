@@ -15,7 +15,6 @@ from cytonn_weekly.periodic import equities, kenya_macro
 from cytonn_weekly.periodic.common import PeriodContext
 # The builders themselves, bound at import, so a test that monkeypatches a section module's
 # builder (to fake the API's draft) still gets the real pipeline from the helpers below.
-from cytonn_weekly.periodic.company_updates import build_company_updates_review
 from cytonn_weekly.periodic.digital_payments import build_digital_payments_review
 from cytonn_weekly.periodic.equities import build_equities_review
 from cytonn_weekly.periodic.fixed_income import build_fixed_income_review
@@ -46,8 +45,8 @@ KNBS_CPI = SOURCES / "knbs_cpi_2026-09_first5pages.pdf"
 AFX_NSE = SOURCES / "afx_nse_2026-10-02.html"
 
 
-def ctx(report_type="quarterly", period=Q3, text=None, db_path=None, today=TODAY):
-    return PeriodContext.of(report_type, period, today=today, text=text, db_path=db_path)
+def ctx(report_type="quarterly", period=Q3, db_path=None, today=TODAY):
+    return PeriodContext.of(report_type, period, today=today, db_path=db_path)
 
 
 def cbk_get(url: str) -> bytes:
@@ -124,11 +123,6 @@ def digital_payments_review(c=None, provider=None, narrative_provider=None, on_e
     return build_digital_payments_review(
         c or ctx(), provider=provider or FakeProvider(), narrative_provider=narrative_provider or narrative(),
         fetch_table=dp_rows, history=dp_history, on_event=on_event)
-
-
-def company_updates_review(c=None, text="Investment Updates: Weekly Rates: Demo text. Hospitality Updates: Demo text.",
-                           on_event=None):
-    return build_company_updates_review(c or ctx(text=text), on_event=on_event)
 
 
 BUILDERS = {

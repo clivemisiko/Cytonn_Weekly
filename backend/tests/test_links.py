@@ -6,9 +6,16 @@ Hidden and look-alike characters are written as chr(...) so none sits invisibly 
 import pytest
 
 from cytonn_weekly.common.links import EMAIL, LINK, MISSING, POSSIBLE, URL, find_links
-from cytonn_weekly.common.review import LINK_FLAG, POSSIBLE_LINK_FLAG, SUPPLIED_NOTE, SUPPLIED_TEXT, build_review, check_section
+from cytonn_weekly.common.review import (
+    LINK_FLAG,
+    POSSIBLE_LINK_FLAG,
+    SUPPLIED_NOTE,
+    SUPPLIED_TEXT,
+    build_review,
+    check_section,
+    supplied_block,
+)
 from cytonn_weekly.digital_payments.coordinator_review import FLAGGED, NOT_AUTO_VERIFIED
-from cytonn_weekly.weekly.company_updates import build_company_updates_weekly_review
 
 ZWSP, CYRILLIC_ES = chr(0x200B), chr(0x0441)
 
@@ -86,7 +93,9 @@ def test_a_file_after_a_domain_is_part_of_the_address():
 # -- the review item -----------------------------------------------------------
 
 def company_item(text):
-    review = build_company_updates_weekly_review(text)
+    """A supplied block as the weekly Fixed Income's bidding range is built: the only supplied text left in the tool."""
+    content = {"section": "fixed_income", "blocks": [supplied_block("bidding_range", "Bidding range", text)]}
+    review = build_review(content, check_section(content))
     [item] = [i for i in review.review_items if i.kind == SUPPLIED_TEXT]
     return review, item
 
@@ -121,9 +130,6 @@ def test_text_with_no_link_carries_nothing_new():
 
 
 def test_every_supplied_block_is_checked_the_same_way():
-    """The Markets Reviews' Company Updates is the same supplied block, so it is flagged the same way."""
-    from tests import periodic_helpers as ph
-    item = next(i for i in ph.company_updates_review(text="See https://cytonn.com/q3").review_items if i.kind == SUPPLIED_TEXT)
-    assert item.status == FLAGGED and item.detail[0].message.startswith("Link: https://cytonn.com/q3")
+    """Any supplied block goes through the same check, whichever section holds it."""
     content = {"section": "x", "blocks": [{"kind": "supplied", "id": "s", "title": "T", "body_md": "plain"}]}
     assert build_review(content, check_section(content)).review_items[0].detail == SUPPLIED_NOTE

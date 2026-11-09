@@ -30,7 +30,7 @@ Block kinds:
                      reason, unblock}.  It still becomes a review item, so a section cannot be
                      approved without the analyst explicitly acknowledging what is missing.
 * ``supplied``    -- text the analyst typed in, carried verbatim and never drafted or checked
-                     (Company Updates, Cytonn's own promotional copy): {id, numeral, title, body_md,
+                     (the T-bond bidding range): {id, numeral, title, body_md,
                      supplied_by}.  It is one review item, never marked verified.
 * ``computed``    -- a paragraph the tool worked out from published figures (common/computed.py):
                      {id, numeral, title, body_md, figures, sources, notes}.  One review item per

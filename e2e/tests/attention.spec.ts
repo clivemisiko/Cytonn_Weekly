@@ -84,18 +84,17 @@ test("T90 a refused value saved from a field: no dialog; the form disables its f
 });
 
 test("T91 a review change the API refuses as already decided: the dialog, then Show me goes to the status bar's notice", async ({ page }) => {
-  await openStart(page, "Company Updates");
-  await page.getByLabel("Your Company Updates text").fill("The firm opened a new office in Nairobi.");
-  await page.getByRole("button", { name: "Save your text as the section" }).click();
+  await openStart(page, "Digital Payments");
+  await page.getByRole("button", { name: DRAFT }).click();
   await expect(page.getByRole("heading", { name: "Draft ready for review", level: 2 })).toBeVisible();
   await page.getByRole("link", { name: "Open review" }).click();
-  await expect(page.getByRole("heading", { name: "Company Updates: analyst review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Digital Payments: analyst review", level: 1 })).toBeVisible();
 
   const decided = "This section was already approved (review 1), so it cannot be changed. Reload the page to see the decision.";
   await page.route("**/api/reviews/*/items/*", (route) =>
     route.fulfill({ status: 409, json: { detail: decided, problems: [{ code: "review_already_decided", headline: "This section was already decided", target: "review-status-bar" }] } }),
   );
-  await page.getByRole("radio", { name: "Accept", exact: true }).click();
+  await page.getByRole("radio", { name: "Accept", exact: true }).first().click();
   const open = dialog(page, "This section was already decided");
   await expect(open).toBeVisible();
   await open.getByRole("button", { name: "Show me" }).click();
@@ -196,7 +195,7 @@ test("T97 under reduced motion the highlight is the outline alone, with no pulse
 test("T98 an export the API refuses: the error is in the feed, Show me goes to it, and it stays in view with the panel folded", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 768 });
   const NOT_READY = "The weekly report cannot be exported yet: Fixed Income (still in review).";
-  const sections = ["Company Updates", "Fixed Income", "Equities", "Real Estate", "Digital Payments", "Focus of the Week"];
+  const sections = ["Fixed Income", "Equities", "Real Estate", "Digital Payments", "Focus of the Week"];
   // The export is stood in for as T14 does: the status says ready, so the button can be pressed, and the file is refused.
   await page.route(/\/api\/export\/weekly/, (route) =>
     route.request().method() === "GET"

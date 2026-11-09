@@ -20,7 +20,7 @@ from cytonn_weekly.report_types import (
 )
 from tests.review_helpers import make_review
 
-MONTHLY_SLUGS = ["company_updates", "fixed_income", "equities", "real_estate", "digital_payments"]
+MONTHLY_SLUGS = ["fixed_income", "equities", "real_estate", "digital_payments"]
 
 
 # -- labels ---------------------------------------------------------------------------------------------------------------
@@ -95,7 +95,7 @@ def test_the_derived_week_ending_is_the_friday_before_the_monthlys_sunday(period
 
 # -- registry -------------------------------------------------------------------------------------------------------------
 
-def test_the_monthly_has_five_stub_sections_in_the_issues_order():
+def test_the_monthly_has_four_stub_sections_in_the_issues_order():
     specs = rs.sections_for(MONTHLY)
     assert [s.slug for s in specs] == MONTHLY_SLUGS
     assert rs.spec_for(MONTHLY, "focus") is None and rs.spec_for(MONTHLY, "executive_summary") is None
@@ -142,9 +142,9 @@ def test_the_weekly_overview_is_unchanged(client):
 
 def test_a_monthly_section_cannot_be_drafted_or_exported(client):
     for slug in MONTHLY_SLUGS:
-        r = client.post(f"/api/sections/{slug}/draft", json={"report_type": "monthly", "period": "Oct'2026", "text": "x"})
+        r = client.post(f"/api/sections/{slug}/draft", json={"report_type": "monthly", "period": "Oct'2026"})
         assert r.status_code == 409, slug
-        run = client.post("/api/runs", json={"section": slug, "report_type": "monthly", "period": "Oct'2026", "text": "x"})
+        run = client.post("/api/runs", json={"section": slug, "report_type": "monthly", "period": "Oct'2026"})
         assert run.status_code == 409, slug
     assert client.get("/api/export/weekly", params={"period": "Oct'2026"}).status_code == 422
     assert client.post("/api/export/weekly", params={"period": "Oct'2026"}).status_code == 422

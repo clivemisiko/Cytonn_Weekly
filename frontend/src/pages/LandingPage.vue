@@ -54,7 +54,7 @@ const rise = (order: number) => ({ animationDelay: `${order * 60}ms` });
         <div class="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-3" aria-hidden="true">
           <div class="flex items-center gap-2 rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-xs font-medium text-foreground">
             <PhFiles class="size-4 shrink-0 text-muted-foreground" />
-            <span>6 Report sections</span>
+            <span>5 Report sections</span>
           </div>
           <div class="flex items-center gap-2 rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-xs font-medium text-foreground">
             <PhCheckCircle class="size-4 shrink-0 text-ok-fg" />

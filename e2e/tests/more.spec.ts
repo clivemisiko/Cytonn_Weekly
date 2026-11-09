@@ -207,16 +207,16 @@ test("T22 weekly Digital Payments: its own review shape (highlights, the stock t
 });
 
 test("T23 rejecting a section is final: the dialog, the locked review, the overview afterwards", async ({ page }) => {
-  await openStart(page, "Company Updates");
-  await page.getByLabel("Your Company Updates text").fill("Investment Updates:\nSYNTHETIC e2e text to be rejected.");
-  await page.getByRole("button", { name: "Save your text as the section" }).click();
+  const period = "Week ending 2026-10-16";
+  await openStart(page, "Digital Payments", period);
+  await page.getByRole("button", { name: `Draft the ${period} section` }).click();
   await expect(page.getByRole("heading", { name: "Draft ready for review", level: 2 })).toBeVisible();
   await page.getByRole("link", { name: "Open review" }).click();
-  await expect(page.getByRole("heading", { name: "Company Updates: analyst review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Digital Payments: analyst review", level: 1 })).toBeVisible();
   const review = new URL(page.url()).searchParams.get("review");
 
   // Reject needs nothing resolved; it asks first.
-  await expect(page.getByText("1 unresolved · 0 of 1 resolved")).toBeVisible();
+  await expect(page.getByText(/\d+ unresolved · 0 of \d+ resolved/)).toBeVisible();
   await page.getByRole("button", { name: "Reject", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Reject this section?" });
   await expect(dialog).toContainText("The draft is sent back and frozen as it is. This is recorded once and cannot be changed; a new draft would have to be run.");
@@ -232,23 +232,23 @@ test("T23 rejecting a section is final: the dialog, the locked review, the overv
   await expect(page.getByText(/Decision recorded on .* EAT\. Every value below is frozen as drafted; nothing on\s+this screen can be changed\./)).toBeVisible();
   await expect(page.getByRole("button", { name: "Approve", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Reject", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("radio", { name: "Accept", exact: true })).toBeDisabled();
-  await expect(page.getByLabel(/^Note for /)).toHaveAttribute("readonly", "");
+  await expect(page.getByRole("radio", { name: "Accept", exact: true }).first()).toBeDisabled();
+  await expect(page.getByLabel(/^Note for /).first()).toHaveAttribute("readonly", "");
   // Still rejected when opened again by its address.
-  await page.goto(`${overviewUrl()}&review=${review}`);
+  await page.goto(`${overviewUrl(period)}&review=${review}`);
   await expect(page.getByText("Rejected and locked")).toBeVisible();
   await page.getByRole("button", { name: "Back to all sections" }).last().click();
-  await expect(card(page, "Company Updates")).toContainText("Rejected");
-  await expect(card(page, "Company Updates").getByRole("button", { name: "View review" })).toBeVisible();
-  await expect(page.getByText("Company Updates: Rejected")).toBeVisible();
+  await expect(card(page, "Digital Payments")).toContainText("Rejected");
+  await expect(card(page, "Digital Payments").getByRole("button", { name: "View review" })).toBeVisible();
+  await expect(page.getByText("Digital Payments: Rejected")).toBeVisible();
   await expect(page.getByRole("button", { name: "Export weekly report" })).toBeDisabled();
   // "Draft again" opens the start screen, which says what happened and offers a new draft (T42 to T44 go through it).
-  await card(page, "Company Updates").getByRole("button", { name: "Draft again" }).click();
-  await expect(page.getByRole("heading", { name: "Company Updates: analyst review", level: 1 })).toBeVisible();
+  await card(page, "Digital Payments").getByRole("button", { name: "Draft again" }).click();
+  await expect(page.getByRole("heading", { name: "Digital Payments: analyst review", level: 1 })).toBeVisible();
   await expect(page.getByText(new RegExp(`review \\(run ${review}\\) was rejected`))).toBeVisible();
   await expect(page.getByRole("button", { name: "View it" })).toBeVisible();
   await expect(page.getByText("Or start over with a new draft.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Save your text as the section" })).toBeVisible();
+  await expect(page.getByRole("button", { name: `Draft the ${period} section` })).toBeVisible();
 });
 
 test("T24 a section that is drafting says so on its own card and run page; another section's draft button stays on", async ({ page, request }) => {
@@ -282,8 +282,8 @@ test("T24 a section that is drafting says so on its own card and run page; anoth
   await expect(page.getByText(/^Drafting for \d+:\d\d$/)).toBeVisible();
   await page.reload();
   await expect(page.getByText(/^Drafting for \d+:\d\d$/)).toBeVisible();
-  // A section that calls no provider takes no seat: no notice, and it can be saved.
-  await openStart(page, "Company Updates");
+  // A section that calls no provider (the Executive Summary) takes no seat: no notice.
+  await openStart(page, "Executive Summary", "Q3'2026", "quarterly");
   await expect(page.getByText("drafting now", { exact: false })).toHaveCount(0);
 
   // The run view of the held draft: running, nothing invented.
@@ -315,13 +315,12 @@ test("T25 Executive Summary: refused until every section is approved, then compo
   await expect(stopped).toContainText("The Executive Summary is composed from approved sections only. Still to approve:");
   await expect(stopped).toContainText("Fixed Income");
 
-  // Draft and approve the other eight sections through the API (on the test suite's captured sources).
-  await draftAndApprove(request, "company_updates", Q3, "quarterly", "Investment Updates: SYNTHETIC e2e text. Hospitality Updates: SYNTHETIC e2e text.");
+  // Draft and approve the other seven sections through the API (on the test suite's captured sources).
   for (const slug of ["global_markets", "ssa", "kenya_macro", "fixed_income", "equities", "real_estate", "digital_payments"]) {
     await draftAndApprove(request, slug, Q3, "quarterly");
   }
   await page.goto(overviewUrl(Q3, "quarterly"));
-  await expect(page.getByRole("group", { name: "Sections by state" })).toContainText("Approved8 / 9");
+  await expect(page.getByRole("group", { name: "Sections by state" })).toContainText("Approved7 / 8");
 
   await openStart(page, "Executive Summary", Q3, "quarterly");
   await page.getByRole("button", { name: `Compose the ${Q3} summary` }).click();

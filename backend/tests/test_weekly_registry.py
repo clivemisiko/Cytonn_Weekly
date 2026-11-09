@@ -1,9 +1,9 @@
 """The weekly report as a whole: its sections in the real order, each with a summary, drafted for one week.
 
 The order and the summaries are read from Cytonn Weekly #38.2026 (cytonnreport.com issue
-891): Company updates, Fixed Income, Equities, Real Estate, Digital Payments Weekly
-Highlights, Focus of the Week; each CMS section carries a ``summary`` of its own lead
-paragraphs, except Company updates, whose summary is empty.
+891): Fixed Income, Equities, Real Estate, Digital Payments Weekly Highlights, Focus of the
+Week (Company updates is written by the CT team after the export, so it is not a section here);
+each CMS section carries a ``summary`` of its own lead paragraphs.
 """
 
 from datetime import date
@@ -16,7 +16,7 @@ from api.serialize import serialize_review
 from cytonn_weekly import report_sections as rs
 from cytonn_weekly.equities import weekly as eq_weekly
 from cytonn_weekly.fixed_income import weekly as fi_weekly
-from cytonn_weekly.weekly import company_updates, inputs
+from cytonn_weekly.weekly import inputs
 from cytonn_weekly.weekly.summaries import LIMIT, section_summary
 from tests import section_helpers as sh
 from tests import weekly_helpers as wh
@@ -24,33 +24,19 @@ from tests.review_helpers import make_review
 from tests.test_weekly_fixed_income import BULLETIN, fetchers
 
 WEEK = wh.WEEK
-UPDATES = "Investment Updates:\n\nWeekly Rates: the fund closed the week at 11.0% p.a.\n\nHospitality Updates:\n\nStaycation offers."
 
 
 def test_the_weekly_sections_are_in_issue_38s_order():
     assert [(s.slug, s.title) for s in rs.SECTIONS] == [
-        ("company_updates", "Company Updates"), ("fixed_income", "Fixed Income"), ("equities", "Equities"),
+        ("fixed_income", "Fixed Income"), ("equities", "Equities"),
         ("real_estate", "Real Estate"), ("digital_payments", "Digital Payments"), ("focus", "Focus of the Week")]
     assert all(s.available and s.build is not None for s in rs.SECTIONS)
     by = rs.BY_SLUG
-    assert by["company_updates"].needs_text and by["focus"].needs_topic and not by["fixed_income"].needs_text
+    assert "company_updates" not in by and by["focus"].needs_topic and not by["fixed_income"].needs_topic
     assert by["fixed_income"].subsections == fi_weekly.SUBSECTIONS and by["fixed_income"].charts == fi_weekly.CHARTS
     assert by["equities"].subsections == eq_weekly.SUBSECTIONS and by["equities"].charts == eq_weekly.CHARTS
     assert [t for t, _ in by["fixed_income"].steps][:1] == ["This week's inputs"] and by["fixed_income"].steps[-1][0] == "Your review"
     assert "afx" not in " ".join(body for _, body in by["equities"].steps)   # the weekly prints no afx tables any more
-
-
-def test_company_updates_is_the_coordinators_text_carried_verbatim():
-    review = company_updates.build_company_updates_weekly_review(UPDATES, WEEK.ending)
-    assert review.section["section"] == "company_updates" and review.section["week_ending"] == "2026-10-02"
-    block = review.section["blocks"][0]
-    assert (block["kind"], block["body_md"], block["supplied_by"]) == ("supplied", UPDATES, "coordinator")
-    assert [(i.kind, i.status) for i in review.review_items] == [("supplied_text", "not_auto_verified")]
-    assert review.section["summary"] == ""   # the published Company updates has no summary
-    with pytest.raises(ValueError, match="paste the Investment Updates and Hospitality Updates"):
-        company_updates.build_company_updates_weekly_review("   ")
-    with pytest.raises(ValueError, match="the limit is 10000"):
-        company_updates.build_company_updates_weekly_review("x" * 10_001)
 
 
 def test_every_weekly_section_has_a_summary_composed_from_its_own_text():
@@ -102,7 +88,7 @@ def api(tmp_path, monkeypatch):
     def fake(name):
         def builder(**kwargs):
             calls.append((name, kwargs))
-            review = company_updates.build_company_updates_weekly_review(f"{name} stand-in", kwargs.get("week_ending"))
+            review = sh.real_estate_review()
             review.section["section"] = name   # saved under the section it stands in for
             return review
         return builder
@@ -139,16 +125,10 @@ def test_each_week_has_its_own_reviews(api):
     assert all(s["latest"] is None for s in client.get("/api/sections").json()["sections"])   # the unlabelled weekly is separate
 
 
-def test_company_updates_needs_no_provider_and_no_key(api, monkeypatch):
+def test_company_updates_is_not_a_weekly_section(api):
     client, _, _ = api
-    monkeypatch.delenv("ANTHROPIC_API_KEY")
-    assert client.post("/api/sections/company_updates/draft").status_code == 422   # no text
-    r = client.post("/api/sections/company_updates/draft", json={"text": UPDATES, "period": "2026-10-02"})
-    assert r.status_code == 200
-    body = r.json()
-    assert body["section"]["blocks"][0]["body_md"] == UPDATES and body["summary"] == "" and body["is_dev_draft"] is False
-    updates = client.get("/api/sections").json()["sections"][0]
-    assert (updates["slug"], updates["uses_provider"], updates["needs_text"]) == ("company_updates", False, True)
+    assert client.post("/api/sections/company_updates/draft", json={"period": "2026-10-02"}).status_code == 404
+    assert "company_updates" not in [s["slug"] for s in client.get("/api/sections").json()["sections"]]
 
 
 def test_a_run_of_a_weekly_section_carries_the_week_too(api):

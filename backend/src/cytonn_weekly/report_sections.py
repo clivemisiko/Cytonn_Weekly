@@ -10,15 +10,16 @@ subsection headings and charts, and the function that builds the review.
 
 Orders are the real reports' own (CLAUDE.md, "Report types", records where each was read):
 
-* weekly: Company Updates, Fixed Income, Equities, Real Estate, Digital Payments Weekly
-  Highlights, Focus of the Week, as #38.2026 orders them (``SECTIONS`` and ``BY_SLUG`` are
-  this list).  Fixed Income and Equities are worked out from the week's uploaded inputs
-  (weekly/inputs.py) and published sources; Company Updates is the analyst's own text.
-* quarterly and half_year: Executive Summary, Company Updates, Global Markets Review,
+* weekly: Fixed Income, Equities, Real Estate, Digital Payments Weekly Highlights, Focus of
+  the Week, as #38.2026 orders them (``SECTIONS`` and ``BY_SLUG`` are this list).  Fixed
+  Income and Equities are worked out from the week's uploaded inputs (weekly/inputs.py) and
+  published sources.  Company Updates is written by the CT team after the exported document
+  is received, so no report has that section.
+* quarterly and half_year: Executive Summary, Global Markets Review,
   Sub-Saharan Africa Region Review, Kenya Macro Economic Review, Fixed Income, Equities,
   Real Estate, Digital Payments.
 * annual: the same without Digital Payments, which first ran in May 2026, after FY'2025.
-* monthly: Company Updates, Fixed Income, Equities, Real Estate, Digital Payments, as the October
+* monthly: Fixed Income, Equities, Real Estate, Digital Payments, as the October
   2026 Monthly (issue 897) orders them; no Focus of the Week.  Stage 1: every section is a stub.
 * companion: one per verified kind, each section of it a stub (periodic/companion.py).
 """
@@ -44,7 +45,6 @@ class DraftContext:
     period: str = ""
     topic: Optional[str] = None     # Focus of the Week
     sections: tuple[str, ...] = ()  # Focus of the Week: its section titles, cleaned; empty means the model proposes them
-    text: Optional[str] = None      # Company Updates
     db_path: Optional[Union[Path, str]] = None  # Executive Summary reads the approved sections from here
     today: Optional[date] = None
     # Told each real step of the run (common/run_events.py).  None, the default, is a plain draft.
@@ -67,7 +67,6 @@ class SectionSpec:
     unblock: str = ""           # unavailable only: what would unblock it
     built_parts: tuple[str, ...] = field(default_factory=tuple)  # unavailable only: what already exists
     build: Optional[Callable[[DraftContext], CoordinatorReview]] = None
-    needs_text: bool = False         # Company Updates: the analyst pastes the text
     requires_approved: bool = False  # Executive Summary: composed from the other sections once approved
     subsections: tuple[str, ...] = ()  # the real issue's own headings for this section, verbatim
     charts: tuple[str, ...] = ()       # the real issue's charts, which the tool does not draw
@@ -124,12 +123,6 @@ def _digital_payments(ctx: DraftContext) -> CoordinatorReview:
     return build_digital_payments_review(**_as_of(ctx), **_table_as_at(ctx), **_observer(ctx), **book)
 
 
-def _company_updates(ctx: DraftContext) -> CoordinatorReview:
-    from cytonn_weekly.weekly import company_updates
-
-    return company_updates.build_company_updates_weekly_review(ctx.text or "", **_week(ctx))
-
-
 def _fixed_income(ctx: DraftContext) -> CoordinatorReview:
     from cytonn_weekly.fixed_income import weekly
 
@@ -176,14 +169,6 @@ _EQ_CHARTS = ("The charts below indicate the historical P/E and dividend yields 
               "The charts below indicate the historical P/E and dividend yields of the market (dividend yield chart)")
 
 SECTIONS: tuple[SectionSpec, ...] = (
-    SectionSpec(
-        slug="company_updates", title="Company Updates", available=True, needs_text=True, build=_company_updates,
-        subsections=("Investment Updates:", "Hospitality Updates:"),
-        steps=(
-            ("Your text", "Paste the Investment Updates and Hospitality Updates. The tool never drafts Cytonn's own copy."),
-            _YOUR_REVIEW,
-        ),
-    ),
     SectionSpec(
         slug="fixed_income", title="Fixed Income", available=True, build=_fixed_income,
         subsections=_FI_SUBSECTIONS, charts=_FI_CHARTS,
@@ -258,7 +243,7 @@ def _periodic(module: str, function: str) -> Callable[[DraftContext], Coordinato
         from cytonn_weekly.periodic.common import PeriodContext
 
         mod = importlib.import_module(f"cytonn_weekly.periodic.{module}")
-        pctx = PeriodContext.of(ctx.report_type, ctx.period, today=ctx.today, text=ctx.text, db_path=ctx.db_path)
+        pctx = PeriodContext.of(ctx.report_type, ctx.period, today=ctx.today, db_path=ctx.db_path)
         return getattr(mod, function)(pctx, **_observer(ctx))
 
     return build
@@ -273,7 +258,6 @@ _SUBSECTIONS: dict[str, dict[str, tuple[str, ...]]] = {
     QUARTERLY: {
         "executive_summary": ("Global Markets Review:", "Sub-Saharan Africa Regional Review:", "Kenya Macroeconomic Review:",
                               "Fixed Income:", "Equities:", "Real Estate:", "Digital Payments:"),
-        "company_updates": ("Investment Updates:", "Hospitality Updates:"),
         "global_markets": ("Global Economic Growth:", "Global Commodities Market Performance:",
                            "Global Equities Market Performance:"),
         "ssa": ("Currency Performance:", "African Eurobonds:", "Equities Market Performance:",
@@ -298,7 +282,6 @@ _SUBSECTIONS: dict[str, dict[str, tuple[str, ...]]] = {
     HALF_YEAR: {
         "executive_summary": ("Global Markets Review:", "Sub-Saharan Africa Regional Review:", "Kenya Macroeconomic Review:",
                               "Fixed Income:", "Equities:", "Real Estate:", "Digital Payments:"),
-        "company_updates": ("Investment Updates:", "Hospitality Updates:"),
         "global_markets": ("Global Economic Growth:", "Global Commodities Market Performance:",
                            "Global Equities Market Performance:"),
         "ssa": ("Currency Performance:", "African Eurobonds:", "Equities Market Performance:",
@@ -322,7 +305,6 @@ _SUBSECTIONS: dict[str, dict[str, tuple[str, ...]]] = {
     ANNUAL: {
         "executive_summary": ("Global Markets Review:", "Sub-Saharan Africa Regional Review:", "Kenya Macro Economic Review:",
                               "Fixed Income:", "Equities:", "Real Estate:"),
-        "company_updates": ("Investment Updates:", "Hospitality Updates:"),
         "global_markets": ("Global Economic Growth:", "Global Commodities Market Performance:",
                            "Global Equities Market Performance:"),
         "ssa": ("Currency Performance", "African Eurobonds:", "Equities Market Performance:"),
@@ -371,9 +353,6 @@ def _periodic_sections(report_type: str) -> tuple[SectionSpec, ...]:
             ("Compose", "Each approved section's lead piece, carried verbatim with its sources. Nothing new is written."),
             ("Check", "The carried figures are matched to their cited text again."),
         ), requires_approved=True),
-        spec("company_updates", "Company Updates", "company_updates", "build_company_updates_review", (
-            ("Your text", "Paste the Investment Updates and Hospitality Updates. The tool never drafts Cytonn's own copy."),
-        ), needs_text=True),
         spec("global_markets", "Global Markets Review", "global_markets", "build_global_markets_review", (
             ("Draft", f"Global growth (World Bank, IMF), commodities and equities over the {span}, every claim cited."),
             _CHECK,
@@ -420,7 +399,6 @@ def _periodic_sections(report_type: str) -> tuple[SectionSpec, ...]:
 # Headings as printed in the October 2026 Monthly (issue 897), checked against 886 (August) and 881 (July) on 2026-11-03.
 # "optional" marks a part not in all three; a part in brackets has no heading of its own.
 _MONTHLY_SUBSECTIONS = {
-    "company_updates": ("Investment Updates:", "Hospitality Updates:"),
     "fixed_income": (
         "Money Markets, T-Bills Primary Auction:",
         "T-bonds Primary Market (with the Bond Issuances table for the previous and the current month)",
@@ -454,7 +432,6 @@ _MONTHLY_SUBSECTIONS = {
 
 # None of the three issues gives a chart a caption or alt text, so the titles are unknown and none is made up.
 _MONTHLY_CHARTS = {
-    "company_updates": ("No chart images in the October 2026 Monthly (issue 897)",),
     "fixed_income": ("9 chart images in the October 2026 Monthly (issue 897); their titles are unknown: the issue gives "
                      "them no caption or alt text",),
     "equities": ("2 chart images in the October 2026 Monthly (issue 897); their titles are unknown. In 881 they follow "
@@ -465,11 +442,6 @@ _MONTHLY_CHARTS = {
 
 # (slug, title, reason, open question, what already exists)
 _MONTHLY_STUBS = (
-    ("company_updates", "Company Updates",
-     "The weekly Company Updates records a reporting week (the latest Friday) on its review, so it cannot be reused "
-     "unchanged for a month.",
-     "Next stage: carry your pasted text verbatim under the month's period, as the Markets Reviews' Company Updates does.",
-     ("Company Updates from your pasted text, for the weekly and the Markets Reviews",)),
     ("fixed_income", "Fixed Income",
      "The monthly T-bill and T-bond averages, the two-month Bond Issuances table, the secondary market, liquidity and "
      "the inflation table are not built for a month.",

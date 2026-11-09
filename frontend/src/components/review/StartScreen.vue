@@ -23,12 +23,11 @@ import RedraftDialog from "./RedraftDialog.vue";
 import SourcesPanel from "./SourcesPanel.vue";
 
 const USES_INPUTS = ["fixed_income", "equities"];
-const MAX_TEXT = 10_000;
 
 /**
  * One section's start: what a run does (the section's own steps, from the API), the report and period it is for, its
- * current saved review to resume, and the draft button. Focus of the Week also takes the analyst's topic and
- * Company Updates their text; the tool never picks the one or writes the other.
+ * current saved review to resume, and the draft button. Focus of the Week also takes the analyst's topic; the tool
+ * never picks it.
  *
  * The draft button starts a run (POST /api/runs) and goes to its run view (/runs/{run_id}), which shows the draft's
  * real steps as they happen and then hands over to the review. Nothing here waits for the draft itself.
@@ -57,8 +56,7 @@ useShellRibbon(() => (props.config.dev_mode ? props.config.dev_mode_label : null
 const weekly = computed(() => props.report.type === "weekly" && !props.report.period);
 const thisRun = computed(() => (weekly.value ? "this week’s" : `the ${props.report.period}`));
 const topic = ref("");
-const text = ref("");
-const inputMissing = computed(() => (props.section.needs_topic && !topic.value.trim()) || (props.section.needs_text && !text.value.trim()));
+const inputMissing = computed(() => props.section.needs_topic && !topic.value.trim());
 // Counted as the API counts it (lib/topic.ts). Nothing is ever cut: an over-long topic stays whole and blocks the draft.
 const topicCount = computed(() => topicLength(topic.value));
 const topicOver = computed(() => props.section.needs_topic && topicCount.value > MAX_TOPIC);
@@ -76,7 +74,7 @@ const typedPending = ref(false);
 const usesInputs = computed(() => props.report.type === "weekly" && !!props.week && USES_INPUTS.includes(props.section.slug));
 // Digital Payments has no analyst form; its panel holds the optional workbook upload alone.
 const showsInputs = computed(() => usesInputs.value || (props.report.type === "weekly" && !!props.week && props.section.slug === "digital_payments"));
-// Company Updates and the Executive Summary call no LLM: no API budget, no key needed, no draft slot.
+// The Executive Summary calls no LLM: no API budget, no key needed, no draft slot.
 const llm = computed(() => props.section.uses_provider);
 const providerBlocked = computed(() => providerOff(llm.value, props.config));
 // A Bedrock draft is written only from saved sources (the Sources panel); the tool searches for them when the draft starts.
@@ -161,7 +159,6 @@ async function draft() {
     const { run_id } = await api.startRun(props.section.slug, props.report, {
       topic: props.section.needs_topic ? topic.value.trim() : undefined,
       sections: props.section.needs_topic && sections.value.trim() ? sections.value : undefined,
-      text: props.section.needs_text ? text.value.trim() : undefined,
       provider: llm.value ? props.config.provider : undefined,
     });
     void router.push(`/runs/${run_id}`);
@@ -195,11 +192,9 @@ const resolved = computed(() => items.value.filter((i) => i.resolution !== null)
 const draftLabel = computed(() =>
   starting.value
     ? "Starting…"
-    : props.section.needs_text
-      ? "Save your text as the section"
-      : props.section.requires_approved
-        ? `Compose ${thisRun.value} summary`
-        : `Draft ${thisRun.value} section`,
+    : props.section.requires_approved
+      ? `Compose ${thisRun.value} summary`
+      : `Draft ${thisRun.value} section`,
 );
 const forWhen = computed(() => (weekly.value ? "this week" : `for ${props.report.period}`));
 const lists = computed(() => [
@@ -263,11 +258,9 @@ const lists = computed(() => [
               {{
                 saved
                   ? "Or start over with a new draft. The saved review stays in the database either way."
-                  : section.needs_text
-                    ? `No ${section.title} saved ${forWhen} yet. Paste the text below.`
-                    : section.requires_approved
-                      ? `Not composed ${forWhen} yet. It is built only from sections you have approved.`
-                      : `No review ${forWhen} yet. Draft ${thisRun} ${section.title} section, check it, and review it here.`
+                  : section.requires_approved
+                    ? `Not composed ${forWhen} yet. It is built only from sections you have approved.`
+                    : `No review ${forWhen} yet. Draft ${thisRun} ${section.title} section, check it, and review it here.`
               }}
             </p>
 
@@ -283,11 +276,7 @@ const lists = computed(() => [
               <template v-else>Drafting provider: {{ config.provider }}. A run spends real API budget (web search and tokens).</template>
             </Notice>
             <Notice v-if="!llm" tone="info">
-              {{
-                section.needs_text
-                  ? "Nothing is searched or drafted: your text is carried as written and listed once for you to accept."
-                  : "Nothing is searched or drafted: each approved section’s lead piece is carried with its sources and checked again."
-              }}
+              Nothing is searched or drafted: each approved section’s lead piece is carried with its sources and checked again.
             </Notice>
 
             <!-- A draft already running on the server (started from another tab, or before this screen was opened). -->
@@ -360,26 +349,6 @@ const lists = computed(() => [
               </p>
             </div>
 
-            <div v-if="section.needs_text" class="space-y-1">
-              <label for="supplied-text" class="text-sm font-semibold">Your {{ section.title }} text</label>
-              <Textarea
-                id="supplied-text"
-                v-model="text"
-                name="text"
-                rows="8"
-                :maxlength="MAX_TEXT"
-                :disabled="starting"
-                :placeholder="'Investment Updates:\n…\n\nHospitality Updates:\n…'"
-                aria-describedby="supplied-text-hint"
-                class="min-h-40 py-2"
-              />
-              <p id="supplied-text-hint" class="text-xs text-muted-foreground">
-                Cytonn’s own copy, as the real issue prints it under
-                {{ section.subsections.map((h) => h.replace(/:$/, "")).join(" and ") || "this section" }}. Markdown links work.
-                <span class="font-mono tabular-nums">{{ text.length.toLocaleString() }}</span> of {{ MAX_TEXT.toLocaleString() }} characters.
-              </p>
-            </div>
-
             <!-- Pre-draft Readiness Checklist -->
             <div class="rounded-xl border border-border bg-muted/40 p-3.5 space-y-2 text-xs">
               <p class="font-semibold text-foreground flex items-center justify-between">
@@ -398,11 +367,6 @@ const lists = computed(() => [
                   <span v-if="topic.trim() && !topicOver" class="flex size-4 items-center justify-center rounded-full bg-ok/20 font-bold text-ok-fg text-[10px]">✓</span>
                   <span v-else class="flex size-4 items-center justify-center rounded-full bg-warn/20 font-bold text-warn-fg text-[10px]">!</span>
                   <span>Focus topic: {{ topic.trim() ? (topicOver ? 'Exceeds limit' : 'Provided') : 'Topic required above' }}</span>
-                </li>
-                <li v-if="section.needs_text" class="flex items-center gap-2">
-                  <span v-if="text.trim()" class="flex size-4 items-center justify-center rounded-full bg-ok/20 font-bold text-ok-fg text-[10px]">✓</span>
-                  <span v-else class="flex size-4 items-center justify-center rounded-full bg-warn/20 font-bold text-warn-fg text-[10px]">!</span>
-                  <span>Section text: {{ text.trim() ? 'Text provided' : 'Pasted text required above' }}</span>
                 </li>
                 <li v-if="usesInputs" class="flex items-center gap-2">
                   <span v-if="!typedPending" class="flex size-4 items-center justify-center rounded-full bg-ok/20 font-bold text-ok-fg text-[10px]">✓</span>

@@ -26,7 +26,6 @@ export const PLACEMENT = {
   draft_section_unavailable: "dialog",
   draft_topic_missing: "inline",
   draft_topic_invalid: "inline",
-  draft_text_missing: "inline",
   drafting_off: "dialog",
   draft_busy: "dialog",
   draft_already_running: "dialog",

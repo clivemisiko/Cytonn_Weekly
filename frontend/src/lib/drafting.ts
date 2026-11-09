@@ -70,7 +70,7 @@ export const draftingStatus = (d: Drafting): string => (d.state === "queued" ? q
 /**
  * The two checks every draft button makes, in one place: a section that calls the LLM waits only while it is itself
  * running or queued (unless that draft looks stuck, which a new draft replaces), and while the provider cannot run.
- * Another section drafting never holds it up. A section that calls no provider (Company Updates, the Executive Summary)
+ * Another section drafting never holds it up. A section that calls no provider (the Executive Summary)
  * is never held up by either.
  */
 export const ownBusy = (llm: boolean, mine: Drafting | null) => llm && isLive(mine) && !mine.stale;

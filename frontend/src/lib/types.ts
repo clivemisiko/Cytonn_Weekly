@@ -127,7 +127,7 @@ export interface SourcePiece {
 export interface SourcesListing {
   section: string;
   title: string;
-  /** False for a section that is not written from sources (Company Updates, the Executive Summary). */
+  /** False for a section that is not written from sources (the Executive Summary). */
   uses_sources: boolean;
   pieces: SourcePiece[];
   approved_sites: string[];
@@ -343,7 +343,7 @@ export interface UnavailableBlock {
   unblock: string;
 }
 
-/** Text the analyst supplied (Company Updates): carried verbatim, never drafted or checked. */
+/** Text the analyst supplied (the T-bond bidding range): carried verbatim, never drafted or checked. */
 export interface SuppliedBlock {
   numeral: string;
   role?: string;
@@ -804,8 +804,6 @@ export interface SectionSummary {
   title: string;
   available: boolean;
   needs_topic: boolean;
-  /** Company Updates: the analyst pastes the text; nothing is drafted. */
-  needs_text: boolean;
   /** Executive Summary: composed only once every other section of this report and period is approved. */
   requires_approved: boolean;
   /** False when drafting calls no LLM (no API budget, no API key needed, no draft slot). */
