@@ -76,7 +76,7 @@ test("T03 overview lists the five weekly sections, the dev mark and the export g
   await expect(page.getByText("Fixed Income: Not drafted")).toBeVisible();
 });
 
-test("T04 report picker shows the API's refusal, switches report, keeps it on reload; Back from the overview goes Home", async ({ page }) => {
+test("T04 report picker shows the API's refusal, switches report, keeps it on reload; Back is disabled on overview", async ({ page }) => {
   await page.goto("/overview");
   await expect(page.getByRole("heading", { name: "Analyst review", level: 1 })).toBeVisible();
   await page.getByLabel("Report type").selectOption("quarterly");
@@ -92,9 +92,7 @@ test("T04 report picker shows the API's refusal, switches report, keeps it on re
   await page.reload();
   await expect(page.getByText("Quarterly Markets Review, Q3'2026: 8 report sections.", { exact: false })).toBeVisible();
   await expect(card(page, "Fixed Income").getByText("Not drafted for Q3'2026")).toBeVisible();
-  await topbar(page).getByRole("button", { name: "Back to Home" }).click();
-  await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("heading", { name: /Welcome to Cytonn Weekly\./ })).toBeVisible();
+  await expect(topbar(page).getByRole("button", { name: "Back (this is the start screen)" })).toBeDisabled();
 });
 
 test("T05 theme toggle: Light, Dark, System, kept after a reload and applied before the first paint", async ({ page }) => {
@@ -153,14 +151,13 @@ test("T06 top bar stays in view after scrolling; Back goes to the section list, 
   expect(new URL(page.url()).searchParams.get("period")).toBe(PERIOD);
   await expect(card(page, "Equities")).toBeVisible();
 
-  // From a deep link to a run (one the API does not know): Back names the section list, Home goes to /.
+  // From a deep link to a run (one the API does not know): Back names the section list, Home goes to /overview.
   await page.goto("/runs/not-a-run");
   await topbar(page).getByRole("button", { name: "Back to all sections" }).click();
   await expect(page).toHaveURL(DEFAULT_WEEK); // a bare /overview opens on a labelled week
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   await topbar(page).getByRole("link", { name: "Home" }).click();
-  await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("heading", { name: /Welcome to Cytonn Weekly\./ })).toBeVisible();
+  await expect(page).toHaveURL(/\/overview/);
 });
 
 test("T07 inputs panel: what was received, an upload refused with its reason, a week that is not a Friday", async ({ page }) => {
@@ -253,7 +250,7 @@ test("T08 analyst inputs: refusals listed, the draft button waits for unsaved ty
   await table.fill("1 Alpha Fund 11.0");
   page.once("dialog", (d) => void d.accept());
   await topbar(page).getByRole("link", { name: "Home" }).click();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/overview/);
   // Nothing was stored by any of it.
   await openStart(page, "Fixed Income");
   await expect(page.locator("#analyst-mmf")).toHaveValue("");

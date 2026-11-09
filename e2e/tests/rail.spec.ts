@@ -74,7 +74,7 @@ test("T59 the rail lists the five sections with their state; it is a full rail, 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(nav).toBeHidden();
   await expect(topbar(page).getByRole("link", { name: "Home" })).toBeVisible();
-  await expect(topbar(page).getByRole("button", { name: "Back to Home" })).toBeVisible();
+  await expect(topbar(page).getByRole("button", { name: "Back (this is the start screen)" })).toBeVisible();
 });
 
 test("T60 a section opens from the rail, from the overview and from another section, and the rail marks the one on screen", async ({ page }) => {

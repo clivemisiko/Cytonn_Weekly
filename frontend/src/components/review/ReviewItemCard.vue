@@ -5,7 +5,7 @@ import { computed, inject, ref, watch } from "vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import { KIND_LABELS, friendlyTime, pyRepr, resolutionKey } from "@/lib/format";
 import { READ_ONLY } from "@/lib/previous";
-import { NOT_ON_LIST, TEXT_FROM_SEARCH, claimSource, sourcePageHref } from "@/lib/sources";
+import { TEXT_FROM_SEARCH, claimSource, sourcePageHref } from "@/lib/sources";
 import type { Flag, Resolution, Review, ReviewItem } from "@/lib/types";
 import EditSentence from "./EditSentence.vue";
 import FixFromFile from "./FixFromFile.vue";

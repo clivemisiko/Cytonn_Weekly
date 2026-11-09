@@ -3,7 +3,6 @@ import { RouterView } from "vue-router";
 import AttentionDialog from "@/components/AttentionDialog.vue";
 import AppShell from "@/components/nav/AppShell.vue";
 import TopBar from "@/components/nav/TopBar.vue";
-import { HOME } from "@/lib/nav";
 </script>
 
 <template>
@@ -17,7 +16,7 @@ import { HOME } from "@/lib/nav";
   <!-- Keyed on the path: another run is a fresh run view, while the overview's query can change under one page.
        The start page stands alone; every other screen sits in the shell (the dev ribbon and the rail). -->
   <RouterView v-slot="{ Component, route }">
-    <AppShell v-if="route.path !== HOME">
+    <AppShell v-if="route.path !== '/'">
       <component :is="Component" :key="route.path" />
     </AppShell>
     <component :is="Component" v-else :key="route.path" />
