@@ -152,7 +152,7 @@ test("T50 dismiss: hidden with its reason, still hidden after a reload, and can 
 });
 
 test("T51 a section with nothing computed shows the quiet empty state and no actions", async ({ page }) => {
-  await openStart(page, "Digital Payments", period("2027-01-08"));
+  await openStart(page, "Real Estate", period("2027-01-08"));
   await expect(panel(page)).toContainText("Nothing notable has been computed for this section yet.");
   await expect(panel(page).getByRole("button")).toHaveCount(0);
   await expect(panel(page).getByRole("list", { name: "Suggestions" })).toHaveCount(0);
@@ -169,8 +169,8 @@ test("T52 a detector that fails is one quiet line, never a stack trace, and the 
 
 test("T53 the panel is on the review screen too, and accepting, editing and dismissing leave the review, the overview and the export exactly as they were", async ({ page, request }) => {
   const week = "2027-01-22";
-  const drafted = await request.post(`${API}/api/sections/company_updates/draft`, {
-    headers: json, data: { report_type: "weekly", period: period(week), text: "Investment Updates:\nSYNTHETIC e2e text for the notable test." },
+  const drafted = await request.post(`${API}/api/sections/digital_payments/draft`, {
+    headers: json, data: { report_type: "weekly", period: period(week) }, timeout: 120_000,
   });
   expect(drafted.status(), await drafted.text()).toBe(200);
   const runId: number = (await drafted.json()).run_id;
@@ -184,8 +184,8 @@ test("T53 the panel is on the review screen too, and accepting, editing and dism
   const before = await state();
 
   await page.goto(`${overviewUrl(period(week))}&review=${runId}`);
-  await expect(page.getByRole("heading", { name: "Company Updates: analyst review", level: 1 })).toBeVisible();
-  await expect(page.getByText("1 unresolved · 0 of 1 resolved")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Digital Payments: analyst review", level: 1 })).toBeVisible();
+  await expect(page.getByText(/^\d+ unresolved · 0 of \d+ resolved$/)).toBeVisible();
   await expect(panel(page)).toBeVisible();
   await expect(candidates(page)).toHaveCount(2);
 
@@ -202,8 +202,8 @@ test("T53 the panel is on the review screen too, and accepting, editing and dism
   await expect(panel(page).getByRole("button", { name: "Dismissed (1)" })).toBeVisible();
 
   // What the analyst sees is unchanged: the same count line, the same items, nothing resolved by it.
-  await expect(page.getByText("1 unresolved · 0 of 1 resolved")).toBeVisible();
-  await expect(page.getByRole("radio", { name: "Accept" })).not.toBeChecked();
+  await expect(page.getByText(/^\d+ unresolved · 0 of \d+ resolved$/)).toBeVisible();
+  await expect(page.getByRole("radio", { name: "Accept" }).first()).not.toBeChecked();
   const after = await state();
   expect(after.review).toEqual(before.review);
   expect(after.overview).toEqual(before.overview);

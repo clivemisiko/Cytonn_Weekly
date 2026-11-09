@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { VARIANT } from "./helpers";
 
-// The test instance cannot reach six approved sections, so the list is empty there; the one listed row below is the
+// The test instance cannot reach five approved sections, so the list is empty there; the one listed row below is the
 // API's answer changed on its way to the page, as T14 does for the export.
 test.skip(!!VARIANT, "runs on the default test backend");
 
@@ -9,7 +9,7 @@ test("T106 Previous reports is a rail item with its own page, empty until a week
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto("/overview");
   const rail = page.getByRole("navigation", { name: "Report sections" });
-  await expect(page.getByText("All six sections of this week are approved.")).toHaveCount(0);
+  await expect(page.getByText("All five sections of this week are approved.")).toHaveCount(0);
   await rail.getByRole("button", { name: "Previous reports" }).click();
   await expect(page).toHaveURL(/\/previous$/);
   await expect(page.getByRole("heading", { name: "Previous reports", level: 1 })).toBeVisible();
@@ -30,7 +30,7 @@ test("T106 Previous reports is a rail item with its own page, empty until a week
   const row = page.getByRole("list", { name: "Approved weeks" }).getByRole("listitem");
   await expect(row).toHaveCount(1);
   await expect(row.getByRole("heading", { name: "Week ending 9 Oct 2026" })).toBeVisible();
-  await expect(row.getByText("All six approved")).toBeVisible();
+  await expect(row.getByText("All five approved")).toBeVisible();
   await expect(row.getByText("Dev draft: watermarked, not for circulation")).toBeVisible();
   await expect(row.getByRole("button", { name: "Read Week ending 9 Oct 2026" })).toBeVisible();
   await expect(row.getByRole("button", { name: "Download Word for Week ending 9 Oct 2026" })).toBeEnabled();

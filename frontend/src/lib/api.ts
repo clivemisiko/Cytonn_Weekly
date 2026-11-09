@@ -161,14 +161,14 @@ export const getOverview = async (report: ReportChoice = WEEKLY_REPORT): Promise
 
 /**
  * Start a draft of one section of one report with the real pipeline, and get its run id back at once; the run view
- * then shows the draft as it happens. Focus of the Week needs the analyst's topic, Company Updates their text.
+ * then shows the draft as it happens. Focus of the Week needs the analyst's topic.
  * `provider` is the provider this screen told the analyst a draft would use: the API refuses the run if it is
  * configured for another, and never takes it as a choice.
  */
 export const startRun = (
   slug: string,
   report: ReportChoice,
-  input: { topic?: string; sections?: string; text?: string; provider?: string } = {},
+  input: { topic?: string; sections?: string; provider?: string } = {},
 ) =>
   request<{ run_id: string; state: "running" | "queued"; position: number | null }>("/api/runs", {
     method: "POST",

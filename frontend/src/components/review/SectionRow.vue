@@ -35,7 +35,7 @@ const current = computed(() => Boolean(run.value && (run.value.current ?? run.va
 const chip = computed(() => CHIP[state.value]);
 const chipLabel = computed(() => (state.value === "not_drafted" ? `Not drafted ${when(props.period)}` : chip.value.label));
 const action = computed(() => {
-  const draftLabel = props.s.needs_text ? "Add your text" : props.s.requires_approved ? "Compose summary" : "Draft section";
+  const draftLabel = props.s.requires_approved ? "Compose summary" : "Draft section";
   if (state.value === "unavailable") return null;
   if (state.value === "in_review") return { label: "Resume review", resume: true, primary: true };
   if (state.value === "not_drafted") return { label: draftLabel, resume: false, primary: true };
@@ -64,7 +64,6 @@ const nothing = computed(() => {
     first +
     (r ? ` The last review (run ${r.run_id}, ${friendlyDate(r.run_date)}) was ${r.decision ?? "left in progress"}.` : "") +
     (props.s.needs_topic ? " Drafting asks for this week’s topic." : "") +
-    (props.s.needs_text ? " You paste this section’s text; the tool never drafts Cytonn’s own copy." : "") +
     (props.s.requires_approved ? " Composed from the other sections once every one of them is approved." : "")
   );
 });

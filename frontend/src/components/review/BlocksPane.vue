@@ -178,7 +178,7 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
         </template>
       </section>
 
-      <!-- Text the analyst supplied (Company Updates), shown as written. Never drafted, never checked. -->
+      <!-- Text the analyst supplied (the T-bond bidding range), shown as written. Never drafted, never checked. -->
       <article v-else-if="b.kind === 'supplied'" :class="PIECE" :aria-labelledby="`blk-${b.id}`">
         <h3 :id="`blk-${b.id}`" :class="HEAD">
           <Numeral v-if="b.numeral || !b.role">{{ b.numeral }}</Numeral>

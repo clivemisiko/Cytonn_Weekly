@@ -2,7 +2,7 @@ import type { InjectionKey } from "vue";
 import { friendlyDate, friendlyTime } from "./format";
 import type { Overview, PreviousWeek, PreviousWeeks, ReportChoice, WeekChoice } from "./types";
 
-export const APPROVED_BANNER = "All six sections of this week are approved. The read-only archive and the Word export are under Previous reports.";
+export const APPROVED_BANNER = "All five sections of this week are approved. The read-only archive and the Word export are under Previous reports.";
 export const NO_WEEKS = "No approved weeks yet.";
 export const DEV_LABEL = "Dev draft: watermarked, not for circulation";
 /** Provided by a review shown under Previous reports: every decision and edit control is left out. */
@@ -65,7 +65,7 @@ export async function openingReport(read: () => Promise<PreviousWeeks>, remember
 
 /** One week of the selector in words, so its state is never colour alone. */
 export function weekChoiceLabel(c: WeekChoice): string {
-  const state = c.status === "approved" ? "all six approved" : c.status === "in_progress" ? `${c.approved} of ${c.total} approved` : "not started";
+  const state = c.status === "approved" ? "all five approved" : c.status === "in_progress" ? `${c.approved} of ${c.total} approved` : "not started";
   return `${friendlyDate(c.week_ending)}, ${state}`;
 }
 
@@ -73,7 +73,7 @@ export function weekChoiceLabel(c: WeekChoice): string {
 export function weekRow(w: PreviousWeek): { title: string; status: string; approved: string; dev: string | null } {
   return {
     title: `Week ending ${friendlyDate(w.week_ending)}`,
-    status: "All six approved",
+    status: "All five approved",
     approved: w.approved_at ? `Last approved ${friendlyTime(w.approved_at)}` : "",
     dev: w.is_dev_draft ? DEV_LABEL : null,
   };

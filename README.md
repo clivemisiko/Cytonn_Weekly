@@ -64,9 +64,9 @@ flowchart TB
 | Weekly inputs | `weekly/` | Upload store, readers for the workbooks, KCB reports, CBK bulletin and NSE price list (OCR), the analyst inputs form, and the Word export. |
 | Storage | `db.py`, `schema.sql` | SQLite by default, PostgreSQL (Supabase) when `CYTONN_DATABASE_URL` is set. Uploads, charts and exports are files under the data folder. |
 
-### The six weekly sections
+### The five weekly sections
 
-Company Updates (the analyst's pasted text, carried verbatim), Fixed Income, Equities, Real Estate, Digital Payments and Focus of the Week. Digital Payments has its own content shape; every other section is built from generic blocks (`table`, `narrative`, `computed`, `carried`, `supplied`, `unavailable`). Both end as the same `CoordinatorReview`.
+Fixed Income, Equities, Real Estate, Digital Payments and Focus of the Week. Company Updates is written by the CT team after the exported document is received and before publishing, so the tool does not draft it. Digital Payments has its own content shape; every other section is built from generic blocks (`table`, `narrative`, `computed`, `carried`, `supplied`, `unavailable`). Both end as the same `CoordinatorReview`.
 
 ### Design decisions
 
