@@ -34,10 +34,10 @@ def client(db, monkeypatch):
 
 def test_overview_lists_the_weekly_sections_in_report_order(client):
     body = client.get("/api/sections").json()
-    assert [s["slug"] for s in body["sections"]] == ["company_updates", "fixed_income", "equities", "real_estate",
-                                                     "digital_payments", "focus"]   # as #38.2026 orders them
-    updates, fi = body["sections"][0], body["sections"][1]
-    assert updates["needs_text"] is True and updates["uses_provider"] is False
+    assert [s["slug"] for s in body["sections"]] == ["fixed_income", "equities", "real_estate",
+                                                     "digital_payments", "focus"]   # as #38.2026 orders them, less Company Updates
+    fi = body["sections"][0]
+    assert all(s["uses_provider"] for s in body["sections"]) and "needs_text" not in fi
     # Fixed Income is drafted from the week's inputs and CBK: nothing blocks it any more.
     assert fi["available"] is True and fi["reason"] is None and fi["built_parts"] == []
     assert fi["subsections"][0] == "Money Markets, T-Bills Primary Auction:" and len(fi["charts"]) == 6

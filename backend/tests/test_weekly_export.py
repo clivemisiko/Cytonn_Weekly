@@ -1,6 +1,6 @@
 """The approved weekly report as one Word file: only when every section is approved, in the real order.
 
-The sections here are real reviews: Company Updates and Fixed Income from the weekly
+The sections here are real reviews: Fixed Income and Equities from the weekly
 builders (synthetic inputs, the public bulletin), the others from the section helpers.
 The .docx is checked by opening it again with python-docx.
 """
@@ -19,7 +19,7 @@ from cytonn_weekly.digital_payments import review_store
 from cytonn_weekly.digital_payments.delivery import DevModeDeliveryBlocked
 from cytonn_weekly.equities import weekly as eq_weekly
 from cytonn_weekly.fixed_income import weekly as fi_weekly
-from cytonn_weekly.weekly import company_updates, export, inputs
+from cytonn_weekly.weekly import export, inputs
 from tests import section_helpers as sh
 from tests import weekly_helpers as wh
 from tests.review_helpers import LocalFakeProvider, make_review
@@ -31,7 +31,7 @@ from tests.weekly_helpers import text_pdfs  # noqa: F401 - a fixture
 
 WEEK = wh.WEEK
 PERIOD = "Week ending 2026-10-02"
-ORDER = ["Company Updates", "Fixed Income", "Equities", "Real Estate", "Digital Payments Weekly Highlights", "Focus of the Week"]
+ORDER = ["Fixed Income", "Equities", "Real Estate", "Digital Payments Weekly Highlights", "Focus of the Week"]
 
 
 def _approve(review):
@@ -83,10 +83,9 @@ def _copy(review):
 
 @pytest.fixture
 def week(tmp_path, built):
-    """A database holding the week's six sections, every one approved."""
+    """A database holding the week's five sections, every one approved."""
     db = tmp_path / "app.db"
     fi, eq = built
-    _save(db, "company_updates", company_updates.build_company_updates_weekly_review("Investment Updates:\n\nRates held.", WEEK.ending))
     _save(db, "fixed_income", _copy(fi))
     _save(db, "equities", _copy(eq))
     _save(db, "real_estate", sh.real_estate_review())
@@ -103,11 +102,10 @@ def _text(path_or_bytes):
 def test_the_export_is_refused_until_every_section_is_approved(tmp_path, built):
     db = tmp_path / "app.db"
     status = export.export_status(db, PERIOD)
-    assert status["ready"] is False and [s["state"] for s in status["sections"]] == ["not_drafted"] * 6
+    assert status["ready"] is False and [s["state"] for s in status["sections"]] == ["not_drafted"] * 5
     assert [s["title"] for s in status["sections"]] == ORDER and status["file_name"] == "cytonn-weekly-2026-10-02.docx"
     fi, _ = built
     _save(db, "fixed_income", _copy(fi), approve=False)
-    _save(db, "company_updates", company_updates.build_company_updates_weekly_review("Text.", WEEK.ending))
     rejected = sh.real_estate_review()
     rejected.report_type, rejected.period = "weekly", PERIOD
     rejected.decide("rejected")
@@ -130,9 +128,10 @@ def test_the_report_has_the_real_order_and_headings_with_a_summary_per_section(w
     assert headings == ["Executive Summary:"] + ORDER
     assert text[0] == "Cytonn Weekly: week ending 2nd October 2026"
     assert doc.core_properties.title == "SSA Eurobonds, Cytonn Weekly"
-    # page 1: one summary paragraph per section, led by its name in bold; Company Updates has none, as published
-    summary = text[text.index("Executive Summary:") + 1:text.index("Company Updates")]
-    assert [t.split(":")[0] for t in summary] == ORDER[1:]
+    # page 1: one summary paragraph per section, led by its name in bold, and no Company Updates part anywhere
+    summary = text[text.index("Executive Summary:") + 1:text.index("Fixed Income")]
+    assert [t.split(":")[0] for t in summary] == ORDER
+    assert not any("Company Updates" in t for t in text)
     assert summary[0].startswith("Fixed Income: This week, T-bills were oversubscribed, with the overall subscription rate "
                                  "coming in at 170.4%")
     assert "Section summaries for the CMS" not in text and "No summary: the published issue's section has none." not in text
@@ -211,7 +210,6 @@ def test_the_pictures_are_read_from_the_charts_folder_the_app_was_given(week, tm
 def test_a_chart_item_marked_fix_needed_stops_the_approval_and_so_the_export(tmp_path, built):
     db = tmp_path / "app.db"
     fi, eq = built
-    _save(db, "company_updates", company_updates.build_company_updates_weekly_review("Investment Updates:\n\nRates held.", WEEK.ending))
     _save(db, "fixed_income", _copy(fi))
     _save(db, "real_estate", sh.real_estate_review())
     _save(db, "digital_payments", make_review())
@@ -242,7 +240,7 @@ def test_a_normal_week_may_be_sent(week):
 
 def test_each_week_exports_only_its_own_sections(week, tmp_path):
     other = "Week ending 2026-09-25"
-    assert [s["state"] for s in export.export_status(week, other)["sections"]] == ["not_drafted"] * 6
+    assert [s["state"] for s in export.export_status(week, other)["sections"]] == ["not_drafted"] * 5
     with pytest.raises(export.ExportNotAllowed):
         export.write_weekly_report(week, other, tmp_path / "out")
     assert export.file_name("") == "cytonn-weekly.docx" and export.file_name("Weekly #38.2026") == "cytonn-weekly-weekly-38-2026.docx"
@@ -252,7 +250,7 @@ def test_each_week_exports_only_its_own_sections(week, tmp_path):
 def test_the_api_reports_readiness_and_returns_the_file(week, tmp_path):
     client = TestClient(create_app(db_path=week, load_dotenv=False, export_root=tmp_path / "exports"))
     status = client.get("/api/export/weekly", params={"period": "2026-10-02"}).json()
-    assert status["ready"] is True and status["period"] == PERIOD and len(status["sections"]) == 6
+    assert status["ready"] is True and status["period"] == PERIOD and len(status["sections"]) == 5
     r = client.post("/api/export/weekly", params={"period": "2026-10-02"})
     assert r.status_code == 200
     assert r.headers["content-type"] == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -318,10 +316,9 @@ def test_a_re_edited_paragraph_exports_the_same_way(week, tmp_path):
 def test_the_executive_summary_comes_before_the_first_section(week, tmp_path):
     doc, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
     first = next(n for n, p in enumerate(doc.paragraphs) if p.style.name == "Heading 1")
-    assert doc.paragraphs[first].text == "Executive Summary:" and text.index("Executive Summary:") < text.index("Company Updates")
+    assert doc.paragraphs[first].text == "Executive Summary:" and text.index("Executive Summary:") < text.index("Fixed Income")
     lead = doc.paragraphs[first + 1]
-    assert lead.runs[0].text == "Fixed Income:" and lead.runs[0].bold   # Company Updates has no summary, so it is not listed
-    assert not any(t.startswith("Company Updates:") for t in text)
+    assert lead.runs[0].text == "Fixed Income:" and lead.runs[0].bold
 
 
 def test_the_review_copy_keeps_every_mark_with_a_dev_draft(week, tmp_path):
@@ -405,7 +402,7 @@ def test_a_focus_in_the_new_structure_is_exported_lead_contents_numbered_section
 def test_the_executive_summary_takes_the_focus_lead_paragraph(week, tmp_path):
     _save(week, "focus", sh.focus_review(topic="SSA Eurobonds", sections=FOCUS_TITLES))
     doc, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
-    summary = text[text.index("Executive Summary:") + 1:text.index("Company Updates")]
+    summary = text[text.index("Executive Summary:") + 1:text.index("Fixed Income")]
     assert summary[-1] == "Focus of the Week: This report covers the market and its risks."
 
 
@@ -421,5 +418,5 @@ def test_a_focus_saved_before_the_structure_still_opens_and_exports_as_before(we
     focus = [p for p in doc.paragraphs][max(n for n, p in enumerate(doc.paragraphs) if p.text == "Focus of the Week") + 1:]
     assert (focus[0].style.name, focus[0].text) == ("Heading 2", "SSA Eurobonds: a development")
     assert focus[1].text == "During the week, SSA Eurobonds grew 8.75% in 2026. Lending rose to Sh30.1 billion."
-    assert text[text.index("Executive Summary:") + 1:text.index("Company Updates")][-1] == (
+    assert text[text.index("Executive Summary:") + 1:text.index("Fixed Income")][-1] == (
         "Focus of the Week: During the week, SSA Eurobonds grew 8.75% in 2026. Lending rose to Sh30.1 billion.")

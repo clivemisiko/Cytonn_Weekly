@@ -58,7 +58,8 @@ def test_the_listing_names_each_piece_with_its_day_and_week_and_no_sources_yet(c
 
 
 def test_the_listing_of_a_section_that_is_not_written_from_sources_says_so(client):
-    body = client.get("/api/sources", params={"section": "company_updates"}).json()
+    body = client.get("/api/sources", params={"section": "executive_summary", "report_type": "quarterly",
+                                              "period": "Q3'2026"}).json()
     assert body["uses_sources"] is False and body["pieces"] == [] and body["approved_sites"] == list(src.APPROVED_SITES)
 
 
@@ -193,8 +194,10 @@ def test_the_subject_may_differ_in_case_and_spacing(client):
 
 
 def test_a_section_that_calls_no_provider_or_does_not_exist_takes_no_sources(client):
-    assert post(client, section="company_updates").status_code == 422
-    assert "not written from sources" in post(client, section="company_updates").json()["detail"]
+    summary = dict(section="executive_summary", report_type="quarterly", period="Q3'2026")
+    assert post(client, **summary).status_code == 422
+    assert "not written from sources" in post(client, **summary).json()["detail"]
+    assert post(client, section="company_updates").status_code == 404
     assert post(client, section="nope").status_code == 404
 
 

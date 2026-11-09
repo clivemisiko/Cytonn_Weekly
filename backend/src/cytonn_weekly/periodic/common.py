@@ -48,17 +48,16 @@ class PeriodContext:
     start: date
     end: date
     today: date
-    text: Optional[str] = None                       # Company Updates only: the analyst's text
     db_path: Optional[Union[Path, str]] = None       # Executive Summary only: where the approved sections are
 
     @classmethod
-    def of(cls, report_type: str, period: str, *, today: Optional[date] = None, text: Optional[str] = None,
+    def of(cls, report_type: str, period: str, *, today: Optional[date] = None,
            db_path: Optional[Union[Path, str]] = None) -> "PeriodContext":
         if report_type not in PERIODIC:
             raise ValueError(f"{report_type!r} is not a Markets Review type")
         period = normalize_period(report_type, period)
         start, end = period_window(report_type, period)
-        return cls(report_type, period, start, end, today or date.today(), text, db_path)
+        return cls(report_type, period, start, end, today or date.today(), db_path)
 
     @property
     def prose(self) -> str:
@@ -132,7 +131,7 @@ def draft_period(briefs: Sequence[NarrativeBrief], target: int, ctx: PeriodConte
 
 
 def no_draft() -> dict[str, Any]:
-    """The draft_pieces shape for a section that drafts nothing (Company Updates, the summary)."""
+    """The draft_pieces shape for a section that drafts nothing (the summary)."""
     return {"pieces": [], "shortfall": 0, "warnings": []}
 
 

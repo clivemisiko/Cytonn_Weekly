@@ -13,7 +13,6 @@ from cytonn_weekly.digital_payments import review_store, summary
 from cytonn_weekly.equities import review_run as eq_run
 from cytonn_weekly.equities import weekly as eq_weekly
 from cytonn_weekly.periodic import (
-    company_updates as p_cu,
     digital_payments as p_dp,
     equities as p_eq,
     fixed_income as p_fi,
@@ -77,8 +76,7 @@ def test_the_overview_defaults_to_the_weekly_report_as_before(client):
         "type": "weekly", "title": "Weekly", "period": "", "kind": None,
         "published_as": "Cytonn Weekly #38.2026 (27 Sept 2026)"}
     assert report["week_ending"] is None and report["suggested_week_ending"]   # no week named; a Friday is suggested
-    assert [s["slug"] for s in body["sections"]] == ["company_updates", "fixed_income", "equities", "real_estate",
-                                                     "digital_payments", "focus"]
+    assert [s["slug"] for s in body["sections"]] == ["fixed_income", "equities", "real_estate", "digital_payments", "focus"]
     assert [t["slug"] for t in body["report_types"]] == ["weekly", "monthly", "quarterly", "half_year", "annual", "companion"]
     assert len(body["companion_kinds"]) == 4
     assert client.get("/api/report-types").json()["report_types"] == body["report_types"]
@@ -89,9 +87,9 @@ def test_a_markets_review_overview_needs_a_period_that_fits(client):
     assert "half-year" in overview(client, report_type="quarterly", period="Q2'2026").json()["detail"]
     body = overview(client, report_type="quarterly", period="q3 2026").json()
     assert body["report"]["period"] == "Q3'2026"   # normalized by the API, not the screen
-    assert [s["slug"] for s in body["sections"]][:3] == ["executive_summary", "company_updates", "global_markets"]
+    assert [s["slug"] for s in body["sections"]][:2] == ["executive_summary", "global_markets"]
     by = {s["slug"]: s for s in body["sections"]}
-    assert by["company_updates"]["needs_text"] and not by["company_updates"]["uses_provider"]
+    assert "company_updates" not in by and not by["executive_summary"]["uses_provider"]
     assert by["executive_summary"]["requires_approved"] and by["fixed_income"]["charts"]
     annual = overview(client, report_type="annual", period="2025").json()
     assert annual["report"]["period"] == "FY'2025" and "digital_payments" not in [s["slug"] for s in annual["sections"]]
@@ -175,18 +173,14 @@ def test_a_newer_quarterly_digital_payments_review_never_reaches_the_weekly_summ
     assert path.exists()
 
 # ---------------------------------------------------------------------------
-# Sections that call no provider: Company Updates and the Executive Summary
+# Sections that call no provider: the Executive Summary
 # ---------------------------------------------------------------------------
 
 
-def test_company_updates_needs_text_but_no_api_key(client, monkeypatch):
+def test_company_updates_is_not_a_section_of_any_report(client, monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY")
     assert client.post("/api/sections/global_markets/draft", json=Q3).status_code == 409  # needs the provider
-    assert client.post("/api/sections/company_updates/draft", json=Q3).status_code == 422
-    r = client.post("/api/sections/company_updates/draft", json={**Q3, "text": "Investment Updates: demo."})
-    assert r.status_code == 200
-    review = r.json()
-    assert review["review_items"][0]["kind"] == "supplied_text" and review["section"]["blocks"][0]["kind"] == "supplied"
+    assert client.post("/api/sections/company_updates/draft", json=Q3).status_code == 404
     assert overview(client, **Q3).json()["drafting"] is None
 
 

@@ -216,7 +216,7 @@ ReportType = Literal["weekly", "monthly", "quarterly", "half_year", "annual", "c
 
 
 class DraftRequest(BaseModel):
-    """``topic`` is required for Focus of the Week and ``text`` for Company Updates; other sections ignore both.
+    """``topic`` is required for Focus of the Week; other sections ignore it.
 
     ``report_type`` and ``period`` say which report the section belongs to.  The default,
     the weekly report with no period label, is what every draft was before report types.
@@ -227,7 +227,6 @@ class DraftRequest(BaseModel):
     topic: Optional[str] = None
     # Focus of the Week: the section titles, one per line. Like the topic, judged by one function (clean_sections).
     sections: Optional[str] = None
-    text: Optional[str] = Field(default=None, max_length=10_000)
     report_type: ReportType = WEEKLY
     period: Optional[str] = Field(default=None, max_length=40)
     kind: Optional[str] = Field(default=None, max_length=40)
@@ -315,8 +314,8 @@ class RunRequest(DraftRequest):
 
 
 def uses_provider(spec: SectionSpec) -> bool:
-    """Whether drafting the section calls the LLM provider (Company Updates and the Executive Summary never do)."""
-    return not (spec.needs_text or spec.requires_approved)
+    """Whether drafting the section calls the LLM provider (the Executive Summary never does)."""
+    return not spec.requires_approved
 
 
 def report_label(report_type: str, period: str) -> str:
@@ -425,7 +424,7 @@ def create_app(
         return review
 
     def run_quick(build: Callable[[], CoordinatorReview]) -> dict:
-        """A section that neither searches nor calls the LLM (Company Updates, the Executive Summary).
+        """A section that neither searches nor calls the LLM (the Executive Summary).
 
         It takes no draft slot: it finishes at once and spends nothing, so a long draft of
         another section must not hold it up.
@@ -525,7 +524,7 @@ def create_app(
 
         Both ways of starting a draft (the synchronous route and a run) go through this, so
         they refuse the same things with the same words: a period that does not fit the type
-        (422), an unknown section (404), an unavailable one (409), a missing topic or text (422).
+        (422), an unknown section (404), an unavailable one (409), a missing topic (422).
         """
         report_type = body.report_type
         period, kind = chosen_report(report_type, body.period, body.kind)
@@ -550,9 +549,7 @@ def create_app(
                 raise ProblemError(422, str(exc), "draft_input_invalid")
         if spec.needs_topic and not titles and configured_provider() == "bedrock":
             raise ProblemError(409, SECTIONS_REQUIRED, "draft_sections_required")
-        if spec.needs_text and not (body.text and body.text.strip()):
-            raise ProblemError(422, f"Paste the text for {spec.title} first, then start the draft.", "draft_text_missing")
-        ctx = DraftContext(report_type=report_type, period=period, topic=topic, sections=titles, text=body.text, db_path=db_path,
+        ctx = DraftContext(report_type=report_type, period=period, topic=topic, sections=titles, db_path=db_path,
                            week_ending=week_ending_of(period) if report_type == WEEKLY else None, inputs_root=root)
         return spec, ctx, report_type, period
 
@@ -691,7 +688,7 @@ def create_app(
                 }
             out.append({
                 "slug": spec.slug, "title": spec.title, "available": spec.available, "needs_topic": spec.needs_topic,
-                "needs_text": spec.needs_text, "requires_approved": spec.requires_approved,
+                "requires_approved": spec.requires_approved,
                 "uses_provider": uses_provider(spec),
                 "reason": spec.reason or None, "unblock": spec.unblock or None, "built_parts": list(spec.built_parts),
                 "subsections": list(spec.subsections), "charts": list(spec.charts),
@@ -1288,8 +1285,8 @@ def create_app(
     def draft_section(slug: str, body: Optional[DraftRequest] = None) -> dict:
         """Run one section's real pipeline for one report and period, and save the result.
 
-        Same guards as /api/reviews/draft.  The Executive Summary and Company Updates call
-        no provider, so they need no API key and take no draft slot; the summary refuses
+        Same guards as /api/reviews/draft.  The Executive Summary calls
+        no provider, so it needs no API key and takes no draft slot; the summary refuses
         (409, naming each section) until every section it summarises is approved.
         """
         spec, ctx, report_type, period = resolve_draft(slug, body or DraftRequest())
@@ -1299,7 +1296,7 @@ def create_app(
                 return stamp(spec.build(ctx), report_type, period)
             except SectionsNotApproved as exc:
                 raise ProblemError(409, str(exc), "draft_sections_not_approved")
-            except ValueError as exc:  # e.g. an unusable Focus topic, or missing Company Updates text
+            except ValueError as exc:  # e.g. an unusable Focus topic
                 raise ProblemError(422, str(exc), "draft_input_invalid")
             except Exception as exc:  # noqa: BLE001 - shown to the analyst, not swallowed
                 raise ProblemError(502, f"The draft stopped. {failure_message(exc)}", "draft_failed")

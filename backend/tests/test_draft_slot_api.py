@@ -226,8 +226,6 @@ def test_a_local_draft_without_a_search_key_is_refused_before_it_starts(client, 
         assert client.get("/api/config").json()["provider_problem"] == missing
     assert called == [] and client.get("/api/sections").json()["drafting"] is None  # nothing fetched, slot never taken
     assert client.post("/api/reviews/draft").status_code == 409  # the original Digital Payments route too
-    # a section that calls no provider needs no search key
-    assert client.post("/api/sections/company_updates/draft", json={"text": "Demo."}).status_code == 200
     # with a key set, a faked pipeline drafts as before: the check is only that a key is there
     monkeypatch.setenv("EXA_API_KEY", "test-placeholder-not-a-real-key")
     assert client.post("/api/sections/equities/draft").status_code == 200 and called == [1]

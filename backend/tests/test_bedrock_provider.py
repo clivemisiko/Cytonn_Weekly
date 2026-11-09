@@ -520,9 +520,9 @@ def test_the_config_calls_bedrock_production_and_the_run_check_accepts_it(aws, t
     asked_for_another = client.post("/api/runs", json={**body, "provider": "anthropic"})
     assert asked_for_another.status_code == 409
     assert asked_for_another.json()["problems"][0]["code"] == "draft_mode_changed"
-    company = {"section": "company_updates", "text": "Investment Updates: demo."}
+    summary = {"section": "executive_summary", "report_type": "quarterly", "period": "Q3'2026"}
     for named in ("bedrock", " Bedrock "):   # the screen sends the provider it showed; case and spaces are not a mismatch
-        started = client.post("/api/runs", json={**company, "provider": named})
+        started = client.post("/api/runs", json={**summary, "provider": named})
         assert started.status_code == 202
         for _ in range(200):   # let the worker finish, so the next one is not refused as already running
             if client.get(f"/api/runs/{started.json()['run_id']}").json()["status"] != "running":

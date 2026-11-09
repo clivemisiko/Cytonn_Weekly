@@ -72,7 +72,7 @@ def test_a_weekly_with_no_period_uses_the_latest_friday_and_a_named_week_uses_it
 
 @pytest.mark.parametrize("report_type,period,slug", [
     ("weekly", PERIOD, "company_updates"), ("weekly", PERIOD, "executive_summary"), ("weekly", PERIOD, "nope"),
-    ("quarterly", "Q3'2026", "company_updates"), ("quarterly", "Q3'2026", "executive_summary"),
+    ("quarterly", "Q3'2026", "company_updates"), ("quarterly", "Q3'2026", "executive_summary"),   # company_updates: no such section
     ("monthly", "Oct'2026", "fixed_income"), ("companion", "", "fixed_income"),
 ])
 def test_a_section_that_calls_no_provider_or_is_not_drafted_has_no_pieces(report_type, period, slug):

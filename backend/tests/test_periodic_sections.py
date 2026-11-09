@@ -5,7 +5,6 @@ from datetime import date
 import pytest
 
 from api.serialize import is_dev_draft
-from cytonn_weekly.common.review import SUPPLIED_TEXT
 from cytonn_weekly.digital_payments import review_store
 from cytonn_weekly.digital_payments.coordinator_review import APPROVED, CLEAN, FLAGGED, NOT_AUTO_VERIFIED
 from cytonn_weekly.fixed_income import cbk_auctions
@@ -210,7 +209,7 @@ def test_period_drafts_search_the_whole_period():
     assert set(seen) == {(date(2026, 7, 1), date(2026, 9, 30))}
 
 # ---------------------------------------------------------------------------
-# Digital Payments, Company Updates, Executive Summary
+# Digital Payments, Executive Summary
 # ---------------------------------------------------------------------------
 
 
@@ -239,16 +238,6 @@ def test_half_year_digital_payments_follows_h1s_columns():
     assert all(i.status == CLEAN for i in review.review_items if i.kind == "table_row")
 
 
-def test_company_updates_is_carried_verbatim_and_never_verified():
-    review = ph.company_updates_review(text="Investment Updates: CMMF closed at 11.0% p.a.")
-    (block,) = review.section["blocks"]
-    assert (block["kind"], block["body_md"]) == ("supplied", "Investment Updates: CMMF closed at 11.0% p.a.")
-    (item,) = review.review_items
-    assert (item.kind, item.status) == (SUPPLIED_TEXT, NOT_AUTO_VERIFIED)
-    with pytest.raises(ValueError, match="paste"):
-        ph.company_updates_review(text="   ")
-
-
 def save_approved(review, db, report_type="quarterly", period="Q3'2026"):
     review.report_type, review.period = report_type, period
     for item in review.review_items:
@@ -264,7 +253,7 @@ def test_executive_summary_waits_for_every_section_and_names_them(tmp_path):
     with pytest.raises(executive_summary.SectionsNotApproved) as exc:
         executive_summary.build_executive_summary_review(ph.ctx(db_path=db))
     assert "Global Markets Review" not in str(exc.value)
-    assert "Fixed Income (not drafted)" in str(exc.value) and "Company Updates" not in str(exc.value)
+    assert "Fixed Income (not drafted)" in str(exc.value)
 
 
 def test_executive_summary_carries_each_approved_lead_piece_verbatim(tmp_path):
