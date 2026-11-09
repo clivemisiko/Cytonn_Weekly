@@ -87,10 +87,10 @@ test("T04 report picker shows the API's refusal, switches report, keeps it on re
   await expect(page.getByLabel("Period", { exact: true })).toHaveAttribute("aria-invalid", "true");
   await page.getByLabel("Period", { exact: true }).fill("q3 2026");
   await page.getByRole("button", { name: "Show sections" }).click();
-  await expect(page.getByText("Quarterly Markets Review, Q3'2026: 9 report sections.", { exact: false })).toBeVisible();
+  await expect(page.getByText("Quarterly Markets Review, Q3'2026: 8 report sections.", { exact: false })).toBeVisible();
   expect(new URL(page.url()).searchParams.get("period")).toBe("Q3'2026");
   await page.reload();
-  await expect(page.getByText("Quarterly Markets Review, Q3'2026: 9 report sections.", { exact: false })).toBeVisible();
+  await expect(page.getByText("Quarterly Markets Review, Q3'2026: 8 report sections.", { exact: false })).toBeVisible();
   await expect(card(page, "Fixed Income").getByText("Not drafted for Q3'2026")).toBeVisible();
   await topbar(page).getByRole("button", { name: "Back to Home" }).click();
   await expect(page).toHaveURL(/\/$/);

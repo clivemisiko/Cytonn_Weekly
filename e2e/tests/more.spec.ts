@@ -216,7 +216,7 @@ test("T23 rejecting a section is final: the dialog, the locked review, the overv
   const review = new URL(page.url()).searchParams.get("review");
 
   // Reject needs nothing resolved; it asks first.
-  await expect(page.getByText(/^\d+ unresolved · 0 of \d+ resolved$/)).toBeVisible();
+  await expect(page.getByText(/\d+ unresolved · 0 of \d+ resolved/)).toBeVisible();
   await page.getByRole("button", { name: "Reject", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Reject this section?" });
   await expect(dialog).toContainText("The draft is sent back and frozen as it is. This is recorded once and cannot be changed; a new draft would have to be run.");

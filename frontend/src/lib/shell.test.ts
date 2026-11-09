@@ -83,7 +83,7 @@ describe("shell store", () => {
   it("marks an unavailable section as such, and a section being drafted as drafting, only in the report it is drafting for", () => {
     const shell = createShell(never);
     const o = overview({}, { slug: "fixed_income", title: "Fixed Income", report_type: "weekly", period: WEEK, started_at: "", elapsed_seconds: 5, stale: false, stale_after_seconds: 3600 });
-    o.sections[3] = section("real_estate", null, false);
+    o.sections[2] = section("real_estate", null, false);
     shell.setOverview(o);
     expect(states(shell)).toEqual({ digital_payments: "not_drafted", fixed_income: "drafting", equities: "not_drafted", real_estate: "unavailable" });
     const other = overview({}, { slug: "fixed_income", title: "Fixed Income", report_type: "quarterly", period: "Q3'2026", started_at: "", elapsed_seconds: 5, stale: false, stale_after_seconds: 3600 });

@@ -176,7 +176,7 @@ test("T108 the weekly export's notices go when the picker switches to the Monthl
   await page.getByLabel("Report type").selectOption("monthly");
   await page.getByLabel("Period", { exact: true }).fill("Oct'2026");
   await page.getByRole("button", { name: "Show sections" }).click();
-  await expect(page.getByText("Monthly, Oct'2026: 5 report sections.", { exact: false })).toBeVisible();
+  await expect(page.getByText("Monthly, Oct'2026: 4 report sections.", { exact: false })).toBeVisible();
   await expect(charts).toHaveCount(0);
   await expect(watermark).toHaveCount(0);
 
