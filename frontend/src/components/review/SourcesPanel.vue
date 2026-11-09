@@ -92,9 +92,7 @@ const sites = computed(() => listing.value?.approved_sites ?? []);
     <div class="space-y-1">
       <h2 id="sources-title" class="text-lg font-semibold">Sources</h2>
       <p class="text-sm text-muted-foreground">
-        Amazon Bedrock writes only from the pages saved here; it has no search of its own. The tool looks for sources itself when a draft starts, and you can
-        search for them now or add more: paste a page’s text with its address and date, or fetch a page from its address. Remove any page you do not want.
-        Every quote a claim uses is checked against the saved text, and you see it on the review.
+        Drafts are generated exclusively from the verified source documents listed below. Sources are gathered automatically when drafting starts, or you can add them in advance by URL or direct text. All citations are cross-referenced word-for-word against these saved records during analyst review.
       </p>
     </div>
 

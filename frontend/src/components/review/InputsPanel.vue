@@ -43,7 +43,7 @@ const bidding = ref("");
 const previous = ref("");
 const asAt = ref("");
 const notFriday = computed(() =>
-  picked.value && weekdayOf(picked.value) !== "Friday" ? `${friendlyDate(picked.value)} is a ${weekdayOf(picked.value)}. A weekly report's week ends on a Friday, so choose a Friday.` : null,
+  picked.value && weekdayOf(picked.value) !== "Friday" ? `${friendlyDate(picked.value)} is a ${weekdayOf(picked.value)}. Cytonn Weekly reports are published for weeks ending on a Friday. Please select a valid Friday date.` : null,
 );
 const locked = computed(() => busy.value || !!props.disabled);
 let live = true;
@@ -133,8 +133,7 @@ function saveNote(key: "bidding_range" | "previous_issue" | "as_at", value: stri
       <div class="space-y-1">
         <h2 id="inputs-title" class="text-lg font-semibold">This week’s inputs</h2>
         <p class="max-w-[62ch] text-sm text-muted-foreground">
-          The workbooks and reports the analysts send each Friday. A part of the section whose input is missing is marked
-          unavailable in the draft; no figure is ever filled in.
+          The workbooks and reports the analysts send each Friday. Any section missing its required input file will be marked as unavailable in the draft to ensure data accuracy.
         </p>
       </div>
       <div data-attention="week-picker" class="space-y-1">
@@ -245,8 +244,7 @@ function saveNote(key: "bidding_range" | "previous_issue" | "as_at", value: stri
             @blur="saveNote('bidding_range', bidding)"
           />
           <p id="bidding-range-hint" class="text-xs text-muted-foreground">
-            The analysts’ own call, carried as you type it. The tool never proposes a range; left empty, the draft marks
-            the range as missing.
+            Enter the analysts’ recommended bidding range. If left blank, the range will be flagged as pending in the draft.
           </p>
         </div>
         <div class="space-y-1">
@@ -263,8 +261,7 @@ function saveNote(key: "bidding_range" | "previous_issue" | "as_at", value: stri
             @blur="saveNote('previous_issue', previous)"
           />
           <p id="previous-issue-hint" class="text-xs text-muted-foreground">
-            Where the carried-forward paragraphs come from. Left empty, the newest issue published by this Friday is
-            used. Carried text is always flagged for you to edit.
+            Reference link for carried-forward content. If left blank, the most recent published report is used automatically. Carried text is flagged for your review.
           </p>
         </div>
       </div>

@@ -100,10 +100,10 @@ const flagged = computed(() =>
         :on-apply="onReport"
       />
       <Notice v-if="config.dev_mode" role="alert" class="font-semibold">
-        CYTONN_LLM_PROVIDER=local: DEV MODE. Drafts from the local model are NOT FOR PUBLICATION.
+        Development Mode Active (Local Model): Drafts generated in this mode are for testing purposes only and are not approved for publication.
       </Notice>
       <Notice v-if="exportStatus?.is_dev_draft" role="alert" class="font-semibold">
-        {{ exportStatus.dev_mode_label }} The export carries a DEV MODE watermark on every page and must not be sent or published ({{ exportStatus.dev_sections.join(", ") }}).
+        Export Notice: This document contains test content ({{ exportStatus.dev_sections.join(", ") }}) and includes a developer watermark on every page. It cannot be circulated or published externally.
       </Notice>
       <!-- In the feed, not the foldable panel beside the export button: a note there could be folded away. -->
       <Notice v-if="exportChartsNote(exportStatus?.charts_missing ?? 0)" tone="info" role="status">

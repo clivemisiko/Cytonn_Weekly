@@ -57,7 +57,7 @@ test("T107 a Bedrock start screen: the mode is production, not dev, and the Sour
   await page.getByLabel("This week’s topic").fill("SYNTHETIC bedrock topic");
   // Bedrock has nothing to search, so it does not propose titles: the draft waits for typed ones, and says why.
   await expect(page.getByRole("button", { name: DRAFT })).toBeDisabled();
-  await expect(page.getByText("Amazon Bedrock does not propose section titles", { exact: false })).toBeVisible();
+  await expect(page.getByText("Section titles must be specified before drafting", { exact: false })).toBeVisible();
 
   await page.getByLabel("Sections (optional)").fill(TITLES);
   await expect(page.getByRole("button", { name: DRAFT })).toBeEnabled();

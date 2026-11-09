@@ -51,7 +51,7 @@ test("T74 a stopped run: the failure and the way back are in the feed, and the p
   const run = await startRun(request, "real_estate"); // stops by design in the test API and saves nothing
   await page.goto(`/runs/${run}`);
   const panel = facts(page);
-  const alert = page.getByRole("alert").filter({ hasText: "The draft stopped." });
+  const alert = page.getByRole("alert").filter({ hasText: "Drafting could not be completed." });
   await expect(alert).toContainText("the Ibuka summary could not be fetched (a deliberate failure for the tests)");
   await expect(panel.locator("dt")).toHaveText(["Section", "Report", "Started", "Stopped"]);
   const side = (await panel.boundingBox())!;

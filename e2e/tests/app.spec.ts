@@ -37,7 +37,7 @@ test("T01 landing page loads, with Home current and Back disabled", async ({ pag
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /Welcome to Cytonn Weekly\./ })).toBeVisible();
   await expect(page.getByRole("heading", { name: /^Good (morning|afternoon|evening)\. Welcome to Cytonn Weekly\.$/ })).toBeVisible();
-  await expect(page.getByText("Ready. Nothing is drafted until you ask.")).toBeVisible();
+  await expect(page.getByText("Ready to draft. Choose a report below to begin.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign in with Cytonn SSO" })).toBeDisabled();
   await expect(page.getByText("Not connected yet.", { exact: true })).toBeVisible();
   await expect(page.getByText(/this tool has no sign-in and should only be used by the\s+team/)).toBeVisible();
@@ -68,7 +68,7 @@ test("T03 overview lists the five weekly sections, the dev mark and the export g
   await expect(page.getByRole("group", { name: "Sections by state" })).toContainText("Not drafted5 / 5");
   // Dev mode: the ribbon under the top bar and the notice in the page.
   await expect(page.getByRole("status").filter({ hasText: "DEV MODE DRAFT (local model): NOT FOR PUBLICATION OR CIRCULATION" })).toBeVisible();
-  await expect(page.getByRole("alert").filter({ hasText: "CYTONN_LLM_PROVIDER=local: DEV MODE." })).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "Development Mode Active (Local Model)" })).toBeVisible();
   // Export: there, and off until every section is approved.
   await expect(page.getByRole("heading", { name: "Export weekly report" })).toBeVisible();
   await expect(page.getByText("Available once every section is approved: 5 of 5 still to go.")).toBeVisible();
@@ -188,7 +188,7 @@ test("T08 analyst inputs: refusals listed, the draft button waits for unsaved ty
   await openStart(page, "Fixed Income");
   const panel = page.locator("section", { has: page.getByRole("heading", { name: "Weekly analyst inputs" }) }).first();
   const draft = page.getByRole("button", { name: DRAFT });
-  const waiting = page.getByText("Something under “Weekly analyst inputs” is not saved yet", { exact: false });
+  const waiting = page.getByText("You have unsaved changes or unconfirmed suggestions in Weekly Analyst Inputs", { exact: false });
   const placements = panel.locator("#analyst-placements");
   await expect(placements).toHaveAttribute("placeholder", "9.75 (workbook)");
   await expect(panel.getByText("From the workbook", { exact: true }).first()).toBeVisible();
@@ -227,7 +227,7 @@ test("T08 analyst inputs: refusals listed, the draft button waits for unsaved ty
     void d.dismiss();
   });
   await topbar(page).getByRole("button", { name: "Back to all sections" }).click();
-  expect(questions).toEqual(['Something typed under "Weekly analyst inputs" is not saved yet. Leave this page and lose it?']);
+  expect(questions).toEqual(['You have unsaved changes in Weekly Analyst Inputs. Are you sure you want to leave without saving?']);
   await expect(table).toHaveValue("1 Alpha Fund 0.11\n3 Beta Fund 250");
   page.once("dialog", (d) => {
     questions.push(d.message());
@@ -343,7 +343,7 @@ test("T11 a stopped run shows the error text and the way back", async ({ page })
   await page.getByRole("button", { name: DRAFT }).click();
   await expect(page).toHaveURL(/\/runs\/[^/]+$/);
   await expect(page.getByRole("heading", { name: "Real Estate: draft run", level: 1 })).toBeVisible();
-  const alert = page.getByRole("alert").filter({ hasText: "The draft stopped." });
+  const alert = page.getByRole("alert").filter({ hasText: "Drafting could not be completed." });
   await expect(alert).toContainText("the Ibuka summary could not be fetched (a deliberate failure for the tests)");
   await expect(page.getByText(/^Stopped .* EAT\.$/)).toBeVisible();
   await expect(page.getByRole("log", { name: "Steps of this draft" }).getByRole("listitem").last()).toContainText("Failed: The draft stopped.");

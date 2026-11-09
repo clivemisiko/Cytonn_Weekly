@@ -78,7 +78,7 @@ onMounted(async () => {
           <RouterLink :to="backTo" :class="cn(buttonVariants({ variant: 'outline' }))">Back to review</RouterLink>
         </section>
 
-        <p v-if="meta && quote && !found" class="text-xs text-muted-foreground">The quoted passage could not be located in the saved text, so nothing is highlighted.</p>
+        <p v-if="meta && quote && !found" class="text-xs text-muted-foreground">The cited passage could not be highlighted automatically. Please inspect the saved source text below to verify the quote manually.</p>
 
         <article v-if="meta" aria-label="Saved text" class="max-w-[70ch] whitespace-pre-wrap text-base leading-7 [overflow-wrap:anywhere]">
           <template v-if="parts">{{ parts.before }}<mark ref="mark" class="rounded-sm bg-primary/35 px-0.5 text-foreground">{{ parts.hit }}</mark>{{ parts.after }}</template>

@@ -71,7 +71,7 @@ const rise = (order: number) => ({ animationDelay: `${order * 60}ms` });
         <div class="flex items-center gap-3 rounded-lg border border-border/70 bg-muted/30 px-3.5 py-2.5">
           <span class="ready-dot" aria-hidden="true" />
           <p role="status" class="text-sm font-medium text-foreground">
-            Ready. Nothing is drafted until you ask.
+            Ready to draft. Choose a report below to begin.
           </p>
         </div>
       </div>
@@ -96,8 +96,7 @@ const rise = (order: number) => ({ animationDelay: `${order * 60}ms` });
 
       <div class="rise-slow" :style="rise(6)">
         <Notice tone="info">
-          Sign-in with Cytonn SSO is not connected yet. Until it is, this tool has no sign-in and should only be used by the
-          team. Draft output is a first version for human review.
+          Cytonn Single Sign-On (SSO) is currently in development. Internal team access is enabled without login. All generated drafts are preliminary and require human analyst review.
         </Notice>
       </div>
     </div>

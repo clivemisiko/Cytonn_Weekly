@@ -48,7 +48,7 @@ watch(
 );
 
 function subline(c: StatusCounts): string {
-  if (c.total === 0) return "None in this draft";
+  if (c.total === 0) return "No items in this draft";
   const parts = [c.unresolved ? `${c.unresolved} unresolved` : "", c.fix_needed ? `${c.fix_needed} fix needed` : ""].filter(Boolean);
   return parts.length ? parts.join(", ") : "All accepted";
 }
@@ -100,8 +100,7 @@ function subline(c: StatusCounts): string {
             {{ approved ? "Approved" : "Rejected" }} and locked
           </span>
           <span class="text-sm text-muted-foreground">
-            Decision recorded{{ review.decided_at ? ` on ${friendlyTime(review.decided_at)}` : "" }}. Every value below is frozen as drafted; nothing on
-            this screen can be changed.
+            Decision recorded{{ review.decided_at ? ` on ${friendlyTime(review.decided_at)}` : "" }}. This section is finalized and locked for editing.
           </span>
         </div>
         <!-- Three counts, one per status, in the same colour, glyph and border style the item cards use. -->
