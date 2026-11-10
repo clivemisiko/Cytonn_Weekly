@@ -15,6 +15,7 @@ PERIOD = "Week ending 2026-10-02"
 FRIDAY = date(2026, 10, 2)
 REAL_ESTATE = pieces_for("weekly", PERIOD, "real_estate")
 SUBJECT = REAL_ESTATE[0].subject
+DP_SUBJECT = pieces_for("weekly", PERIOD, "digital_payments")[0].subject
 PASTED = {"section": "real_estate", "subject": SUBJECT, "period": PERIOD, "url": "https://www.centralbank.go.ke/press/x",
           "date": "2026-09-30", "text": PARAGRAPH * 2, "title": "CBK statement"}
 
@@ -244,22 +245,22 @@ def test_a_saved_text_changed_on_disk_is_refused_with_a_plain_sentence_on_every_
 # --- no change while a draft runs -------------------------------------------------------------------------------------------
 
 def test_sources_cannot_be_added_or_removed_while_a_draft_that_reads_them_runs(client, clock, monkeypatch):
-    one = post(client).json()["source"]
+    one = post(client, section="digital_payments", subject=DP_SUBJECT).json()["source"]
     gated = GatedProvider()
-    monkeypatch.setattr(review_run, "build_digital_payments_review", lambda on_event=None: REAL_DP(
+    monkeypatch.setattr(review_run, "build_digital_payments_review", lambda today=None, on_event=None: REAL_DP(
         provider=gated, today=TODAY, fetch_table=lambda today: ROWS, on_event=on_event))
-    run_id = start(client, section="digital_payments", report_type="weekly")
+    run_id = start(client, section="digital_payments", report_type="weekly", period=PERIOD)
     assert gated.entered.wait(timeout=10)
     try:
-        added = post(client)
+        added = post(client, section="digital_payments", subject=DP_SUBJECT)
         assert added.status_code == 409 and "is being drafted or is queued" in added.json()["detail"]
         assert "Digital Payments" in added.json()["detail"]
         assert client.delete(f"/api/sources/{one['id']}").status_code == 409
-        assert listing(client, subject=SUBJECT).json()["pieces"][0]["sources"][0]["id"] == one["id"]   # reading is allowed
+        assert listing(client, section="digital_payments", subject=DP_SUBJECT).json()["pieces"][0]["sources"][0]["id"] == one["id"]  # reading is allowed
         assert client.get(f"/api/sources/{one['id']}/text").status_code == 200
         assert src.get(one["id"]) is not None                                                           # and nothing changed
         clock.t += 3601                                                                                # a stuck draft does not count
-        assert post(client, text=PARAGRAPH * 3).status_code == 200
+        assert post(client, section="digital_payments", subject=DP_SUBJECT, text=PARAGRAPH * 3).status_code == 200
     finally:
         gated.release.set()
     assert finished(client, run_id)["status"] in ("finished", "failed")

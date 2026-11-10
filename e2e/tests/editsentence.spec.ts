@@ -2,8 +2,8 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
 import { API, VARIANT, overviewUrl, release } from "./helpers";
 
 // A flagged sentence of a drafted piece, edited or removed by hand. The test backend drafts a topic that says "bad figure"
-// with a second sentence whose figure (Sh99.9 billion) is not in the text its source cited (e2e/serve_e2e.py), so every
-// test has a flagged sentence. Each test uses its own week.
+// with a sentence whose figure (Sh99.9 billion) is not in the text its source cited (e2e/serve_e2e.py). Each test uses
+// one typed section and its own week.
 test.skip(!!VARIANT, "runs on the default test backend");
 test.describe.configure({ mode: "serial" });
 test.afterEach(() => void release());
@@ -15,7 +15,7 @@ const BAD = "Lending rose to Sh88.8 billion over the quarter.";
 async function draftFocus(request: APIRequestContext, period: string): Promise<number> {
   const res = await request.post(`${API}/api/sections/focus/draft`, {
     headers: json,
-    data: { report_type: "weekly", period, topic: "SYNTHETIC bad figure topic" },
+    data: { report_type: "weekly", period, topic: "SYNTHETIC bad figure topic", sections: "Overview of the topic" },
     timeout: 120_000,
   });
   expect(res.status(), await res.text()).toBe(200);
@@ -28,12 +28,14 @@ async function open(page: Page, period: string, runId: number) {
 }
 
 const flagged = (page: Page) => page.locator('li[data-status="flagged"]');
+const overviewClaim = (page: Page, status: string, text: string) =>
+  page.locator(`li[data-status="${status}"]`).filter({ hasText: `I Overview of the topic: ${text}` });
 
 test("T99 an edited sentence with a figure the source has is no longer flagged, and is marked as edited", async ({ page, request }) => {
   const period = "Week ending 2026-10-30";
   const first = await draftFocus(request, period);
   await open(page, period, first);
-  await expect(flagged(page)).toHaveCount(1);
+  await expect(flagged(page)).toHaveCount(2); // the mismatched claim and the carried disclaimer
 
   await page.getByRole("button", { name: /^Edit this sentence/ }).click();
   const box = page.getByRole("textbox", { name: "Your sentence" });
@@ -42,14 +44,15 @@ test("T99 an edited sentence with a figure the source has is no longer flagged, 
   await page.getByRole("button", { name: "Save as a new version" }).click();
 
   await expect(page.getByRole("heading", { name: "Sentence edited. The figures were checked again." })).toBeVisible();
-  await expect(flagged(page)).toHaveCount(0);
+  await expect(overviewClaim(page, "not_auto_verified", GOOD)).toBeVisible();
+  await expect(flagged(page)).toHaveCount(1); // only the carried disclaimer remains flagged
   await expect(page.getByText(/Edited by you, .* EAT/).first()).toBeVisible();
   await expect(page.getByLabel("Sentences you edited")).toContainText(GOOD);
 
   // The earlier review is still there, as drafted.
   const old = await (await request.get(`${API}/api/reviews/${first}`)).json();
   expect(old.decision).toBeNull();
-  expect(old.section.blocks.find((b: { kind: string }) => b.kind === "narrative").body_md).toContain("Sh99.9 billion.");
+  expect(old.section.blocks.find((b: { kind: string; body_md: string }) => b.kind === "narrative" && b.body_md.includes("Sh99.9 billion."))).toBeTruthy();
 });
 
 test("T100 an edited sentence with a figure no source has stays flagged and says so", async ({ page, request }) => {
@@ -60,8 +63,9 @@ test("T100 an edited sentence with a figure no source has stays flagged and says
   await page.getByRole("button", { name: "Save as a new version" }).click();
 
   await expect(page.getByRole("heading", { name: "Sentence edited. The figures were checked again." })).toBeVisible();
-  const item = flagged(page);
+  const item = overviewClaim(page, "flagged", BAD);
   await expect(item).toHaveCount(1);
+  await expect(flagged(page)).toHaveCount(2);
   await expect(item).toContainText("Edited by you");
   await item.getByRole("button", { name: /Show details/ }).click();
   await expect(item).toContainText("88.8 do not appear in the text the search tool cited");
@@ -76,7 +80,7 @@ test("T101 a removed sentence is gone from the text and listed as removed by you
   await page.getByRole("button", { name: /^Remove this sentence/ }).click();
 
   await expect(page.getByRole("heading", { name: "Sentence removed." })).toBeVisible();
-  await expect(flagged(page)).toHaveCount(0);
+  await expect(flagged(page)).toHaveCount(1); // only the carried disclaimer remains flagged
   const removed = page.locator("li[data-index]", { hasText: "(removed by you)" });
   await expect(removed).toHaveCount(1);
   await expect(removed).toContainText("Removed by you");

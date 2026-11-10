@@ -43,11 +43,11 @@ test("T27 a stale draft: shown as stuck, the next draft takes the slot over and 
   await page.waitForTimeout(7_000); // this variant counts a draft as stuck after six seconds
 
   await page.goto(overviewUrl());
-  const banner = page.getByRole("status").filter({ hasText: /^Real Estate \(Week ending 2026-10-09\) has been drafting for/ });
-  await expect(banner).toContainText("longer than any healthy draft takes. It looks stuck: a draft that finds every");
-  await expect(banner).toContainText("seat taken replaces it, and its result will be discarded.");
-  await expect(card(page, "Real Estate")).toContainText("Looks stuck");
-  await expect(card(page, "Real Estate")).toContainText("A draft has run far longer than it should and looks stuck. Drafting again replaces it.");
+  const banner = page.getByRole("status").filter({ hasText: "appears to be stalled" });
+  await expect(banner).toContainText("has been running for");
+  await expect(banner).toContainText("You can review the progress log or restart drafting from the section screen.");
+  await expect(card(page, "Real Estate")).toContainText("Stalled");
+  await expect(card(page, "Real Estate")).toContainText("This draft has exceeded normal runtime and may have stalled. Drafting again will replace it.");
 
   // Another section: free to draft (this variant has one seat, so its draft takes the stuck one's seat over).
   await openStart(page, "Digital Payments");

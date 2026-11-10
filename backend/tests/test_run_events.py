@@ -68,10 +68,10 @@ def test_an_event_log_numbers_from_one_and_stamps_utc_time():
         assert datetime.fromisoformat(e.at).tzinfo == timezone.utc
 
 
-def test_only_the_fourteen_kinds_exist():
+def test_only_the_fifteen_kinds_exist():
     assert set(ev.KINDS) == {"run_started", "source_started", "source_finished", "source_failed", "piece_started",
                              "piece_finished", "part_skipped", "check_started", "check_finished", "run_finished",
-                             "run_failed", "sources_looking", "sources_found", "sources_search_unavailable"}
+                             "run_failed", "sources_looking", "sources_found", "sources_search_unavailable", "retrying"}
     with pytest.raises(ValueError):
         ev.EventLog()("progress_estimated", "42%")
 

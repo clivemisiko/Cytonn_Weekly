@@ -49,11 +49,11 @@ test("T107 a Bedrock start screen: the mode is production, not dev, and the Sour
   await openFocusStart(page);
   await expect(page.getByText("Production · bedrock")).toBeVisible();
   await expect(page.getByText("DEV MODE", { exact: false })).toHaveCount(0);
-  await expect(page.getByText("The tool looks for sources itself when you draft", { exact: false }).first()).toBeVisible();
-  await expect(page.getByText("web search and tokens", { exact: false })).toHaveCount(0);
-
   const sources = page.getByRole("region", { name: "Sources" });
   await expect(sources.getByText("Type the section titles in the form below.", { exact: false })).toBeVisible();
+  await expect(page.getByText("Sources: add section titles to see source requirements", { exact: true })).toBeVisible();
+  await expect(page.getByText("web search and tokens", { exact: false })).toHaveCount(0);
+
   await page.getByLabel("This week’s topic").fill("SYNTHETIC bedrock topic");
   // Bedrock has nothing to search, so it does not propose titles: the draft waits for typed ones, and says why.
   await expect(page.getByRole("button", { name: DRAFT })).toBeDisabled();
@@ -166,7 +166,7 @@ test("T112 a never-searched piece is calm, and only a piece a search found nothi
   });
   await openFocus(page);
   await paste(page, "Market performance", { url: "https://www.nse.co.ke/e2e", text: PASTED });
-  await expect(group(page, "Overview of the topic").getByText("Nothing found yet for this piece. Add a link or paste text, or it will come back unavailable.")).toBeVisible();
+  await expect(group(page, "Overview of the topic").getByText("No sources found for this topic yet. Please provide a web link or paste reference text to ensure it can be drafted.")).toBeVisible();
   await expect(group(page, "Overview of the topic").getByText("Sources are found automatically when you draft.")).toHaveCount(0);
   await expect(group(page, "Market performance").getByText("Nothing found yet", { exact: false })).toHaveCount(0);
   await expect(page.getByText("a search found nothing for 1 of 2 pieces", { exact: false })).toBeVisible();
@@ -200,12 +200,12 @@ test("T113 a drafted piece shows its source host, date and verified quote, and a
   await expect(claim).toContainText("blog.example.com");
   await expect(claim).toContainText("7 Oct 2026");
   await expect(claim).toContainText("“The invented regulator said private sector credit grew by 8.75% in the year to September 2026”");
-  await expect(claim).toContainText("checked word for word against the saved text");
+  await expect(claim).toContainText("verified word-for-word against the saved document");
   await expect(claim).toContainText("Pasted");
   await expect(claim).toContainText(/fingerprint [0-9a-f]{8}\b/);
   await expect(claim.getByRole("link", { name: "View saved text" })).toHaveAttribute("href", /^\/sources\/[0-9a-f]{8}\?quote=.+&review=\d+$/);
-  // The host is not on the approved list: said on the item itself, in words (not by colour alone).
-  await expect(page.locator("li[data-status]", { has: claims.first() }).getByText("host not on the approved list").first()).toBeVisible();
+  // The source is not on the approved list: identified on the claim itself, in words.
+  await expect(claim).toContainText("Unverified Source Domain");
 
   // The claim that was dropped is named in the piece's warnings, with the reason.
   const run = new URL(page.url()).searchParams.get("review");

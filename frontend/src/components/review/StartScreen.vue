@@ -374,10 +374,10 @@ const lists = computed(() => [
                   <span>Analyst form: {{ typedPending ? 'Unsaved or unconfirmed inputs in form' : 'Inputs confirmed' }}</span>
                 </li>
                 <li v-if="bedrock && sourcePieces" class="flex items-center gap-2">
-                  <span v-if="!withoutSources.length" class="flex size-4 items-center justify-center rounded-full bg-ok/20 font-bold text-ok-fg text-[10px]">✓</span>
-                  <span v-else-if="nothingFound.length" class="flex size-4 items-center justify-center rounded-full bg-warn/20 font-bold text-warn-fg text-[10px]">!</span>
+                  <span v-if="!titlesNeeded && !withoutSources.length" class="flex size-4 items-center justify-center rounded-full bg-ok/20 font-bold text-ok-fg text-[10px]">✓</span>
+                  <span v-else-if="!titlesNeeded && nothingFound.length" class="flex size-4 items-center justify-center rounded-full bg-warn/20 font-bold text-warn-fg text-[10px]">!</span>
                   <span v-else class="flex size-4 items-center justify-center rounded-full bg-muted font-bold text-muted-foreground text-[10px]">·</span>
-                  <span>Sources: {{ !withoutSources.length ? "every piece has at least one" : nothingFound.length ? `a search found nothing for ${nothingFound.length} of ${sourcePieces.length} pieces` : "found automatically when you draft" }}</span>
+                  <span>Sources: {{ titlesNeeded ? "add section titles to see source requirements" : !withoutSources.length ? "every piece has at least one" : nothingFound.length ? `a search found nothing for ${nothingFound.length} of ${sourcePieces.length} pieces` : "found automatically when you draft" }}</span>
                 </li>
                 <li v-if="blocked" class="flex items-center gap-2 text-warn-fg font-medium">
                   <span class="flex size-4 items-center justify-center rounded-full bg-warn/20 font-bold text-[10px]">⏳</span>

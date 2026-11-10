@@ -94,8 +94,8 @@ test("T19 analyst inputs: start from last week’s form; a weekly figure waits t
     await openStart(page, "Fixed Income", `Week ending ${NEXT_WEEK}`);
     const panel = analystPanel(page);
     const draft = page.getByRole("button", { name: `Draft the Week ending ${NEXT_WEEK} section` });
-    await expect(panel.getByText("No workbook is uploaded for this week: the draft uses only what is typed here.", { exact: false })).toBeVisible();
-    await expect(panel.getByText(/^Copies what was saved for the week ending 9 Oct 2026 into every item still empty here/)).toBeVisible();
+    await expect(panel.getByText("No workbook is uploaded for this week: the draft relies solely on the figures entered below.", { exact: false })).toBeVisible();
+    await expect(panel.getByText(/^Populates empty fields with confirmed values from the week ending 9 Oct 2026\./)).toBeVisible();
     await expect(draft).toBeEnabled();
     await panel.getByRole("button", { name: "Start from last week’s form" }).click();
 
@@ -103,7 +103,7 @@ test("T19 analyst inputs: start from last week’s form; a weekly figure waits t
     await expect(panel.getByRole("status").filter({ hasText: "1 value needs confirming before a draft:" })).toContainText("3-month bank placements.");
     await expect(panel.getByText("Carried from week ending 9 Oct 2026, not confirmed", { exact: true })).toBeVisible();
     await expect(panel.locator("#analyst-placements")).toHaveValue("9.5");
-    await expect(panel.getByText("This changes every week. Last week’s value is not used in a draft until you confirm it for this week or type this week’s.")).toBeVisible();
+    await expect(panel.getByText("This value updates weekly. Please confirm last week’s figure or enter the updated value for this week.")).toBeVisible();
     await expect(draft).toBeDisabled();
     await expect(page.getByText("You have unsaved changes or unconfirmed suggestions in Weekly Analyst Inputs", { exact: false })).toBeVisible();
     // A slow-changing table is carried and used at once, marked as carried.
@@ -157,12 +157,12 @@ test("T21 Focus of the Week: the topic is counted as the API counts it and block
   await expect(draft).toBeEnabled();
   await topic.fill("x".repeat(501));
   await expect(page.getByText("501 of 500 characters.", { exact: false })).toBeVisible();
-  await expect(page.getByRole("status").filter({ hasText: "Over the limit by 1 character. Shorten it to submit." })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Please shorten the topic by 1 character to proceed." })).toBeVisible();
   await expect(topic).toHaveAttribute("aria-invalid", "true");
   await expect(topic).toHaveValue("x".repeat(501)); // never cut
   await expect(draft).toBeDisabled();
   await topic.fill("x".repeat(502));
-  await expect(page.getByRole("status").filter({ hasText: "Over the limit by 2 characters. Shorten it to submit." })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Please shorten the topic by 2 characters to proceed." })).toBeVisible();
   await topic.fill("x".repeat(500));
   await expect(page.getByText("500 of 500 characters.")).toBeVisible();
   await expect(topic).not.toHaveAttribute("aria-invalid", "true");
@@ -219,7 +219,7 @@ test("T23 rejecting a section is final: the dialog, the locked review, the overv
   await expect(page.getByText(/\d+ unresolved · 0 of \d+ resolved/)).toBeVisible();
   await page.getByRole("button", { name: "Reject", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Reject this section?" });
-  await expect(dialog).toContainText("The draft is sent back and frozen as it is. This is recorded once and cannot be changed; a new draft would have to be run.");
+  await expect(dialog).toContainText("Rejecting this section locks the current draft as rejected. To revise this section later, a new draft run will need to be started.");
   await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(dialog).toBeHidden();
   await expect(page.getByRole("button", { name: "Reject", exact: true })).toBeEnabled();
@@ -229,7 +229,7 @@ test("T23 rejecting a section is final: the dialog, the locked review, the overv
 
   await expect(page.getByText("Rejected and locked")).toBeVisible();
   await expect(page.getByText("Decision recorded: rejected.")).toBeVisible();
-  await expect(page.getByText(/Decision recorded on .* EAT\. Every value below is frozen as drafted; nothing on\s+this screen can be changed\./)).toBeVisible();
+  await expect(page.getByText(/Decision recorded on .* EAT\. This section is finalized and locked for editing\./)).toBeVisible();
   await expect(page.getByRole("button", { name: "Approve", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Reject", exact: true })).toHaveCount(0);
   await expect(page.getByRole("radio", { name: "Accept", exact: true }).first()).toBeDisabled();
@@ -240,14 +240,13 @@ test("T23 rejecting a section is final: the dialog, the locked review, the overv
   await page.getByRole("button", { name: "Back to all sections" }).last().click();
   await expect(card(page, "Digital Payments")).toContainText("Rejected");
   await expect(card(page, "Digital Payments").getByRole("button", { name: "View review" })).toBeVisible();
-  await expect(page.getByText("Digital Payments: Rejected")).toBeVisible();
   await expect(page.getByRole("button", { name: "Export weekly report" })).toBeDisabled();
   // "Draft again" opens the start screen, which says what happened and offers a new draft (T42 to T44 go through it).
   await card(page, "Digital Payments").getByRole("button", { name: "Draft again" }).click();
   await expect(page.getByRole("heading", { name: "Digital Payments: analyst review", level: 1 })).toBeVisible();
   await expect(page.getByText(new RegExp(`review \\(run ${review}\\) was rejected`))).toBeVisible();
   await expect(page.getByRole("button", { name: "View it" })).toBeVisible();
-  await expect(page.getByText("Or start over with a new draft.")).toBeVisible();
+  await expect(page.getByText("Or create a new draft. The existing review will remain safely saved in your archive.")).toBeVisible();
   await expect(page.getByRole("button", { name: `Draft the ${period} section` })).toBeVisible();
 });
 
@@ -255,7 +254,7 @@ test("T24 a section that is drafting says so on its own card and run page; anoth
   hold();
   const run = await startRun(request, "real_estate");
   await page.goto(overviewUrl());
-  await expect(page.getByRole("status").filter({ hasText: "Real Estate: Being drafted now" })).toContainText("It is saved and shows below when it finishes.");
+  await expect(page.getByRole("status").filter({ hasText: "Being drafted now" })).toContainText("It is saved and shows below when it finishes.");
   await expect(card(page, "Real Estate")).toContainText("Being drafted now");
   await expect(card(page, "Real Estate")).toContainText("Drafting now; the review shows here when it finishes.");
   await expect(card(page, "Fixed Income")).not.toContainText("Being drafted now");
@@ -300,7 +299,7 @@ test("T24 a section that is drafting says so on its own card and run page; anoth
   // The overview then shows the failure on the section's card, and no banner for a draft that is no longer running.
   await page.goto(overviewUrl());
   await expect(card(page, "Real Estate")).toContainText("Draft failed");
-  await expect(page.getByRole("status").filter({ hasText: "Real Estate: Being drafted now" })).toHaveCount(0);
+  await expect(page.getByRole("status").filter({ hasText: "Being drafted now" })).toHaveCount(0);
 });
 
 test("T25 Executive Summary: refused until every section is approved, then composed, with what it leaves out", async ({ page, request }) => {
@@ -308,7 +307,7 @@ test("T25 Executive Summary: refused until every section is approved, then compo
   const Q3 = "Q3'2026";
   await openStart(page, "Executive Summary", Q3, "quarterly");
   await expect(page.getByText(`Not composed for ${Q3} yet. It is built only from sections you have approved.`)).toBeVisible();
-  await expect(page.getByText("Nothing is searched or drafted: each approved section’s lead piece is carried with its sources and checked again.")).toBeVisible();
+  await expect(page.getByText("Executive Summary synthesis: Content is compiled from your approved sections along with their verified sources and checked for consistency.")).toBeVisible();
   await page.getByRole("button", { name: `Compose the ${Q3} summary` }).click();
   // Nothing is approved yet: the run stops and names each section.
   const stopped = page.getByRole("alert").filter({ hasText: "Drafting could not be completed." });

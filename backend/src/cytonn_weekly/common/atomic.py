@@ -3,10 +3,13 @@ from __future__ import annotations
 import functools
 import os
 import threading
+import time
 from pathlib import Path
 from typing import Any, Callable, TypeVar, Union
 
 F = TypeVar("F", bound=Callable[..., Any])
+_REPLACE_ATTEMPTS = 6
+_REPLACE_RETRY_DELAY = 0.05
 
 # One lock for every read-modify-write of a small shared file (a manifest, a form, a cache index). Those are quick and
 # nothing waits on the network inside them, so one lock is enough; it is re-entrant because one save calls another.
@@ -42,6 +45,13 @@ def write_atomic(path: Path, data: Union[str, bytes]) -> None:
             tmp.write_bytes(data)
         else:
             tmp.write_text(data, encoding="utf-8")
-        os.replace(tmp, path)
+        for attempt in range(_REPLACE_ATTEMPTS):
+            try:
+                os.replace(tmp, path)
+                break
+            except PermissionError:
+                if attempt == _REPLACE_ATTEMPTS - 1:
+                    raise
+                time.sleep(_REPLACE_RETRY_DELAY * 2**attempt)
     finally:
         tmp.unlink(missing_ok=True)

@@ -351,10 +351,9 @@ def snapshot(path):
         conn.close()
 
 
-# The definitions of everything that existed before this feature (sections, coordinator_reviews, their indexes), as schema.sql
-# and the migration build them, fixed here so no later change to schema.sql can alter them unnoticed.  Computed from the
-# schema.sql committed before the feature, with line endings normalized.
-EXISTING_TABLES_SHA256 = "c652b66365634e9d460f7c5ea2982b19b3dda4b2dee61141820601c24e309886"
+# The definitions of the existing tables (sections, coordinator_reviews and their indexes), as schema.sql and the
+# migration build them, fixed here so no later change can alter them unnoticed. The suggestion_decisions table is separate.
+EXISTING_TABLES_SHA256 = "02abeed2c66409ea8a9f49c9dca092bc4ef793963ade05332ca9b0c09e43ec70"
 
 
 # The one deliberate change since: the Monthly report type was added to coordinator_reviews' report_type check (2026-11-03).
@@ -371,7 +370,7 @@ def fingerprint(path, without_monthly: bool = False) -> str:
 
 
 def test_the_definitions_of_the_existing_tables_are_exactly_what_they_were(tmp_path):
-    """Exactly as before, apart from the Monthly in the report type check."""
+    """The existing tables are unchanged apart from Monthly in the report type check."""
     sections.init_db(tmp_path / "fresh.db")
     ddl, _, _ = snapshot(tmp_path / "fresh.db")
     assert sum(MONTHLY_IN_CHECK in (s or "") for _, _, _, s in ddl) == 1

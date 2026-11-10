@@ -45,7 +45,7 @@ test("T77 an address the app does not have shows a card in the shell's frame, ce
   await page.setViewportSize({ width: 1366, height: 768 });
   await page.goto("/no-such-page");
   await expect(page.getByRole("heading", { name: "Page not found", level: 1 })).toBeVisible();
-  const text = page.getByText("This page could not be found.");
+  const text = page.getByText("We couldn't find the page you're looking for. Please check the web address or return to the overview to continue.");
   await expect(text).toBeVisible();
   const rail = page.getByRole("navigation", { name: "Report sections" });
   await expect(rail).toBeVisible();

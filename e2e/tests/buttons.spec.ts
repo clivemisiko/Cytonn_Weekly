@@ -43,7 +43,7 @@ test("T28 start from last week’s form, with no week before: the button is off 
   await openStart(page, "Equities", "Week ending 2026-10-02");
   const panel = analystPanel(page);
   await expect(panel.getByRole("button", { name: "Start from last week’s form" })).toBeDisabled();
-  await expect(panel.getByText("Nothing confirmed is saved for the week ending 25 Sept 2026 to start from.")).toBeVisible();
+  await expect(panel.getByText("No confirmed records found for the week ending 25 Sept 2026 to carry forward.")).toBeVisible();
 });
 
 test("T29 start from last week’s form, when the week before holds only values never confirmed: the button is off, as the API would refuse", async ({ page, request }) => {
@@ -55,7 +55,7 @@ test("T29 start from last week’s form, when the week before holds only values 
     await openStart(page, "Fixed Income", "Week ending 2026-10-23");
     const panel = analystPanel(page);
     await expect(panel.getByRole("button", { name: "Start from last week’s form" })).toBeDisabled();
-    await expect(panel.getByText("Nothing confirmed is saved for the week ending 16 Oct 2026 to start from.")).toBeVisible();
+    await expect(panel.getByText("No confirmed records found for the week ending 16 Oct 2026 to carry forward.")).toBeVisible();
   } finally {
     dropForm("2026-10-16");
   }
