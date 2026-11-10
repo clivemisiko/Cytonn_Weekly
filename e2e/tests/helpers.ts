@@ -17,7 +17,7 @@ export const topbar = (page: Page) => page.getByRole("navigation", { name: "App"
 /** A section's start screen, from the overview card's own button. */
 export async function openStart(page: Page, title: string, period = PERIOD, type = "weekly") {
   await page.goto(overviewUrl(period, type));
-  await card(page, title).getByRole("button", { name: /Draft section|Compose summary|View review|Resume review/ }).click();
+  await card(page, title).getByRole("button", { name: /Draft section|Compose summary|Draft again|View review|Resume review/ }).click();
   await expect(page.getByRole("heading", { name: `${title}: analyst review`, level: 1 })).toBeVisible();
 }
 

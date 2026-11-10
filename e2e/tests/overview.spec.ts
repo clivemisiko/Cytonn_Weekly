@@ -136,10 +136,10 @@ test("T70 the export's dev-mode notice is in the feed right under the dev-mode n
   });
   await page.goto(overviewUrl());
   const panel = page.getByRole("complementary", { name: "Report status" });
-  const notice = page.getByRole("alert").filter({ hasText: "The export carries a DEV MODE watermark" });
+  const notice = page.getByRole("alert").filter({ hasText: "Export Notice: This document contains test content" });
   await expect(notice).toHaveCount(1); // once only
-  await expect(notice).toHaveText("DEV MODE DRAFT (stub): NOT FOR PUBLICATION OR CIRCULATION. The export carries a DEV MODE watermark on every page and must not be sent or published (Fixed Income, Equities).");
-  await expect(panel.getByText("The export carries a DEV MODE watermark")).toHaveCount(0); // not in the panel
+  await expect(notice).toHaveText("Export Notice: This document contains test content (Fixed Income, Equities) and includes a developer watermark on every page. It cannot be circulated or published externally.");
+  await expect(panel.getByText("Export Notice: This document contains test content")).toHaveCount(0); // not in the panel
   await expect(panel.getByRole("button", { name: "Export weekly report" })).toBeVisible(); // the button is
 
   const dev = page.getByRole("alert").filter({ hasText: "Development Mode Active (Local Model)" });
@@ -168,7 +168,7 @@ test("T108 the weekly export's notices go when the picker switches to the Monthl
   });
   await page.goto(overviewUrl());
   const charts = page.getByText("3 charts have no image. The Word file will contain placeholders for them.");
-  const watermark = page.getByRole("alert").filter({ hasText: "The export carries a DEV MODE watermark" });
+  const watermark = page.getByRole("alert").filter({ hasText: "Export Notice: This document contains test content" });
   await expect(charts).toBeVisible();
   await expect(watermark).toBeVisible();
 

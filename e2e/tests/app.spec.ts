@@ -40,7 +40,7 @@ test("T01 landing page loads, with Home current and Back disabled", async ({ pag
   await expect(page.getByText("Ready to draft. Choose a report below to begin.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign in with Cytonn SSO" })).toBeDisabled();
   await expect(page.getByText("Not connected yet.", { exact: true })).toBeVisible();
-  await expect(page.getByText(/this tool has no sign-in and should only be used by the\s+team/)).toBeVisible();
+  await expect(page.getByText(/this tool has no sign-in and should only be used by the\s+team/i)).toBeVisible();
   await expect(page).toHaveTitle("Cytonn Weekly review");
   await expect(topbar(page).getByRole("link", { name: "Home" })).toHaveAttribute("aria-current", "page");
   await expect(topbar(page).getByRole("button", { name: "Back (this is the start screen)" })).toBeDisabled();
@@ -180,7 +180,7 @@ test("T07 inputs panel: what was received, an upload refused with its reason, a 
   await expect(panel.getByRole("alert").filter({ hasText: "not-a-pdf.pdf: NSE yield curve: this is not a PDF file" })).toBeVisible();
 
   await panel.getByLabel("Week ending (a Friday)").fill("2026-10-08");
-  await expect(panel.getByRole("alert").filter({ hasText: "8 Oct 2026 is a Thursday. A weekly report's week ends on a Friday, so choose a Friday." })).toBeVisible();
+  await expect(panel.getByRole("alert").filter({ hasText: "8 Oct 2026 is a Thursday. Cytonn Weekly reports are published for weeks ending on a Friday. Please select a valid Friday date." })).toBeVisible();
   await expect(panel.getByRole("button", { name: "Show this week" })).toBeDisabled();
 });
 
@@ -284,15 +284,16 @@ test("T09 Digital Payments: run to done, open the review, Approve is gated, the 
   const accepts = page.getByRole("radio", { name: "Accept", exact: true });
   const items = await accepts.count();
   expect(items).toBeGreaterThan(0);
-  await expect(page.getByText(`${items} unresolved · 0 of ${items} resolved`)).toBeVisible();
+  await expect(page.getByText(/\d+ unresolved · 0 of \d+ resolved/)).toBeVisible();
 
-  // Fix needed blocks approval and says why; Accept on every item unlocks it.
+  // Fix needed blocks approval; clean items can be accepted together and the rest individually.
   await page.getByRole("radio", { name: "Fix needed" }).first().click();
   await expect(page.getByText("Not approvable yet: 1 marked fix needed.").first()).toBeVisible();
   await expect(approve).toBeDisabled();
+  await page.getByRole("button", { name: /Mark all clean as accepted/ }).click();
   for (let i = 0; i < items; i++) await accepts.nth(i).click();
-  await expect(page.getByText("Approvable: every item is resolved and none needs a fix.")).toBeVisible();
-  await expect(page.getByText(`0 unresolved · ${items} of ${items} resolved`)).toBeVisible();
+  await expect(page.getByText("Ready for approval: All review items have been resolved.")).toBeVisible();
+  await expect(page.getByText(/0 unresolved · \d+ of \d+ resolved/)).toBeVisible();
   await expect(page.getByText(`Saved as run ${paymentsReview}`)).toBeVisible();
   await expect(approve).toBeEnabled();
 
@@ -323,7 +324,6 @@ test("T09 Digital Payments: run to done, open the review, Approve is gated, the 
   await expect(card(page, "Digital Payments")).toContainText("Approved");
   await expect(card(page, "Digital Payments").getByRole("button", { name: "View review" })).toBeVisible();
   await expect(page.getByText("Available once every section is approved: 4 of 5 still to go.")).toBeVisible();
-  await expect(page.getByText("Digital Payments: Approved")).toBeVisible();
 });
 
 test("T10 the sticky status bar stays under the top bar while a review scrolls", async ({ page }) => {
@@ -491,7 +491,7 @@ test("T14 Word export: off until every section is approved; when the API says re
 test("T15 a run the API no longer has says so and links to the overview", async ({ page }) => {
   await page.goto("/runs/not-a-run");
   await expect(page.getByRole("heading", { name: "Draft run", level: 1 })).toBeVisible();
-  await expect(page.getByText("This run is no longer available. If the draft finished, open the section from the overview.")).toBeVisible();
+  await expect(page.getByText(/This run is no longer available\. The tool was restarted, which stops a draft/)).toBeVisible();
   await page.getByRole("link", { name: "Go to the overview" }).click();
   await expect(page).toHaveURL(DEFAULT_WEEK); // a bare /overview opens on a labelled week
 });

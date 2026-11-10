@@ -96,7 +96,7 @@ const rise = (order: number) => ({ animationDelay: `${order * 60}ms` });
 
       <div class="rise-slow" :style="rise(6)">
         <Notice tone="info">
-          Cytonn Single Sign-On (SSO) is currently in development. Internal team access is enabled without login. All generated drafts are preliminary and require human analyst review.
+          This tool has no sign-in and should only be used by the team. All generated drafts are preliminary and require human analyst review.
         </Notice>
       </div>
     </div>

@@ -5,7 +5,7 @@ import { DRAFT, VARIANT, openStart, overviewUrl, release } from "./helpers";
 
 /**
  * T87 to T98: what the page does when an action fails with a named problem (frontend/src/lib/attention.ts). A whole
- * action that failed opens one alert dialog (the headline, "The details are shown on the page.", Show me and Close)
+ * action that failed opens one alert dialog (the headline, a pointer to the highlighted section, Show me and Close)
  * and the full sentence stays on the page once; an inline problem opens no dialog and the page goes to it. Failures
  * the test instance cannot produce are stood in for with page.route, in the API's own shape (detail and problems).
  * With E2E_SHOTS=<folder>, T93 also writes screenshots there.
@@ -30,7 +30,7 @@ test("T87 a whole action that failed: one alert dialog with the headline, the se
   await failingDraft(page, modeChanged);
   const open = dialog(page, "The drafting mode changed");
   await expect(open).toBeVisible();
-  await expect(open.getByText("The details are shown on the page.", { exact: true })).toBeVisible();
+  await expect(open.getByText("Please review the highlighted section on the screen to resolve this issue.", { exact: true })).toBeVisible();
   await expect(open.getByRole("button")).toHaveText(["Close", "Show me"]);
   await expect(page.getByText(MODE, { exact: true })).toHaveCount(1); // the full sentence is on the page, not in the dialog
   await expect(open.getByText(MODE)).toHaveCount(0);
