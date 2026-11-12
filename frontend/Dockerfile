@@ -1,8 +1,8 @@
 # The web app (Vue 3 + Vite). Build context: frontend/.
 # Node 22 is the version the app is developed on.
 #
-# The browser only ever talks to this container: nginx serves the built app and proxies /api to the review API
-# (nginx.conf), so the API needs no CORS entry.
+# The browser only ever talks to this container: `vite preview` serves the built app and proxies /api to the review
+# API (VITE_API_TARGET), so the API needs no CORS entry.
 
 # 1. Dependencies, exactly as the lockfile pins them.
 FROM node:22-alpine AS deps

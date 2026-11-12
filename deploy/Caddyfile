@@ -31,7 +31,8 @@
 
 	encode gzip
 
-	# The run view streams Server-Sent Events, which must not be buffered or cut short.
+	# Caps the size of an upload (the weekly inputs and charts) at 100MB. Nothing here tunes buffering: Caddy's
+	# reverse_proxy streams the run view's Server-Sent Events by itself.
 	request_body {
 		max_size 100MB
 	}
