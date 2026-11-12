@@ -14,6 +14,7 @@ from cytonn_weekly.weekly.recheck import EQUITIES, FIXED_INCOME, _module, carry_
 MAX_CHARS = 600
 # The longest carried block in the test fixtures is a few hundred characters; a real closing outlook runs to about a thousand.
 MAX_PARAGRAPH_CHARS = 1200
+MAX_STANDING_CHARS = 4000   # Real Estate's standing REITs text: a paragraph and its list, a line each
 EDIT, REMOVE, PARAGRAPH = "edit", "remove", "paragraph"
 
 
@@ -82,6 +83,19 @@ def plain(text: Optional[str], paragraph: bool = False) -> str:
                           "Shorten it and save again.")
     if _NOT_PLAIN.search(t):
         raise TextRefused(NOT_PLAIN_PARAGRAPH if paragraph else NOT_PLAIN)
+    return t
+
+
+def plain_lines(text: Optional[str]) -> str:
+    """Like ``plain`` for a paragraph, but each line stays a line (the standing text's list items stay separate)."""
+    lines = [" ".join(line.split()) for line in (text or "").splitlines()]
+    t = "\n".join(line for line in lines if line)
+    if not t:
+        raise TextRefused(EMPTY_PARAGRAPH)
+    if len(t) > MAX_STANDING_CHARS:
+        raise TextRefused(f"The text is {len(t)} characters; the limit is {MAX_STANDING_CHARS}. Shorten it and save again.")
+    if any(_NOT_PLAIN.search(line) for line in t.splitlines()):
+        raise TextRefused(NOT_PLAIN_PARAGRAPH)
     return t
 
 
@@ -209,11 +223,12 @@ def apply_paragraph(old: CoordinatorReview, index: int, text: Optional[str], cha
     nothing typed is compared with anything.  ``old`` is never touched.
     """
     bi = _carried_at(old, index)
-    new_text = plain(text, paragraph=True)
     content = copy.deepcopy(old.section)
     block = content["blocks"][bi]
+    standing = block.get("role") == "standing"
+    new_text = plain_lines(text) if standing else plain(text, paragraph=True)
     current = block.get("body_md") or ""
-    if " ".join(current.split()) == new_text:
+    if (current.strip() if standing else " ".join(current.split())) == new_text:
         raise TextRefused(SAME_PARAGRAPH)
     at = (now or datetime.now(timezone.utc)).isoformat(timespec="seconds")
     edits = block.setdefault("edits", [])

@@ -33,7 +33,7 @@ from cytonn_weekly.common import atomic
 from cytonn_weekly.digital_payments import workbook as dp_workbook
 from cytonn_weekly.weekly import cbk_bulletin, equities_workbook, fi_workbook, kcb, nse_yield_curve
 from cytonn_weekly.weekly.week import Week, day_text
-from cytonn_weekly.weekly.workbook import Workbook, WorkbookError
+from cytonn_weekly.weekly.workbook import Workbook, WorkbookError, read_title_date
 
 MAX_BYTES = 30 * 1024 * 1024
 PDF_MAGIC = b"%PDF"
@@ -153,12 +153,8 @@ def fi_workbook_date(book: Workbook) -> Optional[date]:
     """The date the workbook's money market fund table is "as published on"."""
     sheet = book.sheet(fi_workbook.MMF_SHEET)
     for c in sheet.find_all(lambda s: s.startswith("money market fund yield for fund managers as published on")):
-        m = fi_workbook._PUBLISHED.search(" ".join(str(c.value).split()).lower())
-        if m:
-            try:
-                return datetime.strptime(f"{m.group(1)} {m.group(2)} {m.group(3)}", "%d %B %Y").date()
-            except ValueError:
-                return None
+        if day := read_title_date(c.value):
+            return day
     return None
 
 

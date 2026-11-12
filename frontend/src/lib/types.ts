@@ -102,7 +102,7 @@ export interface SourceMeta {
   published_date: string;
   /** UTC with an offset; shown in East Africa Time. */
   fetched_at: string;
-  origin: "fetched" | "pasted" | "found";
+  origin: "fetched" | "pasted" | "found" | "snip";
   sha256: string;
   chars: number;
   flags: string[];
@@ -122,6 +122,25 @@ export interface SourcePiece {
   week_end: string;
   sources: SourceMeta[];
   gather?: GatherLook | null;
+}
+
+/** One uploaded Real Estate snip. `text` is null until the model has read it; only a confirmed snip is used as a source. */
+export interface SnipMeta {
+  hash: string;
+  filename: string;
+  sector: string;
+  text: string | null;
+  /** YYYY-MM-DD the analyst gave, or "" for the report week. */
+  date: string;
+  confirmed: boolean;
+}
+
+export interface SnipsListing {
+  week_ending: string;
+  sectors: { id: string; label: string }[];
+  max_per_sector: number;
+  max_bytes: number;
+  snips: SnipMeta[];
 }
 
 export interface SourcesListing {
@@ -295,8 +314,8 @@ export interface CarriedBlock {
   id: string;
   title: string;
   body_md: string;
-  carried_from: { issue_id: number | null; url: string | null; published: string | null };
-  /** Focus of the Week only: "disclaimer". */
+  carried_from: { issue_id?: number | null; url?: string | null; published?: string | null; note?: string };
+  /** Focus of the Week: "disclaimer". Real Estate (weekly): "standing", the REITs text carried from the last saved review, one line a list item. */
   role?: string;
   /** Set once the reviewer retyped the paragraph by hand (weekly/sentence_edit.py). */
   edits?: BlockEdit[] | null;
@@ -311,6 +330,8 @@ export interface NarrativeBlock {
   role?: "lead" | "section" | "conclusion";
   /** Focus of the Week only: a plain note for the analyst under a section, not a claim or a flag. */
   analyst_note?: string;
+  /** Real Estate (weekly): the closing outlook, printed bold italic; every sentence must rest on a cited claim. */
+  outlook?: boolean;
   kind: "narrative";
   id: string;
   topic: string;
@@ -336,6 +357,8 @@ export interface UnavailableBlock {
   numeral: string;
   kind: "unavailable";
   role?: string;
+  /** Real Estate (weekly): the sector this part stands for (a sector with no confirmed snip is not included). */
+  sector?: string;
   group_heading?: string;
   id: string;
   title: string;

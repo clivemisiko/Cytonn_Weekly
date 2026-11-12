@@ -172,7 +172,7 @@ def _serialize_blocks(review: CoordinatorReview) -> dict[str, Any]:
         else:
             blocks.append({k: b.get(k) for k in _UNAVAILABLE_FIELDS})
         # Real Estate's groups (real_estate/review_run.layout); the Focus's parts, whose sections print under a group_heading too
-        for key in ("group", "group_heading", "role", "analyst_note"):
+        for key in ("group", "group_heading", "role", "analyst_note", "outlook", "placeholder", "sector"):
             if b.get(key):
                 blocks[-1][key] = b[key]
     return {

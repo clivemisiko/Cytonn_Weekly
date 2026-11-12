@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { PhArrowLeft, PhHouse } from "@phosphor-icons/vue";
+import { PhArrowLeft, PhHouse, PhList } from "@phosphor-icons/vue";
 import { computed } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import { HOME, mayLeave, useBackTarget } from "@/lib/nav";
+import { shell } from "@/lib/shell";
 import ThemeToggle from "./ThemeToggle.vue";
 
 // One look for Home and Back: 40px tall (the touch target), text and icon in the band's ink, a visible focus ring.
@@ -35,6 +36,10 @@ function goBack() {
       <span class="sr-only min-[1366px]:not-sr-only">Cytonn Weekly</span>
     </p>
     <nav aria-label="App" class="flex h-full min-w-0 flex-1 items-center gap-1 px-2 sm:px-4">
+      <button v-if="!atHome" type="button" :class="[CONTROL, 'min-[768px]:hidden']" :aria-expanded="shell.menu.value" aria-label="Menu" @click="shell.menu.value = !shell.menu.value">
+        <PhList weight="bold" class="size-4" aria-hidden="true" />
+        Menu
+      </button>
       <RouterLink v-slot="{ href, navigate }" :to="HOME" custom>
         <a
           :href="href"

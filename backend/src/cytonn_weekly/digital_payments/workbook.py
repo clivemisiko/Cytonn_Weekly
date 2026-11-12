@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 import re
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal, DivisionByZero, InvalidOperation
 from typing import Any, Callable, Collection, Mapping, Optional, Sequence
 from urllib.parse import urlparse
@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 from cytonn_weekly.checkers.digital_payments import check_figure, parse_number
 from cytonn_weekly.common.formatting import round_half_up
 from cytonn_weekly.digital_payments.highlights import HIGHLIGHT_COMPANIES
-from cytonn_weekly.weekly.workbook import Sheet, Workbook, WorkbookError, norm
+from cytonn_weekly.weekly.workbook import Sheet, Workbook, WorkbookError, norm, read_title_date
 
 STOCK_SHEET = "Stock Performance"
 EARNINGS_SHEET = "Earnings"
@@ -26,7 +26,6 @@ TOLERANCE = Decimal("0.05")
 
 _SUFFIX_WORDS = {"inc", "plc", "co", "corp", "ltd", "limited", "holdings", "group", "internet"}
 _REF = re.compile(r"((?:'[^']+'|[A-Za-z_]+)!)?\$?([A-Z]{1,3})\$?(\d+)")
-_PRICE_DATE = re.compile(r"(\d{1,2})/(\d{1,2})/(\d{4})")
 
 
 class DpWorkbookError(WorkbookError):
@@ -219,12 +218,8 @@ def _col(letters: str) -> int:
 def _price_date(stock: Sheet, header: int) -> Optional[date]:
     last = None
     for c in stock.cells(range(header, header + 1)):
-        m = _PRICE_DATE.search(str(c.value)) if norm(c.value).startswith("price") else None
-        if m:
-            try:
-                last = datetime.strptime(m.group(0), "%d/%m/%Y").date()
-            except ValueError:
-                last = None
+        if norm(c.value).startswith("price"):
+            last = read_title_date(c.value)
     return last
 
 

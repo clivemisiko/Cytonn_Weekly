@@ -134,7 +134,7 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
           <Numeral v-if="b.numeral || !b.role">{{ b.numeral }}</Numeral>
           <span>{{ b.headline }}</span>
         </component>
-        <Markdown :class="BODY" :text="b.body_md" />
+        <Markdown :class="[BODY, b.outlook && 'font-bold italic']" :text="b.body_md" />
         <p v-if="b.analyst_note" class="text-xs text-muted-foreground md:pl-11">{{ b.analyst_note }}</p>
         <ul v-if="edited(b).length" aria-label="Sentences you edited" class="space-y-1 text-xs text-muted-foreground md:pl-11">
           <li v-for="e in edited(b)" :key="`${e.at}|${e.now}`" class="[overflow-wrap:anywhere]">
@@ -210,12 +210,16 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
           Edited by you, {{ friendlyTime(b.edits[b.edits.length - 1].at) }}. You wrote this paragraph, so the checker has no source for it. It was
           copied from {{ b.carried_from.issue_id ? `issue ${b.carried_from.issue_id}` : "the previous issue" }} before you changed it.
         </Notice>
+        <Notice v-else-if="b.role === 'standing'" tone="flag" class="font-medium md:ml-11">
+          Carried forward, edit before approving. {{ b.carried_from.note }}
+        </Notice>
         <Notice v-else tone="flag" class="font-medium md:ml-11">
           Carried forward, edit before approving. Copied from
           {{ b.carried_from.issue_id ? `issue ${b.carried_from.issue_id} on cytonnreport.com` : "the previous issue"
           }}{{ b.carried_from.published ? `, published ${friendlyDate(b.carried_from.published)}` : "" }}.
         </Notice>
-        <Markdown :class="BODY" :text="b.body_md" />
+        <p v-if="b.role === 'standing'" :class="[BODY, 'whitespace-pre-line']">{{ b.body_md }}</p>
+        <Markdown v-else :class="BODY" :text="b.body_md" />
       </article>
 
       <!-- A chart the tool draws from the analyst workbook: the picture, its facts and its points. Its checks are review
@@ -229,12 +233,12 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
           {{ b.title }}
           <span class="inline-flex items-center gap-1 rounded-full border border-input px-2 py-0.5 text-xs font-semibold text-muted-foreground">
             <PhLockSimple weight="bold" class="size-3" aria-hidden="true" />
-            Not available yet
+            {{ b.sector ? "Not included" : "Not available yet" }}
           </span>
         </h3>
         <div class="space-y-2 rounded-md border bg-muted px-4 py-3 text-sm md:ml-11">
           <p>{{ b.reason }}</p>
-          <p class="text-muted-foreground"><span class="font-semibold text-foreground">Unblocked by:</span> {{ b.unblock }}</p>
+          <p class="text-muted-foreground"><span class="font-semibold text-foreground">{{ b.sector ? "To include it:" : "Unblocked by:" }}</span> {{ b.unblock }}</p>
         </div>
       </section>
     </template>

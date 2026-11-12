@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, ref, useSlots } from "vue";
-import { readPanelOpen, writePanelOpen } from "@/lib/panel";
 import PageAside from "./PageAside.vue";
 
 const props = withDefaults(
@@ -8,11 +7,10 @@ const props = withDefaults(
   { sticky: true },
 );
 const slots = useSlots();
-const open = ref(props.storageKey ? readPanelOpen(props.storageKey) : true);
+const open = ref(true);
 
 function toggle() {
   open.value = !open.value;
-  if (props.storageKey) writePanelOpen(props.storageKey, open.value);
 }
 
 // Responsive column template for desktop: keeps aside panel width constrained while content expands fluidly

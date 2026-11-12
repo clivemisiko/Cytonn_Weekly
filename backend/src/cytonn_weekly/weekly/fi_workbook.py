@@ -23,13 +23,12 @@ or date, since rows are added daily:
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
 from cytonn_weekly.weekly.week import Week
-from cytonn_weekly.weekly.workbook import Cell, Sheet, Workbook, WorkbookError, norm
+from cytonn_weekly.weekly.workbook import Cell, Sheet, Workbook, WorkbookError, norm, read_title_date
 
 SOURCE_NAME = "Fixed income workbook"
 
@@ -109,7 +108,6 @@ def read_tbills(book: Workbook, week: Week) -> dict[str, Any]:
 # Money market
 # ---------------------------------------------------------------------------
 
-_PUBLISHED = re.compile(r"as published on\s+(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]+)\s+(\d{4})")
 CYTONN_FUND = "cytonn money market fund"
 
 
@@ -125,14 +123,10 @@ def read_mmf_table(book: Workbook, week: Week) -> dict[str, Any]:
     sheet = book.sheet(MMF_SHEET)
     title = sheet.find(lambda s: s.startswith("money market fund yield for fund managers as published on"),
                        what="'Money Market Fund Yield for Fund Managers as published on ...' table")
-    m = _PUBLISHED.search(norm(title.value))
-    try:
-        published = datetime.strptime(f"{m.group(1)} {m.group(2)} {m.group(3)}", "%d %B %Y").date() if m else None
-    except ValueError:
-        published = None
+    published = read_title_date(title.value)
     if published not in week.report_dates:
-        shown = f"dated {published.day} {published:%b %Y}" if published else f"has a date that cannot be read ({title.value!r})"
-        raise WorkbookError(f"The money market fund table in the fixed income workbook is {shown}; this week needs "
+        shown = f"is dated {published.day} {published:%b %Y}" if published else f"has a date that cannot be read ({title.value!r})"
+        raise WorkbookError(f"The money market fund table in the fixed income workbook {shown}; this week needs "
                             f"{week.ending.day} {week.ending:%b %Y}. The workbook is not yet updated for this week: "
                             f"update it and upload it again (sheet '{MMF_SHEET}', cell {title.ref}).")
     head = title.row + 1

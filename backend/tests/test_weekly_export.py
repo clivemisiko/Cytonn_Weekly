@@ -151,7 +151,7 @@ def test_computed_paragraphs_tables_charts_and_marked_text_are_all_in_the_file(w
     charts = [t for t in text if t.startswith("[Chart to add: ")]
     assert len(charts) == 6 and text[tbills + 3].startswith("[Chart to add: The chart below shows the yield growth rate")
     assert len(doc.inline_shapes) == 2 and not [t for t in text if t.startswith("[Chart not drawn")]
-    assert sum(t == "[Carried forward from the previous issue: edit before publishing]" for t in text) == 4   # three carried paragraphs and the Focus disclaimer
+    assert sum(t == "[Carried forward from the previous issue: edit before publishing]" for t in text) == 5   # three carried paragraphs, the REITs standing text and the Focus disclaimer
     assert any(t.startswith("[Not included: T-Bonds: recommended bidding range") for t in text)
     assert "Source: Daily Nation" in text and "Source: Central Bank of Kenya (CBK) Weekly Highlights" in text
     assert "*Target Price as per Cytonn Analyst estimates" in text
@@ -293,13 +293,13 @@ def _rewrite_outlook(db, text):
 
 def test_an_unedited_carried_paragraph_keeps_its_red_line(week, tmp_path):
     _, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
-    assert text.count(NOTE) == 4
+    assert text.count(NOTE) == 5
 
 
 def test_a_rewritten_carried_paragraph_is_exported_as_plain_text_with_no_red_line(week, tmp_path):
     _rewrite_outlook(week, REWRITTEN)
     _, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
-    assert text.count(NOTE) == 3 and text.count(REWRITTEN) == 1
+    assert text.count(NOTE) == 4 and text.count(REWRITTEN) == 1
     heading = text.index("Rates and outlook (closing paragraph)")
     assert text[heading + 1] == REWRITTEN
 
@@ -308,7 +308,7 @@ def test_a_re_edited_paragraph_exports_the_same_way(week, tmp_path):
     _rewrite_outlook(week, REWRITTEN)
     _rewrite_outlook(week, "Rates eased again.")
     _, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
-    assert text.count(NOTE) == 3 and "Rates eased again." in text and REWRITTEN not in text
+    assert text.count(NOTE) == 4 and "Rates eased again." in text and REWRITTEN not in text
 
 
 # --- the published look (common/word_layout.py) --------------------------------------------------
@@ -325,7 +325,7 @@ def test_the_review_copy_keeps_every_mark_with_a_dev_draft(week, tmp_path):
     _save(week, "digital_payments", make_review(provider=LocalFakeProvider()))
     doc, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
     assert text[0] == export.DEV_LABEL and 'string="DEV MODE DRAFT"' in doc.sections[0].header._element.xml
-    assert text.count(NOTE) == 4 and any(t.startswith("[Not included: ") for t in text)
+    assert text.count(NOTE) == 5 and any(t.startswith("[Not included: ") for t in text)
     note = next(p for p in doc.paragraphs if p.text == NOTE).runs[0]
     assert note.bold and str(note.font.color.rgb) == "C00000"
     assert doc.paragraphs[0].alignment == WD_ALIGN_PARAGRAPH.LEFT   # the dev banner

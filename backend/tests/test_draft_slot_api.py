@@ -43,7 +43,7 @@ def clock():
 @pytest.fixture
 def app(db, clock, monkeypatch):
     monkeypatch.setattr(eq_weekly, "build_equities_weekly_review", lambda: sh.equities_review())
-    monkeypatch.setattr(re_run, "build_real_estate_review", lambda: sh.real_estate_review())
+    monkeypatch.setattr(re_run, "build_real_estate_review", lambda **_: sh.real_estate_review())
     monkeypatch.setenv("CYTONN_DRAFT_CONCURRENCY", "1")   # one seat, so these tests pin the seat rules (the default is 3)
     return create_app(db_path=db, load_dotenv=False, draft_stale_after=STALE_AFTER, clock=clock)
 
@@ -58,10 +58,10 @@ def hang(monkeypatch, module, name):
     entered, release = threading.Event(), threading.Event()
     real = getattr(module, name)
 
-    def stuck():
+    def stuck(*a, **k):
         entered.set()
         assert release.wait(timeout=10)
-        return real()
+        return real(*a, **k)
 
     monkeypatch.setattr(module, name, stuck)
     return entered, release
@@ -95,7 +95,7 @@ def test_a_draft_killed_by_a_non_exception_error_still_frees_the_slot(app, monke
     class Killed(BaseException):
         pass
 
-    def killed():
+    def killed(**_):
         raise Killed()
 
     monkeypatch.setattr(re_run, "build_real_estate_review", killed)
@@ -103,7 +103,7 @@ def test_a_draft_killed_by_a_non_exception_error_still_frees_the_slot(app, monke
         TestClient(app).post("/api/sections/real_estate/draft")
     client = TestClient(app)
     assert client.get("/api/sections").json()["drafting"] is None
-    monkeypatch.setattr(re_run, "build_real_estate_review", lambda: sh.real_estate_review())
+    monkeypatch.setattr(re_run, "build_real_estate_review", lambda **_: sh.real_estate_review())
     assert client.post("/api/sections/real_estate/draft").status_code == 200
 
 
@@ -114,7 +114,7 @@ def test_a_server_restart_mid_draft_leaves_no_slot_behind(app, db, clock, monkey
         assert entered.wait(timeout=10)
         restarted = TestClient(create_app(db_path=db, load_dotenv=False, clock=clock))
         assert restarted.get("/api/sections").json()["drafting"] is None
-        monkeypatch.setattr(re_run, "build_real_estate_review", lambda: sh.real_estate_review())
+        monkeypatch.setattr(re_run, "build_real_estate_review", lambda **_: sh.real_estate_review())
         assert restarted.post("/api/sections/real_estate/draft").status_code == 200
     finally:
         release.set()

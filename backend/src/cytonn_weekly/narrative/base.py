@@ -62,10 +62,18 @@ class NarrativeBrief:
     max_tokens: Optional[int] = None
 
 
+class SnipReadError(RuntimeError):
+    """Written for the analyst and shown as it stands."""
+
+
 class NarrativeProvider(ABC):
     """Swappable backend for brief-driven narrative drafting (Anthropic or local)."""
 
     drafted_by: str
+
+    def read_snip(self, image: bytes, media_type: str) -> str:
+        """The text printed in one uploaded image, as the model transcribes it.  Only the Bedrock provider reads images."""
+        raise SnipReadError("Reading snips needs the production model (Amazon Bedrock). This server is not using it.")
 
     def complete(self, system: str, prompt: str, *, max_tokens: int) -> str:
         """One plain model call with no web search: text in, text out (the Focus outline, conclusion and lead)."""

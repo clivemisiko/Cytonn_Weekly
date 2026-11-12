@@ -24,7 +24,8 @@ import { type RailSection, type RailState, shell } from "@/lib/shell";
 const router = useRouter();
 const route = useRoute();
 const back = useBackTarget();
-const open = ref(false); // the narrow strip expanded over the page
+const open = ref(true); // expanded on every load; a collapse lasts for the visit only
+const menu = shell.menu; // the phone's drawer
 const groupOpen = ref(true);
 
 const MARKS: Record<RailState | "unknown", { label: string; icon: typeof PhCircle; tone: string }> = {
@@ -50,19 +51,19 @@ const canOpen = (s: RailSection) => shell.opener.value !== null && s.slug !== he
 
 function openSection(s: RailSection) {
   if (!canOpen(s) || !mayLeave()) return;
-  open.value = false;
+  menu.value = false;
   shell.opener.value?.(s.slug);
 }
 
 function toPrevious() {
   if (route.path === "/previous" || !mayLeave()) return;
-  open.value = false;
+  menu.value = false;
   void router.push("/previous");
 }
 
 function toOverview() {
   if (atOverview.value || !mayLeave()) return;
-  open.value = false;
+  menu.value = false;
   if (shell.toOverview.value) shell.toOverview.value();
   else void router.push(back.value.kind === "href" ? back.value.href : "/overview");
 }
@@ -91,21 +92,22 @@ const ITEM =
 </script>
 
 <template>
-  <!-- The wrapper is what sticks (under the top bar and the ribbon) and what holds the strip's 56px in the layout; the nav
-       fills it, and when the strip is expanded it is wider than the wrapper and lies over the page. -->
+  <!-- The wrapper is what sticks (under the top bar and the ribbon) and what holds the rail's width in the layout: 224px
+       expanded (the default), 56px when collapsed for the visit, always 224px from 1366px. Under 768px it is a drawer the
+       top bar's Menu button opens, over the page. -->
   <div
-    class="sticky top-[calc(var(--topbar-h)+var(--ribbon-h,0rem))] h-[calc(100dvh-var(--topbar-h)-var(--ribbon-h,0rem))] w-14 shrink-0 max-md:hidden min-[1366px]:w-56"
-    :class="open && 'z-40'"
+    class="sticky top-[calc(var(--topbar-h)+var(--ribbon-h,0rem))] h-[calc(100dvh-var(--topbar-h)-var(--ribbon-h,0rem))] shrink-0 min-[1366px]:w-56"
+    :class="[open ? 'min-[768px]:w-56' : 'min-[768px]:w-14', menu ? 'max-md:fixed max-md:left-0 max-md:z-30 max-md:w-56' : 'max-md:hidden']"
   >
     <nav
       aria-label="Report sections"
-      class="flex h-full w-14 flex-col gap-4 overflow-x-hidden overflow-y-auto border-r bg-card p-1.5 min-[1366px]:w-56 min-[1366px]:p-3"
+      class="flex h-full w-14 flex-col gap-4 overflow-x-hidden overflow-y-auto border-r bg-card p-1.5 max-md:w-56 min-[1366px]:w-56 min-[1366px]:p-3"
       :class="open && 'max-[1365px]:w-56'"
-      @keydown.esc="open = false"
+      @keydown.esc="menu ? (menu = false) : (open = false)"
     >
       <button
         type="button"
-        class="grid size-10 place-items-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring min-[1366px]:hidden"
+        class="grid size-10 place-items-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring max-md:hidden min-[1366px]:hidden"
         :aria-expanded="open"
         :aria-label="open ? 'Collapse the rail' : 'Expand the rail'"
         :title="open ? 'Collapse the rail' : 'Expand the rail'"
@@ -204,4 +206,5 @@ const ITEM =
       </div>
     </nav>
   </div>
+  <div v-if="menu" class="fixed inset-0 z-20 bg-black/30 min-[768px]:hidden" aria-hidden="true" @click="menu = false" />
 </template>
