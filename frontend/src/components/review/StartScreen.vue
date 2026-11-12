@@ -16,6 +16,7 @@ import { MAX_SECTIONS, MAX_SECTION_TITLE, MAX_TOPIC, sectionsProblem, sectionTit
 import type { AppConfig, Drafting, Overview, ReportChoice, Review, SectionSummary, SourcePiece } from "@/lib/types";
 import PageGrid from "@/components/nav/PageGrid.vue";
 import AnalystPanel from "./analyst/AnalystPanel.vue";
+import CompaniesList from "./CompaniesList.vue";
 import InputsPanel from "./InputsPanel.vue";
 import Masthead from "./Masthead.vue";
 import NotablePanel from "./NotablePanel.vue";

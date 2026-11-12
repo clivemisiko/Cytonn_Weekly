@@ -62,6 +62,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
+from cytonn_weekly.equities import companies as company_list
 from cytonn_weekly.charts import store as chart_store
 from cytonn_weekly.charts.block import set_team_chart
 from cytonn_weekly.common import gather as source_gather
@@ -666,6 +667,16 @@ def create_app(
     @app.get("/api/report-types")
     def list_report_types() -> dict:
         return {"report_types": report_types(), "companion_kinds": companion_kinds()}
+
+    @app.get("/api/equities/companies")
+    def equities_companies() -> dict:
+        """The listed banks and insurers the weekly Equities part covers, and whether each one's website is set."""
+        try:
+            return {"companies": company_list.status(), "searches": company_list.SEARCHES_PER_COMPANY,
+                    "pages": company_list.PAGES_PER_COMPANY}
+        except (OSError, ValueError) as exc:
+            log.warning("companies.json could not be read: %s", type(exc).__name__)
+            raise HTTPException(500, "The list of banks and insurers (equities/companies.json) cannot be read. Check the file.")
 
     @app.get("/api/sections")
     def overview(

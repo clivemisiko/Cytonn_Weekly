@@ -22,6 +22,8 @@ class Piece:
     start: Optional[date] = field(default=None, compare=False)        # first day of the piece's window; None is the six days up to ``end`` (a weekly piece)
     domains: tuple[str, ...] = field(default=(), compare=False)       # the brief's preferred domains, which the gather step tries first
     market: bool = field(default=True, compare=False)                 # False for a global company: the gather step adds no market name to its query
+    only_domains: bool = field(default=False, compare=False)          # True: one search on ``domains`` and no open-web pass (a company's own website)
+    max_pages: Optional[int] = field(default=None, compare=False)     # saved pages per gather; None is the global limit
 
     @property
     def window(self) -> tuple[date, date]:
@@ -51,8 +53,9 @@ def pieces_for(report_type: str, period: str, slug: str, *, sections: Sequence[s
             from cytonn_weekly.fixed_income.weekly import BRIEFS
             return [Piece(b.label, friday, domains=tuple(b.preferred_domains)) for b in BRIEFS]
         if slug == "equities":
+            from cytonn_weekly.equities import companies
             from cytonn_weekly.equities.review_run import BRIEFS
-            return [Piece(b.label, friday, domains=tuple(b.preferred_domains)) for b in BRIEFS]
+            return [Piece(b.label, friday, domains=tuple(b.preferred_domains)) for b in BRIEFS] + companies.pieces(friday)
         if slug == "real_estate":
             from cytonn_weekly.real_estate.review_run import SECTOR_BRIEFS
             return [Piece(b.label, friday, market=False) for b in SECTOR_BRIEFS]

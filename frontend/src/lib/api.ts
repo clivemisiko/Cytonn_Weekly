@@ -4,6 +4,7 @@ import type {
   AnalystRow,
   AppConfig,
   ChartSeriesFile,
+  EquitiesCompanies,
   Decision,
   DismissReason,
   Drafting,
@@ -185,6 +186,9 @@ const sourcesQuery = (slug: string, report: ReportChoice, sections?: string) => 
   if (sections?.trim()) q.set("sections", sections);
   return q;
 };
+
+/** The weekly Equities part's listed banks and insurers, and whether each one's website is set. */
+export const getEquitiesCompanies = () => request<EquitiesCompanies>("/api/equities/companies");
 
 /** A section's pieces with the sources supplied for each (Bedrock drafts are written only from these). `sections` is a Focus's typed titles. */
 export const getSources = (slug: string, report: ReportChoice, sections?: string) =>

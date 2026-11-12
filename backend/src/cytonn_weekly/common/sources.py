@@ -19,9 +19,17 @@ from urllib.parse import urljoin, urlsplit
 
 from cytonn_weekly import paths
 from cytonn_weekly.common import http
+from cytonn_weekly.equities import companies
 from cytonn_weekly.weekly.week import latest_friday
 
 log = logging.getLogger(__name__)
+
+def _company_domains() -> tuple[str, ...]:
+    try:
+        return companies.domains()
+    except (OSError, ValueError):
+        return ()   # a broken companies.json is reported by the draft that reads it, not by every import
+
 
 # The known sites: only a label. A fetch or a paste from any other host is kept too and flagged off_list, so the
 # reviewer sees it. A host matches when it is a listed name or a subdomain of one (knightfrank.com covers
@@ -40,7 +48,7 @@ APPROVED_SITES = (
     "imf.org", "worldbank.org",
     # The team's preferred news sites (real_estate.review_run.PREFERRED_SITES)
     "nation.africa", "businessdailyafrica.com", "standardmedia.co.ke", "bloomberg.com",
-)
+) + _company_domains()   # plus each listed bank's and insurer's own site, a label only (equities/companies.json)
 # Never a source, fetched or pasted (the same list as real_estate.review_run.SOCIAL_DOMAINS, which a test compares).
 SOCIAL_DOMAINS = ("x.com", "twitter.com", "facebook.com", "instagram.com", "tiktok.com")
 
