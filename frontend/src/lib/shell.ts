@@ -41,6 +41,7 @@ export function createShell(load: (report: ReportChoice) => Promise<Overview>) {
   const config = shallowRef<AppConfig | null>(null);
   const here = shallowRef<Here>(null);
   const ribbon = ref<string | null>(null);
+  const menu = ref(false); // the phone's drawer; never stored
   /** Opens a section on the page that owns the sections (the overview page); null where nothing can (the run view). */
   const opener = shallowRef<((slug: string) => void) | null>(null);
   /** Goes to the overview's list of sections from within the overview page; null elsewhere. */
@@ -95,7 +96,7 @@ export function createShell(load: (report: ReportChoice) => Promise<Overview>) {
   const total = computed(() => held.value?.sections.length ?? null);
   const report = computed(() => (held.value ? { ...reportOf(held.value), title: held.value.report.title } : null));
 
-  return { held, known, config, here, ribbon, opener, toOverview, sections, approved, total, report, setOverview, invalidate, refresh, refreshFor };
+  return { held, known, config, here, ribbon, menu, opener, toOverview, sections, approved, total, report, setOverview, invalidate, refresh, refreshFor };
 }
 
 /** The app's one rail store, fed by the API's overview call. */
