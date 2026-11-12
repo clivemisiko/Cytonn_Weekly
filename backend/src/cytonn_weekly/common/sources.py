@@ -68,7 +68,12 @@ NOT_FOUND = "No page was found at that address (HTTP {status}). Check the addres
 GATED = ("{host} asked for a login or a subscription (HTTP {status}), so the page could not be read. Paste the text with "
          "its address and date instead.")
 ERROR_STATUS = "{host} answered with an error (HTTP {status}), so nothing was kept."
-NETWORK = "The page at {host} could not be fetched (a network error or a timeout). Try again, or paste the text."
+NETWORK = "The page at {host} could not be fetched (a network error). Try again, or paste the text."
+TIMED_OUT = "The page at {host} could not be fetched (it did not answer in time). Try again, or paste the text."
+RATE_LIMITED = ("{host} turned the request away or asked the tool to slow down (HTTP {status}), so nothing was kept. Try again "
+                "later, or paste the text with its address and date.")
+NO_LOCATION = "{host} redirected (HTTP {status}) without saying where to, so nothing was fetched. Paste the text instead."
+UNREADABLE = "The page at {host} replied in a way the tool could not read. Paste its text instead, with its address and date."
 EMPTY = "The page at {host} has no readable text, so nothing was kept. Paste the text with its address and date instead."
 PAYWALL = ("The page at {host} shows a login or subscription prompt instead of the article, so nothing was kept. Paste the "
            "text with its address and date instead.")
@@ -338,7 +343,7 @@ def _save(src: SourceText, raw: Optional[bytes], raw_name: str, root: Optional[P
     folder = _folder(date.fromisoformat(src.week_end), root)
     with _LOCK:
         listed = _read_manifest(folder)
-        same = next((m for m in listed if m["id"] == src.id), None)
+        same = next((m for m in listed if m.get("id") == src.id), None)
         if same:
             return _load(folder, same)
         folder.mkdir(parents=True, exist_ok=True)
@@ -360,10 +365,17 @@ def _load(folder: Path, meta: dict[str, Any]) -> SourceText:
     except OSError:
         raise SourceError(f"A saved source ({meta.get('host')}, {meta.get('id')}) is missing its file. Remove it and add it "
                           "again.") from None
+    except KeyError:
+        raise SourceError(f"A saved source ({meta.get('host')}, {meta.get('id')}) is missing details in the list of sources. "
+                          "Remove it and add it again.") from None
     expected = _sha(raw) if raw is not None else _sha(text.encode())
-    if _sha(text.encode()) != meta.get("text_sha256") or expected != meta["sha256"]:
-        raise SourceError(CHANGED.format(host=meta["host"], source_id=meta["id"]))
-    fields = {k: meta[k] for k in SourceText.__dataclass_fields__ if k != "text"}
+    if _sha(text.encode()) != meta.get("text_sha256") or expected != meta.get("sha256"):
+        raise SourceError(CHANGED.format(host=meta.get("host"), source_id=meta.get("id")))
+    try:
+        fields = {k: meta[k] for k in SourceText.__dataclass_fields__ if k != "text"}
+    except KeyError:
+        raise SourceError(f"A saved source ({meta.get('host')}, {meta.get('id')}) is missing details in the list of sources. "
+                          "Remove it and add it again.") from None
     return SourceText(text=text, **fields)
 
 
@@ -382,7 +394,7 @@ def _find(source_id: str, root: Optional[Path]) -> Optional[tuple[Path, dict[str
     base = sources_root(root)
     for folder in sorted(base.iterdir()) if base.is_dir() else []:
         for m in _read_manifest(folder):
-            if m["id"] == source_id:
+            if m.get("id") == source_id:
                 return folder, m
     return None
 
@@ -443,7 +455,7 @@ def remove(source_id: str, root: Optional[Path] = None) -> bool:
         if not found:
             return False
         folder, meta = found
-        _write_manifest(folder, [m for m in _read_manifest(folder) if m["id"] != source_id])
+        _write_manifest(folder, [m for m in _read_manifest(folder) if m.get("id") != source_id])
         for name in (f"{source_id}.txt", meta.get("raw") or ""):
             if name:
                 (folder / name).unlink(missing_ok=True)
@@ -478,6 +490,38 @@ def fetch_page(url: str, subject: str, week_end: date, *, http_get: Callable[...
     if not subject.strip():
         raise SourceError(NO_SUBJECT)
     url = url.strip()
+    try:
+        page, body, raw_name = _read_page(url, subject, week_end, http_get, resolve, now, origin, fallback_date)
+    except SourceError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - not a network error: say so, and log where, never the message
+        log.warning("fetch of %s failed unexpectedly: %s at %s", host_of(url) or "an unreadable address",
+                    type(exc).__name__, _inner_frame(exc))
+        raise SourceError(UNREADABLE.format(host=host_of(url) or "that address")) from None
+    return _save(page, body, raw_name, root)
+
+
+_PACKAGE = Path(__file__).resolve().parents[1]
+_HTML_START = re.compile(rb"<[!a-zA-Z]")
+
+
+def _inner_frame(exc: BaseException) -> str:
+    """The innermost frame of ``exc`` that is in this package: 'common/http.py:118 in http_get_once'. No message, no values."""
+    where, tb = "outside the project", exc.__traceback__
+    while tb is not None:
+        try:
+            rel = Path(tb.tb_frame.f_code.co_filename).resolve().relative_to(_PACKAGE)
+            where = f"{rel.as_posix()}:{tb.tb_lineno} in {tb.tb_frame.f_code.co_name}"
+        except (ValueError, OSError):
+            pass
+        tb = tb.tb_next
+    return where
+
+
+def _read_page(url: str, subject: str, week_end: date, http_get: Callable[..., http.Reply],
+               resolve: Callable[[str], list[str]], now: Callable[[], str], origin: str,
+               fallback_date: str) -> tuple[SourceText, bytes, str]:
+    """Everything of fetch_page up to saving: the request, the redirects, the rules and the reading."""
     host = _refuse_address(url, resolve)
     current, hops = url, 0
     while True:
@@ -485,14 +529,23 @@ def fetch_page(url: str, subject: str, week_end: date, *, http_get: Callable[...
             reply = http_get(current, max_bytes=MAX_BYTES)
         except http.TooLarge:
             raise SourceError(TOO_LARGE.format(mb=MAX_BYTES // (1024 * 1024))) from None
-        except Exception as exc:  # noqa: BLE001 - the analyst gets a sentence, the log gets the class
+        except Exception as exc:  # noqa: BLE001 - a connection problem gets a sentence; anything else goes up as unexpected
             if _certificate_failed(exc):
                 raise SourceError(CERTIFICATE.format(host=host)) from None
-            log.warning("fetch of %s failed: %s", host, type(exc).__name__)
-            raise SourceError(NETWORK.format(host=host)) from None
+            if isinstance(exc, http.TIMEOUT_ERRORS):
+                log.warning("fetch of %s timed out: %s", host, type(exc).__name__)
+                raise SourceError(TIMED_OUT.format(host=host)) from None
+            if isinstance(exc, http.NETWORK_ERRORS):
+                log.warning("fetch of %s failed: %s", host, type(exc).__name__)
+                raise SourceError(NETWORK.format(host=host)) from None
+            raise
+        headers = {str(k).lower(): str(v) for k, v in dict(reply.headers or {}).items()}   # any casing, none at all
         if reply.status not in (301, 302, 303, 307, 308):
             break
-        target = urljoin(current, reply.headers.get("location", ""))
+        location = headers.get("location", "").strip()
+        if not location:
+            raise SourceError(NO_LOCATION.format(host=host, status=reply.status))
+        target = urljoin(current, location)      # a relative address is read against the page that sent it
         other = host_of(target)
         if other != host:
             raise SourceError(REDIRECT.format(host=host, other=other or "an unreadable address"))
@@ -501,24 +554,33 @@ def fetch_page(url: str, subject: str, week_end: date, *, http_get: Callable[...
             raise SourceError(TOO_MANY.format(host=host, hops=MAX_HOPS))
         _refuse_address(target, resolve)
         current = target
+    if reply.status >= 300 or reply.status < 200:
+        log.warning("fetch of %s refused: HTTP %s", host, reply.status)
     if reply.status in (404, 410):
         raise SourceError(NOT_FOUND.format(status=reply.status))
+    if reply.status == 429:
+        raise SourceError(RATE_LIMITED.format(host=host, status=reply.status))
     if reply.status in (401, 402, 403, 451):
         raise SourceError(GATED.format(host=host, status=reply.status))
-    if reply.status >= 400 or reply.status < 200:
+    if reply.status >= 300 or reply.status < 200:      # a 3xx that is not a redirect is no page either
         raise SourceError(ERROR_STATUS.format(host=host, status=reply.status))
-    body = reply.body
-    kind = reply.headers.get("content-type", "").split(";")[0].strip().lower()
-    if kind and not body.startswith(b"%PDF") and "html" not in kind and "pdf" not in kind:
-        raise SourceError(NOT_A_PAGE.format(host=host, kind=kind))
-    if body.startswith(b"%PDF"):
+    body = reply.body or b""
+    if not body.strip():
+        raise SourceError(EMPTY.format(host=host))
+    kind = headers.get("content-type", "").split(";")[0].strip().lower()
+    is_pdf = body.startswith(b"%PDF")
+    if not is_pdf and "html" not in kind and "pdf" not in kind:
+        # a stated type that is neither is refused; no stated type is judged by the body itself
+        if kind or not _HTML_START.search(body[:2048]):
+            raise SourceError(NOT_A_PAGE.format(host=host, kind=kind or "no type stated"))
+    if is_pdf:
         try:
             text, title = read_pdf(body)
         except Exception:  # noqa: BLE001 - pdfplumber raises many kinds for a damaged file
             raise SourceError(EMPTY.format(host=host)) from None
         published, gated, raw_name = "", False, ".pdf"
     else:
-        text, title, published, gated = read_html(body, reply.headers.get("content-type", ""))
+        text, title, published, gated = read_html(body, headers.get("content-type", ""))
         raw_name = ".html"
     if not text.strip():
         raise SourceError(PAYWALL.format(host=host) if gated else EMPTY.format(host=host))
@@ -527,12 +589,12 @@ def fetch_page(url: str, subject: str, week_end: date, *, http_get: Callable[...
     if len(text) < MIN_CHARS:
         raise SourceError(SHORT.format(host=host, n=len(text)))
     sha = _sha(body)
-    src = SourceText(id=_id(subject, current, sha), subject=" ".join(subject.split()),
-                     week_end=latest_friday(week_end).isoformat(), url=current, host=host,
-                     title=title or current.rsplit("/", 1)[-1] or host, published_date=published or fallback_date,
-                     fetched_at=now(), origin=origin, text=text, sha256=sha, chars=len(text),
-                     flags=list_flags(host) + ([INSECURE] if current.lower().startswith("http://") else []))
-    return _save(src, body, raw_name, root)
+    page = SourceText(id=_id(subject, current, sha), subject=" ".join(subject.split()),
+                      week_end=latest_friday(week_end).isoformat(), url=current, host=host,
+                      title=title or current.rsplit("/", 1)[-1] or host, published_date=published or fallback_date,
+                      fetched_at=now(), origin=origin, text=text, sha256=sha, chars=len(text),
+                      flags=list_flags(host) + ([INSECURE] if current.lower().startswith("http://") else []))
+    return page, body, raw_name
 
 
 def from_paste(url: str, date_text: str, text: str, subject: str, week_end: date, *, title: str = "",
