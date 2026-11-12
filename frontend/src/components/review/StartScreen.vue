@@ -15,6 +15,7 @@ import { MAX_SECTIONS, MAX_SECTION_TITLE, MAX_TOPIC, sectionsProblem, sectionTit
 import type { AppConfig, Drafting, Overview, ReportChoice, Review, SectionSummary, SourcePiece } from "@/lib/types";
 import PageGrid from "@/components/nav/PageGrid.vue";
 import AnalystPanel from "./analyst/AnalystPanel.vue";
+import CompaniesList from "./CompaniesList.vue";
 import InputsPanel from "./InputsPanel.vue";
 import Masthead from "./Masthead.vue";
 import NotablePanel from "./NotablePanel.vue";
@@ -220,6 +221,7 @@ const lists = computed(() => [
     <PageGrid v-else aside-title="Inputs and steps" hide-title aside-first wide-body :sticky="false">
       <div class="space-y-8">
         <AnalystPanel v-if="usesInputs && week" :key="`analyst-${week}`" :week="week" :section="section.slug" :disabled="starting" :refresh="uploads" @pending="(p) => (typedPending = p)" />
+        <CompaniesList v-if="report.type === 'weekly' && section.slug === 'equities'" />
         <SourcesPanel v-if="bedrock" :section="section" :report="report" :titles="sections" :disabled="starting" @pieces="(p) => (sourcePieces = p)" />
         <section aria-labelledby="start-title" class="space-y-6 rounded-lg border border-t-[3px] border-t-primary bg-card p-6">
           <h2 id="start-title" class="sr-only">Start or resume a review</h2>

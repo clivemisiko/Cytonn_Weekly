@@ -124,6 +124,12 @@ export interface SourcePiece {
   gather?: GatherLook | null;
 }
 
+export interface EquitiesCompanies {
+  companies: { name: string; type: "bank" | "insurer"; domain: string; ir: string; set: boolean }[];
+  searches: number;
+  pages: number;
+}
+
 export interface SourcesListing {
   section: string;
   title: string;

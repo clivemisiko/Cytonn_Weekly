@@ -196,7 +196,7 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
           <span>{{ b.title }}</span>
         </h3>
         <Markdown :class="BODY" :text="b.body_md" />
-        <PartsLine :parts="computedParts(b)" />
+        <PartsLine v-if="b.role !== 'company_notes'" :parts="computedParts(b)" />
         <p v-for="n in b.notes" :key="n" class="text-xs text-muted-foreground md:pl-11">{{ n }}</p>
       </article>
 
