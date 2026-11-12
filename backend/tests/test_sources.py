@@ -4,6 +4,7 @@ import re
 import ssl
 from datetime import date
 
+import httpx
 import pytest
 
 from cytonn_weekly.common import http
@@ -313,8 +314,122 @@ def test_an_error_status_is_a_plain_sentence(status, word, tmp_path):
 
 
 def test_a_network_error_is_a_plain_sentence_with_no_library_text(tmp_path):
-    why = refused(Getter(RuntimeError("secret internals /tmp/x.py line 9")), root=tmp_path)
-    assert "network error or a timeout" in why and "internals" not in why and "RuntimeError" not in why
+    why = refused(Getter(OSError("secret internals /tmp/x.py line 9")), root=tmp_path)
+    assert "(a network error)" in why and "internals" not in why and "OSError" not in why
+
+
+def test_a_timeout_has_its_own_sentence(tmp_path):
+    why = refused(Getter(httpx.ReadTimeout("slow")), root=tmp_path)
+    assert "did not answer in time" in why and "network error" not in why
+
+
+def test_a_429_has_its_own_sentence_and_is_logged_with_its_status(tmp_path, caplog):
+    caplog.set_level("WARNING", logger=src.log.name)
+    why = refused(Getter(reply(status=429)), root=tmp_path)
+    assert "slow down" in why and "HTTP 429" in why
+    assert "refused: HTTP 429" in caplog.text and "www.centralbank.go.ke" in caplog.text
+
+
+def test_an_unexpected_error_is_not_called_a_network_error_and_its_message_is_not_logged(tmp_path, monkeypatch, caplog):
+    caplog.set_level("WARNING", logger=src.log.name)
+
+    def explode(body, content_type=""):
+        raise KeyError("secret internals /tmp/x.py line 9")
+
+    monkeypatch.setattr(src, "read_html", explode)
+    why = refused(Getter(reply(article(), content_type="text/html")), url=OK_URL + "?token=abc123", root=tmp_path)
+    assert why == src.UNREADABLE.format(host="www.centralbank.go.ke")
+    assert "network error" not in why and "Paste its text instead" in why
+    line = next(r.getMessage() for r in caplog.records if "unexpectedly" in r.getMessage())
+    assert "www.centralbank.go.ke" in line and "KeyError" in line and "common/sources.py" in line and "_read_page" in line
+    assert "secret internals" not in caplog.text and "token=abc123" not in caplog.text and "text/html" not in caplog.text
+    assert src.list_all(FRIDAY, tmp_path) == []
+
+
+# --- replies with a missing or odd header ----------------------------------------------------------------------------------
+
+def test_a_reply_with_no_content_type_is_taken_for_a_page_when_its_body_is_html(tmp_path):
+    one = fetch(Getter(reply(article())), root=tmp_path)
+    assert one.chars > 0 and "8.75%" in one.text
+
+
+def test_a_reply_with_no_content_type_and_a_body_that_is_not_html_is_refused(tmp_path):
+    why = refused(Getter(reply(b"\x89PNG\r\n\x1a\n not a page at all")), root=tmp_path)
+    assert "web page or a PDF (no type stated)" in why
+
+
+def test_a_reply_with_no_content_type_and_a_pdf_body_is_read_as_a_pdf(tmp_path, monkeypatch):
+    monkeypatch.setattr(src, "read_pdf", lambda body: (PARAGRAPH * 3, "A PDF title"))
+    assert fetch(Getter(reply(b"%PDF-1.4 not really")), root=tmp_path).title == "A PDF title"
+
+
+def test_a_reply_with_an_empty_body_is_refused_as_empty(tmp_path):
+    assert "no readable text" in refused(Getter(reply(b"", content_type="text/html")), root=tmp_path)
+    assert "no readable text" in refused(Getter(reply(b"")), root=tmp_path)
+
+
+def test_a_reply_with_headers_in_any_casing_is_read(tmp_path):
+    odd = http.Reply(200, {"Content-Type": "text/html; charset=UTF-8", "CONTENT-LENGTH": "9"}, article())
+    assert "8.75%" in fetch(Getter(odd), root=tmp_path).text
+    pdf = http.Reply(200, {"CONTENT-TYPE": "image/png"}, b"x")
+    assert "web page or a PDF (image/png)" in refused(Getter(pdf), root=tmp_path)
+    moved = http.Reply(302, {"LOCATION": "/final"}, b"")
+    assert fetch(Getter(moved, reply(article())), root=tmp_path).url == "https://www.centralbank.go.ke/final"
+
+
+def test_a_reply_with_no_headers_at_all_does_not_raise(tmp_path):
+    assert "8.75%" in fetch(Getter(http.Reply(200, None, article())), root=tmp_path).text
+
+
+def test_a_redirect_with_no_location_is_refused_with_its_own_sentence(tmp_path):
+    for moved in (reply(status=302), reply(status=301, location=""), reply(status=307, location="   ")):
+        why = refused(Getter(moved), root=tmp_path)
+        assert "without saying where to" in why and "network error" not in why
+
+
+def test_a_redirect_to_a_relative_address_is_followed_on_the_same_host(tmp_path):
+    got = Getter(reply(status=301, location="final/page"), reply(status=302, location="../other"), reply(article()))
+    one = fetch(got, root=tmp_path)
+    assert got.asked == [OK_URL, "https://www.centralbank.go.ke/press/final/page", "https://www.centralbank.go.ke/press/other"]
+    assert one.url == "https://www.centralbank.go.ke/press/other"
+
+
+def test_a_status_that_is_neither_a_page_nor_a_redirect_is_refused(tmp_path):
+    for status in (100, 300, 304):
+        assert f"HTTP {status}" in refused(Getter(reply(article(), status=status)), root=tmp_path)
+    assert "no readable text" in refused(Getter(reply(b"", status=204)), root=tmp_path)
+
+
+def test_http_get_once_copes_with_a_reply_that_states_no_content_length(monkeypatch):
+    real = httpx.Client
+
+    def handler(request):
+        return httpx.Response(200, content=iter([b"<html><body>", b"<p>hello</p></body></html>"]),
+                              headers={"Content-Type": "text/html"})
+
+    monkeypatch.setattr(http.httpx, "Client", lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
+    got = http.http_get_once("https://example.org/news", max_bytes=1000)
+    assert "content-length" not in got.headers and got.status == 200 and got.body.endswith(b"</body></html>")
+    with pytest.raises(http.TooLarge):                 # the body's own length still counts without the header
+        http.http_get_once("https://example.org/news", max_bytes=10)
+
+
+def test_http_get_once_still_refuses_a_page_that_states_it_is_too_large(monkeypatch):
+    real = httpx.Client
+    monkeypatch.setattr(http.httpx, "Client", lambda **kw: real(transport=httpx.MockTransport(
+        lambda request: httpx.Response(200, content=b"x" * 50, headers={"Content-Length": "50"})), **kw))
+    with pytest.raises(http.TooLarge):
+        http.http_get_once("https://example.org/news", max_bytes=10)
+
+
+def test_a_saved_source_whose_list_entry_lacks_a_key_is_a_sentence_not_a_key_error(tmp_path):
+    fetch(Getter(reply(article())), root=tmp_path)
+    manifest = tmp_path / "2026-11-06" / "manifest.json"
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    del data["sources"][0]["host"]
+    manifest.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(src.SourceError, match="missing details"):
+        src.list_for("Mortgage lending", FRIDAY, tmp_path)
 
 
 def test_a_refused_fetch_keeps_nothing(tmp_path):

@@ -96,6 +96,10 @@ def http_get_pdf(url: str) -> bytes:
     return body
 
 
+TIMEOUT_ERRORS = (httpx.TimeoutException, TimeoutError)
+NETWORK_ERRORS = (httpx.HTTPError, OSError)   # what a real connection problem raises; anything else is unexpected
+
+
 class TooLarge(Exception):
     """The body is longer than the limit the caller set; nothing past it was read."""
 
@@ -115,7 +119,8 @@ def http_get_once(url: str, *, max_bytes: int, timeout: float = 20.0) -> Reply:
     with httpx.Client(timeout=timeout, follow_redirects=False, headers={"User-Agent": USER_AGENT}) as client:
         with client.stream("GET", safe_url(url)) as resp:
             headers = {k.lower(): v for k, v in resp.headers.items()}
-            if (headers.get("content-length") or "0").isdigit() and int(headers["content-length"]) > max_bytes:
+            declared = headers.get("content-length", "")   # absent on a chunked reply: then only the body's own length counts
+            if declared.isdigit() and int(declared) > max_bytes:
                 raise TooLarge(url)
             body = bytearray()
             for chunk in resp.iter_bytes():
