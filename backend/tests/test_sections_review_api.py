@@ -27,7 +27,7 @@ def db(tmp_path):
 @pytest.fixture
 def client(db, monkeypatch):
     monkeypatch.setattr(eq_weekly, "build_equities_weekly_review", lambda: sh.equities_review())
-    monkeypatch.setattr(re_run, "build_real_estate_review", lambda: sh.real_estate_review())
+    monkeypatch.setattr(re_run, "build_real_estate_review", lambda **_: sh.real_estate_review())
     monkeypatch.setattr(focus_run, "build_focus_review", lambda topic, **_: sh.focus_review(topic=topic))
     return TestClient(create_app(db_path=db, load_dotenv=False))
 
@@ -147,11 +147,11 @@ def test_flagged_table_row_is_marked_in_the_serialized_table(client, db):
 
     review = sh.real_estate_review()
     content = review.section
-    content["blocks"][-1]["rows"][0]["price"] = "29.6"  # source 29.65 shows as "29.7"
+    next(b for b in content["blocks"] if b["kind"] == "table")["rows"][0]["price"] = "29.6"  # source 29.65 shows as "29.7"
     tampered = build_review(content, check_section(content))
     review_store.save_review(tampered, section="real_estate", db_path=db)
     body = client.get(f"/api/reviews/{tampered.run_id}").json()
-    rows = body["section"]["blocks"][-1]["rows"]
+    rows = next(b for b in body["section"]["blocks"] if b["kind"] == "table")["rows"]
     assert [r["flagged"] for r in rows] == [True, False, False]
 
 
