@@ -8,7 +8,7 @@ Times on screen are East Africa Time. Reports are named by week ending date.
 
 - The pull request with the Bedrock work is merged into `main`.
 - The **Publish images** run for that merge is green on the Actions tab, so `ghcr.io/clivemisiko/cytonn-weekly-api` and `cytonn-weekly-web` carry the new build.
-- You can reach the app through the SSH tunnel (see `deploy/docker-compose.server.yml`): `ssh -L 8010:127.0.0.1:8010 -L 5173:127.0.0.1:5173 clive@159.223.140.184`.
+- You can reach the app, either through the proxy's address or through an SSH tunnel (see `deploy/docker-compose.server.yml`): `ssh -L 8010:127.0.0.1:8010 -L 5173:127.0.0.1:5173 <deploy-user>@<production-host>`.
 - AWS: Bedrock model access is enabled for the account in the region you will use, and the IAM user or token may call `bedrock:InvokeModel` on the inference profile and on the foundation models it routes to.
 
 ## 2. Lines to add or change in the server `.env`
