@@ -87,7 +87,7 @@ def clock():
 def app(db, clock, monkeypatch):
     dp_pipeline(monkeypatch)
     monkeypatch.setattr(eq_weekly, "build_equities_weekly_review", lambda on_event=None: sh.equities_review(on_event=on_event))
-    monkeypatch.setattr(re_run, "build_real_estate_review", lambda on_event=None: sh.real_estate_review(on_event=on_event))
+    monkeypatch.setattr(re_run, "build_real_estate_review", lambda on_event=None, **_: sh.real_estate_review(on_event=on_event))
     monkeypatch.setattr(focus_run, "build_focus_review",
                         lambda topic, on_event=None, **_: sh.focus_review(topic=topic, on_event=on_event))
     for module, name, builder in PERIODIC:

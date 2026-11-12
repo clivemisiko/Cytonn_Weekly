@@ -25,7 +25,7 @@ async function changeOverview(page: Page, change: (body: Overview) => void) {
 
 const sectionOf = (body: Overview, slug: string) => body.sections.find((s) => s.slug === slug)!;
 
-test("T66 the report-status panel folds, stays folded after a reload, and is below the feed on a narrow window", async ({ page }) => {
+test("T66 the report-status panel folds, is open again after a reload, and is below the feed on a narrow window", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 768 });
   await page.goto(overviewUrl());
   const panel = page.getByRole("complementary", { name: "Report status" });
@@ -41,10 +41,7 @@ test("T66 the report-status panel folds, stays folded after a reload, and is bel
   expect((await panel.boundingBox())!.width).toBeLessThan(80); // a strip
   await page.reload();
   await expect(page.getByRole("heading", { name: "Analyst review", level: 1 })).toBeVisible();
-  await expect(panel.getByRole("button", { name: "Show Report status" })).toBeVisible(); // remembered in this browser
-  await expect(tally).toBeHidden();
-
-  await panel.getByRole("button", { name: "Show Report status" }).click();
+  await expect(panel.getByRole("button", { name: "Hide Report status" })).toBeVisible(); // open again on every load, nothing remembered
   await expect(tally).toBeVisible();
   await expect(page.getByRole("button", { name: "Export weekly report" })).toBeVisible();
 
@@ -153,7 +150,7 @@ test("T70 the export's dev-mode notice is in the feed right under the dev-mode n
   await expect(notice).toBeVisible(); // the warning is not
   await expect(notice).toHaveCount(1);
   await page.reload();
-  await expect(panel.getByRole("button", { name: "Show Report status" })).toBeVisible(); // still folded after a reload
+  await expect(panel.getByRole("button", { name: "Hide Report status" })).toBeVisible(); // open again after a reload
   await expect(notice).toBeVisible();
 });
 

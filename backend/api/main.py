@@ -78,10 +78,13 @@ from cytonn_weekly.focus.review_run import clean_sections, clean_topic
 from cytonn_weekly import db as database
 from cytonn_weekly import notable
 from cytonn_weekly.narrative import bedrock_provider
+from cytonn_weekly.narrative.base import SnipReadError
+from cytonn_weekly.narrative.factory import get_narrative_provider
 from cytonn_weekly.notable import store as notable_store
 from cytonn_weekly.notable.registry import Detector, DetectorContext, run_detectors
 from cytonn_weekly.notable.suggestion import MAX_HEADLINE
 from cytonn_weekly.periodic.executive_summary import SectionsNotApproved
+from cytonn_weekly.real_estate import snips as snip_store
 from cytonn_weekly.report_sections import (
     DraftContext,
     SectionSpec,
@@ -246,6 +249,14 @@ class SourceBody(BaseModel):
     date: Optional[str] = Field(default=None, max_length=20)
     text: Optional[str] = Field(default=None, max_length=1_000_000)   # source_store.from_paste judges the length, in words
     title: Optional[str] = Field(default=None, max_length=300)
+
+
+class SnipChange(BaseModel):
+    """What the analyst changed on one snip: its text, its sector or its date (YYYY-MM-DD, or empty for the report week)."""
+
+    text: Optional[str] = Field(default=None, max_length=snip_store.MAX_TEXT_CHARS + 1000)
+    sector: Optional[str] = Field(default=None, max_length=40)
+    date: Optional[str] = Field(default=None, max_length=10)
 
 
 class GatherBody(BaseModel):
@@ -1116,6 +1127,9 @@ def create_app(
 
     def source_piece(section: str, subject: str, report_type: str, period: Optional[str], typed: Optional[str]):
         """(the section's spec, the normalized period, the piece) a source is for, or a plain refusal (404, 422)."""
+        if section == "real_estate" and report_type == WEEKLY:
+            raise HTTPException(422, "The weekly Real Estate section is written from the snips you upload, so nothing is searched "
+                                     "or added here. Upload and confirm a snip instead.")
         period, _ = chosen_report(report_type, period, None)
         spec = spec_for(report_type, section)
         if spec is None:
@@ -1233,11 +1247,131 @@ def create_app(
             gather_stamps.pop((gone.week_end, source_store.subject_key(gone.subject)), None)
         return {"removed": source_id}
 
+    # -- the snips the weekly Real Estate section is written from ---------------
+
+    snips_dir = Path(sources_root).parent / "snips" if sources_root is not None else None
+
+    def snip_day(week_ending: str) -> date:
+        return date.fromisoformat(week_of(week_ending).ending.isoformat())
+
+    def snip_view(day: date) -> dict:
+        try:
+            items = snip_store.list_snips(day, snips_dir)
+        except snip_store.SnipError as exc:
+            raise HTTPException(409, str(exc))
+        return {"week_ending": day.isoformat(), "sectors": [{"id": i, "label": label} for i, label in snip_store.SECTORS],
+                "max_per_sector": snip_store.MAX_PER_SECTOR, "max_bytes": snip_store.MAX_BYTES, "snips": items}
+
+    def snip_guard(day: date, h: str, *also: str) -> None:
+        """A confirmed snip is a source of its sector's piece, so none may change while a draft reads that piece."""
+        entry = next((e for e in snip_store.list_snips(day, snips_dir) if e["hash"] == h), None)
+        labels = {snip_store.LABELS[s] for s in (entry["sector"] if entry else None, *also) if s in snip_store.LABELS}
+        for label in labels:
+            refuse_while_drafting(label, latest_friday(day).isoformat())
+
+    @app.get("/api/snips/{week_ending}")
+    def list_snips(week_ending: str) -> dict:
+        return snip_view(snip_day(week_ending))
+
+    @app.put("/api/snips/{week_ending}/{sector}")
+    async def upload_snip(week_ending: str, sector: str, request: Request, filename: str = Query(default="", max_length=200)) -> dict:
+        """Upload one image (PNG, JPEG or WebP, judged by its first bytes) for one sector: the file is the request body.
+        Nothing is read from it here and nothing is fetched."""
+        day = snip_day(week_ending)
+        declared = request.headers.get("content-length")
+        too_big = HTTPException(413, f"The image is over the {snip_store.MAX_BYTES // 1_048_576} MB limit. Crop it or save it smaller.")
+        if declared and declared.isdigit() and int(declared) > snip_store.MAX_BYTES:
+            raise too_big
+        data = await request.body()
+        if len(data) > snip_store.MAX_BYTES:
+            raise too_big
+        try:
+            await run_in_threadpool(snip_store.add, day, sector, filename, data, snips_dir)
+        except snip_store.SnipError as exc:
+            raise HTTPException(422, str(exc))
+        return snip_view(day)
+
+    @app.get("/api/snips/{week_ending}/{h}/image")
+    def snip_image(week_ending: str, h: str) -> Response:
+        try:
+            data, media = snip_store.image_bytes(snip_day(week_ending), h, snips_dir)
+        except (snip_store.SnipError, OSError) as exc:
+            raise HTTPException(404, str(exc))
+        return Response(data, media_type=media, headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+
+    @app.post("/api/snips/{week_ending}/{h}/read")
+    def read_snip(week_ending: str, h: str) -> dict:
+        """One vision call for this snip, unless it has been read before (the reading is kept by the image's hash). It takes
+        a drafting seat like a draft does, so reads and drafts share the same limit."""
+        day = snip_day(week_ending)
+        try:
+            entry = next((e for e in snip_store.list_snips(day, snips_dir) if e["hash"] == h), None)
+            if entry is None:
+                raise HTTPException(404, "That snip is not in this week's list. Reload the page.")
+            if entry["text"] is not None:
+                return snip_view(day)
+            if configured_provider() == "bedrock":
+                problem = bedrock_provider.env_problem()
+                if problem:
+                    raise HTTPException(409, problem)
+            provider = get_narrative_provider()
+            try:
+                claim, _ = draft_slot.claim("real_estate", "Real Estate (reading snips)", WEEKLY, "")
+            except DraftBusy as exc:
+                raise HTTPException(409, busy_message(exc))
+            try:
+                data, media = snip_store.image_bytes(day, h, snips_dir)
+                text = provider.read_snip(data, media)
+            except SnipReadError as exc:
+                raise HTTPException(409, str(exc))
+            except bedrock_provider.BedrockError as exc:
+                raise HTTPException(502, str(exc))
+            finally:
+                free_seat(claim)
+            snip_store.reading(day, h, text, snips_dir)
+        except snip_store.SnipError as exc:
+            raise HTTPException(422, str(exc))
+        return snip_view(day)
+
+    @app.patch("/api/snips/{week_ending}/{h}")
+    def change_snip(week_ending: str, h: str, body: SnipChange) -> dict:
+        """Edit a snip's text, sector or date. A confirmed snip goes back to unconfirmed."""
+        day = snip_day(week_ending)
+        try:
+            snip_guard(day, h, body.sector)
+            snip_store.update(day, h, text=body.text, sector=body.sector, date_text=body.date, root=snips_dir, sources_root=sources_dir)
+        except snip_store.SnipError as exc:
+            raise HTTPException(422, str(exc))
+        return snip_view(day)
+
+    @app.post("/api/snips/{week_ending}/{h}/confirm")
+    def confirm_snip(week_ending: str, h: str) -> dict:
+        """Save the snip's text as a source for its sector. Refused while it has an [unclear] mark."""
+        day = snip_day(week_ending)
+        try:
+            snip_guard(day, h)
+            snip_store.confirm(day, h, snips_dir, sources_dir)
+        except (snip_store.SnipError, source_store.SourceError) as exc:
+            raise HTTPException(422, str(exc))
+        return snip_view(day)
+
+    @app.delete("/api/snips/{week_ending}/{h}")
+    def delete_snip(week_ending: str, h: str) -> dict:
+        day = snip_day(week_ending)
+        try:
+            snip_guard(day, h)
+            snip_store.remove(day, h, snips_dir, sources_dir)
+        except snip_store.SnipError as exc:
+            raise HTTPException(422, str(exc))
+        return snip_view(day)
+
     gather_stamps: dict[tuple[str, str], float] = {}   # (Friday, piece) -> when it was last looked for, in memory only
     gather_cooldown = 3600.0
 
     def gather_for(spec: SectionSpec, ctx: DraftContext, on_event: Callable[..., object]) -> None:
         """The gather step at the start of a Bedrock run: search for the sources of each piece of the section."""
+        if spec.slug == "real_estate" and ctx.report_type == WEEKLY:
+            return   # the weekly Real Estate is written from the analyst's snips alone: nothing is searched for it
         try:
             pieces = pieces_for(ctx.report_type, ctx.period, spec.slug, sections=ctx.sections, today=date.today()) or []
             _, looked = source_gather.gather(pieces, search=search_sources, fetch=fetch_source, root=sources_dir, on_event=on_event)

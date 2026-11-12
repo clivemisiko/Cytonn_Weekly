@@ -4,7 +4,7 @@ import Button from "@/components/ui/Button.vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import * as api from "@/lib/api";
 import { OPEN_REVIEW } from "@/lib/fixfile";
-import { APPROVED_SENTENCE_NOTE, MAX_PARAGRAPH, MAX_SENTENCE, lastSentence, sentenceCheck } from "@/lib/sentence";
+import { APPROVED_SENTENCE_NOTE, MAX_PARAGRAPH, MAX_SENTENCE, MAX_STANDING, lastSentence, sentenceCheck, standingCheck } from "@/lib/sentence";
 import { shell } from "@/lib/shell";
 import type { Review, ReviewItem } from "@/lib/types";
 import RedraftDialog from "./RedraftDialog.vue";
@@ -21,9 +21,11 @@ const errorEl = ref<HTMLElement | null>(null);
 
 const paragraph = computed(() => !!props.item.edit_paragraph);
 const noun = computed(() => (paragraph.value ? "paragraph" : "sentence"));
-const limit = computed(() => (paragraph.value ? MAX_PARAGRAPH : MAX_SENTENCE));
+// Real Estate's standing REITs text keeps its lines: a paragraph, then each list item on its own line.
+const standing = computed(() => paragraph.value && props.item.ref.startsWith("Standing text"));
+const limit = computed(() => (standing.value ? MAX_STANDING : paragraph.value ? MAX_PARAGRAPH : MAX_SENTENCE));
 const original = computed(() => props.item.context.text ?? "");
-const check = computed(() => sentenceCheck(text.value, original.value, limit.value));
+const check = computed(() => (standing.value ? standingCheck(text.value, original.value) : sentenceCheck(text.value, original.value, limit.value)));
 const boxId = computed(() => `edit-sentence-${props.item.index}`);
 const approved = computed(() => props.review.decision === "approved");
 

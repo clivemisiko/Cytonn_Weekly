@@ -57,8 +57,8 @@ def pieces_for(report_type: str, period: str, slug: str, *, sections: Sequence[s
             from cytonn_weekly.equities.review_run import BRIEFS
             return [Piece(b.label, friday, domains=tuple(b.preferred_domains)) for b in BRIEFS] + companies.pieces(friday)
         if slug == "real_estate":
-            from cytonn_weekly.real_estate.review_run import BRIEFS
-            return [Piece(b.label, friday, domains=tuple(b.preferred_domains)) for b in BRIEFS]
+            from cytonn_weekly.real_estate.review_run import SECTOR_BRIEFS
+            return [Piece(b.label, friday, market=False) for b in SECTOR_BRIEFS]
         if slug == "digital_payments":
             from cytonn_weekly.digital_payments.highlights import HIGHLIGHT_COMPANIES
             return [Piece(c["name"], friday, domains=(c["ir_domain"],), market=False) for c in HIGHLIGHT_COMPANIES]

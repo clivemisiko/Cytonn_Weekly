@@ -9,6 +9,7 @@ import { draftingFor, draftingList, draftingStatus, isLive, ownBusy, providerOff
 import { elapsed, friendlyTime, weekRange } from "@/lib/format";
 import { draftChartsNote } from "@/lib/charts";
 import { redraftNotes } from "@/lib/redraft";
+import type { snipCounts } from "@/lib/snips";
 import { TITLES_REQUIRED, missingSourcesNote, piecesNothingFoundFor, piecesWithoutSources, usesSources } from "@/lib/sources";
 import { shell, useShellRibbon } from "@/lib/shell";
 import { MAX_SECTIONS, MAX_SECTION_TITLE, MAX_TOPIC, sectionsProblem, sectionTitles, topicLength } from "@/lib/topic";
@@ -21,6 +22,7 @@ import Masthead from "./Masthead.vue";
 import NotablePanel from "./NotablePanel.vue";
 import Notice from "./Notice.vue";
 import RedraftDialog from "./RedraftDialog.vue";
+import SnipsPanel from "./SnipsPanel.vue";
 import SourcesPanel from "./SourcesPanel.vue";
 
 const USES_INPUTS = ["fixed_income", "equities"];
@@ -79,7 +81,10 @@ const showsInputs = computed(() => usesInputs.value || (props.report.type === "w
 const llm = computed(() => props.section.uses_provider);
 const providerBlocked = computed(() => providerOff(llm.value, props.config));
 // A Bedrock draft is written only from saved sources (the Sources panel); the tool searches for them when the draft starts.
-const bedrock = computed(() => usesSources(props.config, props.section));
+// The weekly Real Estate is written from the analyst's snips instead: it has no Sources panel, no search and no "Add a source".
+const snipsSection = computed(() => props.report.type === "weekly" && !!props.week && props.section.slug === "real_estate");
+const snipCountsNow = ref<ReturnType<typeof snipCounts> | null>(null);
+const bedrock = computed(() => usesSources(props.config, props.section) && !snipsSection.value);
 const sourcePieces = ref<SourcePiece[] | null>(null);
 const withoutSources = computed(() => (bedrock.value && sourcePieces.value ? piecesWithoutSources(sourcePieces.value) : []));
 const nothingFound = computed(() => (bedrock.value && sourcePieces.value ? piecesNothingFoundFor(sourcePieces.value) : []));
@@ -221,7 +226,7 @@ const lists = computed(() => [
     <PageGrid v-else aside-title="Inputs and steps" hide-title aside-first wide-body :sticky="false">
       <div class="space-y-8">
         <AnalystPanel v-if="usesInputs && week" :key="`analyst-${week}`" :week="week" :section="section.slug" :disabled="starting" :refresh="uploads" @pending="(p) => (typedPending = p)" />
-        <CompaniesList v-if="report.type === 'weekly' && section.slug === 'equities'" />
+        <SnipsPanel v-if="snipsSection && week" :key="`snips-${week}`" :week="week" :disabled="starting" @counts="(c) => (snipCountsNow = c)" />
         <SourcesPanel v-if="bedrock" :section="section" :report="report" :titles="sections" :disabled="starting" @pieces="(p) => (sourcePieces = p)" />
         <section aria-labelledby="start-title" class="space-y-6 rounded-lg border border-t-[3px] border-t-primary bg-card p-6">
           <h2 id="start-title" class="sr-only">Start or resume a review</h2>
@@ -271,7 +276,10 @@ const lists = computed(() => [
               Development Mode Active (Local Model): Drafts generated in this mode are for testing purposes only and are not approved for publication.
             </Notice>
             <Notice v-if="llm && config.spends_api_budget && !config.provider_problem" tone="info">
-              <template v-if="bedrock">
+              <template v-if="snipsSection">
+                Drafting Engine: {{ config.provider }}. This action will query the AI model. Each sector is written only from its confirmed snips; the REIT prices come from the NSE Ibuka weekly PDF. Nothing is searched.
+              </template>
+              <template v-else-if="bedrock">
                 Drafting Engine: {{ config.provider }}. This action will query the AI model and retrieve relevant source documents. Each piece is
                 written only from its saved sources. You can add more at any time.
               </template>
@@ -374,6 +382,11 @@ const lists = computed(() => [
                   <span v-if="!typedPending" class="flex size-4 items-center justify-center rounded-full bg-ok/20 font-bold text-ok-fg text-[10px]">✓</span>
                   <span v-else class="flex size-4 items-center justify-center rounded-full bg-warn/20 font-bold text-warn-fg text-[10px]">!</span>
                   <span>Analyst form: {{ typedPending ? 'Unsaved or unconfirmed inputs in form' : 'Inputs confirmed' }}</span>
+                </li>
+                <li v-if="snipsSection && snipCountsNow" class="flex items-center gap-2">
+                  <span v-if="snipCountsNow.confirmed && !snipCountsNow.unconfirmed" class="flex size-4 items-center justify-center rounded-full bg-ok/20 font-bold text-ok-fg text-[10px]">✓</span>
+                  <span v-else class="flex size-4 items-center justify-center rounded-full bg-warn/20 font-bold text-warn-fg text-[10px]">!</span>
+                  <span>Snips: {{ snipCountsNow.confirmed }} confirmed, {{ snipCountsNow.unconfirmed }} unconfirmed (not used){{ snipCountsNow.without.length ? `; not included: ${snipCountsNow.without.join(", ")}` : "" }}</span>
                 </li>
                 <li v-if="bedrock && sourcePieces" class="flex items-center gap-2">
                   <span v-if="!titlesNeeded && !withoutSources.length" class="flex size-4 items-center justify-center rounded-full bg-ok/20 font-bold text-ok-fg text-[10px]">✓</span>

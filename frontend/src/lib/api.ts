@@ -21,6 +21,7 @@ import type {
   SentenceResult,
   SourceInput,
   SourceMeta,
+  SnipsListing,
   SourcesListing,
   WeeklyInputs,
   Gathered,
@@ -216,6 +217,20 @@ export const gatherSources = (slug: string, report: ReportChoice, subject: strin
     method: "POST",
     body: JSON.stringify({ section: slug, subject, report_type: report.type, period: report.period || null, sections: sections?.trim() ? sections : null }),
   }, UPLOAD_TIMEOUT_MS);
+
+const snipsPath = (week: string) => `/api/snips/${encodeURIComponent(week)}`;
+export const getSnips = (week: string) => request<SnipsListing>(snipsPath(week));
+/** Upload one image for one sector: the file is the request body. The API checks its first bytes, size and the sector's count. */
+export const uploadSnip = (week: string, sector: string, file: File) =>
+  request<SnipsListing>(`${snipsPath(week)}/${encodeURIComponent(sector)}?filename=${encodeURIComponent(file.name.slice(0, 200))}`,
+    { method: "PUT", body: file, headers: { "Content-Type": "application/octet-stream" } }, UPLOAD_TIMEOUT_MS);
+/** One vision call (unless the image was read before). It waits for a drafting seat, so it can take a while. */
+export const readSnip = (week: string, hash: string) => request<SnipsListing>(`${snipsPath(week)}/${hash}/read`, { method: "POST" }, UPLOAD_TIMEOUT_MS);
+export const changeSnip = (week: string, hash: string, change: { text?: string; sector?: string; date?: string }) =>
+  request<SnipsListing>(`${snipsPath(week)}/${hash}`, { method: "PATCH", body: JSON.stringify(change) });
+export const confirmSnip = (week: string, hash: string) => request<SnipsListing>(`${snipsPath(week)}/${hash}/confirm`, { method: "POST" });
+export const removeSnip = (week: string, hash: string) => request<SnipsListing>(`${snipsPath(week)}/${hash}`, { method: "DELETE" });
+export const snipImageUrl = (week: string, hash: string) => `${API_BASE}${snipsPath(week)}/${hash}/image`;
 
 export const removeSource =(id: string) => request<{ removed: string }>(`/api/sources/${encodeURIComponent(id)}`, { method: "DELETE" });
 

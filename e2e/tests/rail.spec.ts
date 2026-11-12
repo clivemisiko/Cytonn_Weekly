@@ -59,19 +59,22 @@ test("T59 the rail lists the five sections with their state; it is a full rail, 
   await expect(nav.getByRole("button", { name: "Focus of the Week, Not drafted" })).toBeInViewport();
   await page.evaluate(() => window.scrollTo(0, 0));
 
-  // From 768px it is a narrow strip of icons that a button expands over the page; Escape folds it again.
+  // From 768px it is expanded on every load; a button folds it to a strip of icons for the visit, and Escape does the same.
   await page.setViewportSize({ width: 1280, height: 720 });
-  expect((await nav.boundingBox())?.width).toBe(56);
-  expect((await nav.getByRole("button", { name: /^Fixed Income, / }).boundingBox())!.width).toBeLessThan(60);
-  await nav.getByRole("button", { name: "Expand the rail" }).click();
   expect((await nav.boundingBox())?.width).toBe(224);
   expect((await nav.getByRole("button", { name: /^Fixed Income, / }).boundingBox())!.width).toBeGreaterThan(150);
-  await page.keyboard.press("Escape");
-  await expect(nav.getByRole("button", { name: "Expand the rail" })).toBeVisible();
+  await nav.getByRole("button", { name: "Collapse the rail" }).click();
   expect((await nav.boundingBox())?.width).toBe(56);
+  expect((await nav.getByRole("button", { name: /^Fixed Income, / }).boundingBox())!.width).toBeLessThan(60);
+  await page.reload();
+  expect((await nav.boundingBox())?.width).toBe(224); // nothing is remembered
 
-  // On a phone there is no rail; the top bar's Home and Back are what there is, as before.
+  // On a phone the rail is a drawer that the top bar's Menu button opens; Home and Back are there as before.
   await page.setViewportSize({ width: 390, height: 844 });
+  await expect(nav).toBeHidden();
+  await topbar(page).getByRole("button", { name: "Menu" }).click();
+  await expect(nav).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(nav).toBeHidden();
   await expect(topbar(page).getByRole("link", { name: "Home" })).toBeVisible();
   await expect(topbar(page).getByRole("button", { name: "Back (this is the start screen)" })).toBeVisible();

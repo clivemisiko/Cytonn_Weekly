@@ -214,12 +214,11 @@ def test_a_blocked_stub_part_is_skipped_with_its_real_blocked_reason():
 def test_a_theme_with_nothing_to_draft_closes_as_skipped_never_as_drafted():
     log = ev.EventLog()
     review = sh.real_estate_review(on_event=log)  # the helper's provider finds no hospitality story
-    quiet = [e for e in log.events if e.label == "Hospitality and tourism"]
-    assert [e.kind for e in quiet] == [ev.PIECE_STARTED, ev.PART_SKIPPED]
+    quiet = [e for e in log.events if e.label == "Hospitality and Tourism"]
+    # the drafter closes the piece as skipped; the part it leaves behind ("not included") is reported once more
+    assert [e.kind for e in quiet] == [ev.PIECE_STARTED, ev.PART_SKIPPED, ev.PART_SKIPPED]
     assert quiet[1].detail == "Nothing qualifying found for the week."
-    assert "Hospitality and tourism" not in [b.get("topic") for b in review.section["blocks"]]
-    # a brief never searched (its target was already met) reports nothing at all
-    assert not [e for e in log.events if e.label == "Land"]
+    assert "Hospitality and Tourism" not in [b.get("topic") for b in review.section["blocks"]]
 
 
 def test_a_source_that_fails_outright_is_reported_and_the_error_still_propagates():

@@ -138,7 +138,7 @@ def _equities(ctx: DraftContext) -> CoordinatorReview:
 def _real_estate(ctx: DraftContext) -> CoordinatorReview:
     from cytonn_weekly.real_estate.review_run import build_real_estate_review
 
-    return build_real_estate_review(**_as_of(ctx), **_observer(ctx))
+    return build_real_estate_review(**_as_of(ctx), **_observer(ctx), db_path=ctx.db_path)
 
 
 def _focus(ctx: DraftContext) -> CoordinatorReview:
@@ -204,10 +204,15 @@ SECTIONS: tuple[SectionSpec, ...] = (
     ),
     SectionSpec(
         slug="real_estate", title="Real Estate", available=True, build=_real_estate,
+        subsections=("Industry reports", "Residential sector", "Land", "Hospitality and Tourism", "REITs"),
         steps=(
-            ("Draft subsections", "Up to four of this week's housing, mortgage, hospitality, infrastructure and other stories."),
-            ("Fetch REITs", "Acorn D-REIT, Acorn I-REIT and ILAM Fahari prices from the NSE Ibuka weekly PDF."),
-            ("Check", "REIT figures exact-matched to the PDF; every claim's figures matched to its cited text."),
+            ("Your snips", "You upload magazine snips under Industry reports, Residential sector, Land, Hospitality and Tourism "
+                           "and REITs, read each, fix its text and confirm it. Nothing is searched for this section."),
+            ("Draft sectors", "Each sector with a confirmed snip is written from that sector's snips alone; one without is left out and named."),
+            ("Fetch REITs", "Acorn D-REIT, Acorn I-REIT and ILAM Fahari prices from the NSE Ibuka weekly PDF; the standing REITs "
+                            "text is carried from the last saved review."),
+            ("Check", "REIT figures exact-matched to the PDF; every claim's quote found word for word in its snip; every outlook "
+                      "sentence must rest on a claim."),
             _YOUR_REVIEW,
         ),
     ),

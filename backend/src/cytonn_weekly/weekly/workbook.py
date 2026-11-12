@@ -62,6 +62,40 @@ def norm(value: Any) -> str:
     return " ".join(str(value).split()).lower() if isinstance(value, str) else ""
 
 
+_MONTHS = ("january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december")
+_PREFIX = re.compile(r"\b(?:as published on|published on|as at|on)\b")
+_NAMED = re.compile(r"(?<!\d)(\d{1,2})(?:st|nd|rd|th)?[\s.,/-]*([a-z]{3,9})\.?[\s.,/-]*(\d{4}|\d{2})(?!\d)")
+_NUMERIC = re.compile(r"(?<!\d)(\d{1,2})[/.-](\d{1,2})[/.-](\d{4}|\d{2})(?!\d)")
+_ISO = re.compile(r"(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)")
+
+
+def read_title_date(value: Any) -> Optional[date]:
+    """The date a workbook title or header states ("as published on 30th October 2026", "as at 06/11/26", a real date cell).
+
+    Day first always (Kenyan order).  None when there is no date or it is not a real one (31/02/2026)."""
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if not isinstance(value, str):
+        return None
+    text = norm(value.replace("\xa0", " "))
+    pre = _PREFIX.search(text)
+    text = text[pre.end():] if pre else text
+    try:
+        if m := _ISO.search(text):
+            return date(int(m[1]), int(m[2]), int(m[3]))
+        if m := _NUMERIC.search(text):
+            d, mo, y = int(m[1]), int(m[2]), int(m[3])
+        elif (m := _NAMED.search(text)) and (mo := next((i for i, n in enumerate(_MONTHS, 1) if n.startswith(m[2])), 0)):
+            d, y = int(m[1]), int(m[3])
+        else:
+            return None
+        return date(y + 2000 if y < 100 else y, mo, d)
+    except ValueError:
+        return None
+
+
 class Sheet:
     """One worksheet's saved values, held as a grid (1-based rows and columns)."""
 

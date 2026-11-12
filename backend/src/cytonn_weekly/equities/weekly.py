@@ -552,16 +552,34 @@ def _day_turnover(m: Market, day: date) -> Optional[dict[str, Any]]:
     return None
 
 
-def _usd_week(m: Market, week: Week, kes_for: Callable[[date], Optional[dict[str, Any]]], prefix: str
-              ) -> tuple[Optional[dict[str, dict]], Optional[list], list[date]]:
-    """(inputs, the expression for the week's USD mn total, the days with no figure) for one week."""
+def _rate_on(m: Market, day: date) -> tuple[Optional[dict[str, Any]], Optional[date]]:
+    """The day's own CBK rate, else the last one published before it (never a later one); with the date of the rate used."""
+    if day in m.rates:
+        return m.rates[day], day
+    earlier = [d for d in m.rates if d < day]
+    if not earlier:
+        return None, None
+    used = max(earlier)
+    rate = m.rates[used]
+    return {**rate, "source": f"{rate['source']}, rate of {used.isoformat()}, the last published before {day.isoformat()}"}, used
+
+
+def _usd_week(m: Market, week: Week, kes_for: Callable[[date], Optional[dict[str, Any]]], prefix: str,
+              notes: Optional[list[str]] = None) -> tuple[Optional[dict[str, dict]], Optional[list], list[date]]:
+    """(inputs, the expression for the week's USD mn total, the days with no figure) for one week.
+
+    A day with no CBK rate of its own uses the last rate published before it, and says so in ``notes``."""
     inputs: dict[str, dict] = {}
     terms, missing = [], []
     for n, day in enumerate(week.trading_days):
-        kes, rate = kes_for(day), m.rates.get(day)
+        kes = kes_for(day)
+        rate, used = _rate_on(m, day) if kes is not None else (None, None)
         if kes is None or rate is None:
             missing.append(day)
             continue
+        if used != day and notes is not None:
+            notes.append(f"CBK published no rate for {day.isoformat()}; that day's figure is converted at the rate of "
+                         f"{used.isoformat()}, the last published before it.")
         inputs[f"{prefix}kes_{n}"], inputs[f"{prefix}rate_{n}"] = kes, rate
         terms.append(["div", f"{prefix}kes_{n}", f"{prefix}rate_{n}"])
     if missing or not terms:
@@ -576,7 +594,8 @@ def _days(days: list[date]) -> str:
 def turnover_block(m: Market) -> dict[str, Any]:
     title = "Market Performance: equities turnover"
     week = m.week
-    inputs, expr, missing = _usd_week(m, week, lambda d: _day_turnover(m, d), "")
+    rate_notes: list[str] = []
+    inputs, expr, missing = _usd_week(m, week, lambda d: _day_turnover(m, d), "", rate_notes)
     if inputs is None:
         need_rate = [d for d in missing if m.rates.get(d) is None and _day_turnover(m, d) is not None]
         why = (f"The CBK rate for {_days(need_rate)} was not found." if need_rate else
@@ -591,7 +610,7 @@ def turnover_block(m: Market) -> dict[str, Any]:
     if series is not None and series.total is not None:
         figs.items[-1]["second"] = {"value": series.total.number, "source": f"analyst input from {WB} {series.total.ref}", "decimals": 1}
     text = f"During the week, equities turnover stood at USD {now} mn"
-    p_inputs, p_expr, p_missing = _usd_week(m, week.previous, lambda d: _day_turnover(m, d), "last_")
+    p_inputs, p_expr, p_missing = _usd_week(m, week.previous, lambda d: _day_turnover(m, d), "last_", rate_notes)
     if p_inputs is None and series is not None and len(series.history) >= 2 and series.history[-2][0] in week.previous.report_dates:
         # The previous week's own days are not all in this week's inputs: its typed weekly row is used instead.
         row = equities_workbook.read_turnover(book, week.previous).total
@@ -609,7 +628,7 @@ def turnover_block(m: Market) -> dict[str, Any]:
         ytd = figs.add("turnover_ytd", "Year-to-date equities turnover (USD mn)", PLAIN, 1, {"ytd": typed(running, WB)})
         text += f", taking the YTD total turnover to USD {ytd} mn"
     text += "."
-    notes = [f"Each day's equities turnover in KES is divided by that day's CBK rate; {week.days_note()}."]
+    notes = [f"Each day's equities turnover in KES is divided by that day's CBK rate; {week.days_note()}.", *rate_notes]
     if running is None:
         notes.append(f"The year-to-date total is left out: it is the analysts' running total, which is neither typed under "
                      f"\"{analyst.FORM}\" nor in an {WB.lower()} updated for this week.")
@@ -654,7 +673,8 @@ def _count_word(n: int) -> str:
 def foreign_block(m: Market) -> dict[str, Any]:
     title = "Market Performance: foreign investors"
     week = m.week
-    inputs, expr, missing = _usd_week(m, week, lambda d: _day_flow(m, d), "")
+    rate_notes: list[str] = []
+    inputs, expr, missing = _usd_week(m, week, lambda d: _day_flow(m, d), "", rate_notes)
     if inputs is None:
         need_rate = [d for d in missing if m.rates.get(d) is None and _day_flow(m, d) is not None]
         why = (f"The CBK rate for {_days(need_rate)} was not found." if need_rate else
@@ -668,7 +688,7 @@ def foreign_block(m: Market) -> dict[str, Any]:
     if series is not None and series.total is not None:
         figs.items[-1]["second"] = {"value": series.total.number, "source": f"analyst input from {WB} {series.total.ref}", "decimals": 1}
     value = figs.value("net_flow")
-    notes = [f"Each day's net foreign flow in KES is divided by that day's CBK rate; {week.days_note()}."]
+    notes = [f"Each day's net foreign flow in KES is divided by that day's CBK rate; {week.days_note()}.", *rate_notes]
     earlier = form.foreign_history()   # the analysts' weekly sums before this week: (the Friday, USD mn, its cell)
     on_form = any(analyst.is_typed(c) for _, _, c in earlier)
     previous = earlier[-1] if earlier and earlier[-1][0] in week.previous.report_dates else None

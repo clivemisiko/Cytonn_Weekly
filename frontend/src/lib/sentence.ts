@@ -7,6 +7,20 @@ export const MAX_SENTENCE = 600;
 /** The most characters a hand-typed carried-forward paragraph may have; the API judges it the same way. */
 export const MAX_PARAGRAPH = 1200;
 
+/** The most characters Real Estate's standing REITs text may have (a paragraph and its list, a line each); the API judges it the same way. */
+export const MAX_STANDING = 4000;
+
+/** What the API stores for the standing text: each line tidied, empty lines dropped, the lines kept. */
+const standingLines = (text: string): string => text.split(/\r?\n/).map(tidy).filter(Boolean).join("\n");
+
+/** Like sentenceCheck for the standing text, where each line stays a line. */
+export function standingCheck(text: string, original: string): SentenceCheck {
+  const stored = standingLines(text);
+  const length = [...stored].length;
+  const over = Math.max(0, length - MAX_STANDING);
+  return { length, over, empty: length === 0, same: stored === standingLines(original), ok: length > 0 && over === 0 && stored !== standingLines(original) };
+}
+
 /** What the API stores: one line, single spaces. */
 export const tidy = (text: string): string => text.split(/\s+/).filter(Boolean).join(" ");
 
