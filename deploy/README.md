@@ -1,7 +1,7 @@
 # Deploying to the shared server
 
-`docker-compose.server.yml` is the override for the one host the app runs on (`159.223.140.184`,
-deployed 2026-10-28). It is kept here so the deployment is not folklore; it is copied to the server
+`docker-compose.server.yml` is the override for the production host (deployed
+2026-10-28). It is kept here so the deployment is not folklore; it is copied to the server
 by hand, not applied from a checkout.
 
 ## Why the images are not built on the server
@@ -21,8 +21,8 @@ So the images are built elsewhere and shipped as tarballs. **Never run `--build`
 - **`mem_limit` on both services.** These exist so that if this app does not fit, the kernel kills
   one of its containers and not a neighbour. Raise a limit if a container is killed under real use;
   do not remove it.
-- **The api runs as uid 1007 (`clive`) with `HOME` and `MPLCONFIGDIR` inside `/app/data`.** The
-  image builds a home for uid 10001, but the bind-mounted data folder is owned by `clive` and root
+- **The api runs as the deploy user's uid (set in `docker-compose.server.yml`) with `HOME` and `MPLCONFIGDIR` inside `/app/data`.** The
+  image builds a home for uid 10001, but the bind-mounted data folder is owned by the deploy user and root
   was not available to change it. Without the redirect, matplotlib's font cache has nowhere to
   write. Revert both once the data folder is `chown`ed to 10001.
 
@@ -41,7 +41,7 @@ docker tag cytonn_weekly-api:latest cytonn-weekly-api:<date>
 docker tag cytonn_weekly-web:latest cytonn-weekly-web:<date>
 docker save cytonn-weekly-api:<date> -o $env:TEMP\api.tar     # -o, not a pipe: PowerShell
 docker save cytonn-weekly-web:<date> -o $env:TEMP\web.tar     # mangles binary on a pipe
-scp $env:TEMP\api.tar $env:TEMP\web.tar clive@159.223.140.184:~/cytonn-weekly/
+scp $env:TEMP\api.tar $env:TEMP\web.tar <deploy-user>@<production-host>:~/cytonn-weekly/
 ```
 
 Then on the server, after updating the two tags in `docker-compose.server.yml`:
@@ -58,7 +58,7 @@ The tags are dated rather than `latest` so a redeploy cannot silently run a diff
 ## Reaching it
 
 ```sh
-ssh -L 8010:127.0.0.1:8010 -L 5173:127.0.0.1:5173 clive@159.223.140.184
+ssh -L 8010:127.0.0.1:8010 -L 5173:127.0.0.1:5173 <deploy-user>@<production-host>
 ```
 
 Then open <http://127.0.0.1:5173>.
@@ -66,12 +66,15 @@ Then open <http://127.0.0.1:5173>.
 ## Secrets
 
 `.env` lives only on the server, at mode 600, and is never committed. It holds
-`CYTONN_DATABASE_URL` (the same Supabase database as a native run), `ANTHROPIC_API_KEY`,
-`EXA_API_KEY` and `CYTONN_LLM_PROVIDER`. Do not run `docker compose config` without `--quiet` or
-`--no-env-resolution`: it prints what `.env` holds.
+`CYTONN_DATABASE_URL` (the same Supabase database as a native run), `CYTONN_LLM_PROVIDER`,
+`BEDROCK_MODEL_ID`, the `AWS_*` variables for Bedrock and `EXA_API_KEY`. Do not run
+`docker compose config` without `--quiet` or `--no-env-resolution`: it prints what `.env` holds.
 
-The provider is `anthropic`, so **every "Draft again" on the overview spends real API budget**.
-Set `CYTONN_LLM_PROVIDER=local` and recreate the api to make the instance free to run.
+In production `CYTONN_LLM_PROVIDER` is `bedrock`. When it is unset the code default is `anthropic`
+(which needs `ANTHROPIC_API_KEY` and `CYTONN_LLM_MODEL`). Either way **every "Draft again" on the
+overview spends real model budget**. Set `CYTONN_LLM_PROVIDER=local` and recreate the api to make the
+instance free to run (drafts are then marked for development only). After editing `.env`, recreate
+the api with `docker compose up -d --force-recreate api`; a restart does not re-read it.
 
 ## Rollback
 
