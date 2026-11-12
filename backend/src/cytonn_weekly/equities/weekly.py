@@ -54,6 +54,7 @@ from cytonn_weekly.common.review import (
 )
 from cytonn_weekly.common.run_events import Observer, report_blocks
 from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview
+from cytonn_weekly.equities import companies
 from cytonn_weekly.equities import fetcher as afx
 from cytonn_weekly.equities.review_run import BRIEFS
 from cytonn_weekly.fixed_income.weekly import _carried
@@ -85,7 +86,7 @@ TITLE = "Equities"
 N_HIGHLIGHTS = 3
 WB = equities_workbook.SOURCE_NAME
 
-SUBSECTIONS = ("Market Performance:", "Universe of Coverage:", "Weekly highlights")
+SUBSECTIONS = ("Market Performance:", "Universe of Coverage:", "Weekly highlights", "Listed banks and insurers")
 CHARTS = ("The charts below indicate the historical P/E and dividend yields of the market (P/E chart)",
           "The charts below indicate the historical P/E and dividend yields of the market (dividend yield chart)")
 CHART_REFERENCE = "Cytonn Weekly #38.2026"
@@ -943,7 +944,7 @@ def equities_outlook_text(paragraphs: list[str]) -> Optional[str]:
 
 def compose_summary(blocks: list[dict[str, Any]], limit: int = 3000) -> str:
     lead = [b["body_md"] for b in blocks if b["kind"] == "computed" and b["id"] in ("indices", "large_caps", "banking")]
-    first_piece = next((b for b in blocks if b["kind"] == "narrative"), None)
+    first_piece = next((b for b in blocks if b["kind"] == "narrative" and not b.get("part")), None)
     if first_piece is not None:
         lead.append(first_piece.get("body_md", "").split("\n\n")[0])
     out: list[str] = []
@@ -1026,6 +1027,9 @@ def build_equities_weekly_review(
     drafted = (draft or draft_pieces)(BRIEFS, N_HIGHLIGHTS, provider=provider, today=today,
                                       window=(week.ending - timedelta(days=6), week.ending), on_event=on_event)
     blocks += [narrative_block(f"highlight_{p['brief_id']}", p) for p in drafted["pieces"]]
+    company_blocks, company_warnings = companies.part(week.ending, (week.ending - timedelta(days=6), week.ending), today,
+                                                      provider, drafted["pieces"], on_event)
+    blocks += company_blocks
     blocks.append(_carried(issue, "outlook", "Equities outlook (closing paragraph)", equities_outlook_text, ("equities",)))
 
     content = {
@@ -1033,7 +1037,7 @@ def build_equities_weekly_review(
         "week_start": drafted["week_start"], "week_end": drafted["week_end"],
         "blocks": numbered(blocks), "pieces_found": len(drafted["pieces"]), "pieces_expected": N_HIGHLIGHTS,
         "shortfall": drafted["shortfall"],
-        "warnings": list(drafted["warnings"]) + warnings + inputs.analyst.difference_lines() + problems,
+        "warnings": list(drafted["warnings"]) + company_warnings + warnings + inputs.analyst.difference_lines() + problems,
         "notices": notices,
         "chart_notes": list(CHARTS), "chart_reference": CHART_REFERENCE, "chart_after": CHART_AFTER,
         "summary": compose_summary(blocks),

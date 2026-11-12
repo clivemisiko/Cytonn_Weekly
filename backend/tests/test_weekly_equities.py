@@ -92,9 +92,10 @@ def items(review, prefix):
 def test_the_section_is_in_the_real_issues_order_with_no_afx_tables(root):
     review = build(root)
     assert [b["id"] for b in review.section["blocks"]] == ["indices", "large_caps", "banking", "turnover", "foreign", "valuation",
-                                                          "chart_nasi_pe", "chart_nasi_yield", "universe_of_coverage", "outlook"]
+                                                          "chart_nasi_pe", "chart_nasi_yield", "universe_of_coverage", "company_notes",
+                                                          "outlook"]
     kinds = [b["kind"] for b in review.section["blocks"]]
-    assert kinds == ["computed"] * 6 + ["chart", "chart", "table", "carried"]   # no index table, no gainers or losers table
+    assert kinds == ["computed"] * 6 + ["chart", "chart", "table", "computed", "carried"]   # no index table, no gainers or losers table
     assert [b["status"] for b in review.section["blocks"] if b["kind"] == "chart"] == ["drawn", "drawn"]
     files = getattr(review, chart_store._FILES)          # rendered and kept on the review until its first save
     assert {b["png_sha256"] for b in review.section["blocks"] if b["kind"] == "chart"} == {
@@ -293,8 +294,8 @@ def test_missing_inputs_leave_named_unavailable_parts(tmp_path):
                                                    previous_issue=down))
     by = blocks(review)
     assert list(by) == ["indices", "large_caps", "banking", "turnover", "foreign", "valuation", "chart_nasi_pe", "chart_nasi_yield",
-                        "universe_of_coverage", "outlook"]
-    assert {b["kind"] for b in by.values() if not b["id"].startswith("chart_")} == {"unavailable"}
+                        "universe_of_coverage", "company_notes", "outlook"]
+    assert {b["kind"] for b in by.values() if not b["id"].startswith("chart_") and b["id"] != "company_notes"} == {"unavailable"}
     assert by["large_caps"]["reason"] == "KCB IB's weekly trading report for this week is not among this week's inputs."
     assert by["valuation"]["reason"] == (
         "The market P/E, the historical average P/E, the market dividend yield and the historical average dividend yield have "

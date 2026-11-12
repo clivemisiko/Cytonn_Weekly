@@ -164,7 +164,7 @@ _FI_CHARTS = (
     "The chart below shows the interbank rates in the market over the years",
     "The chart below summarizes the evolution of Kenya's months of import cover over the last two years",
 )
-_EQ_SUBSECTIONS = ("Market Performance:", "Universe of Coverage:", "Weekly highlights")
+_EQ_SUBSECTIONS = ("Market Performance:", "Universe of Coverage:", "Weekly highlights", "Listed banks and insurers")
 _EQ_CHARTS = ("The charts below indicate the historical P/E and dividend yields of the market (P/E chart)",
               "The charts below indicate the historical P/E and dividend yields of the market (dividend yield chart)")
 
@@ -195,6 +195,10 @@ SECTIONS: tuple[SectionSpec, ...] = (
             ("Work out", "Index moves, large-cap movers, turnover and foreign flows in USD, valuation, and the Universe "
                          "of Coverage table."),
             ("Draft highlights", "Up to three NSE company, banking and regulatory stories from the week, each with its source."),
+            ("Listed banks and insurers", "With the production model, each company with a website set in equities/companies.json is "
+                                          "searched on that site alone for the week (one search, two pages at most) and written up "
+                                          "from its own pages. A company with no website set is listed as not searched, and one "
+                                          "with nothing this week is only named in the notes."),
             _INPUTS_CHECK, _YOUR_REVIEW,
         ),
     ),

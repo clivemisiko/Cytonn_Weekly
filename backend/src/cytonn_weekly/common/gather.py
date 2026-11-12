@@ -35,7 +35,7 @@ class Limits:
     enough: int = 3        # a piece with this many saved sources is not searched
     max_queries: int = 2   # per piece
     max_pages: int = 4     # saved per piece, per gather
-    seconds: int = 60      # for the whole gather
+    seconds: int = 150     # for the whole gather (weekly Equities has up to 15 company pieces besides its 4 themes)
     market: str = "Kenya"  # appended to a piece's label in the query, so results are about this market
 
 
@@ -134,7 +134,7 @@ def gather_piece(piece: Piece, *, search: Search, fetch: Fetch, root: Optional[P
     saved: list[store.SourceText] = []
     queries, pool, failed = 0, [], False
     try:
-        for domains in ([list(piece.domains)] if piece.domains else []) + [None]:
+        for domains in ([list(piece.domains)] if piece.domains else []) + ([] if piece.only_domains else [None]):
             if queries >= limits.max_queries or time.monotonic() > deadline:
                 break
             if domains is None and piece.domains and len(_usable(pool, start, end, skip)) >= limits.enough:
@@ -147,7 +147,7 @@ def gather_piece(piece: Piece, *, search: Search, fetch: Fetch, root: Optional[P
                     raise   # the key is missing or refused: the same for every piece, so gather() says so once
                 failed = True
                 log.warning("gather: search failed for %s: %s", piece.subject, type(exc).__name__)
-        for r in _usable(pool, start, end, skip)[:limits.max_pages]:
+        for r in _usable(pool, start, end, skip)[:piece.max_pages or limits.max_pages]:
             if time.monotonic() > deadline:
                 break
             if got := _save(r, piece, fetch, root):
