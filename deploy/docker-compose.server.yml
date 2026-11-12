@@ -1,4 +1,4 @@
-# Server override for 159.223.140.184.
+# Server override for the production host.
 #
 # Nothing is ever built here: this box has too little memory to compile either image without risking
 # its other workloads. api and web are pulled from ghcr.io (built by .github/workflows/publish-images.yml);
@@ -6,8 +6,8 @@
 #
 #   ./deploy.sh [sha-<commit>]      see DEPLOY.md
 #
-# Both ports stay on 127.0.0.1: the app has no sign-in, so it is reached over an SSH tunnel.
-#   ssh -L 8010:127.0.0.1:8010 -L 5173:127.0.0.1:5173 clive@159.223.140.184
+# Both ports stay on 127.0.0.1; the proxy below is the way in from outside, and an SSH tunnel also works.
+#   ssh -L 8010:127.0.0.1:8010 -L 5173:127.0.0.1:5173 <deploy-user>@<production-host>
 
 services:
   api:
@@ -20,8 +20,8 @@ services:
     # This box runs other production workloads in under 2 GB. The limit is here so that if this
     # app does not fit, the kernel kills this container and not a neighbour.
     mem_limit: 768m
-    # The image builds a home for uid 10001, but the bind-mounted data folder is owned by clive
-    # (1007) and root is not available here to change it. So the api runs as clive instead, and
+    # The image builds a home for uid 10001, but the bind-mounted data folder is owned by the deploy
+    # user (uid 1007) and root is not available here to change it. So the api runs as that user instead, and
     # HOME moves to the one folder it can write: without it matplotlib's font cache has nowhere
     # to go. Revert both lines once the data folder is chowned to 10001.
     user: "1007:1007"

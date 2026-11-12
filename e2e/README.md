@@ -1,7 +1,9 @@
 # End-to-end tests
 
 One Playwright suite (Chromium, T01 to T114) for the web app in `frontend/`. `frontend/PARITY.md` says which test
-covers which behaviour.
+covers which behaviour. Two ids are used twice: T107 by `tests/app.spec.ts` (the Monthly) and `tests/sources.spec.ts`
+(a Bedrock start screen), and T108 by `tests/overview.spec.ts` (the export's notices on the Monthly) and
+`tests/sources.spec.ts` (a pasted source). Name the file as well as the id when you refer to either.
 
 ## The backend the tests use
 

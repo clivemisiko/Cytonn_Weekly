@@ -26,8 +26,10 @@ So the images are built elsewhere and shipped as tarballs. **Never run `--build`
   was not available to change it. Without the redirect, matplotlib's font cache has nowhere to
   write. Revert both once the data folder is `chown`ed to 10001.
 
-Both ports stay bound to `127.0.0.1`. The app has no sign-in (the Cytonn SSO stub is still blocked),
-so it must not be published on `0.0.0.0` or put behind anything another machine can reach.
+Both ports stay bound to `127.0.0.1`. The only service reachable from outside is the Caddy proxy
+(`Caddyfile`, image from `Dockerfile.proxy`). It listens on 443, asks for one shared password
+(HTTP basic auth, configured in `.env.proxy`) and forwards to the web container, which proxies
+`/api` to the api. A production host may also put its own separate sign-in in front of this one.
 
 ## Deploying a new build
 
@@ -56,6 +58,8 @@ rm api.tar web.tar
 The tags are dated rather than `latest` so a redeploy cannot silently run a different build.
 
 ## Reaching it
+
+Through the proxy's address, or, as a fallback that bypasses the proxy, over an SSH tunnel:
 
 ```sh
 ssh -L 8010:127.0.0.1:8010 -L 5173:127.0.0.1:5173 <deploy-user>@<production-host>
@@ -88,5 +92,5 @@ Nothing else on the host is touched: no other container, service, nginx config o
 
 ## Still open
 
-The box already runs authelia and nginx. Putting this app behind them would replace the SSH tunnel
-with real authentication and is the better long-term answer than a tunnel.
+The proxy's password is shared, so it gates access but does not record who approved a section. It
+stays until Cytonn SSO is unblocked (`backend/api/sso.py` is still a stub).
