@@ -10,7 +10,7 @@ from cytonn_weekly.equities import weekly as equities_weekly
 from cytonn_weekly.equities.review_run import BRIEFS as EQUITIES_BRIEFS
 from cytonn_weekly.fixed_income import weekly as fi_weekly
 from cytonn_weekly.fixed_income.weekly import BRIEFS as FI_BRIEFS
-from cytonn_weekly.real_estate.review_run import BRIEFS as RE_BRIEFS
+from cytonn_weekly.real_estate.review_run import SECTOR_BRIEFS as RE_BRIEFS
 from cytonn_weekly.source_pieces import Piece, pieces_for
 from tests import periodic_helpers as ph
 from tests import section_helpers as sh

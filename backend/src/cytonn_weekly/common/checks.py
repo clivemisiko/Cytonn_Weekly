@@ -267,6 +267,25 @@ RATING_RE = re.compile(r"\b(NEUTRAL|POSITIVE|NEGATIVE)\b")
 ROLES_WRITTEN_FROM_SECTIONS = ("lead", "conclusion")   # no search, no claims: written from the finished sections
 
 
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\"'(])")
+
+
+def _words(text: str) -> str:
+    return " ".join(text.casefold().split())
+
+
+def unsupported_sentences(text: str, claims: list[dict[str, Any]]) -> list[str]:
+    """The sentences of ``text`` that no claim backs: a sentence is backed when a claim's text sits inside it or it sits inside
+    a claim's text. Every claim already passed the quote check, so a backed sentence rests on a fact in a supplied source."""
+    backing = [_words(c.get("text") or "") for c in claims if (c.get("text") or "").strip()]
+    out = []
+    for sentence in _SENTENCE_END.split(" ".join(text.split())):
+        s = _words(sentence)
+        if s and not any(b in s or s in b for b in backing):
+            out.append(sentence)
+    return out
+
+
 def check_piece(block: dict[str, Any], blocks: list[dict[str, Any]]) -> list[Flag]:
     """Block-level flags of a drafted piece that has a ``role`` (subject: the block's id, scope: claim).
 
@@ -276,6 +295,10 @@ def check_piece(block: dict[str, Any], blocks: list[dict[str, Any]]) -> list[Fla
       they add came from nowhere the tool can show.
     * The conclusion is always flagged for the analyst's judgement.
     """
+    if block.get("outlook"):   # Real Estate's closing outlook: every sentence must rest on a claim
+        return [Flag(kind=UNSOURCED, scope=CLAIM_SCOPE, subject=block["id"], field=None, drafted=s,
+                     message=f"this outlook sentence rests on no figure, proposal or event in the supplied snips or the Ibuka data: {s[:120]}")
+                for s in unsupported_sentences(block.get("body") or "", block.get("claims") or [])]
     role = block.get("role")
     if role not in ("lead", "section", "conclusion"):
         return []

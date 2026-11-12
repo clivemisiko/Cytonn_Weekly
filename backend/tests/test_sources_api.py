@@ -13,10 +13,10 @@ from tests.test_sources import PARAGRAPH, PUBLIC, Getter, article, reply
 
 PERIOD = "Week ending 2026-10-02"
 FRIDAY = date(2026, 10, 2)
-REAL_ESTATE = pieces_for("weekly", PERIOD, "real_estate")
+REAL_ESTATE = pieces_for("weekly", PERIOD, "fixed_income")   # the weekly Real Estate takes snips, not sources
 SUBJECT = REAL_ESTATE[0].subject
 DP_SUBJECT = pieces_for("weekly", PERIOD, "digital_payments")[0].subject
-PASTED = {"section": "real_estate", "subject": SUBJECT, "period": PERIOD, "url": "https://www.centralbank.go.ke/press/x",
+PASTED = {"section": "fixed_income", "subject": SUBJECT, "period": PERIOD, "url": "https://www.centralbank.go.ke/press/x",
           "date": "2026-09-30", "text": PARAGRAPH * 2, "title": "CBK statement"}
 
 
@@ -44,14 +44,14 @@ def post(client, **over):
 
 
 def listing(client, **params):
-    return client.get("/api/sources", params={"section": "real_estate", "period": PERIOD, **params})
+    return client.get("/api/sources", params={"section": "fixed_income", "period": PERIOD, **params})
 
 
 # --- the listing -----------------------------------------------------------------------------------------------------------
 
 def test_the_listing_names_each_piece_with_its_day_and_week_and_no_sources_yet(client):
     body = listing(client).json()
-    assert body["section"] == "real_estate" and body["uses_sources"] is True and body["title"] == "Real Estate"
+    assert body["section"] == "fixed_income" and body["uses_sources"] is True and body["title"] == "Fixed Income"
     assert [p["subject"] for p in body["pieces"]] == [p.subject for p in REAL_ESTATE] and len(REAL_ESTATE) >= 3
     assert all(p["sources"] == [] and p["end"] == "2026-10-02" and p["week_end"] == "2026-10-02" for p in body["pieces"])
     assert all(p["gather"] is None for p in body["pieces"])   # no look has happened yet
@@ -186,7 +186,7 @@ def test_a_fetch_that_fails_shows_the_sentence_and_keeps_nothing(client, fetched
 
 def test_a_subject_that_is_not_a_piece_of_the_section_is_422_naming_the_pieces(client):
     r = post(client, subject="Cryptocurrency")
-    assert r.status_code == 422 and "is not a piece of Real Estate" in r.json()["detail"] and SUBJECT in r.json()["detail"]
+    assert r.status_code == 422 and "is not a piece of Fixed Income" in r.json()["detail"] and SUBJECT in r.json()["detail"]
 
 
 def test_the_subject_may_differ_in_case_and_spacing(client):

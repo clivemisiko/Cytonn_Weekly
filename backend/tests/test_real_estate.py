@@ -9,7 +9,7 @@ from cytonn_weekly.common.http import NotFound
 from cytonn_weekly.common.review import CLAIM
 from cytonn_weekly.digital_payments.coordinator_review import CLEAN, NOT_AUTO_VERIFIED, TABLE_ROW
 from cytonn_weekly.real_estate import fetcher, stubs
-from cytonn_weekly.real_estate.review_run import BRIEFS, SECTION, build_real_estate_review
+from cytonn_weekly.real_estate.review_run import SECTION, SECTOR_BRIEFS, build_real_estate_review
 from tests.section_helpers import TODAY, FakeNarrativeProvider, real_estate_review, reits
 
 IBUKA_PDF = (Path(__file__).parent / "fixtures" / "sources" / "ibuka_2026-09-25.pdf").read_bytes()
@@ -72,14 +72,18 @@ def test_fetch_reits_with_no_summary_at_all_raises():
         fetcher.fetch_reits(TODAY, get=_getter({}))
 
 
+def _reits_block(review):
+    return next(b for b in review.section["blocks"] if b["id"] == "reits")
+
+
 def test_review_closes_with_reits_and_checks_clean():
     review = real_estate_review()
     blocks = review.section["blocks"]
     assert review.section["section"] == SECTION
-    assert [b["id"] for b in blocks] == ["subsection_residential", "subsection_affordable_housing",
-                                         "subsection_infrastructure", "subsection_commercial", "reits"]
-    assert blocks[-1]["numeral"] == "V"
-    assert blocks[-1]["rows"][1] == {"reit": "ACORN_I", "name": "Acorn I-REIT", "price": "24.4", "inception_gain_pct": "22.0%"}
+    assert [b["id"] for b in blocks] == ["sector_industry", "sector_residential", "sector_land", "sector_hospitality",
+                                         "reits", "standing", "outlook_reits"]
+    assert _reits_block(review)["numeral"] == "V"
+    assert _reits_block(review)["rows"][1] == {"reit": "ACORN_I", "name": "Acorn I-REIT", "price": "24.4", "inception_gain_pct": "22.0%"}
     rows = [i for i in review.review_items if i.kind == TABLE_ROW]
     assert len(rows) == 3 and all(i.status == CLEAN for i in rows)
     assert all(i.status == NOT_AUTO_VERIFIED for i in review.review_items if i.kind == CLAIM)
@@ -88,7 +92,7 @@ def test_review_closes_with_reits_and_checks_clean():
 def test_reit_prices_print_as_cytonn_weekly_38_2026_did():
     """Same Ibuka prices, same strings as the real report: "traded at Kshs 29.7 and Kshs 24.4 per unit",
     "ILAM Fahari I-REIT traded at Kshs 13.8".  29.65 -> 29.7 also pins round-half-up."""
-    prices = [r["price"] for r in real_estate_review().section["blocks"][-1]["rows"]]
+    prices = [r["price"] for r in _reits_block(real_estate_review())["rows"]]
     assert prices == ["29.7", "24.4", "13.8"]
 
 
@@ -102,16 +106,17 @@ def test_reit_gains_are_from_the_inception_price_as_cytonn_weekly_38_2026_printe
     assert [r["price"] for r in out["rows"]] == [29.65, 24.44, 13.8]
     assert [r["inception_gain_pct"] for r in out["rows"]] == [48.5, 22.0, -31.0]
     assert [c["key"] for c in fetcher.COLUMNS] == ["name", "price", "inception_gain_pct"]
-    shown = [r["inception_gain_pct"] for r in real_estate_review().section["blocks"][-1]["rows"]]
+    shown = [r["inception_gain_pct"] for r in _reits_block(real_estate_review())["rows"]]
     assert shown == ["48.5%", "22.0%", "(31.0%)"]
     assert fetcher.inception_gain_pct(None) is None
 
 
-def test_rotating_subsections_skip_a_quiet_theme_and_stop_at_four():
+def test_each_sector_is_drafted_from_its_own_snips_and_a_quiet_one_is_not_included():
     provider = FakeNarrativeProvider(no_story={"hospitality"})
-    review = build_real_estate_review(provider=provider, today=TODAY, fetch_reits=lambda _t: reits())
-    assert provider.calls == [b.id for b in BRIEFS[:5]]
-    assert any("Land: not searched" in w for w in review.section["warnings"])
+    review = real_estate_review(provider)
+    assert provider.calls == [b.id for b in SECTOR_BRIEFS]
+    hospitality = next(b for b in review.section["blocks"] if b["id"] == "sector_hospitality")
+    assert hospitality["kind"] == "unavailable" and hospitality["sector"] == "hospitality"
 
 
 def test_source_warnings_reach_the_section():

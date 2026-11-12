@@ -12,6 +12,8 @@ from cytonn_weekly.digital_payments.providers.base import SCOPE_WEB, HighlightRe
 from cytonn_weekly.equities.review_run import build_equities_review
 from cytonn_weekly.focus.review_run import build_focus_review
 from cytonn_weekly.narrative.base import NarrativeProvider
+from cytonn_weekly.common import sources as source_store
+from cytonn_weekly.real_estate import snips
 from cytonn_weekly.real_estate.review_run import build_real_estate_review
 from cytonn_weekly.weekly.previous_issue import Issue
 
@@ -130,7 +132,15 @@ def equities_review(provider=None, on_event=None):
                                  today=TODAY, fetch_market=market, on_event=on_event)
 
 
+def confirm_snips(sectors=("industry", "residential", "land", "hospitality")):
+    """A confirmed snip saved as a source for each of these sectors, as the confirm route leaves it."""
+    for sid in sectors:
+        label = snips.LABELS[sid]
+        source_store.from_snip(f"image-{sid}".encode(), ".png", f"{label} figures.", label, TODAY, TODAY.isoformat(), f"{sid}.png")
+
+
 def real_estate_review(provider=None, on_event=None):
+    confirm_snips()
     return build_real_estate_review(provider=provider or FakeNarrativeProvider(no_story={"hospitality"}),
                                     today=TODAY, fetch_reits=lambda _today: reits(), on_event=on_event)
 

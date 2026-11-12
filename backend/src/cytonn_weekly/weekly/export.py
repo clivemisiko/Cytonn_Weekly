@@ -382,6 +382,13 @@ def _add_blocks(doc, review: CoordinatorReview, charts_root: Optional[Union[Path
             doc.add_heading(block["group_heading"], level=2)
         if kind == "table":
             _add_table_block(doc, block)
+        elif kind == "narrative" and block.get("outlook"):   # Real Estate's closing outlook: bold italic, as the issue prints it
+            first = len(doc.paragraphs)
+            _add_text(doc, block.get("body_md") or "")
+            for para in doc.paragraphs[first:]:
+                if not para.text.startswith("Sources:") and not para.text.startswith("["):
+                    for run in para.runs:
+                        run.bold = run.italic = True
         elif kind == "narrative" and block.get("role"):
             _add_text(doc, block.get("body_md") or "")   # a Focus part: a section's heading is its group_heading, printed above
         elif kind == "narrative":
@@ -399,6 +406,13 @@ def _add_blocks(doc, review: CoordinatorReview, charts_root: Optional[Union[Path
             names = [s["name"] for s in block.get("sources") or [] if s.get("name")]
             if names:
                 small_line(doc, "Source: " + "; ".join(names))
+        elif kind == "carried" and block.get("role") == "standing":
+            if not block.get("edits"):
+                note = _mark(doc, CARRIED_NOTE)
+                note.bold, note.font.color.rgb = True, _RED
+            for line in block["body_md"].splitlines():   # the paragraph, then each list item on its own line
+                if line.strip():
+                    doc.add_paragraph(line.strip())
         elif kind == "carried":
             if block.get("role") != "disclaimer":   # the Focus's disclaimer starts with its own word, "Disclaimer:"
                 doc.add_heading(block["title"], level=2)

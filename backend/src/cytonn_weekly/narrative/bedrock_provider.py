@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import copy
 import importlib.util
 import json
@@ -35,7 +36,7 @@ from cytonn_weekly.digital_payments.providers.drafting import (
     piece_from_reply,
     results_message,
 )
-from cytonn_weekly.narrative.base import NarrativeBrief, NarrativeProvider
+from cytonn_weekly.narrative.base import NarrativeBrief, NarrativeProvider, SnipReadError
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,15 @@ BOTO3_MISSING = (f"Signing Bedrock requests with access keys needs boto3, which 
 NO_SOURCES = "No sources were supplied for this piece, so nothing was drafted. Supply the pages to read."
 NO_VERIFIED_CLAIMS = ("No claim in the draft held up against the supplied sources (each failed claim is listed in the "
                       "warnings), so nothing was kept. Check the pages, or supply others.")
+SNIP_MAX_TOKENS = MAX_TOKENS   # one call per snip, capped like a draft; a reply cut off at it is refused, never kept
+SNIP_SYSTEM = (
+    "You transcribe text from an image that an analyst cut out of a magazine or report. Copy every word, number, unit, "
+    "date and name exactly as printed, in reading order. Write a table as one row per line with the cells separated by "
+    " | . Do not summarise, explain, correct, translate or add any word. Where text cannot be read, write [unclear] in "
+    "its place. If the image holds no text, reply with [unclear] only. Reply with the transcription alone.")
+SNIP_PROMPT = "Transcribe the text in this image."
+SNIP_CUT_OFF = ("The snip holds more text than one reading can carry, so the transcription was cut off and not kept. "
+                "Crop it into smaller snips and upload them again.")
 SOURCE_CHARS = 12_000   # the most of one source's text the model is shown; the quote check reads the whole saved text
 
 # The shared prompts end their claim step with "the exact URL of the search result that supports it". Here the reply
@@ -252,6 +262,7 @@ class _Chat:
         self.drafted_by = f"bedrock:{self.model}"
         self._client = client
         self._sleep = sleep   # injectable, so a test waits for nothing
+        self.last_stop = ""   # stop reason of the last call
         self.requests = 0   # Bedrock calls made, a retry of one call not counted; the Focus review shows it
 
     @property
@@ -313,6 +324,7 @@ class _Chat:
             logger.warning("Bedrock call failed: %s (aws error %r, HTTP %s)", type(exc).__name__, _kind(exc),
                            getattr(exc, "status_code", None))
             raise BedrockError(problem_for(exc, self.model, region())) from None
+        self.last_stop = resp.stop_reason or ""
         usage = getattr(resp, "usage", None)   # at WARNING so it shows with no logging set up; counts only, never text
         logger.warning("Bedrock request %d: %s, %s input tokens, %s output tokens, stop reason %s", self.requests, self.model,
                        getattr(usage, "input_tokens", "unknown"), getattr(usage, "output_tokens", "unknown"), resp.stop_reason)
@@ -433,3 +445,15 @@ class BedrockNarrativeProvider(_Chat, NarrativeProvider):
     def complete(self, system: str, prompt: str, *, max_tokens: int) -> str:
         messages = [{"role": "system", "content": system}, {"role": "user", "content": prompt}]
         return self._chat(messages, max_tokens=max_tokens).strip()
+
+    def read_snip(self, image: bytes, media_type: str) -> str:
+        """One call: the image as it was uploaded (never decoded or resized here) plus the transcription instruction.
+        Goes through ``_chat``, so it has the same retry, back-off and cool-off as a draft."""
+        block = {"type": "image", "source": {"type": "base64", "media_type": media_type,
+                                              "data": base64.standard_b64encode(image).decode("ascii")}}
+        text = self._chat([{"role": "system", "content": SNIP_SYSTEM},
+                           {"role": "user", "content": [block, {"type": "text", "text": SNIP_PROMPT}]}],
+                          max_tokens=SNIP_MAX_TOKENS).strip()
+        if self.last_stop == "max_tokens":
+            raise SnipReadError(SNIP_CUT_OFF)
+        return text
