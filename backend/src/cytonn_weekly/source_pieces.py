@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, timedelta
-from typing import Optional, Sequence
+from typing import Any, Optional, Sequence
 
 from cytonn_weekly.report_types import ANNUAL, HALF_YEAR, QUARTERLY, WEEKLY, normalize_period, week_ending_of
 from cytonn_weekly.weekly.week import latest_friday
@@ -24,6 +24,7 @@ class Piece:
     market: bool = field(default=True, compare=False)                 # False for a global company: the gather step adds no market name to its query
     only_domains: bool = field(default=False, compare=False)          # True: one search on ``domains`` and no open-web pass (a company's own website)
     max_pages: Optional[int] = field(default=None, compare=False)     # saved pages per gather; None is the global limit
+    site: Any = field(default=None, compare=False)                    # a company whose own website is read before any search (equities/companies.py)
 
     @property
     def window(self) -> tuple[date, date]:
