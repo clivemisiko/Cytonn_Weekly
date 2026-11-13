@@ -6,14 +6,17 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import urljoin, urlsplit
 
 FILE = Path(__file__).with_name("companies.json")   # the team edits this file; a restart picks it up
 TO_CONFIRM = "to confirm"
 PART = "banks_insurers"
 TITLE = "Listed banks and insurers"
 KINDS = ("bank", "insurer")
-SEARCHES_PER_COMPANY = 1   # one search, restricted to the company's own domain
-PAGES_PER_COMPANY = 2      # saved pages per company, so a draft saves at most 2 x the companies with a domain
+SEARCHES_PER_COMPANY = 1   # the fallback: one search, restricted to the company's own domain and scope
+PAGES_PER_COMPANY = 2      # pages saved from that search
+# first path segments that name another country of the same group: such a page is never a Kenyan one
+OTHER_COUNTRIES = frozenset({"ug", "tz", "rw", "zm", "ss", "bi", "drc", "cd", "mw", "mz", "et", "ng", "gh", "za", "bw", "ls", "na"})
 _HOST = re.compile(r"[a-z0-9-]+(\.[a-z0-9-]+)+")
 FOCUS = ("what this company's own website says this week: the results period, profit or net income, dividend, book "
          "closure and payment dates, and notices to shareholders")
@@ -27,6 +30,26 @@ class Company:
     kind: str
     domain: Optional[str]   # None while the file says "to confirm"
     ir: str                 # an investor relations address, shown to the analyst and not fetched
+    scope: str = ""         # a path prefix that limits the company to its Kenyan pages ("" is the whole site)
+    hosts: tuple[str, ...] = ()   # other hostnames that belong to the company
+    start: tuple[str, ...] = ()   # full addresses where reading its site begins; none means its home page
+    kenya_only: bool = True       # False for a group whose home market is not Kenya (BK Group)
+
+    def owns(self, url: str) -> bool:
+        """Whether a link belongs to this company: its host is the domain, a subdomain of it (on the dot, so
+        "evilkcbgroup.com" is not kcbgroup.com's) or one of its hosts, the path is inside the scope, and, for a
+        Kenyan company, it does not start with another country's code."""
+        parts = urlsplit(url)
+        host = (parts.hostname or "").lower().rstrip(".")
+        if not self.domain or parts.scheme not in ("http", "https"):
+            return False
+        if not (host == self.domain or host.endswith("." + self.domain) or host in self.hosts):
+            return False
+        path = parts.path or "/"
+        if self.scope and path != self.scope and not path.startswith(self.scope + "/"):
+            return False
+        first = path.strip("/").split("/")[0].lower()
+        return not (self.kenya_only and first in OTHER_COUNTRIES)
 
     @property
     def id(self) -> str:
@@ -41,24 +64,32 @@ def load(path: Path = FILE) -> list[Company]:
         if r.get("type") not in KINDS or not str(r.get("name") or "").strip():
             raise ValueError(f"companies.json: {r!r} needs a name and a type of bank or insurer")
         domain = str(r.get("domain") or "").strip().lower()
-        out.append(Company(r["name"].strip(), r["type"], domain if _HOST.fullmatch(domain) else None, str(r.get("ir") or "").strip()))
+        scope = "/" + str(r.get("scope") or "").strip().strip("/").lower() if str(r.get("scope") or "").strip("/ ") else ""
+        hosts = tuple(h for h in (str(x).strip().lower() for x in r.get("hosts") or []) if _HOST.fullmatch(h))
+        c = Company(r["name"].strip(), r["type"], domain if _HOST.fullmatch(domain) else None, str(r.get("ir") or "").strip(),
+                    scope, hosts, (), r.get("kenya_only", True) is not False)
+        base = f"https://{c.domain}/"
+        start = tuple(u for u in (urljoin(base, str(x).strip()) for x in r.get("start") or []) if c.owns(u))
+        out.append(Company(c.name, c.kind, c.domain, c.ir, c.scope, c.hosts, start, c.kenya_only))
     return sorted(out, key=lambda c: (KINDS.index(c.kind), c.name.casefold()))
 
 
 def domains() -> tuple[str, ...]:
     """The known-sites labels: the domains that are set."""
-    return tuple(c.domain for c in load() if c.domain)
+    return tuple(h for c in load() if c.domain for h in (c.domain, *c.hosts))
 
 
 def status() -> list[dict[str, Any]]:
-    return [{"name": c.name, "type": c.kind, "domain": c.domain or TO_CONFIRM, "ir": c.ir, "set": bool(c.domain)} for c in load()]
+    return [{"name": c.name, "type": c.kind, "domain": c.domain or TO_CONFIRM, "ir": c.ir, "set": bool(c.domain),
+             "scope": c.scope} for c in load()]
 
 
 def pieces(friday: date) -> list[Any]:
-    """One source piece per company with a domain: searched on that domain alone, never on the open web."""
+    """One source piece per company with a domain: its own website is read first, and a search on that domain (and its
+    hosts) is the fallback, never the open web."""
     from cytonn_weekly.source_pieces import Piece
 
-    return [Piece(c.name, friday, domains=(c.domain,), market=False, only_domains=True, max_pages=PAGES_PER_COMPANY)
+    return [Piece(c.name, friday, domains=(c.domain, *c.hosts), market=False, only_domains=True, max_pages=PAGES_PER_COMPANY, site=c)
             for c in load() if c.domain]
 
 
@@ -78,6 +109,22 @@ def _held_by(piece: dict[str, Any], existing: list[dict[str, Any]]) -> Optional[
     ponytail: same page address, not same event; a closer match needs the sentences compared."""
     mine = _urls(piece)
     return next((e["topic"] for e in existing if mine and mine <= _urls(e)), None)
+
+
+ROUTE_TEXT = {"site": "own website read", "search": "search fallback", "nothing": "nothing found"}
+
+
+def _routes(companies: list[Company], friday: date) -> str:
+    """Which route each company's pages came from at the last look: the site read, the search fallback or nothing found,
+    with the reason a site was not used. Empty when no company has been looked for."""
+    from cytonn_weekly.common import sources as store
+
+    groups: dict[str, list[str]] = {}
+    for c in companies:
+        look = store.last_look(c.name, friday) if c.domain else None
+        if look and look.get("route") in ROUTE_TEXT:
+            groups.setdefault(look["route"], []).append(f"{c.name} ({look['note']})" if look.get("note") else c.name)
+    return "Route used: " + "; ".join(f"{ROUTE_TEXT[k]}: {', '.join(groups[k])}" for k in ROUTE_TEXT if k in groups) + "." if groups else ""
 
 
 def part(friday: date, window: tuple[date, date], today: date, provider: Any, existing: list[dict[str, Any]],
@@ -106,7 +153,11 @@ def part(friday: date, window: tuple[date, date], today: date, provider: Any, ex
             blocks.append({**narrative_block(c.id, piece), "part": PART, "company_kind": c.kind})
     unset = [c.name for c in companies if not c.domain]
     quiet = [c.name for c in companies if c.domain and c.id not in drafted_ids and c.id not in elsewhere]
-    lines = ["Each company is read from its own website only."]
+    lines = ["Each company's own website is read for news and results dated in the report week, Kenyan pages only; where a site "
+             "cannot be read, a search limited to that site is used."]
+    routes = _routes(companies, friday)
+    if routes:
+        lines.append(routes)
     if unset:
         lines.append("Not searched: website not set: " + ", ".join(unset) + ".")
     if quiet:

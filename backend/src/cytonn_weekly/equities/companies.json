@@ -2,91 +2,136 @@
   {
     "name": "Absa Bank Kenya",
     "type": "bank",
-    "domain": "to confirm",
-    "ir": ""
+    "domain": "absabank.co.ke",
+    "ir": "",
+    "start": [
+      "https://www.absabank.co.ke/investor-relations/",
+      "https://www.absabank.co.ke/media-centre/press-releases/"
+    ]
   },
   {
     "name": "BK Group",
     "type": "bank",
-    "domain": "to confirm",
-    "ir": ""
+    "domain": "bk.rw",
+    "ir": "",
+    "kenya_only": false,
+    "start": [
+      "https://www.bk.rw/investor-relation"
+    ]
   },
   {
     "name": "Diamond Trust Bank Kenya",
     "type": "bank",
-    "domain": "to confirm",
-    "ir": ""
+    "domain": "dtbk.dtbafrica.com",
+    "ir": "",
+    "start": [
+      "https://dtbk.dtbafrica.com/investor-presentation"
+    ]
   },
   {
     "name": "Equity Group Holdings",
     "type": "bank",
-    "domain": "to confirm",
+    "domain": "equitygroupholdings.com",
     "ir": ""
   },
   {
     "name": "HF Group",
     "type": "bank",
-    "domain": "to confirm",
-    "ir": ""
+    "domain": "hfcb.co.ke",
+    "ir": "",
+    "start": [
+      "https://www.hfcb.co.ke/investor-relations"
+    ]
   },
   {
     "name": "I&M Group",
     "type": "bank",
-    "domain": "to confirm",
+    "domain": "imbankgroup.com",
     "ir": ""
   },
   {
     "name": "KCB Group",
     "type": "bank",
-    "domain": "to confirm",
-    "ir": ""
+    "domain": "kcbgroup.com",
+    "ir": "",
+    "start": [
+      "https://kcbgroup.com/investor-relations",
+      "https://kcbgroup.com/press-release"
+    ]
   },
   {
     "name": "NCBA Group",
     "type": "bank",
-    "domain": "to confirm",
-    "ir": ""
+    "domain": "ncbagroup.com",
+    "ir": "",
+    "start": [
+      "https://ncbagroup.com/investor-relations/"
+    ]
   },
   {
     "name": "Stanbic Holdings",
     "type": "bank",
-    "domain": "to confirm",
-    "ir": ""
+    "domain": "standardbank.com",
+    "ir": "",
+    "scope": "/kenya",
+    "hosts": [
+      "sponsorships.standardbank.com"
+    ]
   },
   {
     "name": "Standard Chartered Bank Kenya",
     "type": "bank",
-    "domain": "to confirm",
-    "ir": ""
+    "domain": "sc.com",
+    "ir": "",
+    "scope": "/ke",
+    "start": [
+      "https://www.sc.com/ke/news-media/",
+      "https://www.sc.com/ke/investor-relations/"
+    ]
   },
   {
     "name": "Co-operative Bank of Kenya",
     "type": "bank",
-    "domain": "to confirm",
-    "ir": ""
+    "domain": "co-opbank.co.ke",
+    "ir": "",
+    "start": [
+      "https://www.co-opbank.co.ke/investor-relations/press-releases/",
+      "https://www.co-opbank.co.ke/investor-documents/"
+    ]
   },
   {
     "name": "Britam",
     "type": "insurer",
-    "domain": "to confirm",
-    "ir": ""
+    "domain": "britam.com",
+    "ir": "",
+    "start": [
+      "https://www.britam.com/investor-relations",
+      "https://www.britam.com/investor-relations/corporate-actions/announcements"
+    ]
   },
   {
     "name": "CIC Insurance Group",
     "type": "insurer",
-    "domain": "to confirm",
-    "ir": ""
+    "domain": "cicinsurancegroup.com",
+    "ir": "",
+    "start": [
+      "https://www.cicinsurancegroup.com/?p=515"
+    ]
   },
   {
     "name": "Jubilee Holdings",
     "type": "insurer",
-    "domain": "to confirm",
-    "ir": ""
+    "domain": "jubileeinsurance.com",
+    "ir": "",
+    "start": [
+      "https://jubileeinsurance.com/group/latest-news-and-stories/",
+      "https://jubileeinsurance.com/group/investor-relations/financial-reports/"
+    ]
   },
   {
-    "name": "Sanlam Kenya",
+    "name": "Sanlam Allianz Holdings (Kenya)",
     "type": "insurer",
-    "domain": "to confirm",
+    "domain": "ke.sanlamallianz.com",
     "ir": ""
   }
 ]
