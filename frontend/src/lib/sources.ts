@@ -57,7 +57,7 @@ export const charsLabel = (n: number) => `${n.toLocaleString("en-GB")} character
 export const TEXT_FROM_SEARCH = "Text supplied by the search service";
 
 /** How a source came to be saved, in the words of its facts line and the review. */
-export const ORIGIN_WORDS = { fetched: "fetched", pasted: "pasted", found: "found automatically" } as const;
+export const ORIGIN_WORDS = { fetched: "fetched", pasted: "pasted", found: "found automatically",   snip: "uploaded as a snip", } as const;
 
 /** Where a saved source is read as a styled page; `quote` is highlighted and `review` is the run the Back button returns to. */
 export function sourcePageHref(id: string, quote?: string, review?: number): string {
