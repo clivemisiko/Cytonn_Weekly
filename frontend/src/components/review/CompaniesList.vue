@@ -19,9 +19,8 @@ onMounted(async () => {
     <div class="space-y-1">
       <h2 id="companies-title" class="text-lg font-semibold">Listed banks and insurers</h2>
       <p class="text-sm text-muted-foreground">
-        Each company is searched on its own website only, for the report week
-        <template v-if="data">({{ data.searches }} search and {{ data.pages }} pages at most per company)</template>. A company whose website is still to be
-        confirmed is not searched. Set a website in <span class="font-mono text-xs">backend/src/cytonn_weekly/equities/companies.json</span> and restart the server.
+        Each company's own website is read for news and results dated in the report week. Only Kenyan pages are used. If a site
+        cannot be read, a search limited to that site is used instead. A company whose website is still to be confirmed is not read.
       </p>
     </div>
     <p v-if="error" role="alert" class="text-sm font-medium">{{ error }}</p>
