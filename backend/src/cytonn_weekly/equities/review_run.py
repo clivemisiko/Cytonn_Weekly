@@ -44,12 +44,6 @@ BRIEFS: list[NarrativeBrief] = [
                "involving a Nairobi Securities Exchange-listed company"),
     ),
     NarrativeBrief(
-        id="banking", section=TITLE, label="Listed banks",
-        focus=("a development specific to a Kenyan listed bank or the banking sector as a whole (capital, "
-               "regulation by the Central Bank of Kenya, asset quality, a major lending or funding deal)"),
-        preferred_domains=("centralbank.go.ke",),
-    ),
-    NarrativeBrief(
         id="market_regulation", section=TITLE, label="Capital markets regulation",
         focus=("a policy, rule or market-structure change announced by the Capital Markets Authority or the "
                "Nairobi Securities Exchange"),
