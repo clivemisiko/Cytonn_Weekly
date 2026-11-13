@@ -123,7 +123,11 @@ export interface SourcePiece {
   sources: SourceMeta[];
   gather?: GatherLook | null;
 }
-
+export interface EquitiesCompanies {
+  companies: { name: string; type: "bank" | "insurer"; domain: string; ir: string; set: boolean }[];
+  searches: number;
+  pages: number;
+}
 /** One uploaded Real Estate snip. `text` is null until the model has read it; only a confirmed snip is used as a source. */
 export interface SnipMeta {
   hash: string;

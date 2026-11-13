@@ -226,6 +226,7 @@ const lists = computed(() => [
     <PageGrid v-else aside-title="Inputs and steps" hide-title aside-first wide-body :sticky="false">
       <div class="space-y-8">
         <AnalystPanel v-if="usesInputs && week" :key="`analyst-${week}`" :week="week" :section="section.slug" :disabled="starting" :refresh="uploads" @pending="(p) => (typedPending = p)" />
+        <CompaniesList v-if="report.type === 'weekly' && section.slug === 'equities'" />
         <SnipsPanel v-if="snipsSection && week" :key="`snips-${week}`" :week="week" :disabled="starting" @counts="(c) => (snipCountsNow = c)" />
         <SourcesPanel v-if="bedrock" :section="section" :report="report" :titles="sections" :disabled="starting" @pieces="(p) => (sourcePieces = p)" />
         <section aria-labelledby="start-title" class="space-y-6 rounded-lg border border-t-[3px] border-t-primary bg-card p-6">

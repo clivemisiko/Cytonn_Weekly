@@ -156,6 +156,8 @@ def test_the_older_sections_are_drafted_for_the_named_week_too(tmp_path, monkeyp
     client = TestClient(create_app(db_path=tmp_path / "app.db", load_dotenv=False))
     for slug, body in (("real_estate", {}), ("digital_payments", {}), ("focus", {"topic": "SSA Eurobonds"})):
         assert client.post(f"/api/sections/{slug}/draft", json={**body, "period": "2026-10-02"}).status_code == 200
-        assert seen.pop(slug) == {"today": date(2026, 10, 2)}
+        got = seen.pop(slug)
+        assert got["today"] == date(2026, 10, 2)
+        assert set(got) <= {"today", "db_path"}
         assert client.post(f"/api/sections/{slug}/draft", json=body).status_code == 200   # no week named: as before
-        assert seen.pop(slug) == {}
+        assert set(seen.pop(slug)) <= {"db_path"}
