@@ -86,6 +86,7 @@ EMPTY = "The page at {host} has no readable text, so nothing was kept. Paste the
 PAYWALL = ("The page at {host} shows a login or subscription prompt instead of the article, so nothing was kept. Paste the "
            "text with its address and date instead.")
 SHORT = "The page at {host} has only {n} characters of text, too short to be an article, so nothing was kept."
+OUT_OF_WINDOW = "The page at {host} is dated {day}, outside the report week, so nothing was kept."
 NO_SUBJECT = "Say which piece this source is for."
 NO_URL = "Give the address (URL) of the page the text came from."
 BAD_URL = "{url!r} is not a web address; it must start with http:// or https:// and name a site."
@@ -426,7 +427,7 @@ def dismissed(subject: str, week_end: date, root: Optional[Path] = None) -> set[
 
 
 def last_look(subject: str, week_end: date, root: Optional[Path] = None) -> Optional[dict[str, Any]]:
-    """The last time the gather step looked for this piece: {looked_at, found, searched}, or None when it never has.
+    """The last time the gather step looked for this piece: {looked_at, found, searched, route, note}, or None when it never has.
     ``searched`` is False when the search service was not set up, so nothing was searched. Only counts and a time are kept."""
     try:
         raw = json.loads((_folder(week_end, root) / "looks.json").read_text(encoding="utf-8")).get(subject_key(subject))
@@ -434,10 +435,12 @@ def last_look(subject: str, week_end: date, root: Optional[Path] = None) -> Opti
         return None
     if not isinstance(raw, dict):
         return None
-    return {"looked_at": raw.get("looked_at"), "found": int(raw.get("found") or 0), "searched": bool(raw.get("searched"))}
+    return {"looked_at": raw.get("looked_at"), "found": int(raw.get("found") or 0), "searched": bool(raw.get("searched")),
+            "route": str(raw.get("route") or ""), "note": str(raw.get("note") or "")}
 
 
-def record_look(subject: str, week_end: date, found: int, searched: bool, root: Optional[Path] = None) -> None:
+def record_look(subject: str, week_end: date, found: int, searched: bool, root: Optional[Path] = None, route: str = "",
+                note: str = "") -> None:
     """Keep the result of a look in looks.json beside the manifest; a failure to write it is logged and never raised."""
     folder = _folder(week_end, root)
     try:
@@ -446,7 +449,7 @@ def record_look(subject: str, week_end: date, found: int, searched: bool, root: 
                 looks = json.loads((folder / "looks.json").read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 looks = {}
-            looks[subject_key(subject)] = {"looked_at": _now(), "found": found, "searched": searched}
+            looks[subject_key(subject)] = {"looked_at": _now(), "found": found, "searched": searched, "route": route, "note": note}
             folder.mkdir(parents=True, exist_ok=True)
             tmp = folder / "looks.json.tmp"
             tmp.write_text(json.dumps(looks, indent=2), encoding="utf-8")
@@ -483,11 +486,12 @@ def _now() -> str:
 
 def fetch_page(url: str, subject: str, week_end: date, *, http_get: Callable[..., http.Reply] = http.http_get_once,
                resolve: Callable[[str], list[str]] = _resolve, root: Optional[Path] = None,
-               now: Callable[[], str] = _now, origin: str = "fetched", fallback_date: str = "") -> SourceText:
+               now: Callable[[], str] = _now, origin: str = "fetched", fallback_date: str = "",
+               window: Optional[tuple[date, date]] = None) -> SourceText:
     """Fetch one page from any site, keep its readable text, and list it for ``subject``.
 
     ``origin`` is "found" for a page the gather step chose; ``fallback_date`` (YYYY-MM-DD) is the date used only when the
-    page states none of its own (a PDF never does).
+    page states none of its own (a PDF never does). With ``window``, a page whose date is outside it, or unknown, is not kept.
 
     ``http_get(url, max_bytes=...)`` answers once and follows nothing (common/http.http_get_once); this function
     follows at most MAX_HOPS redirects itself, each only to the same host, and applies every rule to each address.
@@ -506,6 +510,8 @@ def fetch_page(url: str, subject: str, week_end: date, *, http_get: Callable[...
         log.warning("fetch of %s failed unexpectedly: %s at %s", host_of(url) or "an unreadable address",
                     type(exc).__name__, _inner_frame(exc))
         raise SourceError(UNREADABLE.format(host=host_of(url) or "that address")) from None
+    if window and not window[0].isoformat() <= page.published_date <= window[1].isoformat():
+        raise SourceError(OUT_OF_WINDOW.format(host=page.host, day=page.published_date or "no date"))
     return _save(page, body, raw_name, root)
 
 
@@ -526,10 +532,9 @@ def _inner_frame(exc: BaseException) -> str:
     return where
 
 
-def _read_page(url: str, subject: str, week_end: date, http_get: Callable[..., http.Reply],
-               resolve: Callable[[str], list[str]], now: Callable[[], str], origin: str,
-               fallback_date: str) -> tuple[SourceText, bytes, str]:
-    """Everything of fetch_page up to saving: the request, the redirects, the rules and the reading."""
+def _get_checked(url: str, http_get: Callable[..., http.Reply], resolve: Callable[[str], list[str]]
+                 ) -> tuple[http.Reply, dict[str, str], str, str]:
+    """(the reply, its headers, the final address, its host): the request, the redirects and every address and status rule."""
     host = _refuse_address(url, resolve)
     current, hops = url, 0
     while True:
@@ -572,6 +577,22 @@ def _read_page(url: str, subject: str, week_end: date, http_get: Callable[..., h
         raise SourceError(GATED.format(host=host, status=reply.status))
     if reply.status >= 300 or reply.status < 200:      # a 3xx that is not a redirect is no page either
         raise SourceError(ERROR_STATUS.format(host=host, status=reply.status))
+    return reply, headers, current, host
+
+
+def fetch_raw(url: str, *, http_get: Callable[..., http.Reply] = http.http_get_once,
+              resolve: Callable[[str], list[str]] = _resolve) -> tuple[str, bytes, str]:
+    """(final address, body, content type) of one page, with the same guards as fetch_page and nothing saved.
+    SourceError says why it could not be read."""
+    reply, headers, current, _ = _get_checked(url.strip(), http_get, resolve)
+    return current, reply.body or b"", headers.get("content-type", "")
+
+
+def _read_page(url: str, subject: str, week_end: date, http_get: Callable[..., http.Reply],
+               resolve: Callable[[str], list[str]], now: Callable[[], str], origin: str,
+               fallback_date: str) -> tuple[SourceText, bytes, str]:
+    """Everything of fetch_page up to saving: the request, the redirects, the rules and the reading."""
+    reply, headers, current, host = _get_checked(url, http_get, resolve)
     body = reply.body or b""
     if not body.strip():
         raise SourceError(EMPTY.format(host=host))

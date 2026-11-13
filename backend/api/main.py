@@ -1374,7 +1374,8 @@ def create_app(
             return   # the weekly Real Estate is written from the analyst's snips alone: nothing is searched for it
         try:
             pieces = pieces_for(ctx.report_type, ctx.period, spec.slug, sections=ctx.sections, today=date.today()) or []
-            _, looked = source_gather.gather(pieces, search=search_sources, fetch=fetch_source, root=sources_dir, on_event=on_event)
+            _, looked = source_gather.gather(pieces, search=search_sources, fetch=fetch_source, root=sources_dir, on_event=on_event,
+                                            limits=source_gather.limits_from_env(spec.slug))
             for p in pieces if looked else []:
                 gather_stamps[(latest_friday(p.end).isoformat(), source_store.subject_key(p.subject))] = clock()
         except Exception as exc:  # noqa: BLE001 - gathering never fails a draft

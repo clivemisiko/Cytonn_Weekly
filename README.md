@@ -115,6 +115,8 @@ Bedrock has no search or fetch tool the code can use, and the model is given non
 6. Bedrock is given the saved texts and returns claims, each with a quote and a source. A claim is kept only if the source is one that was supplied, the quote is in that source's saved text word for word (after normalizing whitespace and quote marks), and every number in the claim appears in the quote. Anything else is dropped with a warning. The wording around the numbers is not verified, so a kept claim is still marked not auto-verified for the analyst.
 7. With no `EXA_API_KEY` nothing is searched and the run says so; drafting goes on with the sources already saved. A piece with no sources is reported as having none and Bedrock is not called for it.
 
+The listed banks and insurers of the weekly Equities are the exception to step 1: each company's own website is read first for news and results dated in the report week (Kenyan pages only, robots.txt respected, a few companies at a time), and only when a site cannot be read, or gives no dated page, is a search limited to that site used. The notes of the part say which route each company took. The gather's time limit is set per section (Equities has the longest).
+
 Focus of the Week on Bedrock needs the analyst to type the section titles, since there is nothing to search for a proposed outline.
 
 ### The weekly sections

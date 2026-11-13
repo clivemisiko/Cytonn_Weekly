@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -15,6 +16,7 @@ import httpx
 from cytonn_weekly import paths
 from cytonn_weekly.common import atomic
 from cytonn_weekly.common import run_events as ev
+from cytonn_weekly.common import site_read
 from cytonn_weekly.common import sources as store
 from cytonn_weekly.source_pieces import Piece
 
@@ -23,6 +25,10 @@ log = logging.getLogger(__name__)
 KEY_ENV = "EXA_API_KEY"
 REFRESH_ENV = "CYTONN_EXA_REFRESH"   # the local path's switch: 1, true or yes ignores cached results
 SEARCH_TIMEOUT = 20.0
+SITE_WORKERS = 4   # company websites read at once
+# Seconds for the whole gather, by section slug; the others use Limits.seconds. Weekly Equities has up to 4 themes and 15
+# company websites to read (each up to about 10 requests with pauses), then a search for each site that gave nothing.
+SECTION_SECONDS = {"equities": 420}
 NOT_CONFIGURED = "The search service is not configured, so no sources were looked for. Add them under Sources."
 
 # (query, first day of the window, domains to restrict to or None) -> Exa's result dicts (url, title, text, publishedDate)
@@ -39,7 +45,7 @@ class Limits:
     market: str = "Kenya"  # appended to a piece's label in the query, so results are about this market
 
 
-def limits_from_env() -> Limits:
+def limits_from_env(section: str = "") -> Limits:
     def number(name: str, default: int) -> int:
         raw = (os.environ.get(name) or "").strip()
         if not raw:
@@ -55,7 +61,8 @@ def limits_from_env() -> Limits:
 
     d = Limits()
     return Limits(number("CYTONN_SOURCES_ENOUGH", d.enough), number("CYTONN_SOURCES_MAX_QUERIES", d.max_queries),
-                  number("CYTONN_SOURCES_MAX_PAGES", d.max_pages), number("CYTONN_SOURCES_GATHER_SECONDS", d.seconds),
+                  number("CYTONN_SOURCES_MAX_PAGES", d.max_pages),
+                  number("CYTONN_SOURCES_GATHER_SECONDS", SECTION_SECONDS.get(section, d.seconds)),
                   (os.environ.get("CYTONN_SOURCES_MARKET") or "").strip() or d.market)
 
 
@@ -84,15 +91,17 @@ def exa_search(query: str, start: date, domains: Optional[list[str]] = None) -> 
     return results
 
 
-def _usable(pool: Iterable[dict[str, Any]], start: date, end: date, skip: set[str]) -> list[dict[str, Any]]:
-    """Results with an address and a date inside the window, no duplicate address, none skipped, newest first."""
+def _usable(pool: Iterable[dict[str, Any]], start: date, end: date, skip: set[str],
+            owns: Optional[Callable[[str], bool]] = None) -> list[dict[str, Any]]:
+    """Results with an address and a date inside the window, no duplicate address, none skipped, newest first. ``owns``,
+    when given, keeps only the addresses it accepts (a company's own host and scope)."""
     seen: set[str] = set()
     out = []
     for r in pool:
         url = str(r.get("url") or "").strip()
         day = store._iso_date(str(r.get("publishedDate") or ""))
         host = store.host_of(url)
-        if not (url and host and day) or url in seen or url in skip or store.is_social(host):
+        if not (url and host and day) or url in seen or url in skip or store.is_social(host) or (owns and not owns(url)):
             continue
         if start.isoformat() <= day <= end.isoformat():
             seen.add(url)
@@ -119,22 +128,43 @@ def _save(r: dict[str, Any], piece: Piece, fetch: Fetch, root: Optional[Path]) -
         return None
 
 
+def _read_sites(pieces: list[Piece], fetch: Fetch, root: Optional[Path], limits: Limits,
+                deadline: float) -> dict[str, site_read.SiteRead]:
+    """Read the own website of every company piece that still needs pages, a few at a time (needs no search key)."""
+    todo = [p for p in pieces if p.site is not None and len(store.list_for(p.subject, p.end, root)) < limits.enough]
+
+    def one(piece: Piece) -> tuple[str, site_read.SiteRead]:
+        skip = {s.url for s in store.list_for(piece.subject, piece.end, root)} | store.dismissed(piece.subject, piece.end, root)
+        try:
+            return piece.subject, site_read.read_site(piece.site, piece, fetch=fetch, root=root, skip=skip, deadline=deadline)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("gather: site read of %s failed: %s", piece.subject, type(exc).__name__)
+            return piece.subject, site_read.SiteRead([], "its site could not be read")
+
+    if not todo:
+        return {}
+    with ThreadPoolExecutor(SITE_WORKERS) as pool:
+        return dict(pool.map(one, todo))
+
+
 def gather_piece(piece: Piece, *, search: Search, fetch: Fetch, root: Optional[Path], limits: Limits, deadline: float,
-                 on_event: Optional[ev.Observer] = None) -> list[store.SourceText]:
+                 on_event: Optional[ev.Observer] = None, site: Optional[site_read.SiteRead] = None) -> list[store.SourceText]:
     """Look for the pages of one piece. The query is the piece's label plus the market name (a company piece, whose search
     is about a global company, gets the label alone); the window is the piece's own.
     Pass 1 is restricted to the brief's domains; pass 2 is open and runs when pass 1 gave fewer than ``enough`` usable pages
-    or the piece has no domains."""
+    or the piece has no domains. A company piece (``piece.site``) takes the pages ``site`` read from its own website and is
+    searched only when that gave none; the route used and why is kept with the look."""
     have = store.list_for(piece.subject, piece.end, root)
     if len(have) >= limits.enough:
         return []
     start, end = piece.window
     skip = {s.url for s in have} | store.dismissed(piece.subject, piece.end, root)
     ev.emit(on_event, ev.SOURCES_LOOKING, piece.subject)
-    saved: list[store.SourceText] = []
+    saved: list[store.SourceText] = list(site.saved) if site else []
+    route, note = ("site", "") if saved else ("", site.note if site else "its site was not read")
     queries, pool, failed = 0, [], False
     try:
-        for domains in ([list(piece.domains)] if piece.domains else []) + ([] if piece.only_domains else [None]):
+        for domains in ([] if saved else [list(piece.domains)] if piece.domains else []) + ([] if saved or piece.only_domains else [None]):
             if queries >= limits.max_queries or time.monotonic() > deadline:
                 break
             if domains is None and piece.domains and len(_usable(pool, start, end, skip)) >= limits.enough:
@@ -147,7 +177,8 @@ def gather_piece(piece: Piece, *, search: Search, fetch: Fetch, root: Optional[P
                     raise   # the key is missing or refused: the same for every piece, so gather() says so once
                 failed = True
                 log.warning("gather: search failed for %s: %s", piece.subject, type(exc).__name__)
-        for r in _usable(pool, start, end, skip)[:piece.max_pages or limits.max_pages]:
+        owns = piece.site.owns if piece.site is not None else None
+        for r in _usable(pool, start, end, skip, owns)[:piece.max_pages or limits.max_pages]:
             if time.monotonic() > deadline:
                 break
             if got := _save(r, piece, fetch, root):
@@ -157,7 +188,10 @@ def gather_piece(piece: Piece, *, search: Search, fetch: Fetch, root: Optional[P
         ev.emit(on_event, ev.SOURCES_FOUND, piece.subject,
                 detail=f"{n} page{'' if n == 1 else 's'}" + (" (the search did not answer)" if failed and not n else ""))
         log.info("gather: %s: %d queries, %d results, %d pages saved", piece.subject, queries, len(pool), len(saved))
-    store.record_look(piece.subject, piece.end, len(saved), True, root)   # not reached when the key was refused: gather() records that
+    if piece.site is not None and route != "site":
+        route = "search" if saved else "nothing"
+    store.record_look(piece.subject, piece.end, len(saved), True, root, route if piece.site is not None else "",
+                      note if route != "site" else "")   # not reached when the key was refused: gather() records that
     return saved
 
 
@@ -166,17 +200,24 @@ def gather(pieces: Iterable[Piece], *, search: Search = exa_search, fetch: Fetch
            limits: Optional[Limits] = None) -> tuple[list[store.SourceText], bool]:
     """(the sources saved, whether a search could be made). Never raises: a piece or a page that fails is logged by host and
     error class and skipped. With the real search and no EXA_API_KEY nothing is searched and one event says so."""
+    pieces = list(pieces)
+    limits = limits or limits_from_env()
+    deadline = time.monotonic() + limits.seconds
+    reads = _read_sites(pieces, fetch, root, limits, deadline)
     if search is exa_search and not search_key_set():
         ev.emit(on_event, ev.SOURCES_SEARCH_UNAVAILABLE, "Sources", detail=NOT_CONFIGURED)
         for piece in pieces:
-            store.record_look(piece.subject, piece.end, 0, False, root)
-        return [], False
-    limits = limits or limits_from_env()
-    deadline = time.monotonic() + limits.seconds
+            got = reads.get(piece.subject)
+            if got and got.saved:
+                store.record_look(piece.subject, piece.end, len(got.saved), True, root, "site")
+            else:
+                store.record_look(piece.subject, piece.end, 0, False, root)
+        return [s for r in reads.values() for s in r.saved], False
     saved: list[store.SourceText] = []
     for piece in pieces:
         try:
-            saved += gather_piece(piece, search=search, fetch=fetch, root=root, limits=limits, deadline=deadline, on_event=on_event)
+            saved += gather_piece(piece, search=search, fetch=fetch, root=root, limits=limits, deadline=deadline, on_event=on_event,
+                                  site=reads.get(piece.subject))
         except Exception as exc:  # noqa: BLE001
             if type(exc).__name__ == "SearchKeyError":
                 ev.emit(on_event, ev.SOURCES_SEARCH_UNAVAILABLE, "Sources", detail=str(exc))
