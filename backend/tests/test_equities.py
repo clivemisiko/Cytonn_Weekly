@@ -116,7 +116,7 @@ def test_review_follows_the_report_order_and_checks_clean():
     blocks = review.section["blocks"]
     assert review.section["section"] == SECTION
     assert [b["id"] for b in blocks] == ["indices", "gainers", "losers", "market_activity", "universe_of_coverage",
-                                         "highlight_earnings", "highlight_banking", "highlight_market_regulation"]
+                                         "highlight_earnings", "highlight_market_regulation"]
     assert [b["numeral"] for b in blocks][:3] == ["I", "II", "III"]
     rows = [i for i in review.review_items if i.kind == TABLE_ROW]
     assert len(rows) == 5 + 3 + 2 and all(i.status == CLEAN for i in rows)
@@ -134,11 +134,11 @@ def test_stub_parts_and_claims_need_explicit_resolution():
     assert not review.is_approvable
 
 
-def test_highlights_stop_at_three_and_skipped_briefs_are_reported():
+def test_a_brief_with_no_story_is_skipped_reported_and_not_backfilled():
     provider = FakeNarrativeProvider(no_story={"corporate_actions"})
     review = build_equities_review(provider=provider, today=TODAY, fetch_market=market)
-    assert provider.calls == [b.id for b in BRIEFS]  # corporate_actions had nothing, so the 4th was needed
-    assert review.section["pieces_found"] == 3 and review.section["shortfall"] == 0
+    assert provider.calls == [b.id for b in BRIEFS]  # all three briefs are tried; there is no fourth to fill the gap
+    assert review.section["pieces_found"] == 2 and review.section["shortfall"] == 1
     assert any("Corporate actions and deals: nothing qualifying" in w for w in review.section["warnings"])
     assert any("1 share page(s) failed" in w for w in review.section["warnings"])
 

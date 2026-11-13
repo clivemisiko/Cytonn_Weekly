@@ -67,7 +67,7 @@ def test_generic_section_serialization(client):
     assert "source_rows" not in indices  # the screen gets display strings only
     uoc = sec["blocks"][4]
     assert uoc["title"] == "Universe of Coverage" and "proprietary" in uoc["reason"]
-    assert (sec["pieces_found"], sec["pieces_expected"]) == (3, 3)
+    assert (sec["pieces_found"], sec["pieces_expected"]) == (2, 3)   # the fake finds nothing for one of the three briefs
 
 
 def test_unavailable_section_cannot_be_drafted(client):
