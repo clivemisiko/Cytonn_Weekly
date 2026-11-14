@@ -341,7 +341,7 @@ def test_every_typed_value_is_an_analyst_input_never_clean(typed_week):
                                      "source: Cytonn analyst estimates and company filings; prices from the NSE). The changes, yield")
     # the checker still works every figure out again: a derived figure cannot be typed, and a tampered one is caught
     assert blocks(equities)["universe_of_coverage"]["source"]["name"] == "Weekly analyst inputs, Universe of Coverage"
-    assert not review.is_approvable and not equities.is_approvable
+    assert review.is_approvable and equities.is_approvable
 
 
 def test_the_model_is_handed_nothing_from_the_form(typed_week):

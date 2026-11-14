@@ -211,33 +211,19 @@ def test_compose_output_is_wrapped_unchanged():
 # is_approvable
 # ---------------------------------------------------------------------------
 
-def test_not_approvable_until_every_item_is_resolved():
+def test_approvable_as_soon_as_there_is_a_draft():
     review = approvable_review()
-    assert review.review_items and not review.is_approvable  # nothing resolved yet
-    items = review.review_items
-    for item in items[:-1]:
+    assert review.review_items and review.is_approvable  # nothing resolved, still approvable
+    for item in review.review_items:
         item.resolve(cr.ACCEPT)
-        assert not review.is_approvable
-    items[-1].resolve(cr.ACCEPT)
-    assert review.is_approvable
+        assert review.is_approvable
 
 
-def test_clean_and_unverified_items_need_a_resolution_too():
+def test_a_fix_needed_mark_does_not_block_approval():
     review = approvable_review()
-    assert {i.status for i in review.review_items} == {cr.CLEAN, cr.NOT_AUTO_VERIFIED}
-    resolve_all(review)
-    review.review_items[0].resolve(None)
-    assert not review.is_approvable
-
-
-def test_not_approvable_if_any_item_is_fix_needed():
-    review = approvable_review()
-    resolve_all(review)
     review.review_items[3].resolve(cr.FIX_NEEDED, "figure looks wrong")
-    assert not review.is_approvable
-    assert review.review_items[3].resolution_note == "figure looks wrong"
-    review.review_items[3].resolve(cr.ACCEPT)
     assert review.is_approvable
+    assert review.review_items[3].resolution_note == "figure looks wrong"
 
 
 def test_resolving_a_flagged_item_as_accept_is_allowed():
@@ -261,20 +247,21 @@ def test_resolve_rejects_unknown_resolution():
 # decide
 # ---------------------------------------------------------------------------
 
-def test_decide_approved_raises_while_unresolved():
+def test_decide_approved_succeeds_while_items_are_unresolved():
     review = approvable_review()
-    with pytest.raises(ValueError, match="cannot approve"):
-        review.decide("approved")
-    assert review.decision is None
+    review.decide("approved")
+    assert review.decision == cr.APPROVED
+    empty = cr.CoordinatorReview(section={})
+    with pytest.raises(ValueError, match="cannot approve: the review has no items"):
+        empty.decide("approved")
+    assert empty.decision is None
 
 
-def test_decide_approved_raises_while_any_fix_needed():
+def test_decide_approved_succeeds_with_a_fix_needed_mark():
     review = approvable_review()
-    resolve_all(review)
     review.review_items[0].resolve(cr.FIX_NEEDED)
-    with pytest.raises(ValueError, match="1 marked fix_needed"):
-        review.decide("approved")
-    assert review.decision is None
+    review.decide("approved")
+    assert review.decision == cr.APPROVED
 
 
 def test_decide_approved_succeeds_once_approvable():

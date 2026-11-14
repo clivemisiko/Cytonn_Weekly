@@ -207,7 +207,7 @@ def test_the_pictures_are_read_from_the_charts_folder_the_app_was_given(week, tm
     assert len(doc.inline_shapes) == 0 and [p.text for p in doc.paragraphs].count(export.PICTURE_UNVERIFIED) == 2
 
 
-def test_a_chart_item_marked_fix_needed_stops_the_approval_and_so_the_export(tmp_path, built):
+def test_an_equities_section_in_review_or_rejected_stops_the_export(tmp_path, built):
     db = tmp_path / "app.db"
     fi, eq = built
     _save(db, "fixed_income", _copy(fi))
@@ -215,11 +215,6 @@ def test_a_chart_item_marked_fix_needed_stops_the_approval_and_so_the_export(tmp
     _save(db, "digital_payments", make_review())
     _save(db, "focus", sh.focus_review(topic="SSA Eurobonds"))
     equities = _copy(eq)
-    chart_item = next(i for i in equities.review_items if i.kind == "chart")
-    for item in equities.review_items:
-        item.resolve("fix_needed" if item is chart_item else "accept")
-    with pytest.raises(ValueError, match="cannot approve: 0 item.s. unresolved, 1 marked fix_needed"):
-        equities.decide("approved")                      # one chart item needing a fix is enough to hold the section
     equities.report_type, equities.period = "weekly", PERIOD
     equities.section.setdefault("section", "equities")
     review_store.save_review(equities, section="equities", db_path=db)          # undecided: still in review

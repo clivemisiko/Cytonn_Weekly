@@ -181,9 +181,9 @@ def test_a_run_the_api_does_not_know(client):
 def test_the_review_routes(client, db):
     expect(client.get("/api/reviews/9999"), 404, "review_not_found", "no saved review number 9999")
     run_id = rs.save_review(make_review(), db_path=db)
-    expect(client.post(f"/api/reviews/{run_id}/decide", json={"decision": "approved"}), 409, "review_not_decidable",
-           "cannot approve")
     assert client.post(f"/api/reviews/{run_id}/decide", json={"decision": "rejected"}).status_code == 200
+    expect(client.post(f"/api/reviews/{run_id}/decide", json={"decision": "approved"}), 409, "review_not_decidable",
+           "already decided")
     expect(client.patch(f"/api/reviews/{run_id}/items/0", json={"resolution": "accept"}), 409, "review_already_decided",
            "already rejected")
 

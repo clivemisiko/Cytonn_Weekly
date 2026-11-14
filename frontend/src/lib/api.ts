@@ -15,7 +15,6 @@ import type {
   PreviousWeeks,
   RejectedDraftNotes,
   ReportChoice,
-  Resolution,
   Review,
   Run,
   SentenceResult,
@@ -264,15 +263,6 @@ export const getReview = (runId: number) => request<Review>(`/api/reviews/${runI
 export const getRejectedDraftNotes = (runId: number) => request<RejectedDraftNotes | null>(`/api/reviews/${runId}/rejected-draft-notes`);
 
 /** `note` omitted keeps the item's existing note; a string replaces it (blank clears it). */
-export const resolveItem = (runId: number, index: number, resolution: Resolution, note?: string) =>
-  request<Review>(`/api/reviews/${runId}/items/${index}`, {
-    method: "PATCH",
-    body: JSON.stringify(note === undefined ? { resolution } : { resolution, note }),
-  });
-
-export const acceptClean = (runId: number) =>
-  request<Review>(`/api/reviews/${runId}/accept-clean`, { method: "POST" });
-
 /** The picture of a drawn chart, served only while it is the file the review recorded (a changed or missing file is an error). */
 export const chartImageUrl = (runId: number, chartId: string) => `${API_BASE}/api/reviews/${runId}/charts/${encodeURIComponent(chartId)}.png`;
 
@@ -304,6 +294,9 @@ export const changeSentence = (runId: number, index: number, action: "edit" | "r
     method: "POST",
     body: JSON.stringify(action === "remove" ? { action } : { action, text }),
   });
+
+export const removeFinding = (runId: number, index: number) =>
+  request<{ review: Review; result: SentenceResult }>(`/api/reviews/${runId}/items/${index}/remove-finding`, { method: "POST" });
 
 export const decide = (runId: number, decision: Decision) =>
   request<Review>(`/api/reviews/${runId}/decide`, { method: "POST", body: JSON.stringify({ decision }) });

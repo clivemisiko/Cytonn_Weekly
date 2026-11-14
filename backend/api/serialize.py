@@ -100,6 +100,7 @@ def _serialize_section(review: CoordinatorReview) -> dict[str, Any]:
         "highlights_expected": N_HIGHLIGHTS,
         "shortfall": sec.get("shortfall", 0),
         "warnings": list(sec.get("warnings", [])),
+        "removed_findings": list(sec.get("removed_findings", [])),
         "items": items,
         "outlook": {
             "text_md": outlook.get("text_md", ""),
@@ -196,6 +197,7 @@ def _serialize_blocks(review: CoordinatorReview) -> dict[str, Any]:
         # Executive Summary only: what the composition is, and what each included section holds that it leaves out.
         "summary_note": sec.get("summary_note"),
         "not_covered": list(sec.get("not_covered", [])),
+        "removed_findings": list(sec.get("removed_findings", [])),
         "blocks": blocks,
     }
 
@@ -227,6 +229,13 @@ def _can_edit_paragraph(review: CoordinatorReview, n: int, item: Any) -> bool:
     from cytonn_weekly.weekly import sentence_edit
 
     return item.kind == "carried_text" and sentence_edit.can_edit_paragraph(review, n)
+
+
+def _can_remove_finding(review: CoordinatorReview, n: int, item: Any) -> bool:
+    """True for a claim of a model-drafted piece the reviewer can take out of the draft whole."""
+    from cytonn_weekly.weekly import sentence_edit
+
+    return item.kind in ("claim", "highlight_claim") and sentence_edit.can_remove_finding(review, n)
 
 
 def serialize_review(review: CoordinatorReview) -> dict[str, Any]:
@@ -269,6 +278,7 @@ def serialize_review(review: CoordinatorReview) -> dict[str, Any]:
         "summary": section_summary(review.section),
         "review_items": [{"index": n, **item.to_dict(), "fix_slots": _fix_slots(review, item),
                           "edit_sentence": _can_edit_sentence(review, n, item),
-                          "edit_paragraph": _can_edit_paragraph(review, n, item)}
+                          "edit_paragraph": _can_edit_paragraph(review, n, item),
+                          "remove_finding": _can_remove_finding(review, n, item)}
                          for n, item in enumerate(items)],
     })

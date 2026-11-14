@@ -97,7 +97,7 @@ def test_review_json_shape_for_a_tampered_review(client, db):
     body = client.get(f"/api/reviews/{run_id}").json()
 
     assert body["run_id"] == run_id and body["decision"] is None and body["locked"] is False
-    assert body["is_approvable"] is False and body["is_dev_draft"] is False and body["dev_mode_label"] is None
+    assert body["is_approvable"] is True and body["is_dev_draft"] is False and body["dev_mode_label"] is None
     n = len(review.review_items)
     assert body["progress"] == {"total": n, "resolved": 0, "unresolved": n, "fix_needed": 0}
     assert {s: body["counts"][s]["total"] for s in body["counts"]} == {"flagged": 2, "not_auto_verified": 4, "clean": n - 6}
@@ -357,23 +357,22 @@ def test_accept_clean_on_an_unknown_run_is_404(client):
 # Decision
 # ---------------------------------------------------------------------------
 
-def test_approve_is_blocked_while_items_are_unresolved(client, db):
+def test_approve_succeeds_while_items_are_unresolved(client, db):
     run_id = seed(db)
     r = client.post(f"/api/reviews/{run_id}/decide", json={"decision": "approved"})
-    assert r.status_code == 409 and "cannot approve" in r.json()["detail"]
-    assert rs.load_review(run_id, db_path=db).decision is None
+    assert r.status_code == 200 and r.json()["decision"] == "approved"
+    assert rs.load_review(run_id, db_path=db).decision == cr.APPROVED
 
 
-def test_approve_is_blocked_while_an_item_needs_a_fix(client, db):
+def test_approve_succeeds_while_an_item_is_marked_fix_needed(client, db):
     review = make_review()
     run_id = seed(db, review)
-    accept_everything(client, run_id)
     body = resolve(client, run_id, idx_of(review, "Visa (V)"), "fix_needed").json()
-    assert body["is_approvable"] is False
+    assert body["is_approvable"] is True
 
     r = client.post(f"/api/reviews/{run_id}/decide", json={"decision": "approved"})
-    assert r.status_code == 409 and "fix_needed" in r.json()["detail"]
-    assert rs.load_review(run_id, db_path=db).decision is None
+    assert r.status_code == 200 and r.json()["decision"] == "approved"
+    assert rs.load_review(run_id, db_path=db).decision == cr.APPROVED
 
 
 def test_approve_records_the_decision_once_everything_is_resolved(client, db):

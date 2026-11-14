@@ -101,11 +101,9 @@ def test_rejected_review_raises(db, tmp_path):
 
 def test_a_decision_field_alone_is_not_enough(tmp_path):
     review = make_review()
+    review.review_items = []  # no draft to approve
     review.decision, review.decided_at = cr.APPROVED, "2026-10-01T09:00:00+00:00"  # bypassing decide()
-    with pytest.raises(sm.SummaryNotAllowed, match="not every item is resolved"):
-        sm.write_summary(review, tmp_path / "out.docx")
-    review.review_items[0].resolve(cr.FIX_NEEDED)
-    with pytest.raises(sm.SummaryNotAllowed):
+    with pytest.raises(sm.SummaryNotAllowed, match="marked approved but holds no draft"):
         sm.write_summary(review, tmp_path / "out.docx")
     assert not (tmp_path / "out.docx").exists()
 

@@ -82,14 +82,12 @@ def test_the_edited_item_is_not_auto_verified_with_the_plain_note_and_the_flag_i
     assert other.status == "flagged"
 
 
-def test_the_edited_paragraph_must_be_acknowledged_before_the_section_can_be_approved():
+def test_an_edited_paragraph_does_not_hold_up_approval():
     done = edit(make())
-    for item in done.review.review_items:
-        if item.ref != OUTLOOK_REF:
-            item.resolve("accept")
-    assert not done.review.is_approvable
-    done.review.review_items[idx(done.review, OUTLOOK_REF)].resolve("accept")
+    assert done.review.review_items[idx(done.review, OUTLOOK_REF)].resolution is None
     assert done.review.is_approvable
+    done.review.decide("approved")
+    assert done.review.decision == "approved"
 
 
 def test_typed_figures_are_not_compared_with_anything():

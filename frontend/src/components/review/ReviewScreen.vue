@@ -9,7 +9,7 @@ import { weekOfReview } from "@/lib/notable";
 import { READ_ONLY } from "@/lib/previous";
 import { useReviewSession } from "@/lib/session";
 import { shell, useShellRibbon } from "@/lib/shell";
-import { isBlocksSection, type Review, type StatusCounts } from "@/lib/types";
+import { isBlocksSection, type Review, type Status } from "@/lib/types";
 import BlocksPane from "./BlocksPane.vue";
 import CountTile from "./CountTile.vue";
 import DraftPane from "./DraftPane.vue";
@@ -47,11 +47,16 @@ watch(
   },
 );
 
-function subline(c: StatusCounts): string {
-  if (c.total === 0) return "No items in this draft";
-  const parts = [c.unresolved ? `${c.unresolved} unresolved` : "", c.fix_needed ? `${c.fix_needed} fix needed` : ""].filter(Boolean);
-  return parts.length ? parts.join(", ") : "All accepted";
-}
+const SUBLINES: Record<Status, string> = { flagged: "Read before approving", not_auto_verified: "Check by hand", clean: "Checked, no flag" };
+
+// Pieces the reviewer took out of the draft, and whether any drafted finding is left.
+const removed = computed(() => review.value.section.removed_findings ?? []);
+const findingsLeft = computed(() => {
+  const s = review.value.section;
+  return isBlocksSection(s)
+    ? s.blocks.some((b) => b.kind === "narrative" && b.role !== "lead" && b.role !== "conclusion")
+    : s.items.some((i) => i.kind === "highlight");
+});
 </script>
 
 <template>
@@ -69,8 +74,7 @@ function subline(c: StatusCounts): string {
         </template>
       </template>
     </Masthead>
-    <!-- The status bar sticks under the top bar across both columns: the count of unresolved items, whether the section can be
-         approved, and the decision never scroll out of reach. -->
+    <!-- The status bar sticks under the top bar across both columns: the counts and the decision never scroll out of reach. -->
     <StatusBar
       :review="review"
       :saving="session.saving.value"
@@ -105,8 +109,17 @@ function subline(c: StatusCounts): string {
         </div>
         <!-- Three counts, one per status, in the same colour, glyph and border style the item cards use. -->
         <div role="group" aria-label="Review items by status" class="grid grid-cols-1 gap-3 @min-[34rem]:grid-cols-3">
-          <CountTile v-for="s in STATUS_ORDER" :key="s" :status="s" :value="review.counts[s].total" :sub="subline(review.counts[s])" />
+          <CountTile v-for="s in STATUS_ORDER" :key="s" :status="s" :value="review.counts[s].total" :sub="review.counts[s].total ? SUBLINES[s] : 'None in this draft'" />
         </div>
+        <details v-if="removed.length" class="rounded-lg border bg-card px-4 py-2.5 text-sm">
+          <summary class="cursor-pointer font-medium">Removed findings ({{ removed.length }})</summary>
+          <ul class="mt-2 space-y-1 text-muted-foreground">
+            <li v-for="(f, i) in removed" :key="i" class="[overflow-wrap:anywhere]">
+              <span class="text-foreground">{{ f.headline || "Untitled finding" }}</span>. Removed by you, {{ friendlyTime(f.at) }}.
+            </li>
+          </ul>
+          <p v-if="!findingsLeft" class="mt-2">This section has no drafted findings.</p>
+        </details>
         <BlocksPane
           v-if="isBlocksSection(review.section)"
           :review="review"
@@ -125,7 +138,7 @@ function subline(c: StatusCounts): string {
       </div>
 
       <template #aside>
-        <ItemsPane :review="review" :locked="review.locked" :on-resolve="session.resolve" :on-accept-clean="session.acceptClean" />
+        <ItemsPane :review="review" />
       </template>
     </PageGrid>
   </div>

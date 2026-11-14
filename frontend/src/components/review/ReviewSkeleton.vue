@@ -1,13 +1,13 @@
 <script setup lang="ts">
 const TILES = [
-  { label: "Clean items", count: "—", tone: "border-ok/30 bg-ok/5 text-ok" },
-  { label: "Flagged items", count: "—", tone: "border-flag/30 bg-flag/5 text-flag" },
-  { label: "Fix needed", count: "—", tone: "border-warn/30 bg-warn/5 text-warn" },
+  { label: "Clean items", count: "-", tone: "border-ok/30 bg-ok/5 text-ok" },
+  { label: "Flagged items", count: "-", tone: "border-flag/30 bg-flag/5 text-flag" },
+  { label: "Not auto-verified", count: "-", tone: "border-warn/30 bg-warn/5 text-warn" },
 ];
 
 const SKELETON_ITEMS = [
   { tone: "border-l-flag", badge: "FLAGGED", w: "w-4/5" },
-  { tone: "border-l-warn", badge: "FIX NEEDED", w: "w-3/4" },
+  { tone: "border-l-warn", badge: "NOT AUTO-VERIFIED", w: "w-3/4" },
   { tone: "border-l-ok", badge: "OK", w: "w-5/6" },
 ];
 </script>

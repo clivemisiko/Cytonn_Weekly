@@ -150,12 +150,10 @@ def test_review_covers_every_row_claim_and_missing_part():
     assert review.review_items[2].context["url"] == "https://x"
 
 
-def test_unavailable_part_must_be_resolved_before_approval():
+def test_unavailable_part_is_flagged_but_does_not_block_approval():
     c = content([table(), unavailable_block("u", "Universe", "proprietary", "a sheet")])
     review = build_review(c, check_section(c))
-    review.accept_all_clean()
-    assert not review.is_approvable
-    review.review_items[-1].resolve("accept", "acknowledged: published without it")
+    assert review.review_items[-1].status == FLAGGED and review.review_items[-1].resolution is None
     assert review.is_approvable
 
 

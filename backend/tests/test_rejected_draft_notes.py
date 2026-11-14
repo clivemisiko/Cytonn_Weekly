@@ -60,7 +60,7 @@ def test_the_run_just_before_is_rejected_its_fix_needed_items_and_notes_are_list
     ]
     # nothing was copied onto the new review, and its approval is its own
     new = review_store.load_review(second, db_path=db)
-    assert all(i.resolution is None and i.resolution_note is None for i in new.review_items) and not new.is_approvable
+    assert all(i.resolution is None and i.resolution_note is None for i in new.review_items) and new.is_approvable
 
 
 def test_none_when_the_run_before_was_approved_or_undecided_or_there_is_none(db, client):

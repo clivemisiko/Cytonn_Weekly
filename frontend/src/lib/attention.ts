@@ -49,6 +49,9 @@ export const PLACEMENT = {
   edit_paragraph_not_possible: "dialog",
   edit_text_refused: "inline",
   edit_save_failed: "dialog",
+  finding_not_possible: "dialog",
+  finding_not_found: "dialog",
+  finding_save_failed: "dialog",
 } as const satisfies Record<string, "dialog" | "inline" | "none">;
 
 export type ProblemCode = keyof typeof PLACEMENT;

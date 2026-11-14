@@ -16,7 +16,6 @@ const CHIP: Record<SectionState, { label: string; className: string; glyph?: str
   not_drafted: { label: "Not drafted this week", className: "border-input text-muted-foreground" },
   unavailable: { label: "Not available yet", className: "border-input bg-muted text-muted-foreground" },
 };
-const RING = 2 * Math.PI * 18; // the progress ring's circumference (radius 18 in a 44-unit box)
 
 const props = defineProps<{
   s: SectionSummary;
@@ -68,7 +67,6 @@ const nothing = computed(() => {
   );
 });
 
-const fraction = computed(() => (run.value && run.value.progress.total ? run.value.progress.resolved / run.value.progress.total : 0));
 /** The flagged items of the section's current review, as the overview's payload counts them (0 with no current review). */
 const flagged = computed(() => (run.value && current.value ? run.value.counts.flagged.total : 0));
 const hasMore = computed(() => props.s.built_parts.length > 0 || props.s.subsections.length > 0 || props.s.charts.length > 0);
@@ -135,34 +133,6 @@ const lists = computed(() =>
               </p>
             </div>
           </div>
-
-          <!-- The thumbnail's place: how far the review is, as a ring. -->
-          <div
-            v-if="state !== 'unavailable' && run && current"
-            role="progressbar"
-            :aria-label="`${s.title}: items resolved`"
-            aria-valuemin="0"
-            :aria-valuemax="run.progress.total"
-            :aria-valuenow="run.progress.resolved"
-            class="relative hidden size-12 shrink-0 @md:block"
-          >
-            <svg viewBox="0 0 44 44" class="size-12 -rotate-90 transition-all duration-300" aria-hidden="true">
-              <circle cx="22" cy="22" r="18" fill="none" stroke-width="3.5" class="stroke-border/70" />
-              <circle
-                cx="22"
-                cy="22"
-                r="18"
-                fill="none"
-                stroke-width="3.5"
-                stroke-linecap="round"
-                class="transition-[stroke-dashoffset] duration-500 ease-out"
-                :class="fraction === 1 ? 'stroke-ok-fg' : 'stroke-foreground'"
-                :stroke-dasharray="RING"
-                :stroke-dashoffset="RING * (1 - fraction)"
-              />
-            </svg>
-            <span class="absolute inset-0 grid place-items-center font-mono text-xs font-semibold tabular-nums" aria-hidden="true">{{ Math.floor(fraction * 100) }}%</span>
-          </div>
         </div>
 
         <div class="space-y-2 text-sm">
@@ -171,8 +141,7 @@ const lists = computed(() =>
             <p class="text-muted-foreground"><span class="font-semibold text-foreground">Unblocked by:</span> {{ s.unblock }}</p>
           </template>
           <p v-else-if="run && current">
-            <span class="font-mono font-semibold">{{ run.progress.resolved }}</span> of
-            <span class="font-mono font-semibold">{{ run.progress.total }}</span> items resolved
+            <span class="font-mono font-semibold">{{ run.progress.total }}</span> review items
           </p>
           <p v-else class="text-muted-foreground">{{ nothing }}</p>
 
