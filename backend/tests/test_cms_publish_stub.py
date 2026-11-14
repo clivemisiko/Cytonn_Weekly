@@ -217,9 +217,10 @@ def test_a_review_that_is_not_approved_is_refused(publish):
 
 def test_a_decision_field_alone_is_not_approval(publish):
     review = undecided(make_review())
-    review.decision = APPROVED                   # set by hand; no item was resolved
+    review.review_items = []                     # no draft to approve
+    review.decision = APPROVED                   # set by hand
     err = publish("weekly", "", [review])
-    assert isinstance(err, PublishNotAllowed) and "not every item is resolved and accepted" in str(err)
+    assert isinstance(err, PublishNotAllowed) and "is marked approved but holds no draft" in str(err)
 
 
 def test_a_section_of_another_report_or_period_is_refused(publish):

@@ -58,24 +58,19 @@ def test_with_no_workbook_each_chart_is_information_and_makes_no_review_item():
     assert [chart_counts(b) for b in blocks] == [{CLEAN: 0, FLAGGED: 0, NOT_AUTO_VERIFIED: 0}] * 2
 
 
-def test_no_workbook_does_not_hold_up_approval_but_a_workbook_that_cannot_give_the_chart_does():
+def test_no_workbook_adds_no_item_but_a_workbook_that_cannot_give_the_chart_is_flagged():
     other = {"kind": "supplied", "id": "bidding_range", "title": "Bidding range", "body_md": "Invented text.", "supplied_by": "coordinator"}
     none, _ = chart_blocks(None, "Equities workbook", FRIDAY, QUOTED, MISSING_BOOK)
     review = review_of([other, *none])
-    assert len(review.review_items) == 1 and not review.is_approvable
-    review.review_items[0].resolve("accept")
-    assert review.is_approvable                                        # the charts asked nothing of the analyst
+    assert len(review.review_items) == 1 and review.is_approvable      # the charts asked nothing of the analyst
     for name, kw in (("stale", {"newest": day(1)}), ("short", {"weeks": 10}), ("future", {"newest": FRIDAY + timedelta(days=7)}),
                      ("missing sheet", {"edit": lambda ws: setattr(ws, "title", "NASI PE & Dividend Yield")})):
         blocks, _ = make(**kw)
         review = review_of([other, *blocks])
-        review.review_items[0].resolve("accept")
         assert [b["status"] for b in blocks] == ["not_drawn", "not_drawn"], name
         flagged = [i for i in review.review_items if i.kind == CHART_ITEM and i.status == FLAGGED]
-        assert flagged and not review.is_approvable, name              # an uploaded workbook that fails still holds the section up
-        for i in flagged:
-            i.resolve("accept")
-        assert review.is_approvable, name
+        assert flagged, name                                           # an uploaded workbook that fails is flagged for the reviewer
+        assert review.is_approvable, name                              # a flag is read, not resolved: it no longer blocks approval
 
 
 def test_a_drawn_block_holds_metadata_and_the_hashes_of_its_files_only():
@@ -169,16 +164,11 @@ def test_a_missing_sheet_is_one_flagged_item_and_never_clean():
     assert "no sheet" in rows.detail[0].message and "stops the chart" in rows.detail[0].message
 
 
-def test_a_flagged_chart_blocks_approval_until_it_is_accepted():
+def test_a_flagged_chart_does_not_block_approval():
     review = review_of(make(quoted={**QUOTED, "pe": "10.1x"})[0])
     flagged = next(i for i in review.review_items if i.status == FLAGGED)
-    for i in review.review_items:
-        if i is not flagged:
-            i.resolve("accept")
-    assert not review.is_approvable
+    assert flagged.resolution is None and review.is_approvable
     flagged.resolve("fix_needed")
-    assert not review.is_approvable
-    flagged.resolve("accept")
     assert review.is_approvable
 
 
@@ -213,7 +203,7 @@ def test_setting_the_tool_chart_aside_accepts_all_its_items_and_can_be_taken_bac
     blocks, _ = make(quoted={**QUOTED, "pe": "10.1x"})               # one item is flagged (a mismatch)
     review = review_of(blocks)
     pe_items = items(review)
-    assert pe_items[0].status == FLAGGED and not review.is_approvable
+    assert pe_items[0].status == FLAGGED and pe_items[0].resolution is None
     set_team_chart(review, "nasi_pe", True)
     assert team_chart_chosen(review, "nasi_pe") and not team_chart_chosen(review, "nasi_yield")
     assert [(i.resolution, i.resolution_note) for i in pe_items] == [("accept", TEAM_CHART_NOTE)] * 5
