@@ -89,7 +89,7 @@ def test_each_section_is_its_own_cited_piece_and_the_conclusion_is_written_witho
     provider = FakeNarrativeProvider()
     review = focus_review(provider, sections=TYPED)
     assert provider.calls == ["focus_section_1", "focus_section_2"]
-    assert [c[2] for c in provider.completions] == [2000, 600]
+    assert [c[2] for c in provider.completions] == [6000, 600]
     assert "Section I: Overview" in provider.completions[0][1] and "grew" in provider.completions[0][1]
     assert review.section["model_calls"] == 4 and review.section["api_requests"] == 4
     assert review.section["pieces_expected"] == 4 and review.section["pieces_found"] == 4

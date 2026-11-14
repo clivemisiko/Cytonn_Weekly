@@ -246,7 +246,7 @@ def test_the_focus_structure_runs_through_bedrock_with_the_caps_and_is_not_a_dev
     provider = bp.BedrockNarrativeProvider(client=client)
     review = focus_review(provider)
     assert review.section["outline"]["source"] == "proposed"
-    assert [c["max_tokens"] for c in client.calls] == [300, 2000, 2000, 2000, 2000, 600]   # outline, 3 sections, conclusion, lead
+    assert [c["max_tokens"] for c in client.calls] == [300, 6000, 6000, 6000, 6000, 600]   # outline, 3 sections, conclusion, lead
     assert review.section["api_requests"] == 6 and review.section["pieces_found"] == review.section["pieces_expected"]
     drafted = {b["drafted_by"] for b in review.section["blocks"] if b["kind"] == "narrative"}
     assert drafted == {f"bedrock:{MODEL}"}
