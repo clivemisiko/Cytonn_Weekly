@@ -124,7 +124,7 @@ Focus of the Week on Bedrock needs the analyst to type the section titles, since
 Fixed Income, Equities, Real Estate, Digital Payments and Focus of the Week, in that order. Company Updates is written by the CT team after the exported document is received and before publishing, so the tool does not draft it.
 
 - **Fixed Income and Equities** are worked out from the week's inputs: the CBK Weekly Bulletin, CBK's auction results and daily rates, KCB IB's trading reports, the NSE daily price list, and the analysts' own figures. Narrative highlights are cited.
-- **Real Estate**: rotating themed subsections plus the Ibuka REITs table.
+- **Real Estate**: rotating themed subsections plus the Ibuka REITs table. The weekly is written from the snips the analyst uploads per sector, and a PDF can be uploaded the same way: the model picks out the passages about that sector, each quoted word for word with its page and checked against the page's text, and the analyst confirms them like a snip.
 - **Digital Payments**: a Yahoo Finance stock table, up to four highlights, the outlook and an exact-match check of the table. An optional Digital Payments workbook can be uploaded; it changes no printed figure and only adds reviewer warnings and review items.
 - **Focus of the Week**: the analyst types the topic (and optionally the section titles). The tool drafts the lead, numbered sections and conclusion, and carries the disclaimer from the previous issue. Cytonn's own tables and charts are the analyst's.
 

@@ -79,6 +79,11 @@ class NarrativeProvider(ABC):
         """The text printed in one uploaded image, as the model transcribes it.  Only the Bedrock provider reads images."""
         raise SnipReadError("Reading snips needs the production model (Amazon Bedrock). This server is not using it.")
 
+    def read_pdf_passages(self, sector: str, chunk: str) -> list[dict]:
+        """The passages about ``sector`` in one page-labelled chunk of a PDF's text, each {page, quote}, as the model
+        returns them (the caller checks every quote against its page).  Only the Bedrock provider reads PDFs."""
+        raise SnipReadError("Reading PDFs needs the production model (Amazon Bedrock). This server is not using it.")
+
     def complete(self, system: str, prompt: str, *, max_tokens: int) -> str:
         """One plain model call with no web search: text in, text out (the Focus outline, conclusion and lead)."""
         raise NotImplementedError(f"{type(self).__name__} cannot make a plain text call")

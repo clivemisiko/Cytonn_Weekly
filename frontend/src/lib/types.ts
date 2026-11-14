@@ -137,6 +137,17 @@ export interface SnipMeta {
   /** YYYY-MM-DD the analyst gave, or "" for the report week. */
   date: string;
   confirmed: boolean;
+  /** Set for an uploaded PDF; absent for an image. */
+  kind?: "pdf";
+  file_sha?: string;
+  size?: number;
+  pages?: number;
+  uploaded_at?: string;
+  /** Quotes checked word for word against their page; only these are used. */
+  passages?: { page: number; quote: string }[];
+  /** Quotes the model returned that were not word for word on their page, so were dropped. */
+  dropped?: number;
+  ocr_pages?: number[];
 }
 
 export interface SnipsListing {
@@ -144,6 +155,8 @@ export interface SnipsListing {
   sectors: { id: string; label: string }[];
   max_per_sector: number;
   max_bytes: number;
+  pdf_max_bytes: number;
+  pdf_max_pages: number;
   snips: SnipMeta[];
 }
 

@@ -661,18 +661,23 @@ def from_paste(url: str, date_text: str, text: str, subject: str, week_end: date
     return _save(src, None, "", root)
 
 
-def from_snip(image: bytes, ext: str, text: str, subject: str, week_end: date, published: str, title: str, *,
-              root: Optional[Path] = None, now: Callable[[], str] = _now) -> SourceText:
+def from_snip(image: Optional[bytes], ext: str, text: str, subject: str, week_end: date, published: str, title: str, *,
+              page: int = 0, file_sha: str = "", root: Optional[Path] = None, now: Callable[[], str] = _now) -> SourceText:
     """Keep the confirmed text of an uploaded image (a Real Estate snip) as a source the quote check can read.
 
     ``subject`` is the sector, ``published`` the date the analyst gave or the report week's Friday (ISO). The image is saved
     beside the text and its sha256 is the source's, so the saved copy is checked like any fetched page. Nothing is fetched.
+    With ``page`` it is one page of an uploaded PDF (``file_sha``): no file is saved beside it (the PDF stays with the snips),
+    the text's own sha256 is checked, and its host reads "uploaded PDF, page N" wherever the source is named.
     """
     if not text.strip():
         raise SourceError(NO_TEXT)
-    sha = _sha(image)
-    url = f"snip:{sha[:16]}"
+    if page:
+        sha, url, host = _sha(text.encode()), f"snip:{file_sha[:16]}#page={page}", f"uploaded PDF, page {page}"
+    else:
+        sha, host = _sha(image), "snip"
+        url = f"snip:{sha[:16]}"
     src = SourceText(id=_id(subject, url, sha), subject=" ".join(subject.split()),
-                     week_end=latest_friday(week_end).isoformat(), url=url, host="snip", title=title or url,
+                     week_end=latest_friday(week_end).isoformat(), url=url, host=host, title=title or url,
                      published_date=published, fetched_at=now(), origin="snip", text=text, sha256=sha, chars=len(text), flags=[])
-    return _save(src, image, ext, root)
+    return _save(src, image if not page else None, ext if not page else "", root)

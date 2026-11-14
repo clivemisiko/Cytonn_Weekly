@@ -8,6 +8,7 @@ export const hasUnclear = (text: string) => UNCLEAR.test(text);
 /** What a snip's card says, in words: never colour alone. `typed` is what is in its text box now. */
 export function snipStatus(s: SnipMeta, typed?: string): string {
   if (s.text === null) return "Not read yet";
+  if (s.kind === "pdf" && !s.passages?.length) return "Nothing found for this sector";
   if (s.confirmed && typed !== undefined && typed !== s.text) return "Changed, confirm again";
   if (s.confirmed) return "Confirmed";
   return hasUnclear(typed ?? s.text) ? "Unconfirmed: has [unclear] marks" : "Unconfirmed";
