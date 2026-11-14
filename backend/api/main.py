@@ -78,7 +78,7 @@ from cytonn_weekly.focus.review_run import clean_sections, clean_topic
 from cytonn_weekly import db as database
 from cytonn_weekly import notable
 from cytonn_weekly.narrative import bedrock_provider
-from cytonn_weekly.narrative.base import SnipReadError
+from cytonn_weekly.narrative.base import NothingDrafted, SnipReadError
 from cytonn_weekly.narrative.factory import get_narrative_provider
 from cytonn_weekly.notable import store as notable_store
 from cytonn_weekly.notable.registry import Detector, DetectorContext, run_detectors
@@ -152,7 +152,7 @@ def failure_message(exc: BaseException) -> str:
     by its type.  Any configured secret that an error message happens to quote is removed
     before it is recorded.
     """
-    if isinstance(exc, (ValueError, SearchKeyError, bedrock_provider.BedrockError)):
+    if isinstance(exc, (ValueError, SearchKeyError, bedrock_provider.BedrockError, NothingDrafted)):
         text = " ".join(str(exc).split())
     else:
         text = user_message(exc)

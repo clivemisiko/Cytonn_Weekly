@@ -66,6 +66,10 @@ class SnipReadError(RuntimeError):
     """Written for the analyst and shown as it stands."""
 
 
+class NothingDrafted(LookupError):
+    """No piece of a section was drafted; the message, written for the analyst, says why and is shown as it stands."""
+
+
 class NarrativeProvider(ABC):
     """Swappable backend for brief-driven narrative drafting (Anthropic or local)."""
 
