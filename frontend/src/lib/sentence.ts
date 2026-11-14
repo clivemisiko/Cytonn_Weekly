@@ -47,5 +47,8 @@ export function sentenceCheck(text: string, original: string, limit: number = MA
 export const APPROVED_SENTENCE_NOTE =
   "This section is approved. Saving creates a new version and removes the approval: the new version needs approving again. The approved version stays saved.";
 
+export const REMOVE_FINDING_NOTE =
+  "The whole finding, with its sources, will not appear in the review or the Word export. Only a new draft of this section brings it back. The current version stays saved.";
+
 /** The result of the latest sentence change, with the new review's run id, so the review it opened can show it. */
 export const lastSentence = shallowRef<{ runId: number; result: SentenceResult } | null>(null);

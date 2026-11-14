@@ -2,14 +2,15 @@
 import { DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from "reka-ui";
 import { computed, ref } from "vue";
 import Button from "@/components/ui/Button.vue";
-import { approveHint } from "@/lib/format";
+import { plural } from "@/lib/format";
 import type { Decision, Review } from "@/lib/types";
 
+// The approval dialog only opens when the section has flagged items; its body names them (see `flagged`).
 const COPY: Record<Decision, { title: string; body: string; confirm: string }> = {
   approved: {
-    title: "Approve this section?",
+    title: "Approve with flagged items?",
     body: "Every value is accepted as drafted. This is recorded once and cannot be changed.",
-    confirm: "Approve",
+    confirm: "Approve anyway",
   },
   rejected: {
     title: "Reject this section?",
@@ -25,8 +26,13 @@ const asking = ref<Decision | null>(null);
 // The dialog keeps its words while it fades out after `asking` is cleared.
 const last = ref<Decision>("approved");
 const decided = computed(() => props.review.decision !== null);
-const hint = computed(() => approveHint(props.review.progress, props.review.is_approvable));
 const canApprove = computed(() => props.review.is_approvable && !decided.value);
+const flagged = computed(() => props.review.review_items.filter((i) => i.status === "flagged"));
+
+function approve() {
+  if (flagged.value.length) ask("approved");
+  else void props.onDecide("approved");
+}
 
 function ask(decision: Decision) {
   last.value = decision;
@@ -54,8 +60,7 @@ function setOpen(open: boolean) {
         <span class="hidden lg:inline">One decision for the whole section. </span>Once recorded, it cannot be changed.
       </p>
       <div class="flex items-center gap-3">
-        <Button size="lg" :disabled="!canApprove || deciding" :title="hint ?? undefined" :aria-describedby="hint ? 'approve-hint' : undefined" @click="ask('approved')">Approve</Button>
-        <span v-if="hint" id="approve-hint" class="sr-only">{{ hint }}</span>
+        <Button size="lg" :disabled="!canApprove || deciding" @click="approve">{{ deciding && !asking ? "Recording…" : "Approve" }}</Button>
         <Button size="lg" variant="outline" :disabled="deciding" @click="ask('rejected')">Reject</Button>
       </div>
     </div>
@@ -72,7 +77,16 @@ function setOpen(open: boolean) {
         >
           <div data-slot="dialog-header" class="flex flex-col gap-2">
             <DialogTitle data-slot="dialog-title" class="font-heading text-lg leading-snug font-semibold">{{ COPY[last].title }}</DialogTitle>
-            <DialogDescription data-slot="dialog-description" class="text-sm text-muted-foreground">{{ COPY[last].body }}</DialogDescription>
+            <DialogDescription as="div" data-slot="dialog-description" class="space-y-2 text-sm text-muted-foreground">
+              <template v-if="last === 'approved'">
+                <p>This section has {{ plural(flagged.length, "flagged item") }}:</p>
+                <ul class="list-disc space-y-1 pl-5 [overflow-wrap:anywhere]">
+                  <li v-for="i in flagged.slice(0, 3)" :key="i.index">{{ i.ref }}</li>
+                  <li v-if="flagged.length > 3">and {{ flagged.length - 3 }} more</li>
+                </ul>
+              </template>
+              <p>{{ COPY[last].body }}</p>
+            </DialogDescription>
           </div>
           <div data-slot="dialog-footer" class="-mx-6 -mb-6 flex flex-col-reverse gap-2 rounded-b-lg border-t bg-muted px-6 py-4 sm:flex-row sm:justify-end">
             <Button variant="outline" :disabled="deciding" @click="asking = null">Cancel</Button>

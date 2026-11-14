@@ -255,6 +255,22 @@
     }
   }
 
+  /* A count beside a label (a filter, a heading): the type floor holds, so it is 14px, never smaller. */
+  .count-badge {
+    display: inline-grid;
+    place-items: center;
+    min-width: 1.5rem;
+    padding: 0 0.375rem;
+    border-radius: 999px;
+    font: 700 var(--text-xs) / var(--text-xs--line-height) var(--font-mono);
+    background: var(--muted);
+    color: var(--foreground);
+  }
+  .count-badge.state-flagged {
+    background: color-mix(in srgb, var(--flag) 14%, var(--card));
+    color: var(--flag-fg);
+  }
+
   /* Interactive card hover lift */
   .card-interactive {
     transition: transform 0.18s var(--ease-out), box-shadow 0.18s var(--ease-out), border-color 0.18s var(--ease-out);

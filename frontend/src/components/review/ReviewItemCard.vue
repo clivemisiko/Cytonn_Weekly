@@ -1,15 +1,14 @@
 <script setup lang="ts">
 import { PhArrowSquareOut, PhCaretDown, PhPencilSimple, PhWarning } from "@phosphor-icons/vue";
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "reka-ui";
-import { computed, inject, ref, watch } from "vue";
-import Textarea from "@/components/ui/Textarea.vue";
-import { KIND_LABELS, friendlyTime, pyRepr, resolutionKey } from "@/lib/format";
+import { computed, inject } from "vue";
+import { KIND_LABELS, friendlyTime, pyRepr } from "@/lib/format";
 import { READ_ONLY } from "@/lib/previous";
 import { TEXT_FROM_SEARCH, claimSource, sourcePageHref } from "@/lib/sources";
-import type { Flag, Resolution, Review, ReviewItem } from "@/lib/types";
+import type { Flag, Review, ReviewItem } from "@/lib/types";
 import EditSentence from "./EditSentence.vue";
 import FixFromFile from "./FixFromFile.vue";
-import ResolutionControl from "./ResolutionControl.vue";
+import RemoveFinding from "./RemoveFinding.vue";
 import SeverityPill from "./SeverityPill.vue";
 import TextWithIds from "./TextWithIds.vue";
 
@@ -17,58 +16,18 @@ const props = defineProps<{
   item: ReviewItem;
   /** The review the item is in: the fix-from-a-file control needs its week, run and decision. */
   review: Review;
-  locked: boolean;
-  onResolve: (index: number, resolution: Resolution, note?: string) => Promise<boolean>;
 }>();
 
-// Collapsed: the evidence (what the checker found, the quote, the working) is hidden; the title, pill, a one-line summary and
-// the resolution controls stay, so triage needs no expansion.  ItemsPane's Expand all / Collapse all drive this.
+// Collapsed: the evidence (what the checker found, the quote, the working) is hidden; the title, pill and a one-line summary
+// stay, so triage needs no expansion.  ItemsPane's Expand all / Collapse all drive this.
 const open = defineModel<boolean>("open", { default: false });
-const serverNote = computed(() => props.item.resolution_note ?? "");
 const readOnly = inject(READ_ONLY, false);
-
-// What the control shows while its write is in flight, so a click answers at once.  Writes are
-// queued in order; only the newest write's completion clears this, so rapid clicks do not flicker.
-const pending = ref<Resolution | undefined>(undefined);
-let latest = 0;
-const shown = computed(() => (pending.value !== undefined ? pending.value : props.item.resolution));
-
-// The note box is the analyst's own until it is committed; a server refresh must not overwrite typing.
-const note = ref(serverNote.value);
-const dirty = ref(false);
-watch(serverNote, (next) => {
-  if (!dirty.value) note.value = next;
+// A review saved before the resolve controls were removed may hold a mark or a note: shown read-only, only when there is one.
+const oldMark = computed(() => {
+  const mark = props.item.resolution === "accept" ? "Accepted" : props.item.resolution === "fix_needed" ? "Fix needed" : "";
+  const note = (props.item.resolution_note ?? "").trim();
+  return mark || note ? `${mark ? `Marked ${mark}` : ""}${mark && note ? ". " : ""}${note ? `Note: ${note}` : ""}` : "";
 });
-watch(dirty, (now, _before, onCleanup) => {
-  if (!now) return;
-  const warn = (e: BeforeUnloadEvent) => e.preventDefault(); // a typed note is only saved when the box is left
-  window.addEventListener("beforeunload", warn);
-  onCleanup(() => window.removeEventListener("beforeunload", warn));
-});
-
-function send(next: Resolution, withNote?: string) {
-  const mine = ++latest;
-  pending.value = next;
-  void props.onResolve(props.item.index, next, withNote).finally(() => {
-    if (latest === mine) pending.value = undefined;
-  });
-}
-
-function commitNote() {
-  if (!dirty.value) return;
-  dirty.value = false;
-  if (note.value.trim() === serverNote.value.trim()) return;
-  send(shown.value, note.value);
-}
-
-function noteKey(event: KeyboardEvent) {
-  if (event.key === "Enter" && !event.shiftKey) {
-    event.preventDefault();
-    (event.currentTarget as HTMLTextAreaElement).blur(); // commit through blur
-  }
-}
-
-const chipKey = computed(() => resolutionKey(shown.value));
 const ctx = computed(() => props.item.context);
 // A claim quoted from a supplied source: the host, the date and the verified quote are shown, and so is a host off the approved list.
 const source = computed(() => claimSource(ctx.value));
@@ -106,7 +65,6 @@ const cells = (flag: Flag): [string, string][] => [
       <span v-else-if="ctx.removed_at" class="inline-flex items-center gap-1 text-xs font-medium">
         <PhPencilSimple weight="bold" class="size-3.5" aria-hidden="true" />Removed by you, {{ friendlyTime(ctx.removed_at) }}
       </span>
-      <span class="ml-auto"><SeverityPill :kind="chipKey" /></span>
     </div>
 
     <CollapsibleRoot v-if="hasDetail" v-model:open="open">
@@ -190,29 +148,11 @@ const cells = (flag: Flag): [string, string][] => [
       </CollapsibleContent>
     </CollapsibleRoot>
 
-    <p v-if="readOnly" class="text-xs text-muted-foreground [overflow-wrap:anywhere]">
-      <span class="font-semibold text-foreground">{{ item.resolution === "accept" ? "Accepted" : item.resolution === "fix_needed" ? "Fix needed" : "Unresolved" }}</span
-      ><template v-if="serverNote">. Note: {{ serverNote }}</template>
-    </p>
-    <div v-else class="flex flex-wrap items-center gap-2">
-      <ResolutionControl :label="item.ref" :value="shown" :disabled="locked" @change="(next) => send(next)" />
+    <p v-if="oldMark" class="text-xs text-muted-foreground [overflow-wrap:anywhere]">{{ oldMark }}</p>
+    <div v-if="!readOnly && (item.fix_slots?.length || item.edit_sentence || item.edit_paragraph || item.remove_finding)" class="flex flex-wrap items-center gap-2">
       <FixFromFile :review="review" :item="item" />
       <EditSentence :review="review" :item="item" />
-      <Textarea
-        v-model="note"
-        rows="1"
-        :name="`note-${item.index}`"
-        autocomplete="off"
-        :readonly="locked"
-        :aria-label="`Note for ${item.ref}`"
-        placeholder="Add a note (optional)…"
-        maxlength="2000"
-        class="min-w-48 flex-1 resize-none text-sm"
-        :class="locked && 'bg-muted text-muted-foreground'"
-        @input="dirty = true"
-        @blur="commitNote"
-        @keydown="noteKey"
-      />
+      <RemoveFinding :review="review" :item="item" />
     </div>
   </li>
 </template>

@@ -198,7 +198,15 @@ export interface ReviewItem {
   /** True for a flagged sentence of a drafted piece that the reviewer can rewrite or remove by hand. */
   edit_sentence?: boolean;
   edit_paragraph?: boolean;
+  /** True for a claim of a model-drafted piece that the reviewer can take out of the draft whole. */
+  remove_finding?: boolean;
   context: ClaimContext;
+}
+
+/** A whole drafted piece the reviewer took out of the draft (weekly/sentence_edit.remove_finding). */
+export interface RemovedFinding {
+  headline: string;
+  at: string;
 }
 
 export interface Claim {
@@ -257,6 +265,7 @@ export interface Section {
   highlights_expected: number;
   shortfall: number;
   warnings: string[];
+  removed_findings?: RemovedFinding[];
   items: (HighlightItem | StockTableItem)[];
   outlook: Outlook;
 }
@@ -484,6 +493,7 @@ export interface BlocksSection {
   /** Executive Summary only: how it is composed, and per included section what the summary leaves out. */
   summary_note?: string | null;
   not_covered?: NotCovered[];
+  removed_findings?: RemovedFinding[];
   blocks: Block[];
 }
 
@@ -573,7 +583,7 @@ export interface FixResult {
 }
 
 export interface SentenceResult {
-  action: "edit" | "remove" | "paragraph";
+  action: "edit" | "remove" | "paragraph" | "finding";
   changed_items: number;
   earlier_run_id: number;
   was_approved: boolean;

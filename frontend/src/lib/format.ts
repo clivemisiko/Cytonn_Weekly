@@ -65,12 +65,6 @@ export const truncateId = (id: string) => (id.length > 14 ? `${id.slice(0, 8)}â€
 /** A run of 24 or more hex digits (a SHA-256, a commit): what `TextWithIds` shortens inside system-written text. */
 export const LONG_ID = /([0-9a-f]{24,})/i;
 
-/** Why Approve is off, in one wording for every section; null when it is not off. The status bar and the Approve button both read it. */
-export function approveHint(p: { fix_needed: number }, approvable: boolean): string | null {
-  if (approvable) return null;
-  return p.fix_needed ? `Not approvable yet: ${p.fix_needed} marked fix needed.` : "Approve unlocks once every item is resolved and none needs a fix.";
-}
-
 export const resolutionKey = (r: Resolution): "none" | "accept" | "fix_needed" => r ?? "none";
 
 export const TABLE_COLUMNS: { key: string; label: string; numeric: boolean }[] = [

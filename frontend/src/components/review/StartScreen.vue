@@ -194,7 +194,6 @@ function topicEnter() {
 }
 
 const items = computed(() => props.saved?.review_items ?? []);
-const resolved = computed(() => items.value.filter((i) => i.resolution !== null).length);
 const draftLabel = computed(() =>
   starting.value
     ? "Starting…"
@@ -245,12 +244,9 @@ const lists = computed(() => [
               <p class="text-sm">
                 {{ weekly ? "This week’s" : `The ${report.period}` }} review is in progress (run {{ saved.run_id }},
                 {{ weekly ? "report week" : "period" }} {{ weekRange(saved.section.week_start, saved.section.week_end) }}):
-                <span class="font-mono">{{ resolved }}</span> of <span class="font-mono">{{ items.length }}</span> items resolved.
+                <span class="font-mono">{{ items.length }}</span> review items, awaiting a decision.
                 Resuming it does not re-run the draft.
               </p>
-              <div class="h-2 overflow-hidden rounded-full bg-border" aria-hidden="true">
-                <div class="h-full rounded-full bg-foreground" :style="{ width: `${items.length ? (resolved / items.length) * 100 : 0}%` }" />
-              </div>
             </template>
             <p v-else class="text-sm">
               {{ weekly ? "This week’s" : `The ${report.period}` }} review (run {{ saved.run_id }}) was {{ saved.decision
