@@ -3,7 +3,9 @@ import { computed, onMounted, ref } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import * as api from "@/lib/api";
+import { friendlyTime } from "@/lib/format";
 import { hasUnclear, snipCounts, snipStatus, unconfirmedNote } from "@/lib/snips";
+import { hashPrefix } from "@/lib/sources";
 import type { SnipMeta, SnipsListing } from "@/lib/types";
 import Notice from "./Notice.vue";
 
@@ -61,7 +63,8 @@ async function upload(sector: string, files: FileList | null) {
   for (const h of added) await read(h);
 }
 async function read(hash: string) {
-  const next = await run(hash, "Reading the image…", () => api.readSnip(props.week, hash));
+  const pdf = listing.value?.snips.find((s) => s.hash === hash)?.kind === "pdf";
+  const next = await run(hash, pdf ? "Reading the PDF…" : "Reading the image…", () => api.readSnip(props.week, hash));
   if (next) take(next);
 }
 async function move(s: SnipMeta, sector: string) {
@@ -103,6 +106,11 @@ const note = computed(() => (listing.value ? unconfirmedNote(listing.value) : nu
         {{ listing ? Math.round(listing.max_bytes / 1048576) : 5 }} MB each, {{ listing?.max_per_sector ?? 6 }} a sector) under the sector each belongs to.
         The model reads the text in each one; check it against the image, fix it, and confirm. A sector with no confirmed snip is left out.
       </p>
+      <p class="text-sm text-muted-foreground">
+        You can also add a PDF (up to {{ listing ? Math.round(listing.pdf_max_bytes / 1048576) : 20 }} MB and
+        {{ listing?.pdf_max_pages ?? 60 }} pages). The model picks out the passages about the sector it is uploaded under, each quoted word for word
+        with its page; check them and confirm. A PDF is read for one sector only: to use the same PDF for two sectors, upload it once under each.
+      </p>
     </div>
 
     <Notice v-if="error" role="alert" class="font-medium">{{ error }}</Notice>
@@ -115,12 +123,12 @@ const note = computed(() => (listing.value ? unconfirmedNote(listing.value) : nu
         <span class="font-mono text-xs text-muted-foreground">{{ sec.snips.length }} of {{ listing?.max_per_sector }}</span>
       </div>
       <div>
-        <label :for="`snip-file-${sec.id}`" class="text-xs text-muted-foreground">Add images for {{ sec.label }}</label>
+        <label :for="`snip-file-${sec.id}`" class="text-xs text-muted-foreground">Add a snip or a PDF for {{ sec.label }}</label>
         <input
           :id="`snip-file-${sec.id}`"
           type="file"
           multiple
-          accept="image/png,image/jpeg,image/webp"
+          accept="image/png,image/jpeg,image/webp,application/pdf"
           :disabled="disabled || uploading || sec.snips.length >= (listing?.max_per_sector ?? 6)"
           class="mt-1 block w-full text-sm file:mr-3 file:rounded-md file:border file:border-input file:bg-card file:px-3 file:py-1 file:text-sm"
           @change="(e) => { const t = e.target as HTMLInputElement; void upload(sec.id, t.files).then(() => (t.value = '')); }"
@@ -129,7 +137,19 @@ const note = computed(() => (listing.value ? unconfirmedNote(listing.value) : nu
       <p v-if="!sec.snips.length" class="text-sm text-muted-foreground">No snip yet. This sector will say “not included” unless one is confirmed.</p>
       <ul v-if="sec.snips.length" class="space-y-4" :aria-label="`${sec.label} snips`">
         <li v-for="s in sec.snips" :key="s.hash" class="grid gap-3 rounded-lg border p-3 md:grid-cols-2">
-          <a :href="api.snipImageUrl(week, s.hash)" target="_blank" rel="noopener" class="block self-start">
+          <dl v-if="s.kind === 'pdf'" class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 self-start rounded-md border p-3 text-xs">
+            <dt class="text-muted-foreground">PDF</dt>
+            <dd><a :href="api.snipImageUrl(week, s.hash)" download class="break-all font-mono underline">{{ s.filename }}</a></dd>
+            <dt class="text-muted-foreground">Pages</dt>
+            <dd>{{ s.pages }}</dd>
+            <dt class="text-muted-foreground">Size</dt>
+            <dd>{{ ((s.size ?? 0) / 1048576).toFixed(1) }} MB</dd>
+            <dt class="text-muted-foreground">Uploaded</dt>
+            <dd>{{ s.uploaded_at ? friendlyTime(s.uploaded_at) : "" }}</dd>
+            <dt class="text-muted-foreground">Fingerprint</dt>
+            <dd class="font-mono">{{ hashPrefix(s.file_sha ?? "") }}</dd>
+          </dl>
+          <a v-else :href="api.snipImageUrl(week, s.hash)" target="_blank" rel="noopener" class="block self-start">
             <img :src="api.snipImageUrl(week, s.hash)" :alt="`Snip ${s.filename}`" class="max-h-72 w-full rounded-md border object-contain" loading="lazy" />
           </a>
           <div class="space-y-2">
@@ -139,7 +159,28 @@ const note = computed(() => (listing.value ? unconfirmedNote(listing.value) : nu
                 {{ busy[s.hash] ?? snipStatus(s, drafts[s.hash]) }}
               </span>
             </p>
-            <template v-if="s.text !== null">
+            <template v-if="s.kind === 'pdf' && s.text !== null">
+              <p v-if="!s.passages?.length" class="text-sm">
+                No passage about {{ sec.label }} was found in this PDF, so there is nothing to confirm. Remove it, or upload it under the sector it covers.
+              </p>
+              <template v-else>
+                <p class="text-xs font-semibold">Passages about {{ sec.label }}, each word for word from its page</p>
+                <ul class="max-h-72 space-y-2 overflow-y-auto text-sm" :aria-label="`Passages from ${s.filename}`">
+                  <li v-for="(p, i) in s.passages" :key="i">
+                    <span class="font-mono text-xs text-muted-foreground">Page {{ p.page }}</span>
+                    <span v-if="s.ocr_pages?.includes(p.page)" class="ml-2 text-xs font-semibold text-warn-fg">read by OCR, check the text</span>
+                    <p>{{ p.quote }}</p>
+                  </li>
+                </ul>
+              </template>
+              <p v-if="s.dropped" class="text-xs text-muted-foreground">
+                {{ s.dropped }} {{ s.dropped === 1 ? "passage was" : "passages were" }} dropped: not word for word on the page the model named.
+              </p>
+              <p v-if="s.ocr_pages?.length" class="text-xs text-warn-fg">
+                {{ s.ocr_pages.length === 1 ? "Page" : "Pages" }} {{ s.ocr_pages.join(", ") }} had no selectable text and {{ s.ocr_pages.length === 1 ? "was" : "were" }} read by OCR, check the text.
+              </p>
+            </template>
+            <template v-else-if="s.text !== null">
               <label :for="`snip-text-${s.hash}`" class="text-xs font-semibold">Text in the image</label>
               <Textarea
                 :id="`snip-text-${s.hash}`"
@@ -161,7 +202,7 @@ const note = computed(() => (listing.value ? unconfirmedNote(listing.value) : nu
                 <select
                   :id="`snip-sector-${s.hash}`"
                   :value="s.sector"
-                  :disabled="disabled || !!busy[s.hash]"
+                  :disabled="disabled || !!busy[s.hash] || s.kind === 'pdf'"
                   class="h-8 rounded-md border border-input bg-card px-2 text-sm"
                   @change="(e) => move(s, (e.target as HTMLSelectElement).value)"
                 >
@@ -181,7 +222,7 @@ const note = computed(() => (listing.value ? unconfirmedNote(listing.value) : nu
               </div>
             </div>
             <div class="flex flex-wrap gap-2">
-              <Button v-if="s.text === null" size="sm" :disabled="disabled || !!busy[s.hash]" @click="read(s.hash)">Read this snip</Button>
+              <Button v-if="s.text === null" size="sm" :disabled="disabled || !!busy[s.hash]" @click="read(s.hash)">{{ s.kind === "pdf" ? "Read this PDF" : "Read this snip" }}</Button>
               <Button
                 v-else
                 size="sm"
