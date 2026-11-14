@@ -89,7 +89,7 @@ def test_each_section_is_its_own_cited_piece_and_the_conclusion_is_written_witho
     provider = FakeNarrativeProvider()
     review = focus_review(provider, sections=TYPED)
     assert provider.calls == ["focus_section_1", "focus_section_2"]
-    assert [c[2] for c in provider.completions] == [2000, 600]
+    assert [c[2] for c in provider.completions] == [6000, 600]
     assert "Section I: Overview" in provider.completions[0][1] and "grew" in provider.completions[0][1]
     assert review.section["model_calls"] == 4 and review.section["api_requests"] == 4
     assert review.section["pieces_expected"] == 4 and review.section["pieces_found"] == 4
@@ -103,7 +103,7 @@ def test_section_briefs_carry_the_caps_and_the_title_list():
     draft = provider.draft_piece
     provider.draft_piece = lambda brief, **kw: (seen.append(brief), draft(brief, **kw))[1]
     focus_review(provider, sections=TYPED)
-    assert all(b.max_searches == 5 and b.max_tokens == 2000 and b.words == (350, 650) and not b.headed for b in seen)
+    assert all(b.max_searches == 5 and b.max_tokens == 6000 and b.words == (350, 650) and not b.headed for b in seen)
     assert "Section III: Recommendations and Conclusion" in seen[0].context
 
 
@@ -146,7 +146,7 @@ def test_a_heading_the_model_adds_is_dropped_with_a_warning_and_never_cuts_the_p
 
 
 def test_nothing_found_raises_instead_of_saving_an_empty_review():
-    with pytest.raises(LookupError, match="no sourced material"):
+    with pytest.raises(LookupError, match=r"^No section produced a sourced draft, so nothing was saved\. 2 of 2 sections: "):
         build_focus_review("Obscure", provider=FakeNarrativeProvider(no_story={"focus_section_1", "focus_section_2"}),
                            today=TODAY, sections=TYPED, previous_issue=previous_issue())
 

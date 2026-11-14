@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
 from datetime import date
 from typing import Any, Callable, Optional, Sequence
 
@@ -8,7 +9,7 @@ from cytonn_weekly.common.review import ROMAN, build_review, check_section, narr
 from cytonn_weekly.common.computed import carried_block
 from cytonn_weekly.common.run_events import PART_SKIPPED, PIECE_FINISHED, PIECE_STARTED, Observer, emit
 from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview
-from cytonn_weekly.narrative.base import NarrativeBrief, NarrativeProvider
+from cytonn_weekly.narrative.base import NarrativeBrief, NarrativeProvider, NothingDrafted
 from cytonn_weekly.narrative.drafter import draft_pieces
 from cytonn_weekly.narrative.factory import get_narrative_provider
 from cytonn_weekly.weekly import previous_issue as previous_issue_mod
@@ -26,7 +27,7 @@ MAX_SECTION_TITLE = 120
 # The caps that bound a draft's cost (see CLAUDE.md, Focus of the Week).
 SECTION_WORDS = (350, 650)
 SECTION_SEARCHES = 5
-SECTION_MAX_TOKENS = 2000
+SECTION_MAX_TOKENS = 6000   # a sourced reply is the body (650 words, about 900 tokens) plus every claim and its quote
 LEAD_WORDS = (100, 200)
 LEAD_MAX_TOKENS = 600
 OUTLINE_TITLES = (4, 6)
@@ -142,7 +143,8 @@ def section_brief(topic: str, titles: Sequence[str], index: int) -> NarrativeBri
         words=SECTION_WORDS, opener=None, max_searches=SECTION_SEARCHES, headed=False, max_tokens=SECTION_MAX_TOKENS,
         context=("This is one section of a longer report on the topic. The report's sections, in order:\n"
                  f"{listing}\nWrite only the body of {heading(index, titles[index])}; do not repeat what the other "
-                 "sections cover."),
+                 f"sections cover. Keep the body within {SECTION_WORDS[0]} to {SECTION_WORDS[1]} words and each quote "
+                 "no longer than its figures need, so the whole reply is complete."),
     )
 
 
@@ -282,10 +284,11 @@ def build_focus_review(topic: str, provider: Optional[NarrativeProvider] = None,
     model_calls += len(searched)
     drafted = {p["brief_id"]: p for p in draft["pieces"]}
     skipped = draft.get("skipped", {})
-    if not drafted:
-        if skipped and len(skipped) == len(searched):   # every section had a reason of its own (no sources supplied)
-            raise LookupError(next(iter(skipped.values())))
-        raise LookupError(f"no sourced material found for the topic {topic!r}; try a more specific topic or other section titles")
+    if not drafted:   # each section's own reason (no sources, cut off, nothing passed the checks), counted
+        why = Counter(skipped.get(f"focus_section_{i + 1}") or "the model found nothing in the material that qualified."
+                      for i in range(len(searched)))
+        raise NothingDrafted("No section produced a sourced draft, so nothing was saved. "
+                             + " ".join(f"{n} of {len(searched)} sections: {r}" for r, n in why.items()))
 
     blocks: list[dict[str, Any]] = []
     for i, title in enumerate(searched):

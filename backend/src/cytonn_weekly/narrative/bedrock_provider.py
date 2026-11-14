@@ -47,7 +47,7 @@ BEARER_VAR = "AWS_BEARER_TOKEN_BEDROCK"
 KEY_VARS = ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY")
 TOKEN_VAR = "AWS_SESSION_TOKEN"
 # Sonnet 4.6 allows far more output than any piece needs. A highlight's JSON reply (paragraph plus claims) is about
-# 1,000 tokens and a Markets Review brief about 950; 4096 leaves room. A brief's own cap (Focus: 2000 a section, 600
+# 1,000 tokens and a Markets Review brief about 950; 4096 leaves room. A brief's own cap (Focus: 6000 a section, 600
 # the lead) and the outlook's 800 (as on the Anthropic path) replace it.
 MAX_TOKENS = 4096
 OUTLOOK_MAX_TOKENS = 800
@@ -66,6 +66,8 @@ BOTO3_MISSING = (f"Signing Bedrock requests with access keys needs boto3, which 
 NO_SOURCES = "No sources were supplied for this piece, so nothing was drafted. Supply the pages to read."
 NO_VERIFIED_CLAIMS = ("No claim in the draft held up against the supplied sources (each failed claim is listed in the "
                       "warnings), so nothing was kept. Check the pages, or supply others.")
+CUT_OFF = ("The model's reply reached its output limit and was cut off, so nothing was kept. Draft again; if it happens "
+           "again, report it with the section name.")
 SNIP_MAX_TOKENS = MAX_TOKENS   # one call per snip, capped like a draft; a reply cut off at it is refused, never kept
 SNIP_SYSTEM = (
     "You transcribe text from an image that an analyst cut out of a magazine or report. Copy every word, number, unit, "
@@ -346,6 +348,10 @@ class _Chat:
             [{"role": "system", "content": _sourced(system)},
              {"role": "user", "content": results_message(label, results, "Supplied sources", SOURCE_CHARS)}],
             SOURCED_SCHEMA, max_tokens)
+        if self.last_stop == "max_tokens":   # half a JSON object: said, not passed off as "nothing qualifying"
+            empty.draft_warnings = warnings + [f"{label}: {CUT_OFF}"]
+            empty.reason = CUT_OFF
+            return empty
         try:
             res = parse(raw, warnings, _sourced_reader(results))
         except (AttributeError, TypeError, KeyError, ValueError) as exc:   # a field of the reply was not in a usable shape
