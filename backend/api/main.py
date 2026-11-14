@@ -1647,6 +1647,35 @@ def create_app(
                 "result": {"action": done.action, "changed_items": done.changed_items, "earlier_run_id": run_id,
                            "was_approved": old.decision == "approved"}}
 
+    @app.post("/api/reviews/{run_id}/items/{index}/remove-finding")
+    def remove_finding(run_id: int, index: int) -> dict:
+        """Take one whole drafted piece (a Digital Payments highlight, or a narrative piece) out of the draft.
+
+        A NEW undecided review is saved without it, as for a sentence edit; the earlier one is never edited, even if
+        approved.  Answers ``{"review", "result"}`` like the sentence route.
+        """
+        old = load(run_id)
+        try:
+            done = sentence_edit.remove_finding(old, index, charts_root)
+        except sentence_edit.NotFound as exc:
+            raise ProblemError(409, str(exc), "finding_not_found")
+        except sentence_edit.NotPossible as exc:
+            raise ProblemError(409, str(exc), "finding_not_possible")
+        except Exception:  # noqa: BLE001 - nothing was saved; the reviewer gets a fixed sentence, the log gets the cause
+            log.exception("removing a finding from run %s failed", run_id)
+            raise ProblemError(500, sentence_edit.FINDING_SAVE_FAILED, "finding_save_failed")
+        with write_lock:
+            try:
+                save(done.review)
+            except HTTPException:
+                raise
+            except Exception:  # noqa: BLE001
+                log.exception("saving run %s without a finding failed", run_id)
+                raise ProblemError(500, sentence_edit.FINDING_SAVE_FAILED, "finding_save_failed")
+        return {"review": serialize_review(done.review),
+                "result": {"action": done.action, "changed_items": done.changed_items, "earlier_run_id": run_id,
+                           "was_approved": old.decision == "approved"}}
+
     @app.post("/api/reviews/{run_id}/accept-clean")
     def accept_clean(run_id: int) -> dict:
         return mutate(run_id, lambda review: review.accept_all_clean())

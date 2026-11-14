@@ -90,10 +90,8 @@ def require_approved(review: Optional[CoordinatorReview]) -> CoordinatorReview:
     if review.decision != APPROVED:
         state = review.decision or "still in progress"
         raise SummaryNotAllowed(f"review run {review.run_id} is {state}, not approved; no summary produced")
-    if not review.is_approvable:  # a decision field alone is not proof; every item must really be accepted
-        raise SummaryNotAllowed(
-            f"review run {review.run_id} is marked approved but not every item is resolved and accepted"
-        )
+    if not review.is_approvable:  # a decision field alone is not proof; there must be a draft
+        raise SummaryNotAllowed(f"review run {review.run_id} is marked approved but holds no draft")
     return review
 
 

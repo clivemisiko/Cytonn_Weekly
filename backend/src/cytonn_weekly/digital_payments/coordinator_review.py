@@ -4,8 +4,8 @@ Turns compose_section()'s output plus the checking layer's CheckReport into one
 flat list of ReviewItems, one per checkable unit (a table row, an outlook stat,
 or a highlight claim), so the analyst's single accuracy pass has something
 concrete to resolve.  The tool never approves anything: the only thing this
-module computes is whether the analyst's own resolutions allow an approval
-decision, and ``decide()`` records the analyst's call.
+module computes is whether there is a draft to decide on, and ``decide()``
+records the analyst's call.
 
 Statuses
 --------
@@ -117,13 +117,9 @@ class CoordinatorReview:
 
     @property
     def is_approvable(self) -> bool:
-        """True only when every item is resolved and none needs a fix.
-
-        An empty review is never approvable: nothing was reviewed.
-        """
-        return bool(self.review_items) and all(
-            i.resolution is not None and i.resolution != FIX_NEEDED for i in self.review_items
-        )
+        """True when the review holds a draft (any item).  Resolutions no longer gate approval: a section is approved or
+        rejected as a whole.  They are still stored, so older reviews load and show them."""
+        return bool(self.review_items)
 
     def by_status(self, status: str) -> list[ReviewItem]:
         return [i for i in self.review_items if i.status == status]
@@ -145,22 +141,15 @@ class CoordinatorReview:
     def decide(self, decision: str) -> None:
         """Record the analyst's final call, once.
 
-        "approved" requires ``is_approvable``.  "rejected" is always allowed:
-        ``fix_needed`` makes the review unapprovable, and sending it back is
-        exactly what an analyst does then, so gating rejection on
-        approvability would make it impossible when it is needed most.
+        "approved" needs a draft (``is_approvable``); item resolutions do not matter.
+        "rejected" is always allowed.
         """
         if decision not in (APPROVED, REJECTED):
             raise ValueError(f"decision must be {APPROVED!r} or {REJECTED!r}, got {decision!r}")
         if self.decision is not None:
             raise ValueError(f"review already decided ({self.decision!r}); build a new review")
         if decision == APPROVED and not self.is_approvable:
-            unresolved = sum(1 for i in self.review_items if i.resolution is None)
-            fixes = sum(1 for i in self.review_items if i.resolution == FIX_NEEDED)
-            raise ValueError(
-                f"cannot approve: {unresolved} item(s) unresolved, {fixes} marked fix_needed"
-                if self.review_items else "cannot approve: the review has no items"
-            )
+            raise ValueError("cannot approve: the review has no items")
         self.decision = decision
         self.decided_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
 

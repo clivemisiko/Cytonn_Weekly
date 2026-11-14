@@ -55,6 +55,9 @@ PROBLEMS: dict[str, tuple[str, Optional[str]]] = {
     "edit_paragraph_not_possible": ("This paragraph cannot be changed here", None),
     "edit_text_refused": ("The new sentence was not saved", None),
     "edit_save_failed": ("The new version could not be saved", None),
+    "finding_not_possible": ("This finding cannot be removed here", None),
+    "finding_not_found": ("The finding was not found in the draft", None),
+    "finding_save_failed": ("The finding was not removed", None),
 }
 
 
