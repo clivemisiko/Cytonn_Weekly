@@ -202,7 +202,8 @@ def test_the_call_is_a_forced_client_side_function_with_no_server_tool_and_no_co
 
 def test_a_reply_cut_off_at_the_token_limit_is_discarded_with_a_warning(aws):
     res = narrative(FakeBedrock(stop="max_tokens")).draft_piece(BRIEF, start=START, end=TODAY, today=TODAY)
-    assert res.no_story and any("Bedrock model returned invalid JSON" in w for w in res.draft_warnings)
+    assert res.no_story and not res.claims and res.reason == bp.CUT_OFF
+    assert any(bp.CUT_OFF in w for w in res.draft_warnings)
 
 
 def test_each_request_logs_its_number_and_token_counts_and_nothing_else(aws, caplog):
@@ -474,7 +475,9 @@ def test_a_focus_with_no_sources_anywhere_stops_with_the_no_sources_sentence(aws
     client = FakeBedrock()
     with pytest.raises(LookupError) as stopped:
         focus_review(narrative(client), sections=TITLES)
-    assert str(stopped.value) == bp.NO_SOURCES and client.calls == []
+    said = str(stopped.value)
+    assert said.startswith("No section produced a sourced draft, so nothing was saved.") and bp.NO_SOURCES in said
+    assert client.calls == []
 
 
 def test_a_provider_with_no_reason_of_its_own_keeps_the_nothing_qualifying_wording(aws):
