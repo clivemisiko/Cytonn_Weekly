@@ -1260,7 +1260,8 @@ def create_app(
         except snip_store.SnipError as exc:
             raise HTTPException(409, str(exc))
         return {"week_ending": day.isoformat(), "sectors": [{"id": i, "label": label} for i, label in snip_store.SECTORS],
-                "max_per_sector": snip_store.MAX_PER_SECTOR, "max_bytes": snip_store.MAX_BYTES, "snips": items}
+                "max_per_sector": snip_store.MAX_PER_SECTOR, "max_bytes": snip_store.MAX_BYTES,
+                "pdf_max_bytes": snip_store.PDF_MAX_BYTES, "pdf_max_pages": snip_store.PDF_MAX_PAGES, "snips": items}
 
     def snip_guard(day: date, h: str, *also: str) -> None:
         """A confirmed snip is a source of its sector's piece, so none may change while a draft reads that piece."""
@@ -1275,15 +1276,16 @@ def create_app(
 
     @app.put("/api/snips/{week_ending}/{sector}")
     async def upload_snip(week_ending: str, sector: str, request: Request, filename: str = Query(default="", max_length=200)) -> dict:
-        """Upload one image (PNG, JPEG or WebP, judged by its first bytes) for one sector: the file is the request body.
-        Nothing is read from it here and nothing is fetched."""
+        """Upload one image (PNG, JPEG or WebP) or PDF, judged by its first bytes, for one sector: the file is the request
+        body. Nothing is read from it here and nothing is fetched. The image limit is checked in snip_store.add."""
         day = snip_day(week_ending)
         declared = request.headers.get("content-length")
-        too_big = HTTPException(413, f"The image is over the {snip_store.MAX_BYTES // 1_048_576} MB limit. Crop it or save it smaller.")
-        if declared and declared.isdigit() and int(declared) > snip_store.MAX_BYTES:
+        too_big = HTTPException(413, f"The file is over the {snip_store.PDF_MAX_BYTES // 1_048_576} MB limit for a PDF "
+                                     f"({snip_store.MAX_BYTES // 1_048_576} MB for an image).")
+        if declared and declared.isdigit() and int(declared) > snip_store.PDF_MAX_BYTES:
             raise too_big
         data = await request.body()
-        if len(data) > snip_store.MAX_BYTES:
+        if len(data) > snip_store.PDF_MAX_BYTES:
             raise too_big
         try:
             await run_in_threadpool(snip_store.add, day, sector, filename, data, snips_dir)
@@ -1297,7 +1299,10 @@ def create_app(
             data, media = snip_store.image_bytes(snip_day(week_ending), h, snips_dir)
         except (snip_store.SnipError, OSError) as exc:
             raise HTTPException(404, str(exc))
-        return Response(data, media_type=media, headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+        headers = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"}
+        if media == "application/pdf":   # downloaded, never opened in the page, so nothing in it runs here
+            headers["Content-Disposition"] = "attachment"
+        return Response(data, media_type=media, headers=headers)
 
     @app.post("/api/snips/{week_ending}/{h}/read")
     def read_snip(week_ending: str, h: str) -> dict:
@@ -1320,15 +1325,24 @@ def create_app(
             except DraftBusy as exc:
                 raise HTTPException(409, busy_message(exc))
             try:
-                data, media = snip_store.image_bytes(day, h, snips_dir)
-                text = provider.read_snip(data, media)
+                if entry.get("kind") == "pdf":   # each chunk of page text, then every quote checked against its page
+                    pages, ocr_pages = snip_store.pdf_pages(day, h, snips_dir)
+                    found = [p for chunk in snip_store.pdf_chunks(pages)
+                             for p in provider.read_pdf_passages(snip_store.LABELS[entry["sector"]], chunk)]
+                    passages, dropped = snip_store.check_passages(found, pages)
+                else:
+                    data, media = snip_store.image_bytes(day, h, snips_dir)
+                    text = provider.read_snip(data, media)
             except SnipReadError as exc:
                 raise HTTPException(409, str(exc))
             except bedrock_provider.BedrockError as exc:
                 raise HTTPException(502, str(exc))
             finally:
                 free_seat(claim)
-            snip_store.reading(day, h, text, snips_dir)
+            if entry.get("kind") == "pdf":
+                snip_store.pdf_reading(day, h, {"passages": passages, "dropped": dropped, "ocr_pages": ocr_pages}, snips_dir)
+            else:
+                snip_store.reading(day, h, text, snips_dir)
         except snip_store.SnipError as exc:
             raise HTTPException(422, str(exc))
         return snip_view(day)

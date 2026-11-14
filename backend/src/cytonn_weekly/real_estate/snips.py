@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import re
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from cytonn_weekly import paths
 from cytonn_weekly.common import atomic
 from cytonn_weekly.common import sources as source_store
+from cytonn_weekly.common.checks import normalise_quote
 from cytonn_weekly.weekly.week import latest_friday
 
 SECTORS = (("industry", "Industry reports"), ("residential", "Residential sector"), ("land", "Land"),
@@ -19,6 +21,11 @@ MAX_BYTES = 5 * 1024 * 1024
 MAX_PER_SECTOR = 6
 MAX_TEXT_CHARS = 20_000
 UNCLEAR = re.compile(r"\[unclear[^\]]*\]", re.I)
+PDF_MAX_BYTES = 20 * 1024 * 1024
+PDF_MAX_PAGES = 60
+OCR_BELOW_CHARS = 30      # a page with less selectable text than this is read by OCR instead
+CHUNK_CHARS = 80_000      # page text per model call, about 20k tokens, so a call stays near 25k input tokens with the prompt
+OCR_NOTE = "read by OCR, check the text"
 
 
 class SnipError(ValueError):
@@ -76,27 +83,168 @@ def list_snips(week_end: date, root: Optional[Path] = None) -> list[dict[str, An
     return _load(_folder(week_end, root))
 
 
+def _file_sha(e: dict[str, Any]) -> str:
+    """The fingerprint of the stored file: an image's entry hash is its file's; a PDF's entry is per sector (file_sha)."""
+    return e.get("file_sha") or e["hash"]
+
+
 def image_bytes(week_end: date, h: str, root: Optional[Path] = None) -> tuple[bytes, str]:
     folder = _folder(week_end, root)
     e = _entry(_load(folder), h)
-    data = (folder / f"{h}.{e['ext']}").read_bytes()
-    if hashlib.sha256(data).hexdigest() != h:
-        raise SnipError("The saved image no longer matches its fingerprint, so it was not used. Remove it and upload it again.")
+    data = (folder / f"{_file_sha(e)}.{e['ext']}").read_bytes()
+    if hashlib.sha256(data).hexdigest() != _file_sha(e):
+        raise SnipError("The saved file no longer matches its fingerprint, so it was not used. Remove it and upload it again.")
     return data, e["media_type"]
+
+
+def _clean_name(filename: str, h: str) -> str:
+    return re.sub(r"[^\w .()-]", "_", filename or "")[:120] or h[:8]
+
+
+def _open_pdf(data: bytes):
+    """The PDF opened with pdfplumber (which runs nothing in it and follows no link), or SnipError saying why not."""
+    import pdfplumber
+    from pdfminer.pdfdocument import PDFPasswordIncorrect
+
+    try:
+        pdf = pdfplumber.open(io.BytesIO(data))
+        n = len(pdf.pages)
+    except PDFPasswordIncorrect:
+        raise SnipError("This PDF is password protected. Save a copy without the password and upload that.") from None
+    except Exception:  # noqa: BLE001 - pdfminer raises many kinds for a damaged file
+        raise SnipError("This PDF is damaged and cannot be read. Save it again from its source and upload the new copy.") from None
+    if getattr(pdf.doc, "encryption", None):
+        pdf.close()
+        raise SnipError("This PDF is encrypted. Save a copy without encryption and upload that.")
+    if n == 0:
+        pdf.close()
+        raise SnipError("This PDF has no pages.")
+    if n > PDF_MAX_PAGES:
+        pdf.close()
+        raise SnipError(f"This PDF has {n} pages; the limit is {PDF_MAX_PAGES}. Upload only the pages about this sector.")
+    return pdf
+
+
+def _add_pdf(week_end: date, sector: str, filename: str, data: bytes, root: Optional[Path]) -> dict[str, Any]:
+    if len(data) > PDF_MAX_BYTES:
+        raise SnipError(f"The PDF is {len(data) / 1048576:.1f} MB; the limit is {PDF_MAX_BYTES // 1048576} MB.")
+    with _open_pdf(data) as pdf:
+        pages = len(pdf.pages)
+    folder = _folder(week_end, root)
+    items = _load(folder)
+    sha = hashlib.sha256(data).hexdigest()
+    h = hashlib.sha256(f"{sha}:{sector}".encode()).hexdigest()   # one entry per sector: the same PDF may serve two sectors
+    if any(e["hash"] == h for e in items):
+        raise SnipError(f"This PDF is already uploaded for {LABELS[sector]} this week.")
+    if sum(e["sector"] == sector for e in items) >= MAX_PER_SECTOR:
+        raise SnipError(f"{LABELS[sector]} already has {MAX_PER_SECTOR} snips, the most it takes. Remove one first.")
+    atomic.write_atomic(folder / f"{sha}.pdf", data)
+    cached = _cache(root, h).with_suffix(".json")
+    read = json.loads(cached.read_text(encoding="utf-8")) if cached.is_file() else None
+    e = {"hash": h, "file_sha": sha, "kind": "pdf", "ext": "pdf", "media_type": "application/pdf",
+         "filename": _clean_name(filename, sha), "size": len(data), "pages": pages,
+         "uploaded_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "sector": sector,
+         "text": None, "passages": [], "dropped": 0, "ocr_pages": [], "date": "", "confirmed": False, "source_id": ""}
+    if read:
+        _apply_pdf_reading(e, read)
+    _save(folder, items + [e])
+    return e
+
+
+def pdf_pages(week_end: date, h: str, root: Optional[Path] = None,
+              ocr: Optional[Callable[[Any], list]] = None) -> tuple[list[str], list[int]]:
+    """Each page's text (pdfplumber), and the pages read by OCR because they held under OCR_BELOW_CHARS selectable
+    characters. Kept by the file's hash in the read cache, so a PDF is extracted once."""
+    data, _ = image_bytes(week_end, h, root)
+    cached = _root(root) / "reads" / f"{hashlib.sha256(data).hexdigest()}.pages.json"
+    if cached.is_file():
+        got = json.loads(cached.read_text(encoding="utf-8"))
+        return got["pages"], got["ocr_pages"]
+    texts, ocr_pages = [], []
+    with _open_pdf(data) as pdf:
+        for n, page in enumerate(pdf.pages, 1):
+            try:
+                text = (page.extract_text() or "").strip()
+            except Exception:  # noqa: BLE001 - pdfminer finds some damage only when it reads a page
+                raise SnipError(f"Page {n} of this PDF is damaged and cannot be read. Save it again from its source and "
+                                "upload the new copy.") from None
+            if len(text) < OCR_BELOW_CHARS:
+                try:
+                    text = _ocr_page(page, ocr)
+                except Exception:  # noqa: BLE001 - the OCR package missing, or a page it cannot render
+                    raise SnipError(f"Page {n} has no selectable text and the OCR could not read it. Upload the other pages, "
+                                    "or a snip of that page.") from None
+                ocr_pages.append(n)
+            texts.append(text)
+    atomic.write_atomic(cached, json.dumps({"pages": texts, "ocr_pages": ocr_pages}))
+    return texts, ocr_pages
+
+
+def _ocr_page(page: Any, ocr: Optional[Callable[[Any], list]]) -> str:
+    """One page through the project's OCR (RapidOCR, as for the NSE price list), its words joined line by line."""
+    import numpy as np
+
+    from cytonn_weekly.weekly.nse_price_list import DPI, rapidocr_engine
+
+    image = np.array(page.to_image(resolution=DPI).original.convert("RGB"))[:, :, ::-1].copy()
+    words = sorted((ocr or rapidocr_engine())(image), key=lambda w: (round(w[1] / 15), w[0]))   # ponytail: rows by 15px bands
+    lines: dict[int, list[str]] = {}
+    for x0, y0, _x1, _y1, text in words:
+        lines.setdefault(round(y0 / 15), []).append(text)
+    return "\n".join(" ".join(ws) for _, ws in sorted(lines.items()))
+
+
+def pdf_chunks(pages: list[str]) -> list[str]:
+    """The page texts as page-labelled chunks of at most CHUNK_CHARS (a longer page is a chunk of its own)."""
+    chunks, current = [], ""
+    for n, text in enumerate(pages, 1):
+        part = f"[Page {n}]\n{text}\n\n"
+        if current and len(current) + len(part) > CHUNK_CHARS:
+            chunks.append(current)
+            current = ""
+        current += part
+    return chunks + [current] if current else chunks
+
+
+def check_passages(found: list[dict[str, Any]], pages: list[str]) -> tuple[list[dict[str, Any]], int]:
+    """Keep only passages whose quote is word for word on the page they name (the quote check's normalising); count the rest."""
+    kept, dropped, seen = [], 0, set()
+    for p in found:
+        quote, page = " ".join(str(p.get("quote") or "").split()), p.get("page")
+        ok = isinstance(page, int) and 1 <= page <= len(pages) and quote and normalise_quote(quote) in normalise_quote(" ".join(pages[page - 1].split()))
+        if not ok:
+            dropped += 1
+        elif (page, quote) not in seen:
+            seen.add((page, quote))
+            kept.append({"page": page, "quote": quote})
+    return sorted(kept, key=lambda p: p["page"]), dropped
+
+
+def _apply_pdf_reading(e: dict[str, Any], read: dict[str, Any]) -> None:
+    e["passages"], e["dropped"], e["ocr_pages"] = read["passages"], read["dropped"], read["ocr_pages"]
+    e["text"] = "\n\n".join(f"Page {p['page']}: {p['quote']}" for p in read["passages"])   # "" when nothing was found
+
+
+def pdf_reading(week_end: date, h: str, read: dict[str, Any], root: Optional[Path] = None) -> dict[str, Any]:
+    """Keep the checked passages: in the read cache (by entry hash) and on the snip."""
+    atomic.write_atomic(_cache(root, h).with_suffix(".json"), json.dumps(read))
+    return _edit(week_end, h, root, lambda e: _apply_pdf_reading(e, read))
 
 
 @atomic.locked
 def add(week_end: date, sector: str, filename: str, data: bytes, root: Optional[Path] = None) -> dict[str, Any]:
-    """Keep one uploaded image under its content hash, in the sector the analyst chose. Nothing is read from it here."""
+    """Keep one uploaded image (under its content hash) or PDF, in the sector the analyst chose. Nothing is read from it here."""
     if sector not in LABELS:
         raise SnipError(f"{sector!r} is not a sector. Choose one of: {', '.join(LABELS.values())}.")
     if not data:
         raise SnipError("The file is empty.")
+    if data.startswith(b"%PDF-"):
+        return _add_pdf(week_end, sector, filename, data, root)
     if len(data) > MAX_BYTES:
         raise SnipError(f"The image is {len(data) / 1048576:.1f} MB; the limit is {MAX_BYTES // 1048576} MB. Crop it or save it smaller.")
     kind = image_type(data)
     if kind is None:
-        raise SnipError("Only PNG, JPG and WebP images are accepted, and this file is none of them (its contents were checked, not its name).")
+        raise SnipError("Only PNG, JPG and WebP images and PDFs are accepted, and this file is none of them (its contents were checked, not its name).")
     folder = _folder(week_end, root)
     items = _load(folder)
     h = hashlib.sha256(data).hexdigest()
@@ -132,8 +280,9 @@ def _edit(week_end: date, h: str, root: Optional[Path], change) -> dict[str, Any
 
 def _unconfirm(e: dict[str, Any], sources_root: Optional[Path]) -> None:
     if e["confirmed"]:
-        source_store.remove(e["source_id"], sources_root)
-        e["confirmed"], e["source_id"] = False, ""
+        for sid in e.get("source_ids") or [e["source_id"]]:   # a PDF is one source per page with passages
+            source_store.remove(sid, sources_root)
+        e["confirmed"], e["source_id"], e["source_ids"] = False, "", []
 
 
 @atomic.locked
@@ -143,6 +292,10 @@ def update(week_end: date, h: str, *, text: Optional[str], sector: Optional[str]
     folder = _folder(week_end, root)
     items = _load(folder)
     e = _entry(items, h)
+    if e.get("kind") == "pdf" and text is not None and text != e["text"]:
+        raise SnipError("A PDF's passages are quoted word for word from it and cannot be edited. Remove the PDF if they are wrong.")
+    if e.get("kind") == "pdf" and sector is not None and sector != e["sector"]:
+        raise SnipError("A PDF is read for the sector it was uploaded to. Upload it again under the other sector instead.")
     if sector is not None and sector != e["sector"]:
         if sector not in LABELS:
             raise SnipError(f"{sector!r} is not a sector.")
@@ -172,6 +325,8 @@ def confirm(week_end: date, h: str, root: Optional[Path] = None, sources_root: O
     folder = _folder(week_end, root)
     items = _load(folder)
     e = _entry(items, h)
+    if e.get("kind") == "pdf":
+        return _confirm_pdf(week_end, folder, items, e, root, sources_root)
     if not (e["text"] or "").strip():
         raise SnipError("This snip has not been read yet.")
     if has_unclear(e["text"]):
@@ -185,11 +340,35 @@ def confirm(week_end: date, h: str, root: Optional[Path] = None, sources_root: O
     return e
 
 
+def _confirm_pdf(week_end: date, folder: Path, items: list[dict[str, Any]], e: dict[str, Any],
+                 root: Optional[Path], sources_root: Optional[Path]) -> dict[str, Any]:
+    """One saved source (origin "snip") per page that has passages, labelled "uploaded PDF, page N", so a claim's citation
+    names its page. The source's text is that page's passages, each word for word from the page."""
+    if e["text"] is None:
+        raise SnipError("This PDF has not been read yet.")
+    if not e["passages"]:
+        raise SnipError(f"No passage about {LABELS[e['sector']]} was found in this PDF, so there is nothing to confirm. Remove it.")
+    _unconfirm(e, sources_root)
+    image_bytes(week_end, e["hash"], root)   # the stored file still matches its fingerprint
+    by_page: dict[int, list[str]] = {}
+    for p in e["passages"]:
+        by_page.setdefault(p["page"], []).append(p["quote"])
+    ids = [source_store.from_snip(None, "", "\n\n".join(quotes), LABELS[e["sector"]], week_end,
+                                  e["date"] or latest_friday(week_end).isoformat(), f"{e['filename']}, uploaded PDF, page {n}",
+                                  page=n, file_sha=e["file_sha"], root=sources_root).id
+           for n, quotes in sorted(by_page.items())]
+    e["confirmed"], e["source_id"], e["source_ids"] = True, ids[0], ids
+    _save(folder, items)
+    return e
+
+
 @atomic.locked
 def remove(week_end: date, h: str, root: Optional[Path] = None, sources_root: Optional[Path] = None) -> None:
     folder = _folder(week_end, root)
     items = _load(folder)
     e = _entry(items, h)
     _unconfirm(e, sources_root)
-    (folder / f"{h}.{e['ext']}").unlink(missing_ok=True)
-    _save(folder, [x for x in items if x["hash"] != h])
+    rest = [x for x in items if x["hash"] != h]
+    if not any(_file_sha(x) == _file_sha(e) for x in rest):   # the same PDF may still serve another sector
+        (folder / f"{_file_sha(e)}.{e['ext']}").unlink(missing_ok=True)
+    _save(folder, rest)
