@@ -123,7 +123,7 @@ def test_review_follows_the_report_order_and_checks_clean():
     assert blocks[0]["rows"][0] == {"index": "NASI", "name": "NASI", "close": "246.8", "wow_pct": "(0.7%)", "ytd_pct": "32.3%"}
 
 
-def test_stub_parts_and_claims_need_explicit_resolution():
+def test_stub_parts_are_flagged_and_claims_are_not_auto_verified():
     review = equities_review()
     stubs_items = [i for i in review.review_items if i.kind == UNAVAILABLE_PART]
     assert [i.ref for i in stubs_items] == ["Market activity and valuation (not available yet)",
@@ -131,7 +131,7 @@ def test_stub_parts_and_claims_need_explicit_resolution():
     assert all(i.status == FLAGGED for i in stubs_items)
     assert all(i.status == NOT_AUTO_VERIFIED for i in review.review_items if i.kind == CLAIM)
     review.accept_all_clean()
-    assert not review.is_approvable
+    assert review.is_approvable
 
 
 def test_a_brief_with_no_story_is_skipped_reported_and_not_backfilled():

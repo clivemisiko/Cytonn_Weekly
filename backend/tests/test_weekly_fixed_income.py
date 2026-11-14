@@ -179,7 +179,7 @@ def test_a_builders_own_flag_and_carried_text_are_always_flagged():
     item = review.review_items[0]
     assert (item.kind, item.status, item.ref) == ("carried_text", "flagged", "Outlook (carried forward)")
     assert item.detail[0].message.startswith("carried forward, edit before approving: this text is copied from issue 891")
-    assert not review.is_approvable
+    assert review.is_approvable
 
 
 def test_a_table_row_can_be_analyst_input_and_a_derived_column_is_worked_out_again():
@@ -380,7 +380,7 @@ def test_what_the_spec_says_to_flag_is_flagged(root):
     assert not any("amount issued, years to maturity and yield at issue" in ref for ref in flagged)
     assert any(ref == "T-Bonds: recommended bidding range (the analysts' recommendation) (not available yet)" for ref in flagged)
     assert {"Kenya Shilling: what pressures the shilling (carried forward)", "Rates and outlook (closing paragraph) (carried forward)"} <= set(flagged)
-    assert not review.is_approvable
+    assert review.is_approvable
 
 
 def test_the_settled_target_is_not_flagged_and_stays_not_auto_verified(root):

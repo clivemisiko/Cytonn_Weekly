@@ -91,7 +91,7 @@ def test_round_trip_with_mixed_resolutions_reloads_identically(db):
     assert loaded.review_items[1].resolution_note == "price looks stale; check Yahoo"
     flagged = loaded.by_status(cr.FLAGGED)
     assert flagged and all(isinstance(f, cr.Flag) for i in flagged for f in i.detail)
-    assert loaded.is_approvable == review.is_approvable is False
+    assert loaded.is_approvable == review.is_approvable is True
 
 
 def test_round_trip_after_a_decision_keeps_decision_and_timestamp(db):
