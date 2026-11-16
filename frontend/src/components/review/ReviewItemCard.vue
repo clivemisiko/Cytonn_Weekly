@@ -4,7 +4,7 @@ import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "reka-ui
 import { computed, inject } from "vue";
 import { KIND_LABELS, friendlyTime, pyRepr } from "@/lib/format";
 import { READ_ONLY } from "@/lib/previous";
-import { TEXT_FROM_SEARCH, claimSource, sourcePageHref } from "@/lib/sources";
+import { ADDED_BY_ANALYST, NEWS_SITE, TEXT_FROM_SEARCH, claimSource, sourcePageHref } from "@/lib/sources";
 import type { Flag, Review, ReviewItem } from "@/lib/types";
 import EditSentence from "./EditSentence.vue";
 import FixFromFile from "./FixFromFile.vue";
@@ -33,6 +33,13 @@ const ctx = computed(() => props.item.context);
 const source = computed(() => claimSource(ctx.value));
 const hasDetail = computed(() => props.item.status === "flagged" || props.item.status === "not_auto_verified" || Object.keys(ctx.value).length > 0);
 const safeUrl = computed(() => (ctx.value.url && /^https?:\/\//.test(ctx.value.url) ? ctx.value.url : null));
+const sourceHost = computed(() => {
+  try {
+    return safeUrl.value ? new URL(safeUrl.value).host : null;
+  } catch {
+    return null;
+  }
+});
 const flags = computed<Flag[]>(() => (props.item.status === "flagged" && Array.isArray(props.item.detail) ? props.item.detail : []));
 const summary = computed(() => {
   const first = flags.value[0]?.message ?? (typeof props.item.detail === "string" ? props.item.detail : "") ?? "";
@@ -59,6 +66,10 @@ const cells = (flag: Flag): [string, string][] => [
       <span v-if="source?.textFromSearch" class="inline-flex items-center gap-1 text-xs font-medium text-warn-fg">
         <PhWarning weight="bold" class="size-3.5" aria-hidden="true" />{{ TEXT_FROM_SEARCH }}
       </span>
+      <span v-if="source?.newsSite" class="inline-flex items-center gap-1 text-xs font-medium text-warn-fg">
+        <PhWarning weight="bold" class="size-3.5" aria-hidden="true" />{{ NEWS_SITE }}
+      </span>
+      <span v-if="source?.addedByAnalyst" class="text-xs font-medium text-muted-foreground">{{ ADDED_BY_ANALYST }}</span>
       <span v-if="ctx.edited_at" class="inline-flex items-center gap-1 text-xs font-medium">
         <PhPencilSimple weight="bold" class="size-3.5" aria-hidden="true" />Edited by you, {{ friendlyTime(ctx.edited_at) }}
       </span>
@@ -66,6 +77,10 @@ const cells = (flag: Flag): [string, string][] => [
         <PhPencilSimple weight="bold" class="size-3.5" aria-hidden="true" />Removed by you, {{ friendlyTime(ctx.removed_at) }}
       </span>
     </div>
+    <!-- Where the claim comes from, visible while the details are folded; the quote and the saved copy are inside. -->
+    <p v-if="source || sourceHost" class="text-xs text-muted-foreground [overflow-wrap:anywhere]">
+      Cites <span class="font-mono text-foreground">{{ source?.host ?? sourceHost }}</span><template v-if="source?.date"> · {{ source.date }}</template>
+    </p>
 
     <CollapsibleRoot v-if="hasDetail" v-model:open="open">
       <CollapsibleTrigger class="flex w-full items-center gap-2 rounded-sm text-left text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
@@ -121,6 +136,8 @@ const cells = (flag: Flag): [string, string][] => [
           <span class="font-mono">{{ source.host }}</span> · {{ source.date }}
           <span v-if="source.offList" class="font-medium text-warn-fg"> · Unverified Source Domain</span>
           <span v-if="source.textFromSearch" class="font-medium text-warn-fg"> · {{ TEXT_FROM_SEARCH }}</span>
+          <span v-if="source.newsSite" class="font-medium text-warn-fg"> · {{ NEWS_SITE }}</span>
+          <span v-if="source.addedByAnalyst" class="font-medium"> · {{ ADDED_BY_ANALYST }}</span>
         </dd>
         <dt class="eyebrow">Quote</dt>
         <dd class="min-w-0 [overflow-wrap:anywhere]">“{{ source.quote }}” <span class="text-xs text-muted-foreground">(verified word-for-word against the saved document)</span></dd>

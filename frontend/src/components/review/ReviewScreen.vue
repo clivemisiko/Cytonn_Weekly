@@ -96,7 +96,7 @@ const findingsLeft = computed(() => {
         <div
           v-if="review.decision"
           role="status"
-          class="rise-in flex flex-col gap-1 rounded-lg border border-l-[6px] px-4 py-3"
+          class="rise-in flex flex-col gap-1 rounded-lg border border-l-[3px] px-4 py-2.5"
           :class="approved ? 'border-ok/40 border-l-ok bg-ok/10' : 'border-flag/40 border-l-flag bg-flag/10'"
         >
           <span class="flex items-center gap-2 text-base font-semibold" :class="approved ? 'text-ok-fg' : 'text-flag-fg'">

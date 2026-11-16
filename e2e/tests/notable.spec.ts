@@ -185,7 +185,7 @@ test("T53 the panel is on the review screen too, and accepting, editing and dism
 
   await page.goto(`${overviewUrl(period(week))}&review=${runId}`);
   await expect(page.getByRole("heading", { name: "Digital Payments: analyst review", level: 1 })).toBeVisible();
-  await expect(page.getByText(/\d+ unresolved · 0 of \d+ resolved/)).toBeVisible();
+  await expect(page.getByText(`Saved as run ${runId}`)).toBeVisible();
   await expect(panel(page)).toBeVisible();
   await expect(candidates(page)).toHaveCount(2);
 
@@ -201,9 +201,10 @@ test("T53 the panel is on the review screen too, and accepting, editing and dism
   await candidates(page).first().getByRole("button", { name: "Confirm dismissal" }).click();
   await expect(panel(page).getByRole("button", { name: "Dismissed (1)" })).toBeVisible();
 
-  // What the analyst sees is unchanged: the same count line, the same items, nothing resolved by it.
-  await expect(page.getByText(/\d+ unresolved · 0 of \d+ resolved/)).toBeVisible();
-  await expect(page.getByRole("radio", { name: "Accept" }).first()).not.toBeChecked();
+  // What the analyst sees is unchanged: the same saved run, still undecided, and (below) the same review, item for item.
+  await expect(page.getByText(`Saved as run ${runId}`)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeEnabled();
+  expect(before.review.decision).toBeNull();
   const after = await state();
   expect(after.review).toEqual(before.review);
   expect(after.overview).toEqual(before.overview);

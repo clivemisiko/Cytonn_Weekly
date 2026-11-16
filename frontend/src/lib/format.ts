@@ -102,6 +102,13 @@ export function friendlyTime(stamp: string): string {
   return Number.isNaN(d.getTime()) ? stamp : `${TIME_FMT.format(d).replace(" at ", ", ")} EAT`;
 }
 
+const CLOCK_FMT = new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Nairobi", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+/** "2026-10-01T13:24:13+00:00" -> "16:24:13" (Nairobi time; a run's step log carries the date elsewhere). */
+export function clockTime(stamp: string): string {
+  const d = parseStamp(stamp);
+  return Number.isNaN(d.getTime()) ? stamp : CLOCK_FMT.format(d);
+}
+
 export function weekRange(start: string, end: string): string {
   return `${friendlyDate(start)} to ${friendlyDate(end)}`;
 }

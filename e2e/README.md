@@ -71,7 +71,7 @@ What the test API does so that these tests need no outside service (all in `serv
   library, each item marked "invented demo item"), passed to
   `create_app()` as `notable_registry`; the real app passes none, so it shows nothing (T47 to T58). Each of those tests uses its own Friday,
   because a decision belongs to its week;
-- `no-key` sets the provider to `anthropic` with an empty key (a provider problem, T26); `stale` counts a draft as
+- `no-key` sets the provider to `bedrock` with empty AWS settings (a provider problem, T26); `stale` counts a draft as
   stuck after six seconds (T27).
 
 `E2E_BASE_URL` with `E2E_NO_WEB=1` runs the suite against an app you started yourself; the API must then allow that

@@ -203,7 +203,7 @@ test("T22 weekly Digital Payments: its own review shape (highlights, the stock t
   await expect(items.filter({ hasText: "Table row" }).first()).toBeVisible();
   await expect(items.filter({ hasText: "Outlook stat" }).first()).toBeVisible();
   await expect(items.filter({ hasText: "Highlight claim" }).first()).toBeVisible();
-  await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeEnabled();
 });
 
 test("T23 rejecting a section is final: the dialog, the locked review, the overview afterwards", async ({ page }) => {
@@ -216,7 +216,7 @@ test("T23 rejecting a section is final: the dialog, the locked review, the overv
   const review = new URL(page.url()).searchParams.get("review");
 
   // Reject needs nothing resolved; it asks first.
-  await expect(page.getByText(/\d+ unresolved · 0 of \d+ resolved/)).toBeVisible();
+  await expect(page.getByText(`Saved as run ${review}`)).toBeVisible();
   await page.getByRole("button", { name: "Reject", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Reject this section?" });
   await expect(dialog).toContainText("Rejecting this section locks the current draft as rejected. To revise this section later, a new draft run will need to be started.");
@@ -232,8 +232,6 @@ test("T23 rejecting a section is final: the dialog, the locked review, the overv
   await expect(page.getByText(/Decision recorded on .* EAT\. This section is finalized and locked for editing\./)).toBeVisible();
   await expect(page.getByRole("button", { name: "Approve", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Reject", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("radio", { name: "Accept", exact: true }).first()).toBeDisabled();
-  await expect(page.getByLabel(/^Note for /).first()).toHaveAttribute("readonly", "");
   // Still rejected when opened again by its address.
   await page.goto(`${overviewUrl(period)}&review=${review}`);
   await expect(page.getByText("Rejected and locked")).toBeVisible();

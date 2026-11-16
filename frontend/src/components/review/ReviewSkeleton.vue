@@ -152,7 +152,7 @@ const SKELETON_ITEMS = [
               :class="item.tone"
             >
               <div class="flex items-center justify-between">
-                <span class="rounded px-1.5 py-0.5 font-mono text-[10px] font-bold tracking-wider bg-muted text-muted-foreground">
+                <span class="rounded px-1.5 py-0.5 font-mono text-xs font-bold tracking-wider bg-muted text-muted-foreground">
                   {{ item.badge }}
                 </span>
                 <div class="h-3 w-16 rounded bg-border/50 animate-pulse" />

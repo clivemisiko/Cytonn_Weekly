@@ -16,15 +16,9 @@ const rail = (page: Page) => page.getByRole("navigation", { name: "Report sectio
 const heading = (title: string) => ({ name: `${title}: analyst review`, level: 1 }) as const;
 
 /** Digital Payments drafted through the API for that week; with `accept`, every item is accepted too. Left undecided. */
-async function draftPayments(request: APIRequestContext, period: string, accept = false) {
+async function draftPayments(request: APIRequestContext, period: string) {
   const res = await request.post(`${API}/api/sections/digital_payments/draft`, { headers: json, data: { report_type: "weekly", period }, timeout: 120_000 });
   expect(res.status(), await res.text()).toBe(200);
-  if (!accept) return;
-  const review = await res.json();
-  for (const item of review.review_items) {
-    const patched = await request.patch(`${API}/api/reviews/${review.run_id}/items/${item.index}`, { headers: json, data: { resolution: "accept" } });
-    expect(patched.ok()).toBe(true);
-  }
 }
 
 /** From the overview of that week, open Digital Payments' review and wait for the screen. */
@@ -157,10 +151,9 @@ test("T63 a rejection changes the rail's state at once and leaves the approved c
 
 test("T64 an approval changes the rail's state and its approved count", async ({ page, request }) => {
   const period = "Week ending 2026-11-20";
-  await draftPayments(request, period, true);
+  await draftPayments(request, period);
   await openReview(page, period);
-  await page.getByRole("button", { name: "Approve", exact: true }).click();
-  await page.getByRole("dialog", { name: "Approve this section?" }).getByRole("button", { name: "Approve", exact: true }).click();
+  await page.getByRole("button", { name: "Approve", exact: true }).click(); // nothing is flagged in this review, so there is nothing to confirm
   await expect(page.getByText("Approved and locked")).toBeVisible();
   await expect(rail(page).getByRole("button", { name: "Digital Payments, Approved, this section is on screen" })).toBeVisible();
   await expect(rail(page).getByText("1 of 5 sections approved")).toBeVisible();
@@ -169,11 +162,10 @@ test("T64 an approval changes the rail's state and its approved count", async ({
 
 test("T65 when the sections cannot be read again, every state is the neutral mark and the count is not known", async ({ page, request }) => {
   const period = "Week ending 2026-11-27";
-  await draftPayments(request, period, true);
+  await draftPayments(request, period);
   await openReview(page, period);
   await page.route(/\/api\/sections(\?|$)/, (route) => route.abort());
   await page.getByRole("button", { name: "Approve", exact: true }).click();
-  await page.getByRole("dialog", { name: "Approve this section?" }).getByRole("button", { name: "Approve", exact: true }).click();
   await expect(page.getByText("Approved and locked")).toBeVisible(); // the decision itself went through
   // The rail does not go on saying "In review": it says it does not know.
   await expect(rail(page).getByRole("button", { name: "Digital Payments, State not known, this section is on screen" })).toBeVisible();
@@ -214,6 +206,6 @@ test("T69 the dev ribbon is the shell's: on the overview, a start screen and a r
   expect(Math.round((await reviewRibbon.boundingBox())!.y)).toBe(44);
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(50);
-  const bar = page.locator("div.sticky", { has: page.getByRole("progressbar", { name: "Items resolved" }) });
+  const bar = page.locator('[data-attention="review-status-bar"]');
   await expect.poll(async () => Math.round((await bar.boundingBox())?.y ?? -1)).toBe(72); // 44px top bar, then the ribbon's 28px
 });

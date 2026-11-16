@@ -45,6 +45,13 @@ describe("run steps", () => {
     ]);
   });
 
+  it("shows a source left out of a draft as its own skipped line, naming the source and why", () => {
+    const lines = stepLines([event(1, "source_left_out", "Old report", { detail: "From example.com, dated 2026-08-01, outside 2026-09-23 to 2026-09-29, so it was not used for Land." })]);
+    expect(lines.map((l) => [l.text, l.mark])).toEqual([
+      ["Left out the source Old report. From example.com, dated 2026-08-01, outside 2026-09-23 to 2026-09-29, so it was not used for Land.", "skipped"],
+    ]);
+  });
+
   it("shows a billing sentence from the API whole, after the fixed words", () => {
     const sentence = "The Anthropic credit balance is empty, so drafting cannot continue. Trying again will not help until they do.";
     const lines = stepLines([event(1, "run_failed", "", { detail: sentence })]);

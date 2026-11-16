@@ -118,6 +118,45 @@ const cannotDraft = computed(
   () =>
     starting.value || blocked.value || providerBlocked.value || inputMissing.value || topicOver.value || !!sectionsError.value || titlesNeeded.value || (usesInputs.value && typedPending.value),
 );
+type Ready = { key: string; state: "clean" | "flagged" | "not_auto_verified"; text: string };
+const readiness = computed<Ready[]>(() => {
+  const ok = (b: boolean) => (b ? "clean" : "not_auto_verified");
+  const rows: (Ready | false)[] = [
+    providerBlocked.value
+      ? { key: "engine", state: "flagged", text: `Drafting engine: ${props.config.provider_problem}` }
+      : { key: "engine", state: "clean", text: llm.value ? `Drafting engine: ${props.config.provider} is set up` : "Composed from approved sections; no model is called" },
+    props.section.needs_topic && {
+      key: "topic",
+      state: ok(!!topic.value.trim() && !topicOver.value),
+      text: `Topic: ${topic.value.trim() ? (topicOver.value ? "over the limit" : "given") : "type it above"}`,
+    },
+    usesInputs.value && {
+      key: "form",
+      state: ok(!typedPending.value),
+      text: typedPending.value ? "Weekly analyst inputs: values not yet saved or confirmed" : "Weekly analyst inputs: nothing unsaved or waiting to be confirmed",
+    },
+    snipsSection.value && !!snipCountsNow.value && {
+      key: "snips",
+      state: ok(snipCountsNow.value.confirmed > 0 && !snipCountsNow.value.unconfirmed),
+      text: `Snips: ${snipCountsNow.value.confirmed} confirmed, ${snipCountsNow.value.unconfirmed} unconfirmed (not used)${snipCountsNow.value.without.length ? `; not included: ${snipCountsNow.value.without.join(", ")}` : ""}`,
+    },
+    bedrock.value && !!sourcePieces.value && {
+      key: "sources",
+      state: ok(!titlesNeeded.value && !nothingFound.value.length),
+      text: `Sources: ${
+        titlesNeeded.value
+          ? "add section titles to see source requirements"
+          : !withoutSources.value.length
+            ? "every piece has at least one"
+            : nothingFound.value.length
+              ? `a search found nothing for ${nothingFound.value.length} of ${sourcePieces.value.length} pieces`
+              : "found automatically when you draft"
+      }`,
+    },
+    blocked.value && { key: "busy", state: "not_auto_verified", text: serverDrafting.value ? draftingStatus(serverDrafting.value) : "Being drafted now" },
+  ];
+  return rows.filter((r): r is Ready => r !== false);
+});
 
 // Drafting over a section that already has a review asks first (what happens to the earlier one), then drafts.
 const confirming = ref(false);
@@ -223,13 +262,13 @@ const lists = computed(() => [
          It is never folded (it holds the uploads' warnings) and, being tall, it does not stick. -->
     <p v-if="resume" role="status" class="mx-auto w-full max-w-275 px-4 py-8 text-sm sm:px-6">Opening the draft that is running…</p>
     <PageGrid v-else aside-title="Inputs and steps" hide-title aside-first wide-body :sticky="false">
-      <div class="space-y-8">
+      <div class="space-y-5">
         <AnalystPanel v-if="usesInputs && week" :key="`analyst-${week}`" :week="week" :section="section.slug" :disabled="starting" :refresh="uploads" @pending="(p) => (typedPending = p)" />
         <CompaniesList v-if="report.type === 'weekly' && section.slug === 'equities'" />
         <SnipsPanel v-if="snipsSection && week" :key="`snips-${week}`" :week="week" :disabled="starting" @counts="(c) => (snipCountsNow = c)" />
         <SourcesPanel v-if="bedrock" :section="section" :report="report" :titles="sections" :disabled="starting" @pieces="(p) => (sourcePieces = p)" />
-        <section aria-labelledby="start-title" class="space-y-6 rounded-lg border border-t-[3px] border-t-primary bg-card p-6">
-          <h2 id="start-title" class="sr-only">Start or resume a review</h2>
+        <section aria-labelledby="start-title" class="space-y-5 rounded-lg border border-t-[3px] border-t-primary bg-card p-5">
+          <h2 id="start-title" class="panel-title">Start or resume a review</h2>
 
           <div v-if="!weekly" class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b pb-4 text-sm">
             <p>
@@ -269,10 +308,10 @@ const lists = computed(() => [
             </p>
 
             <Notice v-if="providerBlocked" role="alert" class="font-medium">{{ config.provider_problem }} Drafting is off until then.</Notice>
-            <Notice v-if="config.dev_mode && llm" role="alert" class="font-semibold">
-              Development Mode Active (Local Model): Drafts generated in this mode are for testing purposes only and are not approved for publication.
+            <Notice v-if="config.dev_mode && llm" quiet role="alert">
+              <span class="font-semibold">Development Mode Active (Local Model):</span> Drafts generated in this mode are for testing purposes only and are not approved for publication.
             </Notice>
-            <Notice v-if="llm && config.spends_api_budget && !config.provider_problem" tone="info">
+            <Notice v-if="llm && config.spends_api_budget && !config.provider_problem" tone="info" quiet>
               <template v-if="snipsSection">
                 Drafting Engine: {{ config.provider }}. This action will query the AI model. Each sector is written only from its confirmed snips; the REIT prices come from the NSE Ibuka weekly PDF. Nothing is searched.
               </template>
@@ -282,7 +321,7 @@ const lists = computed(() => [
               </template>
               <template v-else>Drafting Engine: {{ config.provider }}. This action will query the AI model and search for relevant source materials.</template>
             </Notice>
-            <Notice v-if="!llm" tone="info">
+            <Notice v-if="!llm" tone="info" quiet>
               Executive Summary synthesis: Content is compiled from your approved sections along with their verified sources and checked for consistency.
             </Notice>
 
@@ -356,47 +395,20 @@ const lists = computed(() => [
               </p>
             </div>
 
-            <!-- Pre-draft Readiness Checklist -->
-            <div class="rounded-xl border border-border bg-muted/40 p-3.5 space-y-2 text-xs">
-              <p class="font-semibold text-foreground flex items-center justify-between">
-                <span>Draft readiness checklist</span>
-                <span :class="cannotDraft ? 'text-warn-fg font-medium' : 'text-ok-fg font-semibold'">
-                  {{ cannotDraft ? "Prerequisites pending" : "Ready to draft" }}
-                </span>
-              </p>
+            <!-- Before the draft button: what the draft needs, each line with its state glyph and words (never colour alone).
+                 "Ready" here means nothing blocks the button; it says nothing about whether any figure is right. -->
+            <section aria-labelledby="readiness-title" class="space-y-2 rounded-md border bg-background/60 p-3.5 text-sm">
+              <div class="flex flex-wrap items-baseline justify-between gap-x-3">
+                <h3 id="readiness-title" class="eyebrow">Before you draft</h3>
+                <span :class="cannotDraft ? 'text-warn-fg font-medium' : 'text-ok-fg font-semibold'">{{ cannotDraft ? "Not ready yet" : "Nothing blocks the draft" }}</span>
+              </div>
               <ul class="space-y-1.5 text-muted-foreground">
-                <li class="flex items-center gap-2">
-                  <span v-if="!providerBlocked" class="flex size-4 items-center justify-center rounded-full bg-ok/20 font-bold text-ok-fg text-[10px]">✓</span>
-                  <span v-else class="flex size-4 items-center justify-center rounded-full bg-flag/20 font-bold text-flag-fg text-[10px]">✗</span>
-                  <span>AI Engine: {{ providerBlocked ? config.provider_problem : (llm ? `${config.provider} active` : 'Internal synthesis (no external LLM)') }}</span>
-                </li>
-                <li v-if="section.needs_topic" class="flex items-center gap-2">
-                  <span v-if="topic.trim() && !topicOver" class="flex size-4 items-center justify-center rounded-full bg-ok/20 font-bold text-ok-fg text-[10px]">✓</span>
-                  <span v-else class="flex size-4 items-center justify-center rounded-full bg-warn/20 font-bold text-warn-fg text-[10px]">!</span>
-                  <span>Focus topic: {{ topic.trim() ? (topicOver ? 'Exceeds limit' : 'Provided') : 'Topic required above' }}</span>
-                </li>
-                <li v-if="usesInputs" class="flex items-center gap-2">
-                  <span v-if="!typedPending" class="flex size-4 items-center justify-center rounded-full bg-ok/20 font-bold text-ok-fg text-[10px]">✓</span>
-                  <span v-else class="flex size-4 items-center justify-center rounded-full bg-warn/20 font-bold text-warn-fg text-[10px]">!</span>
-                  <span>Analyst form: {{ typedPending ? 'Unsaved or unconfirmed inputs in form' : 'Inputs confirmed' }}</span>
-                </li>
-                <li v-if="snipsSection && snipCountsNow" class="flex items-center gap-2">
-                  <span v-if="snipCountsNow.confirmed && !snipCountsNow.unconfirmed" class="flex size-4 items-center justify-center rounded-full bg-ok/20 font-bold text-ok-fg text-[10px]">✓</span>
-                  <span v-else class="flex size-4 items-center justify-center rounded-full bg-warn/20 font-bold text-warn-fg text-[10px]">!</span>
-                  <span>Snips: {{ snipCountsNow.confirmed }} confirmed, {{ snipCountsNow.unconfirmed }} unconfirmed (not used){{ snipCountsNow.without.length ? `; not included: ${snipCountsNow.without.join(", ")}` : "" }}</span>
-                </li>
-                <li v-if="bedrock && sourcePieces" class="flex items-center gap-2">
-                  <span v-if="!titlesNeeded && !withoutSources.length" class="flex size-4 items-center justify-center rounded-full bg-ok/20 font-bold text-ok-fg text-[10px]">✓</span>
-                  <span v-else-if="!titlesNeeded && nothingFound.length" class="flex size-4 items-center justify-center rounded-full bg-warn/20 font-bold text-warn-fg text-[10px]">!</span>
-                  <span v-else class="flex size-4 items-center justify-center rounded-full bg-muted font-bold text-muted-foreground text-[10px]">·</span>
-                  <span>Sources: {{ titlesNeeded ? "add section titles to see source requirements" : !withoutSources.length ? "every piece has at least one" : nothingFound.length ? `a search found nothing for ${nothingFound.length} of ${sourcePieces.length} pieces` : "found automatically when you draft" }}</span>
-                </li>
-                <li v-if="blocked" class="flex items-center gap-2 text-warn-fg font-medium">
-                  <span class="flex size-4 items-center justify-center rounded-full bg-warn/20 font-bold text-[10px]">⏳</span>
-                  <span>{{ serverDrafting ? draftingStatus(serverDrafting) : "Being drafted now" }}</span>
+                <li v-for="r in readiness" :key="r.key" class="flex items-start gap-2" :class="`state-${r.state}`">
+                  <span class="glyph mt-0.5" aria-hidden="true">{{ r.state === "clean" ? "✓" : r.state === "flagged" ? "!" : "?" }}</span>
+                  <span>{{ r.text }}</span>
                 </li>
               </ul>
-            </div>
+            </section>
 
             <!-- A long period ("Draft the Week ending 2026-10-09 section") wraps on a phone instead of widening the page. -->
             <Button
@@ -458,14 +470,14 @@ const lists = computed(() => [
 
       <template #aside>
         <InputsPanel v-if="showsInputs && week" :key="week" :week="week" :section="section.slug" :disabled="starting" @week="(w) => emit('week', w)" @change="uploads++" />
-        <div class="space-y-6" :class="showsInputs && week && 'border-t pt-6'">
+        <div class="space-y-4">
           <section aria-labelledby="flow-title">
-            <h2 id="flow-title" class="pb-4 text-lg font-semibold">What a run does</h2>
+            <h2 id="flow-title" class="panel-title pb-3">What a run does</h2>
             <ol>
               <li
                 v-for="(step, i) in section.steps"
                 :key="step.title"
-                class="relative flex gap-4 pb-6 last:pb-0 not-last:before:absolute not-last:before:top-7 not-last:before:bottom-1 not-last:before:left-3 not-last:before:w-px not-last:before:bg-input"
+                class="relative flex gap-3 pb-4 last:pb-0 not-last:before:absolute not-last:before:top-7 not-last:before:bottom-1 not-last:before:left-3 not-last:before:w-px not-last:before:bg-input"
               >
                 <span
                   class="relative z-10 grid size-6 shrink-0 place-items-center rounded-sm border font-mono text-xs font-semibold"
@@ -482,7 +494,7 @@ const lists = computed(() => [
           </section>
           <!-- Short lists from the real issue (its own headings, its charts), shown beside the run's steps. -->
           <template v-for="list in lists" :key="list.title">
-            <section v-if="list.items.length" class="space-y-2 border-t pt-6">
+            <section v-if="list.items.length" class="space-y-2 border-t pt-4">
               <h3 class="eyebrow">{{ list.title }}</h3>
               <p v-if="list.note" class="text-xs text-muted-foreground">{{ list.note }}</p>
               <ul class="list-disc space-y-1 pl-5 text-sm marker:text-input">

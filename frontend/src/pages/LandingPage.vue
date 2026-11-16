@@ -38,7 +38,7 @@ const rise = (order: number) => ({ animationDelay: `${order * 60}ms` });
           <span aria-hidden="true" class="brand-dot size-2 rounded-full bg-primary" />
           Cytonn Weekly
         </p>
-        <h1 class="mt-2 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">Report generator</h1>
+        <h1 class="mt-2 text-xl font-bold tracking-tight text-foreground sm:text-2xl">Report generator</h1>
       </div>
 
       <div class="rise-slow border-t pt-6" :style="rise(1)">

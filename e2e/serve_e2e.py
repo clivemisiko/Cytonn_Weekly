@@ -26,7 +26,7 @@ What differs from the real API, all of it set here and nothing in the backend ch
   create_app() as its notable_registry. The real app passes none, so its registry is empty and it shows nothing.
 
 E2E_VARIANT starts it in another state, for the tests that need one:
-- "no-key": the provider is "anthropic" with no API key, so every drafting section shows a provider problem;
+- "no-key": the provider is "bedrock" with no AWS region or credentials, so every drafting section shows a provider problem;
 - "stale":  one drafting seat (CYTONN_DRAFT_CONCURRENCY=1), and a draft that has held it for six seconds counts as stuck;
 - "bedrock": the provider is "bedrock" with invented AWS settings, so the screens show the Sources panel. Narrative drafting
   runs the real Bedrock provider over a fake client (no AWS call) that quotes the first sentence of the first saved source
@@ -135,12 +135,14 @@ def main() -> None:
 
     os.environ["CYTONN_DATA_DIR"] = str(DATA)
     os.environ["CYTONN_WEB_ORIGINS"] = os.environ.get("E2E_WEB_ORIGINS", "http://127.0.0.1:5183")
-    os.environ["CYTONN_LLM_PROVIDER"] = {"no-key": "anthropic", "bedrock": "bedrock"}.get(VARIANT, "local")
+    os.environ["CYTONN_LLM_PROVIDER"] = {"no-key": "bedrock", "bedrock": "bedrock"}.get(VARIANT, "local")
+    if VARIANT == "no-key":   # set and empty: the environment beats .env, so no real AWS setting is ever read
+        for name in ("AWS_REGION", "AWS_DEFAULT_REGION", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_BEARER_TOKEN_BEDROCK"):
+            os.environ[name] = ""
     if VARIANT == "bedrock":   # invented settings, with spaces so they can never be a real credential; no AWS call is ever made
         os.environ.update(AWS_REGION="us-east-1", AWS_ACCESS_KEY_ID="e2e not a key id", AWS_SECRET_ACCESS_KEY="e2e not a secret")
         for name in ("BEDROCK_MODEL_ID", "AWS_DEFAULT_REGION", "AWS_SESSION_TOKEN", "AWS_BEARER_TOKEN_BEDROCK"):
             os.environ.pop(name, None)
-    os.environ["ANTHROPIC_API_KEY"] = ""  # set and empty: the environment beats .env, so no real key is ever read
     os.environ["EXA_API_KEY"] = "e2e"  # the fake provider never searches
     sys.path.insert(0, str(BACKEND))
 
