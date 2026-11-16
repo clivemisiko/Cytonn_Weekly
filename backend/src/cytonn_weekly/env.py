@@ -1,7 +1,7 @@
 """Loads the repo-root .env file into the process environment.
 
 Generic on purpose: whatever KEY=value pairs .env holds (EXA_API_KEY,
-ANTHROPIC_API_KEY, CYTONN_LLM_PROVIDER, ...) become environment variables, so
+CYTONN_LLM_PROVIDER, ...) become environment variables, so
 adding a new secret never needs more wiring.  Variables already set in the shell
 win over .env (override=False), so a one-off `EXA_API_KEY=... python ...` still
 behaves as expected.
@@ -54,7 +54,7 @@ def load_env(path: Path | None = None, *, quiet: bool = False) -> list[str]:
 
 # The API keys a stale environment variable can silently override (see the module docstring).
 # EXA_API_KEY is checked only when CYTONN_LLM_PROVIDER is local: no other provider reads it.
-API_KEYS = ("EXA_API_KEY", "ANTHROPIC_API_KEY")
+API_KEYS = ("EXA_API_KEY",)
 
 
 def env_file_value(name: str, path: Path | None = None) -> str | None:

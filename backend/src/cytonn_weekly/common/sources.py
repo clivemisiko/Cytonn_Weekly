@@ -18,7 +18,7 @@ from typing import Any, Callable, Optional
 from urllib.parse import urljoin, urlsplit
 
 from cytonn_weekly import paths
-from cytonn_weekly.common import http
+from cytonn_weekly.common import http, source_policy
 from cytonn_weekly.equities import companies
 from cytonn_weekly.weekly.week import latest_friday
 
@@ -54,7 +54,12 @@ SOCIAL_DOMAINS = ("x.com", "twitter.com", "facebook.com", "instagram.com", "tikt
 
 NOT_ON_LIST = "host not on the approved list"       # the off_list flag, on a fetched source and a pasted one
 INSECURE = "Not secure: the page could have been altered in transit"   # the insecure flag: fetched over http://
+NO_DATE_FLAG = "No date on this source"   # added when a draft reads a source whose date is empty, so its window could not be checked
 TEXT_FROM_SEARCH = "Text supplied by the search service"   # the text_from_search flag: the page itself could not be read
+NEWS_SITE = "News site: may back highlights and prose, never a table figure"   # the news_site flag (equities/source_policy.json)
+ADDED_BY_ANALYST = "Added by analyst"   # the added_by_analyst flag: fetched or pasted through the Sources panel, not found by the gather step
+ANALYST_ORIGINS = ("fetched", "pasted")   # also what a source saved before the flag existed is judged by
+NEVER_READ = "{host} is never read by the tool. Paste the text with its date, or send a snip."
 MAX_BYTES = 5 * 1024 * 1024
 MAX_PASTE_CHARS = 200_000
 MIN_CHARS = 400        # shorter than this is a stub or an error page, not an article
@@ -179,6 +184,11 @@ def _resolve(host: str) -> list[str]:
 def list_flags(host: str) -> list[str]:
     """The off_list flag: one rule for a fetched source and a pasted one."""
     return [] if is_approved(host) else [NOT_ON_LIST]
+
+
+def policy_flags(host: str, origin: str) -> list[str]:
+    """The news_site and added_by_analyst flags, set when a source is saved."""
+    return ([NEWS_SITE] if source_policy.is_news(host) else []) + ([ADDED_BY_ANALYST] if origin in ANALYST_ORIGINS else [])
 
 
 def _refuse_address(url: str, resolve: Callable[[str], list[str]]) -> str:
@@ -490,7 +500,8 @@ def fetch_page(url: str, subject: str, week_end: date, *, http_get: Callable[...
                window: Optional[tuple[date, date]] = None) -> SourceText:
     """Fetch one page from any site, keep its readable text, and list it for ``subject``.
 
-    ``origin`` is "found" for a page the gather step chose; ``fallback_date`` (YYYY-MM-DD) is the date used only when the
+    A never_read host (equities/source_policy.json) is refused whoever asks; the gather step reads only hosts the policy
+    allows for the piece (common/gather.py). ``origin`` is "found" for a page the gather step chose; ``fallback_date`` (YYYY-MM-DD) is the date used only when the
     page states none of its own (a PDF never does). With ``window``, a page whose date is outside it, or unknown, is not kept.
 
     ``http_get(url, max_bytes=...)`` answers once and follows nothing (common/http.http_get_once); this function
@@ -502,6 +513,8 @@ def fetch_page(url: str, subject: str, week_end: date, *, http_get: Callable[...
     if not subject.strip():
         raise SourceError(NO_SUBJECT)
     url = url.strip()
+    if source_policy.is_never_read(host_of(url)):
+        raise SourceError(NEVER_READ.format(host=host_of(url)))
     try:
         page, body, raw_name = _read_page(url, subject, week_end, http_get, resolve, now, origin, fallback_date)
     except SourceError:
@@ -622,7 +635,7 @@ def _read_page(url: str, subject: str, week_end: date, http_get: Callable[..., h
                       week_end=latest_friday(week_end).isoformat(), url=current, host=host,
                       title=title or current.rsplit("/", 1)[-1] or host, published_date=published or fallback_date,
                       fetched_at=now(), origin=origin, text=text, sha256=sha, chars=len(text),
-                      flags=list_flags(host) + ([INSECURE] if current.lower().startswith("http://") else []))
+                      flags=list_flags(host) + policy_flags(host, origin) + ([INSECURE] if current.lower().startswith("http://") else []))
     return page, body, raw_name
 
 
@@ -657,7 +670,7 @@ def from_paste(url: str, date_text: str, text: str, subject: str, week_end: date
                      week_end=latest_friday(week_end).isoformat(), url=url, host=host,
                      title=" ".join((title or "").split()) or host, published_date=published, fetched_at=now(),
                      origin=origin, text=text, sha256=sha, chars=len(text),
-                     flags=list_flags(host) + list(extra_flags))
+                     flags=list_flags(host) + policy_flags(host, origin) + list(extra_flags))
     return _save(src, None, "", root)
 
 

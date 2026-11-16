@@ -34,7 +34,7 @@ three guards the store does not provide on its own:
 * writes run one at a time (one process-wide lock), because two quick clicks arrive as
   two concurrent requests and each one rewrites the whole items blob;
 * only a few drafts run at once (CYTONN_DRAFT_CONCURRENCY seats, default 3), across every
-  section, because a draft takes minutes and (on Anthropic or Bedrock) spends real budget.
+  section, because a draft takes minutes and (on Bedrock) spends real budget.
   A run that finds the seats taken waits in a bounded first-in-first-out queue
   (CYTONN_DRAFT_QUEUE_MAX) and starts when a seat frees.  The seats (api/draft_slot.py) record
   which sections hold one and since when, so the overview can show them, and a claim that has
@@ -72,6 +72,7 @@ from cytonn_weekly.common.run_events import RUN_STARTED, describe, frames, redac
 from cytonn_weekly.digital_payments import review_run, review_store
 from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview, rejected_draft_notes
 from cytonn_weekly.digital_payments.provider_factory import ENV_VAR as PROVIDER_ENV_VAR
+from cytonn_weekly.digital_payments.provider_factory import ANTHROPIC_REMOVED, NOT_CONFIGURED
 from cytonn_weekly.digital_payments.providers.local_provider import EXA_KEY_ENV_VAR, EXA_KEY_MISSING, SearchKeyError
 from cytonn_weekly.env import key_override_warnings, load_env
 from cytonn_weekly.focus.review_run import clean_sections, clean_topic
@@ -133,14 +134,23 @@ DISCARDED_AS_STUCK = (
     "Open the section to see the newer draft."
 )
 
-PROVIDERS = ("anthropic", "bedrock", "local")
+PROVIDERS = ("bedrock", "local")
 SECTIONS_REQUIRED = (
     "With Amazon Bedrock the model searches nothing, so it cannot propose the section titles from the topic alone. Type "
     "the section titles for this Focus (one a line, up to 8), supply the pages to read for each, then start the draft.")
 
 
+NOT_CONFIGURED_LABEL = "not configured"
+
+
 def configured_provider() -> str:
-    return (os.environ.get(PROVIDER_ENV_VAR) or "anthropic").strip().lower()
+    """The provider the server was told to use; "" when the variable is unset or blank."""
+    return (os.environ.get(PROVIDER_ENV_VAR) or "").strip().lower()
+
+
+def provider_label() -> str:
+    """What the screen shows and sends back as the provider: the name, or "not configured"."""
+    return configured_provider() or NOT_CONFIGURED_LABEL
 
 
 def failure_message(exc: BaseException) -> str:
@@ -166,26 +176,21 @@ def failure_message(exc: BaseException) -> str:
 def provider_problem() -> Optional[str]:
     """Why a draft cannot run with the configured provider, or None.
 
-    Checked before a draft claims the slot or fetches anything: without it, a production
-    draft with no key fetched every source first and then failed inside the Anthropic SDK
-    with "Could not resolve authentication method", which tells an analyst nothing.
+    Checked before a draft claims the slot or fetches anything: without it, a draft with no
+    credentials would fetch every source first and then fail inside the SDK.
     Local mode is checked the same way for its web-search key: every section but Digital
     Payments searches afresh each draft, and Digital Payments' cache lasts one day.  Only
     a missing key is known here; a key Exa refuses is reported by the search itself.
     """
     provider = configured_provider()
+    if not provider:
+        return NOT_CONFIGURED
+    if provider == "anthropic":
+        return ANTHROPIC_REMOVED
     if provider not in PROVIDERS:
-        return f"Unknown {PROVIDER_ENV_VAR} value {provider!r}; expected 'anthropic', 'bedrock' or 'local'."
+        return f"Unknown {PROVIDER_ENV_VAR} value {provider!r}; expected 'bedrock' or 'local'."
     if provider == "bedrock":
         return bedrock_provider.env_problem()
-    if provider == "anthropic" and not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
-        return (
-            "Production drafting needs ANTHROPIC_API_KEY, and none is set (in .env or the shell). Add the key once "
-            f"API budget is approved, or set {PROVIDER_ENV_VAR}=local to draft in dev mode (Ollama + Exa, never "
-            "for publication). Restart the API after changing .env."
-        )
-    if provider == "anthropic" and not (os.environ.get("CYTONN_LLM_MODEL") or "").strip():
-        return "CYTONN_LLM_MODEL is not set (in .env or the shell). Set it to the Claude model to draft with. Restart the API after changing .env."
     if provider == "local" and not (os.environ.get(EXA_KEY_ENV_VAR) or "").strip():
         return EXA_KEY_MISSING
     return None
@@ -201,6 +206,9 @@ class ItemResolution(BaseModel):
 
 class Decision(BaseModel):
     decision: Literal["approved", "rejected"]
+    # How many flagged items the caller was shown. Approving a section that has flagged items is refused unless this
+    # equals their count now; it is not needed when nothing is flagged, nor to reject.
+    acknowledged_flagged: Optional[int] = Field(default=None, ge=0)
 
 
 class SentenceChange(BaseModel):
@@ -315,7 +323,7 @@ class RunRequest(DraftRequest):
     """POST /api/runs: the draft route's inputs, with the section in the body.
 
     ``provider`` is optional and only ever a check: the provider the screen told the
-    analyst a draft would use ("anthropic" spends API budget, "local" is dev mode).
+    analyst a draft would use ("bedrock" spends API budget, "local" is dev mode).
     If the API is configured for a different one, the run is refused rather than started
     on a provider the analyst did not see.  It never selects the provider; only
     CYTONN_LLM_PROVIDER does.
@@ -433,6 +441,14 @@ def create_app(
     def stamp(review: CoordinatorReview, report_type: str, period: str) -> CoordinatorReview:
         """Set the review's key before its first save (a weekly build knows nothing of report types)."""
         review.report_type, review.period = report_type, period
+        return review
+
+    def build_tracked(spec: Any, ctx: Any, report_type: str, period: str) -> CoordinatorReview:
+        """The section's build, with the draft's Bedrock calls and tokens counted (and capped) as one, and saved as ``usage``."""
+        with bedrock_provider.track_usage() as used:
+            review = stamp(spec.build(ctx), report_type, period)
+        if used.calls:
+            review.section["usage"] = bedrock_provider.usage_record(used, bedrock_provider.model_id())
         return review
 
     def run_quick(build: Callable[[], CoordinatorReview]) -> dict:
@@ -584,7 +600,7 @@ def create_app(
         if claim is not None and configured_provider() == "bedrock":
             gather_for(spec, ctx, run.record)   # never raises: a draft goes ahead with whatever sources are saved
         try:
-            review = stamp(spec.build(replace(ctx, on_event=run.record)), ctx.report_type, ctx.period)
+            review = build_tracked(spec, replace(ctx, on_event=run.record), ctx.report_type, ctx.period)
         except BaseException as exc:
             if claim is not None:
                 free_seat(claim)
@@ -618,13 +634,13 @@ def create_app(
     @app.get("/api/config")
     def config() -> dict:
         """What the start screen needs before any review exists: who would draft, and at what cost."""
-        provider = (os.environ.get(PROVIDER_ENV_VAR) or "anthropic").strip().lower()
+        provider = configured_provider()
         return {
-            "provider": provider,
+            "provider": provider_label(),
             "provider_valid": provider in PROVIDERS,
             "dev_mode": provider == "local",
             "dev_mode_label": DEV_MODE_LABEL,
-            "spends_api_budget": provider in ("anthropic", "bedrock"),
+            "spends_api_budget": provider == "bedrock",
             "provider_problem": provider_problem(),
         }
 
@@ -1315,6 +1331,8 @@ def create_app(
                 raise HTTPException(404, "That snip is not in this week's list. Reload the page.")
             if entry["text"] is not None:
                 return snip_view(day)
+            if not configured_provider():
+                raise HTTPException(409, NOT_CONFIGURED)
             if configured_provider() == "bedrock":
                 problem = bedrock_provider.env_problem()
                 if problem:
@@ -1435,7 +1453,11 @@ def create_app(
         """
         def build() -> CoordinatorReview:
             try:
-                return review_run.build_digital_payments_review()
+                with bedrock_provider.track_usage() as used:
+                    review = review_run.build_digital_payments_review()
+                if used.calls:
+                    review.section["usage"] = bedrock_provider.usage_record(used, bedrock_provider.model_id())
+                return review
             except Exception as exc:  # noqa: BLE001 - shown to the analyst, not swallowed
                 raise ProblemError(502, f"The draft stopped. {failure_message(exc)}", "draft_failed")
 
@@ -1453,7 +1475,7 @@ def create_app(
 
         def build() -> CoordinatorReview:
             try:
-                return stamp(spec.build(ctx), report_type, period)
+                return build_tracked(spec, ctx, report_type, period)
             except SectionsNotApproved as exc:
                 raise ProblemError(409, str(exc), "draft_sections_not_approved")
             except ValueError as exc:  # e.g. an unusable Focus topic
@@ -1480,7 +1502,7 @@ def create_app(
         the run's ``run_failed`` event, not an HTTP error.
         """
         spec, ctx, report_type, period = resolve_draft(body.section, body)
-        if body.provider is not None and body.provider.strip().lower() != configured_provider():
+        if body.provider is not None and body.provider.strip().lower() != provider_label():
             raise ProblemError(
                 409,
                 "The tool's drafting mode changed after this page was opened. Reload the page to see what a draft "
@@ -1699,7 +1721,7 @@ def create_app(
         with write_lock:
             review = load(run_id)
             try:
-                review.decide(body.decision)  # raises ValueError if not approvable or already decided
+                review.decide(body.decision, body.acknowledged_flagged)  # ValueError: not approvable, already decided, or flagged items not acknowledged
             except ValueError as exc:
                 raise ProblemError(409, str(exc), "review_not_decidable")
             save(review)

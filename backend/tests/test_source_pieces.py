@@ -55,6 +55,15 @@ def test_a_weekly_section_has_one_piece_per_brief_on_the_weeks_friday(slug, brie
     assert pieces[len(briefs):] == expected_rest
 
 
+def test_every_piece_carries_its_sections_slug_for_the_source_policy():
+    for slug in ("fixed_income", "equities", "real_estate", "digital_payments"):
+        assert {p.section for p in pieces_for("weekly", PERIOD, slug)} == {slug}, slug
+    assert {p.section for p in pieces_for("weekly", PERIOD, "focus", sections=TITLES)} == {"focus"}
+    for slug in ("global_markets", "ssa", "kenya_macro", "fixed_income", "equities", "real_estate"):
+        assert {p.section for p in pieces_for("quarterly", "Q3'2026", slug, today=ph.TODAY)} == {slug}, slug
+    assert Piece("Visa", FRIDAY, section="a") == Piece("Visa", FRIDAY, section="b")   # the slug is not part of a piece's identity
+
+
 def test_weekly_digital_payments_has_its_five_companies():
     assert pieces_for("weekly", PERIOD, "digital_payments") == [Piece(c["name"], FRIDAY) for c in HIGHLIGHT_COMPANIES]
     assert [p.subject for p in pieces_for("weekly", PERIOD, "digital_payments")] == [

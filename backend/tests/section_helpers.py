@@ -35,7 +35,7 @@ class FakeNarrativeProvider(NarrativeProvider):
         self.bad_figure = bad_figure
         self.cited = cited
         self.calls = []
-        self.requests = 0   # what AnthropicNarrativeProvider counts: one per model request
+        self.requests = 0   # what the Bedrock provider counts: one per model request
         self.completions = []   # (system, prompt, max_tokens) of each plain completion
         self.replies = {}   # a reply to give a plain completion, by the system prompt's first words
 

@@ -13,9 +13,8 @@ other sections draft from a *brief* instead - a theme to search for this week
   shape as IR-first-then-web;
 * ``NO_STORY`` is still a legitimate answer, and is never padded.
 
-The concrete providers subclass the Digital Payments ones' building blocks
-(anthropic_provider._collect, LocalProvider's Ollama/Exa calls) rather than
-re-implementing them.
+The local provider subclasses the Digital Payments one's building blocks
+(LocalProvider's Ollama/Exa calls) rather than re-implementing them.
 """
 
 from __future__ import annotations
@@ -71,7 +70,7 @@ class NothingDrafted(LookupError):
 
 
 class NarrativeProvider(ABC):
-    """Swappable backend for brief-driven narrative drafting (Anthropic or local)."""
+    """Swappable backend for brief-driven narrative drafting (Bedrock or local)."""
 
     drafted_by: str
 

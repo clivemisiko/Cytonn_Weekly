@@ -1,6 +1,6 @@
 """The seats for drafts that call a provider, and who holds them.
 
-A draft takes minutes and (on Anthropic or Bedrock) spends real budget, so the API lets only a few run at once:
+A draft takes minutes and (on Bedrock) spends real budget, so the API lets only a few run at once:
 ``CYTONN_DRAFT_CONCURRENCY`` seats (default 3, 1 to 6).  A run that finds every seat taken waits in a bounded queue
 (api/main.py); this module is only the seats.  It used to be a single holder, and still records what the overview shows:
 which sections hold a seat and since when.

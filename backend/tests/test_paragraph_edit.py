@@ -86,7 +86,7 @@ def test_an_edited_paragraph_does_not_hold_up_approval():
     done = edit(make())
     assert done.review.review_items[idx(done.review, OUTLOOK_REF)].resolution is None
     assert done.review.is_approvable
-    done.review.decide("approved")
+    done.review.decide("approved", done.review.flagged_count)
     assert done.review.decision == "approved"
 
 
@@ -207,7 +207,7 @@ def test_an_approved_section_stays_approved_and_the_new_version_needs_approving_
     review = make()
     for item in review.review_items:
         item.resolve("accept")
-    review.decide("approved")
+    review.decide("approved", review.flagged_count)
     run_id, _ = saved(db, review)
     r = post(client, run_id, idx(review, OUTLOOK_REF), text=NEW)
     assert r.status_code == 200, r.text

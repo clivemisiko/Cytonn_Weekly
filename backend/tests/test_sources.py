@@ -141,18 +141,18 @@ def test_a_page_is_filed_under_the_friday_on_or_before_the_day_given(tmp_path):
 def test_a_host_off_the_list_is_fetched_and_flagged_off_list(tmp_path):
     for url in ("https://blog.example.com/post", "https://centralbank.go.ke.evil.example/x"):
         one = fetch(Getter(reply(article())), url, root=tmp_path)
-        assert one.flags == [src.NOT_ON_LIST] and one.url == url
+        assert one.flags == [src.NOT_ON_LIST, src.ADDED_BY_ANALYST] and one.url == url
 
 
-def test_a_known_site_is_not_flagged(tmp_path):
-    assert fetch(Getter(reply(article())), root=tmp_path).flags == []
+def test_a_known_site_is_flagged_only_as_added_by_the_analyst(tmp_path):
+    assert fetch(Getter(reply(article())), root=tmp_path).flags == [src.ADDED_BY_ANALYST]
 
 
 def test_fetched_and_pasted_sources_share_the_off_list_rule(tmp_path):
     for host in ("www.centralbank.go.ke", "blog.example.com"):
         fetched = fetch(Getter(reply(article())), f"https://{host}/a", root=tmp_path)
         pasted = paste(tmp_path, url=f"https://{host}/b")
-        assert fetched.flags == pasted.flags == src.list_flags(host)
+        assert fetched.flags == pasted.flags == src.list_flags(host) + [src.ADDED_BY_ANALYST]
 
 
 @pytest.mark.parametrize("url", ["https://x.com/CBKKenya/status/1", "https://www.facebook.com/page/posts/2",
@@ -165,8 +165,8 @@ def test_social_media_is_refused_even_over_http(url, tmp_path):
 def test_an_http_page_is_fetched_and_flagged_insecure(tmp_path):
     url = "http://blog.example.com/x"
     one = fetch(Getter(reply(article())), url, root=tmp_path)
-    assert one.flags == [src.NOT_ON_LIST, src.INSECURE] and one.url == url
-    assert fetch(Getter(reply(article())), "http://www.centralbank.go.ke/x", root=tmp_path).flags == [src.INSECURE]
+    assert one.flags == [src.NOT_ON_LIST, src.ADDED_BY_ANALYST, src.INSECURE] and one.url == url
+    assert fetch(Getter(reply(article())), "http://www.centralbank.go.ke/x", root=tmp_path).flags == [src.ADDED_BY_ANALYST, src.INSECURE]
 
 
 def test_an_https_page_is_not_flagged_insecure(tmp_path):
@@ -199,7 +199,7 @@ def test_a_redirect_on_the_same_host_is_followed_and_the_final_address_is_kept(t
 def test_a_redirect_that_downgrades_to_http_is_followed_and_flagged_insecure(tmp_path):
     got = Getter(reply(status=302, location="http://www.centralbank.go.ke/press/final"), reply(article()))
     one = fetch(got, root=tmp_path)
-    assert one.url.startswith("http://") and one.flags == [src.INSECURE]
+    assert one.url.startswith("http://") and one.flags == [src.ADDED_BY_ANALYST, src.INSECURE]
 
 
 def test_a_redirect_to_a_private_address_is_refused_by_the_same_host_rule(tmp_path):
@@ -453,7 +453,7 @@ def paste(root, url="https://www.centralbank.go.ke/press/x", when="2026-11-05", 
 def test_pasted_text_is_kept_exactly_as_given(tmp_path):
     text = "  Line one with  two spaces\r\n\r\n“quoted” – and a non‑breaking space.\n  "
     one = paste(tmp_path, text=text, title="  My   title ")
-    assert one.text == text and one.origin == "pasted" and one.title == "My title" and one.flags == []
+    assert one.text == text and one.origin == "pasted" and one.title == "My title" and one.flags == [src.ADDED_BY_ANALYST]
     assert one.sha256 == src._sha(text.encode()) and one.chars == len(text)
     assert src.get(one.id, tmp_path).text == text           # read back byte for byte, line endings included
     assert not list((tmp_path / "2026-11-06").glob("*.html"))   # no raw file for pasted text
@@ -487,9 +487,9 @@ def test_a_paste_whose_address_is_not_a_web_address_is_refused(url, tmp_path):
 
 def test_a_paste_from_a_host_off_the_list_is_kept_with_a_flag(tmp_path):
     one = paste(tmp_path, url="https://blog.example.com/post")
-    assert one.flags == [src.NOT_ON_LIST] == ["host not on the approved list"]
-    assert src.list_for("Mortgage lending", FRIDAY, tmp_path)[0].flags == [src.NOT_ON_LIST]
-    assert paste(tmp_path, url="http://www.centralbank.go.ke/other").flags == []     # http is allowed for a paste
+    assert one.flags == [src.NOT_ON_LIST, src.ADDED_BY_ANALYST] and src.NOT_ON_LIST == "host not on the approved list"
+    assert src.list_for("Mortgage lending", FRIDAY, tmp_path)[0].flags == [src.NOT_ON_LIST, src.ADDED_BY_ANALYST]
+    assert paste(tmp_path, url="http://www.centralbank.go.ke/other").flags == [src.ADDED_BY_ANALYST]     # http is allowed for a paste
 
 
 def test_a_paste_over_the_limit_is_refused(tmp_path):
@@ -566,8 +566,10 @@ def test_as_result_has_the_search_result_shape_plus_what_the_check_needs(tmp_pat
     r = one.as_result()
     assert r == {"id": one.id, "url": one.url, "title": "T", "text": PARAGRAPH, "publishedDate": "2026-11-05",
                  "sha256": one.sha256, "fetched_at": "2026-11-06T09:00:00+00:00", "host": "www.centralbank.go.ke",
-                 "origin": "pasted", "flags": []}
+                 "origin": "pasted", "flags": [src.ADDED_BY_ANALYST]}
     assert "text" not in one.meta() and one.meta()["id"] == one.id
+    found = paste(tmp_path, url="https://www.knbs.or.ke/cpi", origin="found")   # a page the tool found itself: not "Added by analyst"
+    assert found.as_result()["flags"] == [] and found.as_result()["origin"] == "found"
 
 
 def test_the_default_folder_is_under_the_data_dir_and_the_test_fixture_redirects_it(tmp_path):

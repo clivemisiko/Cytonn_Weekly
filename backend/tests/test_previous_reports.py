@@ -23,7 +23,7 @@ def _save(db, slug, period, decision="approved", review=None):
     if decision:
         for item in review.review_items:
             item.resolve("accept")
-        review.decide(decision)
+        review.decide(decision, review.flagged_count)
     review_store.save_review(review, section=slug, db_path=db)
     return review
 
@@ -99,7 +99,7 @@ def test_other_report_types_are_never_listed(tmp_path):
         review.report_type, review.period = "quarterly", "Q3'2026"
         for item in review.review_items:
             item.resolve("accept")
-        review.decide("approved")
+        review.decide("approved", review.flagged_count)
         review_store.save_review(review, section=slug, db_path=db)
     assert export.approved_weeks(db)["weeks"] == []
 

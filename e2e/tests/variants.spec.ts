@@ -10,7 +10,7 @@ test.afterEach(() => void release());
 test("T26 a provider problem: said on the start screen, drafting is off, and the API refuses a run", async ({ page, request }) => {
   test.skip(VARIANT !== "no-key", "needs E2E_VARIANT=no-key");
   const config = await (await request.get(`${API}/api/config`)).json();
-  expect(config.provider).toBe("anthropic");
+  expect(config.provider).toBe("bedrock");
   expect(config.provider_problem).toBeTruthy();
 
   await page.goto(overviewUrl());
@@ -27,7 +27,7 @@ test("T26 a provider problem: said on the start screen, drafting is off, and the
   await expect(page).toHaveURL(/\/overview/);
 
   // The problem never reaches the run view, because no run starts: the API refuses it up front, in the same words.
-  const refused = await request.post(`${API}/api/runs`, { headers: { "Content-Type": "application/json" }, data: { section: "focus", report_type: "weekly", period: PERIOD, topic: "Eurobonds" } });
+  const refused = await request.post(`${API}/api/runs`, { headers: { "Content-Type": "application/json" }, data: { section: "focus", report_type: "weekly", period: PERIOD, topic: "Eurobonds", sections: "Overview\nRisks" } });
   expect(refused.status()).toBe(409);
   expect((await refused.json()).detail).toContain(config.provider_problem);
 

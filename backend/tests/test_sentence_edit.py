@@ -322,7 +322,7 @@ def test_an_approved_section_is_not_changed_and_the_new_version_needs_approving_
     review = drafted()
     for item in review.review_items:
         item.resolve("accept")
-    review.decide("approved")
+    review.decide("approved", review.flagged_count)
     run_id, _ = saved(db, review)
     r = post(client, run_id, flagged_index(review), action="remove")
     assert r.status_code == 200, r.text

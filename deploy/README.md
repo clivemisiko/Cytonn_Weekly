@@ -74,9 +74,9 @@ Then open <http://127.0.0.1:5173>.
 `BEDROCK_MODEL_ID`, the `AWS_*` variables for Bedrock and `EXA_API_KEY`. Do not run
 `docker compose config` without `--quiet` or `--no-env-resolution`: it prints what `.env` holds.
 
-In production `CYTONN_LLM_PROVIDER` is `bedrock`. When it is unset the code default is `anthropic`
-(which needs `ANTHROPIC_API_KEY` and `CYTONN_LLM_MODEL`). Either way **every "Draft again" on the
-overview spends real model budget**. Set `CYTONN_LLM_PROVIDER=local` and recreate the api to make the
+In production `CYTONN_LLM_PROVIDER` is `bedrock`. It has no default: when it is unset or blank the
+server refuses every draft and says so (`anthropic` was removed and is refused too).
+With `bedrock`, **every "Draft again" on the overview spends real model budget**. Set `CYTONN_LLM_PROVIDER=local` and recreate the api to make the
 instance free to run (drafts are then marked for development only). After editing `.env`, recreate
 the api with `docker compose up -d --force-recreate api`; a restart does not re-read it.
 

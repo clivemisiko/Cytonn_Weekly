@@ -57,6 +57,8 @@ export function textOf(e: Pick<RunEvent, "kind" | "label" | "detail"> & { counts
       return `Did not look for sources.${then(e.detail)}`;
     case "retrying":
       return `${stop(e.label)}${then(e.detail)}`;
+    case "source_left_out":
+      return `Left out the source ${e.label}.${then(e.detail)}`;
   }
 }
 
@@ -105,7 +107,7 @@ export function stepLines(events: RunEvent[]): StepLine[] {
         ? "working"
         : e.kind === "run_failed" || e.kind === "source_failed"
           ? "failed"
-          : e.kind === "sources_search_unavailable" || e.kind === "retrying"
+          : e.kind === "sources_search_unavailable" || e.kind === "retrying" || e.kind === "source_left_out"
             ? "skipped"
             : closes?.mark ?? "done",
       active: false,

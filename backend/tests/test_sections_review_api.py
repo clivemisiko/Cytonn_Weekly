@@ -81,7 +81,7 @@ def test_unavailable_section_cannot_be_drafted(client):
 def test_focus_needs_a_topic_and_carries_it(client):
     assert client.post("/api/sections/focus/draft").status_code == 422
     assert client.post("/api/sections/focus/draft", json={"topic": "   "}).status_code == 422
-    r = client.post("/api/sections/focus/draft", json={"topic": "SSA Eurobonds"})
+    r = client.post("/api/sections/focus/draft", json={"topic": "SSA Eurobonds", "sections": "Overview"})
     assert r.status_code == 200 and r.json()["section"]["topic"] == "SSA Eurobonds"
 
 
@@ -93,7 +93,7 @@ def test_resolve_and_approve_a_generic_review(client):
             review = client.patch(f"/api/reviews/{run}/items/{item['index']}", json={"resolution": "accept"}).json()
     review = client.post(f"/api/reviews/{run}/accept-clean").json()
     assert review["is_approvable"] is True
-    done = client.post(f"/api/reviews/{run}/decide", json={"decision": "approved"}).json()
+    done = client.post(f"/api/reviews/{run}/decide", json={"decision": "approved", "acknowledged_flagged": sum(i["status"] == "flagged" for i in review["review_items"])}).json()
     assert done["decision"] == "approved" and done["section_slug"] == "real_estate"
     assert client.patch(f"/api/reviews/{run}/items/0", json={"resolution": None}).status_code == 409
     re_row = next(s for s in client.get("/api/sections").json()["sections"] if s["slug"] == "real_estate")
@@ -102,7 +102,7 @@ def test_resolve_and_approve_a_generic_review(client):
 
 def test_sections_are_independent(client, db):
     eq = client.post("/api/sections/equities/draft").json()
-    focus = client.post("/api/sections/focus/draft", json={"topic": "Budget review"}).json()
+    focus = client.post("/api/sections/focus/draft", json={"topic": "Budget review", "sections": "Overview"}).json()
     client.post(f"/api/reviews/{eq['run_id']}/decide", json={"decision": "rejected"})
     rows = {s["slug"]: s["latest"] for s in client.get("/api/sections").json()["sections"]}
     assert rows["equities"]["decision"] == "rejected" and rows["focus"]["decision"] is None

@@ -35,12 +35,10 @@ SECTION = "real_estate"
 TITLE = "Real Estate"
 N_SUBSECTIONS = 4
 
-# The team's preferred sites (supplied by the owner, 2026-10-29), searched first by every brief after its own.
+# The team's preferred sites (supplied by the owner, 2026-10-29), searched first by every brief after its own. Nation, Business
+# Daily and Bloomberg are never read by the tool (equities/source_policy.json): the analysts send snips of them.
 _PREFERRED_SITES_TEXT = """
-nation.africa
-businessdailyafrica.com
 standardmedia.co.ke
-bloomberg.com
 """
 _HOST = re.compile(r"[a-z0-9-]+(\.[a-z0-9-]+)+")
 # Social media is never a cited source: left out of the open-web pass.
@@ -214,14 +212,14 @@ def build_real_estate_review(
 
     ``on_event`` (common/run_events.py) is told each step as it happens.
     """
-    if provider is None and (os.environ.get("CYTONN_LLM_PROVIDER") or "anthropic").strip().lower() != "bedrock":
+    if provider is None and (os.environ.get("CYTONN_LLM_PROVIDER") or "").strip().lower() != "bedrock":
         raise RuntimeError(NEEDS_BEDROCK)   # the other providers search the web themselves, which this section does not do
     today = today or date.today()
     friday = latest_friday(today)
     reits = fetch_source(on_event, fetcher.SOURCE_NAME, fetch_reits, today)
     if any(r.get("price") is not None for r in reits["rows"]):   # the Ibuka figures, saved so the outlook can quote them
         source_store.from_paste(reits["source_url"], reits["as_of"], ibuka_text(reits), snips.LABELS["reits"], friday,
-                                title=fetcher.SOURCE_NAME, origin="fetched")
+                                title=fetcher.SOURCE_NAME, origin="found")   # the tool's own reader, not a page an analyst added
     have = {b.id for b in SECTOR_BRIEFS
             if any(s.origin == "snip" or b.id == "reits" for s in source_store.list_for(b.label, friday))}
     previous, warnings = None, []

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { PhCaretDown } from "@phosphor-icons/vue";
+import { PhArrowRight, PhCaretDown, PhCaretRight, PhListChecks, PhPulse, PhSealCheck, PhWarningCircle } from "@phosphor-icons/vue";
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "reka-ui";
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import PageGrid from "@/components/nav/PageGrid.vue";
 import { LINK } from "@/components/ui/button";
 import { exportChartsNote } from "@/lib/charts";
@@ -11,8 +11,11 @@ import { APPROVED_BANNER, fullyApproved } from "@/lib/previous";
 import { useShellRibbon } from "@/lib/shell";
 import type { AppConfig, ExportStatus, Overview, ReportChoice, WeekChoice } from "@/lib/types";
 import DraftingBanner from "./DraftingBanner.vue";
+import Button from "@/components/ui/Button.vue";
+import MetricCard from "@/components/ui/MetricCard.vue";
+import Panel from "@/components/ui/Panel.vue";
+import ActivityPanel from "./ActivityPanel.vue";
 import ExportBar from "./ExportBar.vue";
-import Masthead from "./Masthead.vue";
 import Notice from "./Notice.vue";
 import ReportPicker from "./ReportPicker.vue";
 import SectionRow from "./SectionRow.vue";
@@ -78,6 +81,45 @@ const groupLabel = computed(() => {
   return period.startsWith("Week ending ") ? `Week ending ${friendlyDate(period.slice(12))}` : period || "This week";
 });
 const approved = computed(() => props.overview.sections.filter((s) => stateOf(s) === "approved").length);
+
+// Each section waiting on the analyst, worded from the payload: a stopped draft, a rejection, a review, or no draft yet.
+// rank orders the queue (lower first): a stopped draft, a rejection, flagged items, ready for a decision, not drafted.
+const attentionAll = computed(() =>
+  props.overview.sections
+    .flatMap((s, i) => {
+      const state = stateOf(s);
+      const d = draftingFor(drafting.value, s.slug, props.report);
+      if (d?.state === "failed") return [{ slug: s.slug, title: s.title, why: "The last draft stopped", flag: true, rank: 0, i }];
+      if (isLive(d)) return [];
+      if (state === "rejected") return [{ slug: s.slug, title: s.title, why: "Rejected: draft it again", flag: true, rank: 1, i }];
+      if (state === "in_review" && s.latest) {
+        const f = s.latest.counts.flagged.total;
+        return [{ slug: s.slug, title: s.title, why: f ? `${plural(f, "item")} flagged` : "Ready for a decision", flag: f > 0, rank: f > 0 ? 2 : 4, i }];
+      }
+      if (state === "not_drafted") return [{ slug: s.slug, title: s.title, why: s.requires_approved ? "Not composed yet" : "Not drafted yet", flag: false, rank: 5, i }];
+      return [];
+    })
+    .sort((a, b) => a.rank - b.rank || a.i - b.i),
+);
+const ATTENTION_SHOWN = 4;
+const attention = computed(() => attentionAll.value.slice(0, ATTENTION_SHOWN));
+const inReview = computed(() => props.overview.sections.filter((s) => stateOf(s) === "in_review").length);
+// A review waiting on the analyst comes first, then a section with no draft (or whose draft stopped); a rejected one is
+// left to its card, where "Draft again" asks first.
+const next = computed(() => {
+  const review = props.overview.sections.find((s) => stateOf(s) === "in_review");
+  if (review) return { label: `Continue reviewing ${review.title}`, go: () => emit("open", review.slug, true) };
+  const fresh = props.overview.sections.find((s) => stateOf(s) === "not_drafted" && !isLive(draftingFor(drafting.value, s.slug, props.report)));
+  if (fresh) return { label: `${fresh.requires_approved ? "Compose" : "Draft"} ${fresh.title}`, go: () => emit("open", fresh.slug, false) };
+  return null;
+});
+async function goToCard(slug: string) {
+  groupOpen.value = true;
+  await nextTick();
+  const el = document.getElementById(`sec-${slug}`);
+  el?.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  el?.focus({ preventScroll: true });
+}
 const flagged = computed(() =>
   props.overview.sections.reduce((n, s) => (s.latest && (s.latest.current ?? s.latest.this_week) ? n + s.latest.counts.flagged.total : n), 0),
 );
@@ -85,12 +127,27 @@ const flagged = computed(() =>
 
 <template>
   <PageGrid aside-title="Report status" storage-key="overview">
-    <Masthead flush title="Analyst review">
-      <template #meta>Today {{ friendlyDate(overview.today) }}</template>
-      {{ kind ? `${kind.title}: ` : `${name}: ` }}{{ plural(overview.sections.length, "report section") }}. Each is drafted, checked and approved or rejected on its own.
-    </Masthead>
+    <!-- Identity and the one way on: the report and its date at the left, the first section waiting on the analyst at the
+         right, opened exactly as its card's own button opens it. -->
+    <div class="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+      <div class="min-w-0 flex-1">
+        <p class="eyebrow flex flex-wrap items-center gap-x-2">
+          <span>{{ overview.report.title }}</span>
+          <span aria-hidden="true">·</span>
+          <span class="font-mono normal-case tracking-normal">Today {{ friendlyDate(overview.today) }}</span>
+        </p>
+        <h1 class="mt-1 text-xl font-bold tracking-tight">Analyst review</h1>
+        <p class="mt-1 text-xs text-muted-foreground">
+          {{ kind ? `${kind.title}: ` : `${name}: ` }}{{ plural(overview.sections.length, "report section") }}. Each is drafted, checked and approved or rejected on its own.
+        </p>
+      </div>
+      <Button v-if="next" size="lg" class="max-w-full whitespace-normal" @click="next.go()">
+        {{ next.label }}
+        <PhArrowRight weight="bold" data-icon="inline-end" aria-hidden="true" />
+      </Button>
+    </div>
 
-    <div class="mt-6 space-y-6">
+    <div class="mt-4 space-y-4">
       <ReportPicker
         :key="`${report.type}|${report.period}|${report.kind ?? ''}`"
         :current="report"
@@ -99,14 +156,24 @@ const flagged = computed(() =>
         :weeks="weeks"
         :on-apply="onReport"
       />
-      <Notice v-if="config.dev_mode" role="alert" class="font-semibold">
-        Development Mode Active (Local Model): Drafts generated in this mode are for testing purposes only and are not approved for publication.
+
+      <!-- Four figures in one strip, each counted from the overview's payload (a section's current review only). -->
+      <div role="group" aria-label="This report in figures" class="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border @2xl:grid-cols-4">
+        <MetricCard label="Approved" :value="approved" :sub="` / ${overview.sections.length}`" :icon="PhSealCheck" :tone="approved === overview.sections.length ? 'ok' : 'neutral'" />
+        <MetricCard label="In review" :value="inReview" :icon="PhListChecks" />
+        <MetricCard label="Flagged" :value="flagged" :icon="PhWarningCircle" :tone="flagged > 0 ? 'flag' : 'neutral'" />
+        <MetricCard label="Drafting" :value="live.length" :icon="PhPulse" />
+      </div>
+
+      <!-- Standing cautions: always present and announced, but quiet, so they never become the page's focus. -->
+      <Notice v-if="config.dev_mode" quiet role="alert">
+        <span class="font-semibold">Development Mode Active (Local Model):</span> Drafts generated in this mode are for testing purposes only and are not approved for publication.
       </Notice>
-      <Notice v-if="exportStatus?.is_dev_draft" role="alert" class="font-semibold">
+      <Notice v-if="exportStatus?.is_dev_draft" quiet role="alert">
         Export Notice: This document contains test content ({{ exportStatus.dev_sections.join(", ") }}) and includes a developer watermark on every page. It cannot be circulated or published externally.
       </Notice>
       <!-- In the feed, not the foldable panel beside the export button: a note there could be folded away. -->
-      <Notice v-if="exportChartsNote(exportStatus?.charts_missing ?? 0)" tone="info" role="status">
+      <Notice v-if="exportChartsNote(exportStatus?.charts_missing ?? 0)" tone="info" quiet role="status">
         {{ exportChartsNote(exportStatus?.charts_missing ?? 0) }}
       </Notice>
       <div v-if="exportError" data-attention="export-bar">
@@ -121,53 +188,37 @@ const flagged = computed(() =>
         analysis, so none can be drafted yet; the weekly Focus of the Week can still draft a cited piece on the same topic.
       </Notice>
 
-      <!-- Visual Pipeline Progress Stepper -->
-      <div class="rounded-xl border border-border bg-card p-4.5 shadow-xs">
-        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <div class="flex items-center gap-2">
-            <span class="eyebrow">Publication Pipeline</span>
-            <span
-              class="rounded-full px-2 py-0.5 text-xs font-semibold"
-              :class="approved === overview.sections.length ? 'bg-ok/15 text-ok-fg' : 'bg-primary/10 text-primary-fg'"
-            >
-              {{ approved }} of {{ overview.sections.length }} approved
-            </span>
-          </div>
-          <span class="font-mono text-xs text-muted-foreground">
-            {{ approved === overview.sections.length ? '✓ Ready for Word Export' : `${overview.sections.length - approved} section${overview.sections.length - approved === 1 ? '' : 's'} remaining` }}
+
+      <!-- The queue: the few sections most in need of the analyst, highest first; every section stays listed below. -->
+      <Panel v-if="attention.length" id="attention-title" title="Needs your attention">
+        <template #action>
+          <span class="text-xs text-muted-foreground">
+            <span class="font-mono">{{ attention.length }}</span> of <span class="font-mono">{{ attentionAll.length }}</span>
           </span>
-        </div>
+        </template>
+        <ul class="divide-y">
+          <li v-for="a in attention" :key="a.slug">
+            <button
+              type="button"
+              class="flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+              @click="goToCard(a.slug)"
+            >
+              <span class="glyph" :class="a.flag ? 'state-flagged' : 'state-not_auto_verified'" aria-hidden="true">{{ a.flag ? "!" : "?" }}</span>
+              <span class="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
+                <span class="mr-auto text-sm font-semibold">{{ a.title }}</span>
+                <span class="rounded-sm px-2 py-0.5 text-xs font-bold tracking-wide uppercase" :class="a.flag ? 'bg-flag/12 text-flag-fg' : 'bg-muted text-muted-foreground'">{{ a.why }}</span>
+              </span>
+              <PhCaretRight weight="bold" class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            </button>
+          </li>
+        </ul>
+      </Panel>
+      <p v-else-if="approved === overview.sections.length" class="text-sm text-muted-foreground">Every section is approved.</p>
 
-        <div class="grid grid-cols-2 gap-2 text-xs font-medium sm:grid-cols-4">
-          <div class="flex items-center gap-2 rounded-lg border border-border/80 bg-muted/40 p-2.5">
-            <span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-foreground font-mono text-[10px] font-bold text-background">1</span>
-            <span class="truncate">Inputs & Data</span>
-          </div>
-          <div class="flex items-center gap-2 rounded-lg border border-border/80 bg-muted/40 p-2.5">
-            <span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-foreground font-mono text-[10px] font-bold text-background">2</span>
-            <span class="truncate">AI Research & Draft</span>
-          </div>
-          <div class="flex items-center gap-2 rounded-lg border border-primary/40 bg-primary/5 p-2.5 text-primary-fg">
-            <span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary font-mono text-[10px] font-bold text-primary-invert">3</span>
-            <span class="truncate font-semibold">Review & Verify</span>
-          </div>
-          <div
-            class="flex items-center gap-2 rounded-lg border p-2.5"
-            :class="exportStatus?.ready ? 'border-ok/40 bg-ok/10 text-ok-fg' : 'border-border/80 bg-muted/20 text-muted-foreground'"
-          >
-            <span
-              class="flex size-5 shrink-0 items-center justify-center rounded-full font-mono text-[10px] font-bold"
-              :class="exportStatus?.ready ? 'bg-ok text-ok-invert' : 'bg-muted-foreground/30 text-foreground'"
-            >4</span>
-            <span class="truncate">Word Export</span>
-          </div>
-        </div>
-      </div>
-
-      <CollapsibleRoot v-model:open="groupOpen" class="space-y-4">
-        <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-          <h2 class="text-base font-semibold">
-            <CollapsibleTrigger class="flex items-center gap-2 rounded-md py-1 text-left outline-none hover:text-link focus-visible:ring-2 focus-visible:ring-ring">
+      <CollapsibleRoot v-model:open="groupOpen" class="space-y-3 pt-2">
+        <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b pb-2">
+          <h2 class="panel-title">
+            <CollapsibleTrigger class="flex items-center gap-2 rounded-md py-1 text-left uppercase outline-none hover:text-link focus-visible:ring-2 focus-visible:ring-ring">
               <PhCaretDown weight="bold" class="size-4 shrink-0 text-muted-foreground transition-transform duration-200" :class="!groupOpen && '-rotate-90'" aria-hidden="true" />
               {{ groupLabel }} · {{ approved }} of {{ overview.sections.length }} approved
             </CollapsibleTrigger>
@@ -178,7 +229,7 @@ const flagged = computed(() =>
           </span>
         </div>
         <CollapsibleContent class="collapsible -m-1 overflow-hidden p-1">
-          <ol class="space-y-4">
+          <ol class="space-y-2">
             <SectionRow
               v-for="(s, i) in overview.sections"
               :key="s.slug"
@@ -196,12 +247,25 @@ const flagged = computed(() =>
     </div>
 
     <template #aside>
-      <dl role="group" aria-label="Sections by state" class="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border shadow-xs @xl:grid-cols-5">
-        <div v-for="[label, value] in tally" :key="label" class="flex flex-col gap-1.5 bg-card px-4 py-3.5 transition-colors hover:bg-muted/30 last:col-span-2 @xl:last:col-span-1">
-          <dt class="eyebrow">{{ label }}</dt>
-          <dd class="font-mono text-xl font-bold tracking-tight text-foreground">{{ value }}<span class="text-xs font-normal text-muted-foreground"> / {{ overview.sections.length }}</span></dd>
+      <!-- Report status first, then drafting activity (only while a run is live or has stopped), then the export. -->
+      <div class="space-y-3">
+        <div class="space-y-1.5">
+          <div class="flex items-baseline justify-between text-xs">
+            <span class="font-semibold">{{ groupLabel }}</span>
+            <span class="font-mono text-muted-foreground">{{ approved }}/{{ overview.sections.length }} approved</span>
+          </div>
+          <div class="h-1 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+            <div class="h-full bg-ok-fg" :style="{ width: `${overview.sections.length ? (approved / overview.sections.length) * 100 : 0}%` }" />
+          </div>
         </div>
-      </dl>
+        <dl role="group" aria-label="Sections by state" class="divide-y text-sm">
+          <div v-for="[label, value] in tally" :key="label" class="flex items-baseline justify-between gap-3 py-1.5" :class="value === 0 && 'text-muted-foreground'">
+            <dt>{{ label }}</dt>
+            <dd class="font-mono font-semibold">{{ value }}<span class="text-xs font-normal text-muted-foreground"> / {{ overview.sections.length }}</span></dd>
+          </div>
+        </dl>
+      </div>
+      <ActivityPanel :drafting="drafting" :report="report" />
       <ExportBar
         v-if="overview.report.type === 'weekly'"
         :period="overview.report.period"

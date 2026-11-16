@@ -81,25 +81,25 @@ const lists = computed(() =>
 
 <template>
   <li class="@container" :aria-labelledby="`sec-${s.slug}`">
-    <div class="grid grid-cols-1 gap-x-3.5 @md:grid-cols-[2.5rem_minmax(0,1fr)]">
-      <span class="hidden size-10 place-items-center rounded-full border border-border/80 bg-muted/60 font-mono text-xs font-semibold text-foreground/80 shadow-xs @md:grid" aria-hidden="true">
+    <div class="grid grid-cols-1 gap-x-3 @md:grid-cols-[1.75rem_minmax(0,1fr)]">
+      <span class="mt-3 hidden size-7 place-items-center rounded-sm border bg-card font-mono text-xs font-semibold text-muted-foreground @md:grid" aria-hidden="true">
         {{ index + 1 }}
       </span>
 
       <div
-        class="card-interactive min-w-0 space-y-3.5 rounded-xl border border-border bg-card p-4.5 @lg:p-6"
+        class="card-interactive min-w-0 space-y-2.5 rounded-lg border border-border bg-card px-4 py-3"
         :class="[
           state === 'unavailable' && 'bg-muted/40',
-          state === 'approved' && 'border-l-4 border-l-ok',
-          state === 'in_review' && 'border-l-4 border-l-primary',
-          state === 'rejected' && 'border-l-4 border-l-flag',
+          state === 'approved' && 'border-l-[3px] border-l-ok',
+          state === 'in_review' && 'border-l-[3px] border-l-foreground',
+          state === 'rejected' && 'border-l-[3px] border-l-flag',
         ]"
       >
         <div class="flex items-start justify-between gap-4">
           <div class="min-w-0 space-y-2">
-            <h2 :id="`sec-${s.slug}`" class="text-lg font-semibold tracking-tight text-foreground">{{ s.title }}</h2>
+            <h2 :id="`sec-${s.slug}`" tabindex="-1" class="outline-none text-base font-semibold tracking-tight text-foreground">{{ s.title }}</h2>
             <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span :class="[CHIP_BASE, chip.className, chip.stateClass, 'shadow-2xs']">
+              <span :class="[CHIP_BASE, chip.className, chip.stateClass, 'rounded-sm tracking-wide uppercase']">
                 <span v-if="chip.glyph" class="glyph size-4 text-xs" aria-hidden="true">{{ chip.glyph }}</span>
                 <PhLockSimple v-if="state === 'unavailable'" weight="bold" class="size-3" aria-hidden="true" />
                 {{ chipLabel }}
@@ -165,7 +165,7 @@ const lists = computed(() =>
           </details>
         </div>
 
-        <div v-if="action || flagged > 0 || s.charts.length > 0" class="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t pt-3">
+        <div v-if="action || flagged > 0 || s.charts.length > 0" class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t pt-2.5">
           <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
             <span v-if="flagged > 0" class="state-flagged inline-flex items-center gap-1 text-xs font-semibold text-(--hue-fg)">
               <span class="glyph size-4 text-xs" aria-hidden="true">!</span>
@@ -175,13 +175,12 @@ const lists = computed(() =>
           </div>
           <div v-if="action" class="flex min-w-0 flex-col gap-2 @md:items-end">
             <div class="flex flex-wrap gap-2 @md:justify-end">
-              <Button size="lg" :variant="action.primary ? 'default' : 'outline'" @click="emit('open', s.slug, action.resume)">
+              <Button :variant="action.primary ? 'default' : 'outline'" @click="emit('open', s.slug, action.resume)">
                 {{ action.label }}
                 <PhCaretRight weight="bold" data-icon="inline-end" aria-hidden="true" />
               </Button>
               <Button
                 v-if="canRedraft"
-                size="lg"
                 variant="outline"
                 :disabled="draftAgainOff !== null"
                 :aria-describedby="draftAgainOff ? `redraft-off-${s.slug}` : undefined"

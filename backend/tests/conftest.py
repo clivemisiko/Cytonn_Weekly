@@ -15,16 +15,17 @@ from cytonn_weekly import db
 
 
 @pytest.fixture(autouse=True)
-def fake_anthropic_key(monkeypatch):
-    """The review API refuses to draft in anthropic mode without a key (api.main.provider_problem).
+def fake_aws_settings(monkeypatch):
+    """The review API refuses to draft in bedrock mode without a region and credentials (api.main.provider_problem).
 
-    Every test fakes the pipeline, so a placeholder lets those drafts run; it also replaces any
-    real key from the developer's shell, so no test could spend budget even by mistake.  Tests of
-    the missing-key refusal delete it themselves.
+    Every test fakes the pipeline, so placeholders let those drafts run; they also replace any real
+    values from the developer's shell, so no test could spend budget even by mistake.  Tests of the
+    missing-settings refusal delete them themselves.
     """
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-placeholder-not-a-real-key")
-    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
-    monkeypatch.setenv("CYTONN_LLM_MODEL", "claude-sonnet-5-5")  # no default exists; anthropic mode refuses without it
+    monkeypatch.setenv("AWS_REGION", "us-east-1")
+    monkeypatch.setenv("AWS_BEARER_TOKEN_BEDROCK", "not a real bearer token")   # signing with access keys needs boto3, which a test venv may lack
+    for name in ("AWS_DEFAULT_REGION", "AWS_SESSION_TOKEN", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "BEDROCK_MODEL_ID"):
+        monkeypatch.delenv(name, raising=False)
 
 
 # Settings a developer's shell may carry, and that the Docker container always carries
@@ -58,6 +59,23 @@ def no_ambient_settings(monkeypatch):
     """No test sees the real provider switch, search key or mail settings, so none can reach a real service."""
     for name in _AMBIENT_SETTINGS:
         monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def default_test_provider(no_ambient_settings, monkeypatch):
+    """An unset CYTONN_LLM_PROVIDER refuses every draft, so tests start with "bedrock" (the production setting, made
+    valid by fake_aws_settings); a test of the refusal deletes it itself."""
+    monkeypatch.setenv("CYTONN_LLM_PROVIDER", "bedrock")
+
+
+@pytest.fixture(autouse=True)
+def no_gather_step(monkeypatch):
+    """A Bedrock run searches for sources before it drafts (api.main.gather_for), and reads each listed company's website.
+    No test starts that: the step is a no-op that reports it searched.  A test of the step calls ``gather_piece`` with its own
+    fake search and fetch, or puts ``gather.gather`` back with ``monkeypatch.setattr``."""
+    from cytonn_weekly.common import gather
+
+    monkeypatch.setattr(gather, "gather", lambda pieces, **_: ([], True))
 
 
 @pytest.fixture(autouse=True)
@@ -130,10 +148,10 @@ def _block_network() -> None:
     answer), never a live request.
 
     It is done at the socket, because the HTTP clients differ (the fetchers use httpx; the
-    Anthropic SDK brings its own transport), and it is set once, when conftest is imported, and
+    Bedrock SDK brings its own transport), and it is set once, when conftest is imported, and
     never undone: a per-test patch is removed when the test ends, while a run started through
     POST /api/runs keeps working in its own thread after that.  On 2026-10-09 such a thread
-    reached the Anthropic API with the placeholder key and was refused; this is what stops it.
+    reached the model API with a placeholder key and was refused; this is what stops it.
     FastAPI's TestClient opens no socket and is unaffected; loopback stays open.
     """
     import socket

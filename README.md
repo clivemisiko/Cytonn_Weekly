@@ -55,9 +55,8 @@ flowchart TB
     subgraph External
         PUB["CBK, NSE, KNBS, Yahoo Finance,<br/>afx, cytonnreport.com"]
         EXA["Exa search service<br/>EXA_API_KEY"]
-        SITES["Any public web page<br/>fetched by code"]
+        SITES["Pages on hosts the source policy allows<br/>(and any page an analyst adds), fetched by code"]
         BR["Amazon Bedrock<br/>production"]
-        AN["Anthropic API<br/>web search by the model"]
         OL["Ollama<br/>development only"]
     end
     UI -->|"/api proxy"| API
@@ -69,7 +68,6 @@ flowchart TB
     GATHER --> SRC
     SRC --> PROV
     PROV --> BR
-    PROV -.alternative.-> AN
     PROV -.dev mode.-> OL
     FETCH --> CHECK
     PROV --> CHECK
@@ -95,12 +93,11 @@ flowchart TB
 
 ### Drafting providers
 
-`CYTONN_LLM_PROVIDER` selects who writes the narrative (the Weekly Highlights, Real Estate themes, Focus of the Week and the outlooks). Unset means `anthropic`.
+`CYTONN_LLM_PROVIDER` selects who writes the narrative (the Weekly Highlights, Real Estate themes, Focus of the Week and the outlooks). It must be set: unset or blank means "not configured", and no draft starts until it is `bedrock` or `local`. The direct `anthropic` provider was removed and is refused with a sentence saying so.
 
 | Value | What it is | Use |
 | --- | --- | --- |
 | `bedrock` | Claude on Amazon Bedrock through the `AnthropicBedrock` client (`anthropic[bedrock]`). The reply is forced into JSON through a client-side `submit_draft` function call. The model is `BEDROCK_MODEL_ID` (default `us.anthropic.claude-sonnet-4-6`); AWS region and credentials come from the `AWS_*` variables. | Production. |
-| `anthropic` | The Anthropic API with Anthropic's server-side web search, model set by `CYTONN_LLM_MODEL`, key `ANTHROPIC_API_KEY`. | Default when the variable is unset. Kept in the code. |
 | `local` | Ollama (default model `phi4-mini`) with Exa for search. Every piece is marked `drafted_by: local:<model>`, the screen and Word file carry a DEV MODE mark, and email and export refuse to send. | Development only. |
 
 Bedrock has no search or fetch tool the code can use, and the model is given none. It writes only from source text that code hands it.
@@ -140,7 +137,7 @@ The analyst picks the week on the overview ("Week to draft": the coming Friday a
 
 ### Concurrency
 
-Several analysts can draft at once. `CYTONN_DRAFT_CONCURRENCY` (default 3, 1 to 6) is how many drafts that call the model run at the same time; more wait in a queue of up to `CYTONN_DRAFT_QUEUE_MAX` (default 20, then a draft is refused). One section of one report and period runs at a time. The seats, queue and run list are in the memory of one API process, so the API must run as one process and a restart loses runs in progress (saved reviews are kept). Bedrock throttling is retried with a growing wait (`CYTONN_BEDROCK_RETRIES`, `CYTONN_BEDROCK_RETRY_BASE_SECONDS`).
+Several analysts can draft at once. `CYTONN_DRAFT_CONCURRENCY` (default 3, 1 to 6) is how many drafts that call the model run at the same time; more wait in a queue of up to `CYTONN_DRAFT_QUEUE_MAX` (default 20, then a draft is refused). One section of one report and period runs at a time. The seats, queue and run list are in the memory of one API process, so the API must run as one process and a restart loses runs in progress (saved reviews are kept). Bedrock throttling is retried with a growing wait (`CYTONN_BEDROCK_RETRIES`, `CYTONN_BEDROCK_RETRY_BASE_SECONDS`). One draft may make at most `CYTONN_BEDROCK_MAX_CALLS_PER_DRAFT` Bedrock calls (default 60); at the limit it stops and saves nothing, and every saved Bedrock draft records its calls and tokens under `usage`.
 
 ### Report types
 

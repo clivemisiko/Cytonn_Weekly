@@ -13,7 +13,6 @@ test.afterEach(() => void release());
 
 const json = { "Content-Type": "application/json" };
 const HEADING = { name: "Digital Payments: analyst review", level: 1 } as const;
-const UNRESOLVED = /\d+ unresolved · 0 of \d+ resolved/;
 
 /** Digital Payments drafted through the API for that week; the run's id. */
 async function draftPayments(request: APIRequestContext, period: string): Promise<number> {
@@ -69,7 +68,7 @@ test("T42 an approved section: Draft again asks first, the new run is undecided 
 
   await page.getByRole("link", { name: "Open review" }).click();
   await expect(page.getByRole("heading", HEADING)).toBeVisible();
-  await expect(page.getByText(UNRESOLVED)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeEnabled(); // undecided, and its own
 
   // The earlier run is untouched: still approved, still locked, still readable.
   const earlier = await (await request.get(`${API}/api/reviews/${old}`)).json();
@@ -81,13 +80,11 @@ test("T42 an approved section: Draft again asks first, the new run is undecided 
 test("T43 a rejected section: Draft again shows the notes of the rejected draft on the new review", async ({ page, request }) => {
   const period = "Week ending 2026-11-13";
   const first = await draftPayments(request, period);
+  // The screen no longer sets a resolution or a note; the API still stores them, and a rejection carries them to the next draft.
+  const marked = await request.patch(`${API}/api/reviews/${first}/items/0`, { headers: json, data: { resolution: "fix_needed", note: "SYNTHETIC e2e: the hospitality line is missing." } });
+  expect(marked.ok(), await marked.text()).toBe(true);
   await page.goto(`${overviewUrl(period)}&review=${first}`);
   await expect(page.getByRole("heading", HEADING)).toBeVisible();
-  await page.getByRole("radio", { name: "Fix needed" }).first().click();
-  const note = page.getByLabel(/^Note for /).first();
-  await note.fill("SYNTHETIC e2e: the hospitality line is missing.");
-  await note.press("Enter");
-  await expect(page.getByText("Saved as run")).toBeVisible();
   await page.getByRole("button", { name: "Reject", exact: true }).click();
   await page.getByRole("dialog", { name: "Reject this section?" }).getByRole("button", { name: "Reject", exact: true }).click();
   await expect(page.getByText("Rejected and locked")).toBeVisible();
@@ -105,7 +102,10 @@ test("T43 a rejected section: Draft again shows the notes of the rejected draft 
   const panel = page.getByRole("region", { name: `Notes from the rejected draft (run ${first})` });
   await expect(panel).toBeVisible();
   await expect(panel).toContainText("SYNTHETIC e2e: the hospitality line is missing.");
-  await expect(page.getByText(UNRESOLVED)).toBeVisible(); // nothing was copied onto the new items
+  // Nothing was copied onto the new items: the new review is undecided and none of its items carries a resolution or a note.
+  await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeEnabled();
+  const fresh = await (await request.get(`${API}/api/reviews/${(await latest(request, period, "digital_payments")).run_id}`)).json();
+  expect(fresh.review_items.every((i: { resolution: string | null; note?: string | null }) => i.resolution === null && !i.note)).toBe(true);
 });
 
 test("T44 a section in review: Draft again leaves the unfinished review as it is and makes the new draft current", async ({ page, request }) => {

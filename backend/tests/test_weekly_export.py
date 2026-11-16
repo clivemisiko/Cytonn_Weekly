@@ -37,7 +37,7 @@ ORDER = ["Fixed Income", "Equities", "Real Estate", "Digital Payments Weekly Hig
 def _approve(review):
     for item in review.review_items:
         item.resolve("accept")
-    review.decide("approved")
+    review.decide("approved", review.flagged_count)
     return review
 
 
@@ -117,6 +117,25 @@ def test_the_export_is_refused_until_every_section_is_approved(tmp_path, built):
         "Fixed Income (still in review); Equities (not drafted); Real Estate (rejected); Digital Payments Weekly Highlights "
         "(not drafted); Focus of the Week (not drafted). Approve those sections, then export again.")
     assert not (tmp_path / "out").exists()   # nothing is written
+
+
+def test_the_export_status_counts_flagged_items_accepted_by_approving(tmp_path):
+    db = tmp_path / "app.db"
+    tampered = make_review(tamper=True)
+    flagged = tampered.flagged_count
+    assert flagged >= 2
+    tampered.report_type, tampered.period = "weekly", PERIOD
+    tampered.decide("approved", flagged)                       # none resolved one by one: approving accepts them
+    review_store.save_review(tampered, section="digital_payments", db_path=db)
+    quiet = sh.real_estate_review()
+    quiet.report_type, quiet.period = "weekly", PERIOD
+    quiet.decide("approved", quiet.flagged_count)
+    review_store.save_review(quiet, section="real_estate", db_path=db)
+    undecided = make_review(tamper=True)
+    undecided.report_type, undecided.period = "weekly", PERIOD
+    review_store.save_review(undecided, section="focus", db_path=db)
+    counts = {s["slug"]: s["flagged_accepted_on_approval"] for s in export.export_status(db, PERIOD)["sections"]}
+    assert counts == {"fixed_income": 0, "equities": 0, "real_estate": quiet.flagged_count, "digital_payments": flagged, "focus": 0}
 
 
 def test_the_report_has_the_real_order_and_headings_with_a_summary_per_section(week, tmp_path):

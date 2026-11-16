@@ -166,7 +166,7 @@ test("T80 Use the team's own chart: reachable by keyboard, named in the feed, sa
   expect(chartItems((await reviewOf(request, clean)).review_items, "NASI P/E chart").map((i) => i.resolution)).toEqual(Array(5).fill(null));
 });
 
-test("T81 rows left out of the series are listed by cell on the card and are a flagged item beside the draft; a decided review freezes the choice", async ({ page, request }) => {
+test("T81 rows left out of the series are listed by cell on the card and are a flagged item beside the draft; approving asks first, naming the flagged count, and the decision freezes the choice", async ({ page, request }) => {
   const id = (defectsId = await draft(request, DEFECTS));
   await open(page, id);
   const card = peCard(page);
@@ -175,19 +175,25 @@ test("T81 rows left out of the series are listed by cell on the card and are a f
   await expect(card.getByText(/Rows that share a date.*: B11, B12/)).toBeVisible();
   await expect(yieldCard(page).getByText(/Empty value cells|Rows that share a date/)).toHaveCount(0);
 
-  // The same defects are one flagged item in the Review items panel (not in anything that folds), unresolved, so approval waits.
+  // The same defects are one flagged item in the Review items panel (not in anything that folds).
   const rows = itemsOf(page, "NASI P/E chart").filter({ hasText: "rows of the series" });
   await expect(rows).toHaveCount(1);
   await expect(rows).toHaveAttribute("data-status", "flagged");
-  await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeDisabled();
+
+  // The decision is one for the whole section: Approve is available, and because items are flagged it asks first, naming how many.
+  const flagged = (await reviewOf(request, id)).review_items.filter((i) => i.status === "flagged").length;
+  expect(flagged).toBeGreaterThan(0);
+  const approve = page.getByRole("button", { name: "Approve", exact: true });
+  await expect(approve).toBeEnabled();
+  await approve.click();
+  const dialog = page.getByRole("dialog", { name: "Approve with flagged items?" });
+  await expect(dialog).toContainText(`This section has ${flagged} flagged item${flagged === 1 ? "" : "s"}:`);
+  await dialog.getByRole("button", { name: "Approve anyway" }).click();
+  await expect(dialog).toBeHidden();
 
   // Once decided, the review is frozen and so is the choice.
-  const items = (await reviewOf(request, id)).review_items;
-  for (const i of items) {
-    const res = await request.patch(`${API}/api/reviews/${id}/items/${i.index}`, { headers: json, data: { resolution: "accept" } });
-    expect(res.ok()).toBe(true);
-  }
-  expect((await request.post(`${API}/api/reviews/${id}/decide`, { headers: json, data: { decision: "approved" } })).status()).toBe(200);
+  await expect(page.getByText("Decision recorded: approved.")).toBeVisible();
+  expect((await (await request.get(`${API}/api/reviews/${id}`)).json()).decision).toBe("approved");
   await open(page, id);
   await expect(peCard(page).getByRole("button", { name: "Use the team's own chart" })).toBeDisabled();
   await expect(peCard(page).getByText("This review is decided, so the choice is frozen.")).toBeVisible();

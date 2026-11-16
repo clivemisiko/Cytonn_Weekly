@@ -14,7 +14,7 @@ import {
   PhWarningCircle,
 } from "@phosphor-icons/vue";
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "reka-ui";
-import { computed, ref } from "vue";
+import { computed, nextTick, ref, useTemplateRef, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { LINK } from "@/components/ui/button";
 import { reportName } from "@/lib/format";
@@ -27,6 +27,13 @@ const back = useBackTarget();
 const open = ref(true); // expanded on every load; a collapse lasts for the visit only
 const menu = shell.menu; // the phone's drawer
 const groupOpen = ref(true);
+// The phone's drawer takes focus when it opens (so Escape and Tab work in it) and gives it back to Menu when it closes.
+const navEl = useTemplateRef<HTMLElement>("navEl");
+watch(menu, async (on) => {
+  await nextTick();
+  if (on) [...(navEl.value?.querySelectorAll<HTMLElement>("a[href], button:not([disabled])") ?? [])].find((el) => el.offsetParent !== null)?.focus();
+  else if (navEl.value?.contains(document.activeElement)) document.querySelector<HTMLElement>("[aria-label='Menu']")?.focus();
+});
 
 const MARKS: Record<RailState | "unknown", { label: string; icon: typeof PhCircle; tone: string }> = {
   approved: { label: "Approved", icon: PhCheckCircle, tone: "text-ok-fg" },
@@ -86,9 +93,9 @@ const mode = computed(() => {
 });
 const showProgress = computed(() => shell.held.value !== null && !atOverview.value);
 
-// The current item is a pale blue pill (and bold, and aria-current); an item that does nothing is dimmed and has no hover.
+// The current item is a green-tinted pill with an accent bar (and bold, and aria-current); an item that does nothing is dimmed and has no hover.
 const ITEM =
-  "flex w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm outline-none transition-colors duration-150 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring aria-disabled:cursor-default aria-disabled:opacity-60 aria-disabled:hover:bg-transparent aria-[current=page]:bg-accent aria-[current=page]:font-semibold aria-[current=page]:text-accent-foreground aria-[current=page]:hover:bg-accent";
+  "flex w-full items-center gap-3 rounded-md px-2 py-1.5 text-left text-sm outline-none transition-colors duration-150 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring aria-disabled:cursor-default aria-disabled:opacity-60 aria-disabled:hover:bg-transparent aria-[current=page]:bg-accent aria-[current=page]:font-semibold aria-[current=page]:text-accent-foreground aria-[current=page]:hover:bg-accent aria-[current=page]:shadow-[inset_3px_0_0_var(--primary)]";
 </script>
 
 <template>
@@ -100,6 +107,7 @@ const ITEM =
     :class="[open ? 'min-[768px]:w-56' : 'min-[768px]:w-14', menu ? 'max-md:fixed max-md:left-0 max-md:z-30 max-md:w-56' : 'max-md:hidden']"
   >
     <nav
+      ref="navEl"
       aria-label="Report sections"
       class="flex h-full w-14 flex-col gap-4 overflow-x-hidden overflow-y-auto border-r bg-card p-1.5 max-md:w-56 min-[1366px]:w-56 min-[1366px]:p-3"
       :class="open && 'max-[1365px]:w-56'"
@@ -116,7 +124,7 @@ const ITEM =
         <PhSidebarSimple weight="bold" class="size-5" aria-hidden="true" />
       </button>
 
-      <div v-if="shell.report.value" class="space-y-1 rounded-xl border border-border/80 bg-background/80 p-3 shadow-2xs" :class="!open && 'hidden min-[1366px]:block'">
+      <div v-if="shell.report.value" class="space-y-1 border-b px-2 pt-1 pb-3" :class="!open && 'hidden min-[1366px]:block'">
         <p class="eyebrow">Report</p>
         <p class="text-sm font-semibold tracking-tight text-foreground">{{ reportName(shell.report.value.title, shell.report.value.period) }}</p>
         <p v-if="mode" class="text-xs text-muted-foreground">{{ mode }}</p>
@@ -172,7 +180,7 @@ const ITEM =
         </CollapsibleContent>
       </CollapsibleRoot>
 
-      <div v-if="showProgress" class="mt-auto space-y-2 rounded-xl border border-border/80 bg-muted/40 p-2.5 shadow-2xs min-[1366px]:p-3">
+      <div v-if="showProgress" class="mt-auto space-y-2 border-t px-1 pt-3 min-[1366px]:px-2">
         <p class="text-center font-mono text-xs font-semibold" :class="open ? 'hidden' : 'min-[1366px]:hidden'" aria-hidden="true">
           {{ shell.approved.value === null ? "?" : shell.approved.value }}/{{ shell.total.value }}
         </p>

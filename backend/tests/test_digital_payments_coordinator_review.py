@@ -271,6 +271,62 @@ def test_decide_approved_succeeds_once_approvable():
     assert review.decision == cr.APPROVED
 
 
+def flagged_review():
+    section, report = mixed()
+    review = cr.build_coordinator_review(section, report)
+    assert review.flagged_count >= 2
+    return review
+
+
+@pytest.mark.parametrize("sent", [None, 0, "wrong"])
+def test_approving_flagged_items_needs_their_exact_count(sent):
+    review = flagged_review()
+    if sent == "wrong":
+        sent = review.flagged_count + 1
+    with pytest.raises(cr.FlaggedNotAcknowledged, match="flagged item"):
+        review.decide("approved", sent)
+    assert review.decision is None and review.decided_at is None
+    assert all(i.resolution is None for i in review.review_items)       # a refused approval changes nothing
+    assert review.accepted_on_approval() == 0
+
+
+def test_a_count_one_too_low_is_refused_too():
+    review = flagged_review()
+    with pytest.raises(cr.FlaggedNotAcknowledged):
+        review.decide("approved", review.flagged_count - 1)
+
+
+def test_the_right_count_approves_and_accepts_each_flagged_item_with_a_dated_note():
+    review = flagged_review()
+    by_hand = review.by_status(cr.FLAGGED)[0]
+    by_hand.resolve(cr.FIX_NEEDED, "the analyst's own call")
+    clean_item = review.by_status(cr.CLEAN)[0] if review.by_status(cr.CLEAN) else None
+    n = review.flagged_count
+    review.decide("approved", n)
+    assert review.decision == cr.APPROVED
+    assert (by_hand.resolution, by_hand.resolution_note) == (cr.FIX_NEEDED, "the analyst's own call")   # left alone
+    taken = [i for i in review.by_status(cr.FLAGGED) if i is not by_hand]
+    assert taken and all(i.resolution == cr.ACCEPT for i in taken)
+    assert all(i.resolution_note == f"{cr.ACCEPTED_ON_APPROVAL} {review.decided_at}." for i in taken)
+    assert review.accepted_on_approval() == n - 1
+    if clean_item is not None:
+        assert clean_item.resolution is None
+
+
+def test_no_count_is_needed_when_nothing_is_flagged():
+    review = approvable_review()
+    assert review.flagged_count == 0
+    review.decide("approved")
+    assert review.decision == cr.APPROVED and review.accepted_on_approval() == 0
+
+
+def test_rejecting_flagged_items_needs_no_count():
+    review = flagged_review()
+    review.decide("rejected")
+    assert review.decision == cr.REJECTED and review.accepted_on_approval() == 0
+    assert all(i.resolution is None for i in review.review_items)
+
+
 def test_decide_rejected_works_even_though_fix_needed_makes_it_unapprovable():
     review = approvable_review()
     resolve_all(review)

@@ -8,7 +8,7 @@ existing function, unchanged.  The checker compares the display-formatted rows
 live-proven table check uses.
 
 Live use calls Yahoo Finance and the drafting provider (CYTONN_LLM_PROVIDER):
-the default Anthropic provider spends real API budget, the local one is a
+the Anthropic and Bedrock providers spend real model budget, the local one is a
 dev-only mode.  Callers load the environment first (cytonn_weekly.env.load_env).
 """
 

@@ -13,14 +13,13 @@ from datetime import date
 from typing import Any
 
 from cytonn_weekly.digital_payments.providers import local_provider as dp_local
-from cytonn_weekly.digital_payments.providers.base import SCOPE_WEB, HighlightResult
+from cytonn_weekly.digital_payments.providers.base import SCOPE_PREFERRED, SCOPE_WEB, HighlightResult
 from cytonn_weekly.digital_payments.providers.drafting import (
     RESPONSE_SCHEMA,
     narrative_system,
     piece_from_reply,
     results_message,
 )
-from cytonn_weekly.narrative.anthropic_provider import SCOPE_PREFERRED
 from cytonn_weekly.narrative.base import NarrativeBrief, NarrativeProvider
 
 

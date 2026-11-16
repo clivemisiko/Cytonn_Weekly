@@ -1,6 +1,6 @@
 """Unit tests for the provider factory and LocalProvider (httpx mocked; no network).
 
-AnthropicProvider's behaviour is covered through test_digital_payments_highlights.py.
+The Bedrock provider is covered by test_bedrock_provider.py; the orchestration by test_digital_payments_highlights.py.
 """
 
 import json
@@ -12,8 +12,8 @@ import pytest
 
 from cytonn_weekly.digital_payments import highlights as dh
 from cytonn_weekly.digital_payments import provider_factory
-from cytonn_weekly.digital_payments.providers.anthropic_provider import AnthropicProvider
 from cytonn_weekly.digital_payments.providers.base import DraftingProvider
+from cytonn_weekly.narrative.bedrock_provider import BedrockProvider
 from cytonn_weekly import env
 from cytonn_weekly.digital_payments.providers.local_provider import EXA_KEY_MISSING, LocalProvider, SearchKeyError
 
@@ -26,31 +26,39 @@ VISA_URL = "https://investor.visa.com/news"
 # Factory
 # ---------------------------------------------------------------------------
 
-def test_factory_defaults_to_anthropic(monkeypatch, capsys):
-    monkeypatch.delenv("CYTONN_LLM_PROVIDER", raising=False)
+def test_factory_builds_bedrock_when_asked_for_it(monkeypatch, capsys):
+    monkeypatch.setenv("CYTONN_LLM_PROVIDER", "bedrock")
     p = provider_factory.get_provider()
-    assert isinstance(p, AnthropicProvider) and p.drafted_by == "anthropic:claude-sonnet-5-5"
+    assert isinstance(p, BedrockProvider) and p.drafted_by.startswith("bedrock:")
     assert capsys.readouterr().out == ""
 
 
-def test_llm_model_env_overrides_the_anthropic_model(monkeypatch):
+def test_both_factories_and_provider_problem_refuse_the_removed_anthropic_provider(monkeypatch):
+    from api.main import provider_problem
     from cytonn_weekly.narrative.factory import get_narrative_provider
 
-    monkeypatch.delenv("CYTONN_LLM_PROVIDER", raising=False)
-    monkeypatch.setenv("CYTONN_LLM_MODEL", " claude-opus-5-5 ")
-    for p in (provider_factory.get_provider(), get_narrative_provider()):
-        assert p.model == "claude-opus-5-5" and p.drafted_by == "anthropic:claude-opus-5-5"
-    for blank in ("  ", None):
-        if blank is None:
-            monkeypatch.delenv("CYTONN_LLM_MODEL")
-        else:
-            monkeypatch.setenv("CYTONN_LLM_MODEL", blank)
-        with pytest.raises(ValueError, match="CYTONN_LLM_MODEL is not set"):
-            provider_factory.get_provider()
-        with pytest.raises(ValueError, match="CYTONN_LLM_MODEL is not set"):
-            get_narrative_provider()
-        from api.main import provider_problem
-        assert "CYTONN_LLM_MODEL" in provider_problem()
+    monkeypatch.setenv("CYTONN_LLM_PROVIDER", "anthropic")
+    for make in (provider_factory.get_provider, get_narrative_provider):
+        with pytest.raises(ValueError) as caught:
+            make()
+        assert str(caught.value) == provider_factory.ANTHROPIC_REMOVED
+    assert provider_problem() == provider_factory.ANTHROPIC_REMOVED
+    assert "removed" in provider_factory.ANTHROPIC_REMOVED and "'bedrock'" in provider_factory.ANTHROPIC_REMOVED
+
+
+@pytest.mark.parametrize("value", [None, "", "   "])
+def test_both_factories_refuse_when_the_provider_is_unset_or_blank(monkeypatch, value):
+    from cytonn_weekly.narrative.factory import get_narrative_provider
+
+    if value is None:
+        monkeypatch.delenv("CYTONN_LLM_PROVIDER", raising=False)
+    else:
+        monkeypatch.setenv("CYTONN_LLM_PROVIDER", value)
+    for make in (provider_factory.get_provider, get_narrative_provider):
+        with pytest.raises(ValueError) as caught:
+            make()
+        assert str(caught.value) == provider_factory.NOT_CONFIGURED
+        assert "CYTONN_LLM_PROVIDER" in str(caught.value) and "'bedrock' or 'local'" in str(caught.value)
 
 
 def test_factory_local_prints_warning_every_time(monkeypatch, capsys):
@@ -70,7 +78,7 @@ def test_factory_rejects_unknown_provider(monkeypatch):
 
 
 def test_both_providers_implement_the_interface():
-    assert issubclass(AnthropicProvider, DraftingProvider)
+    assert issubclass(BedrockProvider, DraftingProvider)
     assert issubclass(LocalProvider, DraftingProvider)
 
 
@@ -287,7 +295,7 @@ def test_keys_the_environment_and_dot_env_disagree_on_are_named_once_each(monkey
     # the environment only: it overrides nothing
     monkeypatch.setenv("EXA_API_KEY", KEY_SENT)
     assert env.key_override_warnings(dot_env) == []
-    write_env(dot_env, EXA_API_KEY="", ANTHROPIC_API_KEY="")      # empty in .env is not a key
+    write_env(dot_env, EXA_API_KEY="")      # empty in .env is not a key
     assert env.key_override_warnings(dot_env) == []
     # .env only: load_env puts it in the environment, so the two are equal
     monkeypatch.delenv("EXA_API_KEY")
@@ -304,13 +312,12 @@ def test_keys_the_environment_and_dot_env_disagree_on_are_named_once_each(monkey
         "EXA_API_KEY: the process environment (a Windows or shell variable) holds a key ending ...a420, and .env holds a "
         "different one ending ...c00e. The environment's key is the one used: it overrides .env. Update or remove that "
         "variable, or correct .env, then restart."]
-    # the same check for the Anthropic key, each key on its own line
+    # the Anthropic key is no longer read, so a mismatch on it says nothing
     monkeypatch.setenv("ANTHROPIC_API_KEY", OTHER_SENT)
     write_env(dot_env, EXA_API_KEY=KEY_IN_FILE, ANTHROPIC_API_KEY=OTHER_IN_FILE)
     lines = env.key_override_warnings(dot_env)
-    assert [line.split(":")[0] for line in lines] == ["EXA_API_KEY", "ANTHROPIC_API_KEY"]
-    assert "ending ...9f3a" in lines[1] and "ending ...77b1" in lines[1]
-    assert not any(secret in " ".join(lines) for secret in (KEY_SENT, KEY_IN_FILE, "0123456789"))
+    assert [line.split(":")[0] for line in lines] == ["EXA_API_KEY"]
+    assert not any(secret in " ".join(lines) for secret in (KEY_SENT, KEY_IN_FILE, OTHER_SENT, OTHER_IN_FILE))
 
 
 def test_the_api_logs_the_override_once_at_start_and_keeps_the_environments_key(monkeypatch, tmp_path, caplog):
@@ -367,16 +374,12 @@ def test_draft_highlights_and_outlook_carry_drafted_by_from_the_provider():
 # Shared fallback semantics: both providers apply the same genuine-announcement test
 # ---------------------------------------------------------------------------
 
-def test_both_provider_prompts_use_the_same_genuine_announcement_test():
-    from cytonn_weekly.digital_payments.providers import anthropic_provider as ap
+def test_local_prompt_uses_the_shared_genuine_announcement_test():
     from cytonn_weekly.digital_payments.providers import local_provider as lp
     from cytonn_weekly.digital_payments.providers.base import GENUINE_ANNOUNCEMENT, NOT_GENUINE
 
-    for prompt in (ap._HIGHLIGHTS_SYSTEM, lp._HIGHLIGHT_SYSTEM):
-        assert GENUINE_ANNOUNCEMENT in prompt and NOT_GENUINE in prompt
-        assert "NOT a genuine" in prompt
-    # Anthropic signals "not genuine" the way it signals any non-story: NO_STORY, which triggers the web fallback.
-    assert "NO_STORY" in ap._HIGHLIGHTS_SYSTEM
+    assert GENUINE_ANNOUNCEMENT in lp._HIGHLIGHT_SYSTEM and NOT_GENUINE in lp._HIGHLIGHT_SYSTEM
+    assert "NOT a genuine" in lp._HIGHLIGHT_SYSTEM
 
 
 # ---------------------------------------------------------------------------
@@ -452,15 +455,11 @@ def test_factory_local_defaults_and_cache_settings(monkeypatch):
     assert p.model == "phi4-mini" and p._refresh_cache
 
 
-def test_local_model_env_is_ignored_for_anthropic(monkeypatch):
+def test_local_model_env_is_ignored_for_bedrock(monkeypatch):
     monkeypatch.setenv("CYTONN_LOCAL_MODEL", GEMMA)
-    for value in (None, "anthropic"):
-        if value is None:
-            monkeypatch.delenv("CYTONN_LLM_PROVIDER", raising=False)
-        else:
-            monkeypatch.setenv("CYTONN_LLM_PROVIDER", value)
-        p = provider_factory.get_provider()
-        assert isinstance(p, AnthropicProvider) and p.drafted_by == "anthropic:claude-sonnet-5-5"
+    monkeypatch.setenv("CYTONN_LLM_PROVIDER", "bedrock")
+    p = provider_factory.get_provider()
+    assert isinstance(p, BedrockProvider) and GEMMA not in p.drafted_by
 
 
 # ---------------------------------------------------------------------------

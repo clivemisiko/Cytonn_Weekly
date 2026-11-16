@@ -1,9 +1,9 @@
 """Chooses the narrative provider from the same CYTONN_LLM_PROVIDER switch Digital Payments uses.
 
-    (unset) / "anthropic"  -> AnthropicNarrativeProvider, the production default
-    "bedrock"              -> BedrockNarrativeProvider (Claude on Amazon Bedrock; sources supplied by the analyst
-                              or fetched in code from approved sites; no search service), production
-    "local"                -> LocalNarrativeProvider (Ollama + Exa), development only
+    "bedrock"    -> BedrockNarrativeProvider (Claude on Amazon Bedrock; sources supplied by the analyst
+                    or fetched in code from approved sites; no search service), production
+    "local"      -> LocalNarrativeProvider (Ollama + Exa), development only
+    (unset or blank) -> ValueError, as in the Digital Payments factory
 
 "local" prints the same conspicuous DEV MODE banner as the Digital Payments
 factory, and honours CYTONN_LOCAL_MODEL the same way.
@@ -13,16 +13,12 @@ from __future__ import annotations
 
 import os
 
-from cytonn_weekly.digital_payments.provider_factory import ENV_VAR, LOCAL_MODEL_ENV_VAR, local_warning
+from cytonn_weekly.digital_payments.provider_factory import ENV_VAR, LOCAL_MODEL_ENV_VAR, local_warning, provider_name
 from cytonn_weekly.narrative.base import NarrativeProvider
 
 
 def get_narrative_provider() -> NarrativeProvider:
-    name = (os.environ.get(ENV_VAR) or "anthropic").strip().lower()
-    if name == "anthropic":
-        from cytonn_weekly.narrative.anthropic_provider import AnthropicNarrativeProvider
-
-        return AnthropicNarrativeProvider()
+    name = provider_name()
     if name == "local":
         from cytonn_weekly.digital_payments.providers.local_provider import MODEL
         from cytonn_weekly.narrative.local_provider import LocalNarrativeProvider
@@ -35,4 +31,4 @@ def get_narrative_provider() -> NarrativeProvider:
         from cytonn_weekly.narrative.bedrock_provider import BedrockNarrativeProvider
 
         return BedrockNarrativeProvider()
-    raise ValueError(f"Unknown {ENV_VAR} value {name!r}; expected 'anthropic', 'bedrock' or 'local'.")
+    raise ValueError(f"Unknown {ENV_VAR} value {name!r}; expected 'bedrock' or 'local'.")

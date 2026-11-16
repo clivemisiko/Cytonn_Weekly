@@ -63,7 +63,7 @@ const iconOf = (state: string) => (state === "approved" ? PhCheck : state === "r
   <section v-if="status !== null || error" aria-labelledby="export-title" class="space-y-3.5 rounded-xl border border-border bg-card p-4.5 shadow-xs">
     <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
       <div class="min-w-0 space-y-1">
-        <h2 id="export-title" class="text-base font-semibold tracking-tight text-foreground">Export weekly report</h2>
+        <h2 id="export-title" class="panel-title">Export weekly report</h2>
         <p class="text-sm leading-relaxed text-muted-foreground">
           {{
             status?.ready
@@ -81,7 +81,7 @@ const iconOf = (state: string) => (state === "approved" ? PhCheck : state === "r
       <li
         v-for="s in status.sections"
         :key="s.slug"
-        class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium shadow-2xs transition-colors"
+        class="inline-flex items-center gap-1.5 rounded-sm border px-2 py-0.5 text-xs font-medium transition-colors"
         :class="
           s.state === 'approved'
             ? 'border-ok/40 bg-ok/10 text-ok-fg'

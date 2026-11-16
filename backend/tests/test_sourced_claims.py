@@ -147,7 +147,14 @@ def test_a_verified_claim_keeps_its_quote_as_cited_text_with_the_source_facts(aw
     assert res.claims == [{"text": "Private sector credit grew 8.75%.", "url": URL, "title": "CBK statement",
                            "cited_text": QUOTE, "source_id": saved.id, "sha256": saved.sha256,
                            "fetched_at": saved.fetched_at, "host": "www.centralbank.go.ke", "published_date": "2026-09-30",
-                           "origin": "pasted", "source_flags": []}]
+                           "origin": "pasted", "source_flags": [src.ADDED_BY_ANALYST]}]
+
+
+def test_a_source_the_tool_found_carries_no_analyst_flag_onto_its_claim(aws, saved):
+    found = src.from_paste("https://www.knbs.or.ke/cpi", "2026-10-01", "Inflation was 4.6% in September 2026, KNBS said in a statement.",
+                           "Mortgage lending", TODAY, origin="found")
+    res = draft(Client([claim(found.id, text="Inflation was 4.6%.", quote="Inflation was 4.6% in September 2026")]))
+    assert res.claims[0]["origin"] == "found" and res.claims[0]["source_flags"] == []
 
 
 def test_a_quote_is_stored_as_the_model_gave_it_after_whitespace_is_collapsed_and_is_checked_against_the_saved_text(aws, saved):
@@ -222,7 +229,7 @@ def test_a_long_source_is_cut_for_the_model_with_a_warning_but_quotes_are_checke
 def test_a_source_pasted_from_a_host_off_the_list_carries_its_flag_onto_the_claim(aws, tmp_path):
     one = src.from_paste("https://blog.example.com/post", "2026-09-30", SOURCE, "Mortgage lending", TODAY)
     res = draft(Client([claim(one.id)]))
-    assert res.claims[0]["source_flags"] == ["host not on the approved list"] and res.claims[0]["host"] == "blog.example.com"
+    assert res.claims[0]["source_flags"] == ["host not on the approved list", "Added by analyst"] and res.claims[0]["host"] == "blog.example.com"
 
 
 def test_two_sources_are_numbered_and_a_claim_may_cite_either(aws, saved):

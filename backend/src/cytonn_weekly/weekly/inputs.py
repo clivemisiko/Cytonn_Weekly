@@ -368,6 +368,10 @@ class WeeklyInputs:
     def fi_book(self) -> Optional[Workbook]:
         return self._parsed("fi", "fi_workbook.xlsx", lambda b: fi_workbook.open_fi_workbook(b))
 
+    def hidden_sheet_lines(self) -> list[str]:
+        """A warning for each hidden sheet a draft read a value from, in the equities and fixed income workbooks it has opened."""
+        return [line for key in ("eq", "fi") if (book := self._cache.get(key)) is not None for line in book.hidden_lines()]
+
     @property
     def dp_book(self) -> Optional[Workbook]:
         return self._parsed("dp", "dp_workbook.xlsx", lambda b: dp_workbook.open_dp_workbook(b))

@@ -298,8 +298,12 @@ export const changeSentence = (runId: number, index: number, action: "edit" | "r
 export const removeFinding = (runId: number, index: number) =>
   request<{ review: Review; result: SentenceResult }>(`/api/reviews/${runId}/items/${index}/remove-finding`, { method: "POST" });
 
-export const decide = (runId: number, decision: Decision) =>
-  request<Review>(`/api/reviews/${runId}/decide`, { method: "POST", body: JSON.stringify({ decision }) });
+/** `acknowledgedFlagged` is how many flagged items the person was shown; the server refuses an approval whose count differs. */
+export const decide = (runId: number, decision: Decision, acknowledgedFlagged?: number) =>
+  request<Review>(`/api/reviews/${runId}/decide`, {
+    method: "POST",
+    body: JSON.stringify({ decision, ...(acknowledgedFlagged === undefined ? {} : { acknowledged_flagged: acknowledgedFlagged }) }),
+  });
 
 /** "Week ending 2026-10-02": the weekly report period that names its week. */
 export const weekPeriod = (weekEnding: string) => `Week ending ${weekEnding}`;

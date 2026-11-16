@@ -77,8 +77,8 @@ test("T67 a card shows what the payload says, and folding the group keeps the fl
   await expect(fi.getByText("In review", { exact: true })).toBeVisible();
   await expect(fi.getByText("DEV DRAFT")).toBeVisible(); // the dev mark is on the card
   await expect(fi).toContainText("Run 99");
-  await expect(fi.getByText("4 of 10 items resolved")).toBeVisible();
-  await expect(fi.getByRole("progressbar", { name: "Fixed Income: items resolved" })).toHaveAttribute("aria-valuenow", "4");
+  await expect(fi.getByText("10 review items")).toBeVisible();
+  await expect(fi.getByRole("progressbar")).toHaveCount(0); // items are no longer resolved one by one, so the card has no progress bar
   await expect(fi.getByText("3 flagged")).toBeVisible();
   await expect(fi.getByRole("button", { name: "Resume review" })).toBeVisible();
   await expect(fi.getByRole("button", { name: "Draft again" })).toBeVisible();

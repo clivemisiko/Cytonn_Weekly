@@ -51,7 +51,9 @@ export function useReviewSession(initial: Review) {
     decisionError.value = null;
     try {
       await tail; // let any in-flight write land first
-      review.value = await api.decide(runId, decision);
+      // The count the approval dialog named: the flagged items of the review on screen.
+      const flagged = review.value.review_items.filter((i) => i.status === "flagged").length;
+      review.value = await api.decide(runId, decision, flagged);
       return true;
     } catch (err) {
       decisionError.value = messageOf(err);

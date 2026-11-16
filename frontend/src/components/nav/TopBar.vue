@@ -8,7 +8,7 @@ import ThemeToggle from "./ThemeToggle.vue";
 
 // One look for Home and Back: 40px tall (the touch target), text and icon in the band's ink, a visible focus ring.
 const CONTROL =
-  "inline-flex h-10 items-center gap-2 rounded-md px-3 text-sm font-semibold text-band-foreground outline-none transition-colors duration-150 hover:bg-band-foreground/10 focus-visible:ring-2 focus-visible:ring-band-muted focus-visible:ring-inset disabled:cursor-not-allowed disabled:text-band-muted/60 disabled:hover:bg-transparent aria-[current=page]:text-band-muted";
+  "inline-flex h-10 items-center gap-2 rounded-md px-2.5 sm:px-3 text-sm font-semibold text-band-foreground outline-none transition-colors duration-150 hover:bg-band-foreground/10 focus-visible:ring-2 focus-visible:ring-band-muted focus-visible:ring-inset disabled:cursor-not-allowed disabled:text-band-muted/60 disabled:hover:bg-transparent aria-[current=page]:text-band-muted";
 
 const router = useRouter();
 const route = useRoute();
@@ -36,9 +36,9 @@ function goBack() {
       <span class="sr-only min-[1366px]:not-sr-only">Cytonn Weekly</span>
     </p>
     <nav aria-label="App" class="flex h-full min-w-0 flex-1 items-center gap-1 px-2 sm:px-4">
-      <button v-if="!atHome" type="button" :class="[CONTROL, 'min-[768px]:hidden']" :aria-expanded="shell.menu.value" aria-label="Menu" @click="shell.menu.value = !shell.menu.value">
+      <button v-if="route.path !== '/'" type="button" :class="[CONTROL, 'min-[768px]:hidden']" :aria-expanded="shell.menu.value" aria-label="Menu" @click="shell.menu.value = !shell.menu.value">
         <PhList weight="bold" class="size-4" aria-hidden="true" />
-        Menu
+        <span class="max-sm:sr-only">Menu</span>
       </button>
       <RouterLink v-slot="{ href, navigate }" :to="HOME" custom>
         <a
@@ -49,7 +49,7 @@ function goBack() {
           @click="(event) => (mayLeave() ? navigate(event) : event.preventDefault())"
         >
           <PhHouse weight="bold" class="size-4" aria-hidden="true" />
-          Home
+          <span class="max-sm:sr-only">Home</span>
         </a>
       </RouterLink>
       <button
@@ -61,7 +61,7 @@ function goBack() {
         @click="goBack"
       >
         <PhArrowLeft weight="bold" class="size-4" aria-hidden="true" />
-        Back
+        <span class="max-sm:sr-only">Back</span>
       </button>
       <div v-if="back.kind !== 'none' && backTo !== 'Overview'" class="hidden items-center gap-1.5 px-2 text-xs font-medium text-band-muted md:flex">
         <span class="opacity-40">/</span>

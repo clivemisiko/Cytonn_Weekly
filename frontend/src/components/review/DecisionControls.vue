@@ -61,7 +61,7 @@ function setOpen(open: boolean) {
       </p>
       <div class="flex items-center gap-3">
         <Button size="lg" :disabled="!canApprove || deciding" @click="approve">{{ deciding && !asking ? "Recording…" : "Approve" }}</Button>
-        <Button size="lg" variant="outline" :disabled="deciding" @click="ask('rejected')">Reject</Button>
+        <Button size="lg" variant="destructive" :disabled="deciding" @click="ask('rejected')">Reject</Button>
       </div>
     </div>
 

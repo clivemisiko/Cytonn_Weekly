@@ -32,7 +32,7 @@ def approve(review):
     for i in review.review_items:
         if i.resolution is None:
             i.resolve(cr.ACCEPT)
-    review.decide("approved")
+    review.decide("approved", review.flagged_count)
     return review
 
 
