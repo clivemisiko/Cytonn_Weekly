@@ -8,7 +8,7 @@ from api.serialize import is_dev_draft
 from cytonn_weekly.digital_payments import review_store
 from cytonn_weekly.digital_payments.coordinator_review import APPROVED, CLEAN, FLAGGED, NOT_AUTO_VERIFIED
 from cytonn_weekly.fixed_income import cbk_auctions
-from cytonn_weekly.narrative import anthropic_provider
+from cytonn_weekly.digital_payments.providers.drafting import narrative_system
 from cytonn_weekly.narrative.base import NarrativeBrief
 from cytonn_weekly.periodic import executive_summary, fixed_income, kenya_macro
 from cytonn_weekly.periodic.common import period_brief
@@ -181,20 +181,17 @@ def test_each_section_builds_with_its_period_and_charts(report_type, period, slu
 def test_period_briefs_name_the_report_and_its_period_not_the_week():
     ctx = ph.ctx()
     brief = period_brief(ctx, "growth", "Global Markets Review", "Growth", "global growth", ("worldbank.org",))
-    system = anthropic_provider.system_prompt(brief)
-    prompt = anthropic_provider._prompt(brief, False, ctx.start, ctx.end, ctx.today)
-    assert "quarterly markets review" in system and "report period" in system and "that week" not in system
-    assert "The report period is 2026-07-01 to 2026-09-30" in prompt
+    system = narrative_system(brief)
+    assert "quarterly markets review" in system and "weekly investment research report" not in system
+    assert brief.window == "report period"
     assert "Q3’2026" in brief.focus and brief.opener is None
 
 
 def test_weekly_prompts_are_unchanged():
     brief = NarrativeBrief(id="x", section="Real Estate", label="Land", focus="land prices")
-    system = anthropic_provider.system_prompt(brief)
+    system = narrative_system(brief)
     assert "section of a weekly investment research report" in system
-    assert "published during the report week given in the user" in system and "If nothing published that week" in system
-    prompt = anthropic_provider._prompt(brief, False, date(2026, 9, 26), date(2026, 10, 2), date(2026, 10, 2))
-    assert "The report week is 2026-09-26 to 2026-10-02" in prompt
+    assert brief.report == "weekly" and brief.window == "report week"
 
 
 def test_period_drafts_search_the_whole_period():
@@ -242,7 +239,7 @@ def save_approved(review, db, report_type="quarterly", period="Q3'2026"):
     review.report_type, review.period = report_type, period
     for item in review.review_items:
         item.resolve("accept")
-    review.decide(APPROVED)
+    review.decide(APPROVED, review.flagged_count)
     review_store.save_review(review, section=review.section["section"], db_path=db)
     return review
 

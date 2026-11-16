@@ -59,7 +59,7 @@ def saved(db, review, decision="approved"):
         for i in review.review_items:
             if i.resolution is None:
                 i.resolve(cr.ACCEPT)
-        review.decide(decision)
+        review.decide(decision, review.flagged_count)
     rs.save_review(review, db_path=db)
     return review
 

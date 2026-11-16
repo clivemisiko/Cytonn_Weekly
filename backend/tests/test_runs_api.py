@@ -148,7 +148,7 @@ def approve(client, run_id):
     for item in review["review_items"]:
         if item["resolution"] is None:
             client.patch(f"/api/reviews/{run_id}/items/{item['index']}", json={"resolution": "accept"})
-    assert client.post(f"/api/reviews/{run_id}/decide", json={"decision": "approved"}).status_code == 200
+    assert client.post(f"/api/reviews/{run_id}/decide", json={"decision": "approved", "acknowledged_flagged": sum(i["status"] == "flagged" for i in review["review_items"])}).status_code == 200
 
 
 # ---------------------------------------------------------------------------
@@ -183,7 +183,7 @@ def test_the_review_a_run_saves_equals_the_one_the_draft_route_saves(client, db)
     """Same builder, same stamp, same save: field for field, apart from ids and timestamps."""
     for body, path in [(WEEKLY_DP, "/api/reviews/draft"), ({"section": "equities"}, "/api/sections/equities/draft"),
                        ({"section": "fixed_income", **Q3}, "/api/sections/fixed_income/draft"),
-                       ({"section": "focus", "topic": "SSA Eurobonds performance"}, "/api/sections/focus/draft")]:
+                       ({"section": "focus", "topic": "SSA Eurobonds performance", "sections": "Overview"}, "/api/sections/focus/draft")]:
         via_run = run_to_end(client, **body)
         assert via_run["status"] == "finished", via_run
         direct = client.post(path, json={k: v for k, v in body.items() if k != "section"} or None)
@@ -270,8 +270,8 @@ def test_an_executive_summary_run_is_only_its_start_and_its_end(client):
 
 
 def test_the_executive_summary_runs_with_no_provider_and_no_draft_slot(client, monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY")
-    run = run_to_end(client, section="executive_summary", **Q3)   # no section approved yet: it stops at once, with no key needed
+    monkeypatch.delenv("AWS_REGION")
+    run = run_to_end(client, section="executive_summary", **Q3)   # no section approved yet: it stops at once, with no AWS settings needed
     assert kinds(run) == ["run_started", "run_failed"] and run["status"] == "failed"
 
 
@@ -326,7 +326,7 @@ def test_a_refused_search_key_ends_the_run_with_a_plain_message_and_no_key(clien
 
 
 def test_a_failure_message_carries_no_traceback_and_no_secret(monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-0123456789abcdef")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "sk-test-0123456789abcdef")
     message = failure_message(RuntimeError("401 for key sk-test-0123456789abcdef\n  at line 3"))
     assert message == "An unexpected error occurred (401 for key [redacted] at line 3). Try again; if it happens again, report it with the section name."
     # a ValueError is the pipeline talking to the analyst: its message stands alone, as the draft route shows it
@@ -392,8 +392,8 @@ def test_a_run_is_refused_for_the_reasons_a_draft_is(client, monkeypatch):
         assert as_run.status_code == direct.status_code == status, body
         assert as_run.json()["detail"] == direct.json()["detail"]
     assert client.post("/api/runs", json={"report_type": "weekly"}).status_code == 422  # the section is required
-    # no key in anthropic mode: refused before anything starts, in the draft route's words
-    monkeypatch.delenv("ANTHROPIC_API_KEY")
+    # no AWS region in bedrock mode: refused before anything starts, in the draft route's words
+    monkeypatch.delenv("AWS_REGION")
     as_run, direct = client.post("/api/runs", json={"section": "equities"}), client.post("/api/sections/equities/draft")
     assert as_run.status_code == direct.status_code == 409 and as_run.json()["detail"] == direct.json()["detail"]
     assert client.get("/api/sections").json()["drafting"] is None
@@ -404,10 +404,10 @@ def test_provider_is_only_a_check_of_what_the_screen_showed(client, monkeypatch)
     r = client.post("/api/runs", json={**WEEKLY_DP, "provider": "local"})
     assert r.status_code == 409 and "The tool's drafting mode changed after this page was opened" in r.json()["detail"]
     assert client.get("/api/sections").json()["drafting"] is None
-    assert run_to_end(client, **WEEKLY_DP, provider="anthropic")["status"] == "finished"
+    assert run_to_end(client, **WEEKLY_DP, provider="bedrock")["status"] == "finished"
     monkeypatch.setenv("CYTONN_LLM_PROVIDER", "local")
     monkeypatch.setenv("EXA_API_KEY", "test-placeholder-not-a-real-key")   # local mode is refused without one
-    assert client.post("/api/runs", json={**WEEKLY_DP, "provider": "anthropic"}).status_code == 409
+    assert client.post("/api/runs", json={**WEEKLY_DP, "provider": "bedrock"}).status_code == 409
     assert run_to_end(client, **WEEKLY_DP, provider="local")["status"] == "finished"
 
 
@@ -555,67 +555,6 @@ def test_the_default_keepalive_is_fifteen_seconds():
     from api import runs
 
     assert runs.SSE_KEEPALIVE_SECONDS == 15.0
-
-
-FAKE_KEY = "sk-ant-api03-Abcdefghijklmnop0123456789"
-UNEXPECTED = "An unexpected error occurred ({}). Try again; if it happens again, report it with the section name."
-
-
-def api_error(status, message, kind=None):
-    import anthropic
-
-    kinds_by_status = {400: anthropic.BadRequestError, 401: anthropic.AuthenticationError,
-                       403: anthropic.PermissionDeniedError, 429: anthropic.RateLimitError}
-    response = httpx.Response(status, request=httpx.Request("POST", "https://api.example.invalid/v1/messages"))
-    return (kind or kinds_by_status[status])(message, response=response, body=None)
-
-
-CREDIT_MESSAGE = f"Error code: 400 - Your credit balance is too low to access the API. key {FAKE_KEY}"
-
-
-@pytest.mark.parametrize("status, message, sentence, retryable", [
-    (400, CREDIT_MESSAGE, "The Anthropic credit balance is empty, so drafting cannot continue. Ask whoever manages "
-                          "Billing to add credit. Trying again will not help until they do.", False),
-    (400, "Error code: 400 - YOUR CREDIT BALANCE IS TOO LOW", "The Anthropic credit balance is empty, so drafting cannot "
-                          "continue. Ask whoever manages Billing to add credit. Trying again will not help until they do.", False),
-    (401, f"Error code: 401 - invalid x-api-key {FAKE_KEY}", "The Anthropic key was not accepted. It may be wrong, revoked "
-                          "or expired. Ask the person who looks after the server settings to replace it.", False),
-    (403, f"Error code: 403 - not allowed {FAKE_KEY}", "The Anthropic key is not allowed to do this. Ask the person who "
-                          "looks after the account to check the key's workspace and permissions.", False),
-    (429, f"Error code: 429 - rate limited {FAKE_KEY}", "Anthropic is limiting requests right now. Wait a minute and try "
-                          "again. If it keeps happening, the workspace's monthly limit may be reached.", True),
-])
-def test_an_anthropic_billing_or_limit_error_is_a_plain_sentence(status, message, sentence, retryable):
-    error = api_error(status, message)
-    assert ev.anthropic_problem(error) == (sentence, retryable)
-    assert failure_message(error) == sentence
-    assert "sk-ant-" not in failure_message(error) and "Error code" not in failure_message(error)
-    described = ev.safe_describe(error)
-    assert described == f"{type(error).__name__} (status {status})"
-
-
-def test_any_other_anthropic_400_keeps_todays_message():
-    error = api_error(400, "messages: at least one message is required")
-    assert ev.anthropic_problem(error) is None
-    assert failure_message(error) == UNEXPECTED.format("messages: at least one message is required")
-    assert ev.safe_describe(error) == "BadRequestError: messages: at least one message is required"
-
-
-def test_a_status_with_no_sentence_and_an_error_from_elsewhere_are_not_mapped():
-    import anthropic
-
-    assert ev.anthropic_problem(api_error(500, "server error", anthropic.InternalServerError)) is None
-    assert ev.anthropic_problem(ValueError("credit balance is too low")) is None
-
-
-def test_a_run_stopped_by_an_empty_credit_balance_shows_the_sentence(client, monkeypatch):
-    def out_of_credit(on_event=None):
-        raise api_error(400, CREDIT_MESSAGE)
-
-    monkeypatch.setattr(review_run, "build_digital_payments_review", out_of_credit)
-    run = run_to_end(client, **WEEKLY_DP)
-    assert kinds(run) == ["run_started", "run_failed"]
-    assert run["events"][-1]["detail"] == ev.anthropic_problem(api_error(400, CREDIT_MESSAGE))[0]
 
 
 def test_the_running_draft_names_its_run_and_both_carry_the_servers_elapsed_time(client, clock, monkeypatch):

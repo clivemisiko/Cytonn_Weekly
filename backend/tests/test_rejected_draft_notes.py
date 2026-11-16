@@ -36,7 +36,7 @@ def saved(db, *, section="digital_payments", period=WEEK, report_type="weekly", 
             if item.resolution is None:
                 item.resolve(ACCEPT)
     if decision is not None:
-        review.decide(decision)
+        review.decide(decision, review.flagged_count)
     return review_store.save_review(review, section=section, db_path=db)
 
 

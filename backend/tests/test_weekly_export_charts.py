@@ -48,7 +48,7 @@ def approved(tmp_path, *, workbook=True, team=(), extra=(), charts=True, listed=
     for item in review.review_items:
         if item.resolution is None:
             item.resolve("accept")
-    review.decide("approved")
+    review.decide("approved", review.flagged_count)
     review.report_type, review.period = "weekly", PERIOD
     review_store.save_review(review, section="equities", db_path=tmp_path / "app.db")
     folder = tmp_path / "charts"

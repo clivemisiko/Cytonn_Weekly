@@ -21,11 +21,9 @@ from cytonn_weekly import env
 from cytonn_weekly.digital_payments.delivery import is_dev_mode_review
 from cytonn_weekly.digital_payments.provider_factory import get_provider
 from cytonn_weekly.digital_payments.providers import drafting
-from cytonn_weekly.digital_payments.providers.anthropic_provider import AnthropicProvider
 from cytonn_weekly.digital_payments.providers.base import DraftingProvider
 from cytonn_weekly.digital_payments.providers.local_provider import EXA_KEY_MISSING, LocalProvider
 from cytonn_weekly.narrative import bedrock_provider as bp
-from cytonn_weekly.narrative.anthropic_provider import AnthropicNarrativeProvider
 from cytonn_weekly.narrative.base import NarrativeBrief, NarrativeProvider
 from cytonn_weekly.narrative.drafter import draft_pieces
 from cytonn_weekly.narrative.factory import get_narrative_provider
@@ -109,12 +107,19 @@ def api_error(cls, status, kind, message="RAW LIBRARY TEXT"):
 
 # --- the switch -----------------------------------------------------------------------
 
-def test_bedrock_is_chosen_by_the_switch_and_not_by_default(aws, monkeypatch):
+def test_bedrock_is_chosen_by_the_switch_and_nothing_is_chosen_without_it(aws, monkeypatch):
     assert isinstance(get_narrative_provider(), bp.BedrockNarrativeProvider)
     assert isinstance(get_provider(), bp.BedrockProvider)
+    monkeypatch.setenv("CYTONN_LLM_PROVIDER", "anthropic")   # the direct provider was removed; the factories say so
+    with pytest.raises(ValueError, match="was removed"):
+        get_narrative_provider()
+    with pytest.raises(ValueError, match="was removed"):
+        get_provider()
     monkeypatch.delenv("CYTONN_LLM_PROVIDER")
-    assert isinstance(get_narrative_provider(), AnthropicNarrativeProvider)
-    assert isinstance(get_provider(), AnthropicProvider)
+    with pytest.raises(ValueError, match="CYTONN_LLM_PROVIDER is not set"):
+        get_narrative_provider()
+    with pytest.raises(ValueError, match="CYTONN_LLM_PROVIDER is not set"):
+        get_provider()
 
 
 def test_the_model_is_bedrock_model_id_with_the_sonnet_profile_as_default(aws, monkeypatch):
@@ -331,9 +336,9 @@ def test_access_keys_without_boto3_say_so_and_a_bearer_token_does_not_need_it(aw
     assert provider_problem() is None
 
 
-def test_an_unknown_provider_names_all_three(monkeypatch):
+def test_an_unknown_provider_names_both_choices(monkeypatch):
     monkeypatch.setenv("CYTONN_LLM_PROVIDER", "gpt")
-    assert provider_problem() == "Unknown CYTONN_LLM_PROVIDER value 'gpt'; expected 'anthropic', 'bedrock' or 'local'."
+    assert provider_problem() == "Unknown CYTONN_LLM_PROVIDER value 'gpt'; expected 'bedrock' or 'local'."
 
 
 def test_startup_names_which_aws_variables_are_set_and_never_a_value(aws, monkeypatch, caplog, tmp_path):
@@ -379,7 +384,7 @@ def test_an_exa_key_override_is_reported_for_the_local_provider_only(monkeypatch
     dot_env = tmp_path / ".env"
     dot_env.write_text("EXA_API_KEY=file-key-0000000000000000\n", encoding="utf-8")
     monkeypatch.setenv("EXA_API_KEY", "shell-key-1111111111111111")
-    for provider, reported in (("bedrock", False), ("anthropic", False), ("local", True)):
+    for provider, reported in (("bedrock", False), ("local", True)):
         monkeypatch.setenv("CYTONN_LLM_PROVIDER", provider)
         assert bool(env.key_override_warnings(dot_env)) is reported, provider
 
@@ -548,7 +553,7 @@ def test_typed_titles_pass_that_check_and_the_other_providers_never_make_it(aws,
     # Past the titles check the next refusal is the provider check, so these never start a draft.
     typed = client.post("/api/runs", json={"section": "focus", "topic": "Eurobonds", "sections": TITLES, "provider": "local"})
     assert typed.json()["problems"][0]["code"] == "draft_mode_changed"
-    for provider in ("anthropic", "local"):
+    for provider in ("local",):
         monkeypatch.setenv("CYTONN_LLM_PROVIDER", provider)
         r = client.post("/api/runs", json={"section": "focus", "topic": "Eurobonds", "provider": "bedrock"})
         assert r.json()["problems"][0]["code"] == "draft_mode_changed"   # not draft_sections_required

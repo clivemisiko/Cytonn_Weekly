@@ -127,7 +127,7 @@ def test_a_pasted_source_is_kept_listed_and_its_text_is_served_exactly(client):
     body = r.json()
     one = body["source"]
     assert (one["origin"], one["host"], one["published_date"], one["title"], one["flags"]) == (
-        "pasted", "www.centralbank.go.ke", "2026-09-30", "CBK statement", [])
+        "pasted", "www.centralbank.go.ke", "2026-09-30", "CBK statement", ["Added by analyst"])
     assert "text" not in one and one["chars"] == len(PARAGRAPH * 2) and len(one["sha256"]) == 64
     assert body["subject"] == SUBJECT and body["week_end"] == "2026-10-02"
     assert [s["id"] for s in body["sources"]] == [one["id"]]
@@ -143,7 +143,7 @@ def test_a_pasted_source_is_kept_listed_and_its_text_is_served_exactly(client):
 
 def test_a_pasted_source_from_a_host_off_the_list_carries_the_flag(client):
     one = post(client, url="https://blog.example.com/p").json()["source"]
-    assert one["flags"] == ["host not on the approved list"]
+    assert one["flags"] == ["host not on the approved list", "Added by analyst"]
 
 
 @pytest.mark.parametrize("over,word", [

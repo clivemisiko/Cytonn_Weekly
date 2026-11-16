@@ -60,7 +60,7 @@ def approve(client, run_id):
     for item in review["review_items"]:
         if item["resolution"] is None:
             review = client.patch(f"/api/reviews/{run_id}/items/{item['index']}", json={"resolution": "accept"}).json()
-    r = client.post(f"/api/reviews/{run_id}/decide", json={"decision": "approved"})
+    r = client.post(f"/api/reviews/{run_id}/decide", json={"decision": "approved", "acknowledged_flagged": sum(i["status"] == "flagged" for i in review["review_items"])})
     assert r.status_code == 200, r.text
     return r.json()
 
@@ -164,7 +164,7 @@ def test_a_newer_quarterly_digital_payments_review_never_reaches_the_weekly_summ
     weekly = make_review()
     for item in weekly.review_items:
         item.resolve("accept")
-    weekly.decide("approved")
+    weekly.decide("approved", weekly.flagged_count)
     review_store.save_review(weekly, db_path=db)
     q3 = client.post("/api/sections/digital_payments/draft", json=Q3).json()
     assert q3["run_id"] > weekly.run_id and q3["report_type"] == "quarterly"
@@ -178,7 +178,7 @@ def test_a_newer_quarterly_digital_payments_review_never_reaches_the_weekly_summ
 
 
 def test_company_updates_is_not_a_section_of_any_report(client, monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY")
+    monkeypatch.delenv("AWS_REGION")
     assert client.post("/api/sections/global_markets/draft", json=Q3).status_code == 409  # needs the provider
     assert client.post("/api/sections/company_updates/draft", json=Q3).status_code == 404
     assert overview(client, **Q3).json()["drafting"] is None

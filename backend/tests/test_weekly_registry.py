@@ -154,10 +154,10 @@ def test_the_older_sections_are_drafted_for_the_named_week_too(tmp_path, monkeyp
     monkeypatch.setattr(dp_run, "build_digital_payments_review", lambda **kw: (seen.__setitem__("digital_payments", kw), make_review())[1])
     monkeypatch.setattr(focus_run, "build_focus_review", lambda topic, **kw: (seen.__setitem__("focus", kw), sh.focus_review(topic=topic))[1])
     client = TestClient(create_app(db_path=tmp_path / "app.db", load_dotenv=False))
-    for slug, body in (("real_estate", {}), ("digital_payments", {}), ("focus", {"topic": "SSA Eurobonds"})):
+    for slug, body in (("real_estate", {}), ("digital_payments", {}), ("focus", {"topic": "SSA Eurobonds", "sections": "Overview"})):   # Bedrock needs typed titles for a Focus
         assert client.post(f"/api/sections/{slug}/draft", json={**body, "period": "2026-10-02"}).status_code == 200
         got = seen.pop(slug)
         assert got["today"] == date(2026, 10, 2)
-        assert set(got) <= {"today", "db_path"}
+        assert set(got) <= {"today", "db_path", "sections"}
         assert client.post(f"/api/sections/{slug}/draft", json=body).status_code == 200   # no week named: as before
-        assert set(seen.pop(slug)) <= {"db_path"}
+        assert set(seen.pop(slug)) <= {"db_path", "sections"}

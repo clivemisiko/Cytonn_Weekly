@@ -23,7 +23,7 @@ def approve(review):
         if item.status != "clean":
             item.resolve("accept", None)
     review.accept_all_clean()
-    review.decide("approved")
+    review.decide("approved", review.flagged_count)
     return review
 
 

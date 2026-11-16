@@ -18,6 +18,8 @@ from cytonn_weekly.weekly import inputs as weekly_inputs
 from tests import section_helpers as sh
 from tests.review_helpers import make_review
 
+TITLES = "Overview\nRisks"   # Focus under Bedrock needs typed section titles
+
 WEEK = "2026-10-02"
 MAIN = Path(api_main.__file__)
 
@@ -132,10 +134,12 @@ def test_a_draft_that_cannot_start(client, monkeypatch):
     expect(client.post("/api/sections/reits.section_1/draft",
                        json={"report_type": "companion", "period": "#33.2026", "kind": "reits"}), 409,
            "draft_section_unavailable", "cannot be drafted yet")
-    expect(client.post("/api/runs", json={"section": "focus", "topic": "x", "provider": "local"}), 409,
+    expect(client.post("/api/runs", json={"section": "focus", "topic": "x", "sections": TITLES, "provider": "local"}), 409,
            "draft_mode_changed", "drafting mode changed")
-    monkeypatch.delenv("ANTHROPIC_API_KEY")
-    expect(client.post("/api/runs", json={"section": "focus", "topic": "x"}), 409, "drafting_off", "ANTHROPIC_API_KEY")
+    monkeypatch.delenv("AWS_REGION")
+    expect(client.post("/api/runs", json={"section": "focus", "topic": "x", "sections": TITLES}), 409, "drafting_off", "AWS region")
+    monkeypatch.setenv("CYTONN_LLM_PROVIDER", "anthropic")   # the removed provider: its own sentence, bedrock and local are the only two
+    expect(client.post("/api/runs", json={"section": "focus", "topic": "x", "sections": TITLES}), 409, "drafting_off", "was removed")
 
 
 def test_a_draft_that_stops_or_is_refused_on_the_section_route(client, monkeypatch):

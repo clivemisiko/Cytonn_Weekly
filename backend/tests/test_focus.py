@@ -1,4 +1,4 @@
-from types import SimpleNamespace as NS
+import json
 
 import pytest
 
@@ -7,7 +7,7 @@ from cytonn_weekly.digital_payments.coordinator_review import FLAGGED, NOT_AUTO_
 from cytonn_weekly.focus.review_run import (
     JUDGEMENT, MAX_SECTION_TITLE, build_focus_review, clean_sections, clean_topic, parse_outline, section_brief,
 )
-from cytonn_weekly.narrative.anthropic_provider import parse_piece
+from cytonn_weekly.digital_payments.providers.drafting import piece_from_reply
 from tests.section_helpers import TODAY, FakeNarrativeProvider, focus_review, previous_issue
 
 TYPED = "Overview\nSection 3: Yields\nRecommendations and Conclusion"
@@ -139,10 +139,12 @@ def test_a_lead_figure_that_no_section_holds_is_flagged_and_a_known_one_is_not()
 
 def test_a_heading_the_model_adds_is_dropped_with_a_warning_and_never_cuts_the_piece():
     brief = section_brief("T", ["A", "B"], 0)
-    content = [NS(type="text", text="### x\nFirst paragraph here.\n\n# y\nSecond paragraph here.", citations=None)]
-    piece = parse_piece(content, brief)
-    assert piece["body"].count("paragraph") == 2 and "x" not in piece["body"].split()
-    assert piece["headline"] == "A" and any("removed 2 heading line(s)" in w for w in piece["warnings"])
+    reply = json.dumps({"is_genuine_announcement": True, "headline": "ignored", "claims": [],
+                        "paragraph": "### x\nFirst paragraph here.\n\n# y\nSecond paragraph here."})
+    warnings = []
+    piece = piece_from_reply(reply, brief, "web", [], warnings, who="model", label="L", drafted_by="test")
+    assert piece.paragraph.count("paragraph") == 2 and "x" not in piece.paragraph.split()
+    assert piece.headline == "A" and any("removed heading line(s)" in w for w in warnings)
 
 
 def test_nothing_found_raises_instead_of_saving_an_empty_review():

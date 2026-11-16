@@ -155,7 +155,7 @@ def test_an_approved_monthly_review_is_not_a_previous_weekly_report(client, db):
     review.report_type, review.period = "monthly", "Oct'2026"
     for item in review.review_items:
         item.resolve("accept")
-    review.decide("approved")
+    review.decide("approved", review.flagged_count)
     review_store.save_review(review, db_path=db)
     body = client.get("/api/previous/weekly").json()
     assert body["weeks"] == [] and "Oct'2026" not in str(body)

@@ -39,7 +39,7 @@ def approved(review, report_type="weekly", period=""):
     review.report_type, review.period = report_type, period
     for item in review.review_items:
         item.resolve("accept")
-    review.decide(APPROVED)
+    review.decide(APPROVED, review.flagged_count)
     return review
 
 
