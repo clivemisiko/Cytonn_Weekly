@@ -45,6 +45,9 @@ services:
       CYTONN_BEDROCK_MAX_CALLS_PER_DRAFT:
       CYTONN_DRAFT_CONCURRENCY:
       CYTONN_DRAFT_QUEUE_MAX:
+      CYTONN_JOB_MAX_TOOL_CALLS:
+      CYTONN_JOB_CALL_BUDGET:
+      CYTONN_JOB_TOKEN_BUDGET:
 
   web:
     image: ghcr.io/clivemisiko/cytonn-weekly-web:${IMAGE_TAG:-latest}

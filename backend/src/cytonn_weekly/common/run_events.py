@@ -113,9 +113,9 @@ class RunEvent:
 class EventLog:
     """An observer that records what it is told as numbered ``RunEvent``s.  Safe to call from any thread."""
 
-    def __init__(self) -> None:
+    def __init__(self, events: Iterable[RunEvent] = ()) -> None:
         self._lock = threading.Lock()
-        self._events: list[RunEvent] = []
+        self._events: list[RunEvent] = list(events)   # a run read back from storage starts with its saved events
 
     def __call__(self, kind: str, label: str = "", detail: Optional[str] = None,
                  counts: Optional[dict[str, int]] = None) -> RunEvent:

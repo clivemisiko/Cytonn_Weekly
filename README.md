@@ -137,7 +137,7 @@ The analyst picks the week on the overview ("Week to draft": the coming Friday a
 
 ### Concurrency
 
-Several analysts can draft at once. `CYTONN_DRAFT_CONCURRENCY` (default 3, 1 to 6) is how many drafts that call the model run at the same time; more wait in a queue of up to `CYTONN_DRAFT_QUEUE_MAX` (default 20, then a draft is refused). One section of one report and period runs at a time. The seats, queue and run list are in the memory of one API process, so the API must run as one process and a restart loses runs in progress (saved reviews are kept). Bedrock throttling is retried with a growing wait (`CYTONN_BEDROCK_RETRIES`, `CYTONN_BEDROCK_RETRY_BASE_SECONDS`). One draft may make at most `CYTONN_BEDROCK_MAX_CALLS_PER_DRAFT` Bedrock calls (default 60); at the limit it stops and saves nothing, and every saved Bedrock draft records its calls and tokens under `usage`.
+Several analysts can draft at once. `CYTONN_DRAFT_CONCURRENCY` (default 3, 1 to 6) is how many drafts that call the model run at the same time; more wait in a queue of up to `CYTONN_DRAFT_QUEUE_MAX` (default 20, then a draft is refused). One section of one report and period runs at a time. The seats, queue and run list are in the memory of one API process, so the API must run as one process. A restart stops the drafts in progress: each shows as interrupted afterwards, and saved reviews are kept. Bedrock throttling is retried with a growing wait (`CYTONN_BEDROCK_RETRIES`, `CYTONN_BEDROCK_RETRY_BASE_SECONDS`). One draft may make at most `CYTONN_BEDROCK_MAX_CALLS_PER_DRAFT` Bedrock calls (default 60); at the limit it stops and saves nothing, and every saved Bedrock draft records its calls and tokens under `usage`.
 
 ### Report types
 

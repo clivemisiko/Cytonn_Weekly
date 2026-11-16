@@ -289,7 +289,8 @@ def test_every_table_has_row_level_security_enabled_with_no_policy_and_not_force
     text = re.sub(r"--[^\n]*", "", schema_text())
     tables = re.findall(r"CREATE TABLE IF NOT EXISTS (\w+)", text)
     secured = re.findall(r"ALTER TABLE (\w+)\s+ENABLE ROW LEVEL SECURITY;", text)
-    assert sorted(tables) == sorted(secured) == ["coordinator_reviews", "sections", "suggestion_decisions"]
+    assert sorted(tables) == sorted(secured) == ["coordinator_reviews", "draft_runs", "draft_usage", "job_messages", "report_jobs",
+                                                 "run_events", "sections", "suggestion_decisions"]
     assert "CREATE POLICY" not in text.upper() and "FORCE" not in text.upper()   # the app is the owner and must keep its access
 
 
@@ -303,7 +304,7 @@ def test_the_schema_file_makes_the_schema_the_only_place_tables_go():
     text = re.sub(r"--[^\n]*", "", schema_text())
     assert text.count("{schema}") == 1 and "CREATE SCHEMA IF NOT EXISTS {schema};" in text
     assert "public" not in text and "ON CONFLICT (name) DO NOTHING" in text
-    assert text.count("CREATE TABLE IF NOT EXISTS") == 3 and text.count("CREATE INDEX IF NOT EXISTS") == 2
+    assert text.count("CREATE TABLE IF NOT EXISTS") == 8 and text.count("CREATE INDEX IF NOT EXISTS") == 2
 
 
 # --- nothing secret in an error, a log line, an event or a response ---------------------------------------------------------
