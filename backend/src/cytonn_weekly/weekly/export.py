@@ -119,7 +119,9 @@ def export_status(db_path: Optional[Union[Path, str]], period: str, today: Optio
     """Whether the week's report can be exported, each section's state, and how many chart slots have no image."""
     reviews = weekly_reviews(db_path, period, today)
     sections = [{"slug": spec.slug, "title": HEADINGS.get(spec.slug, spec.title), "state": _state(review),
-                 "run_id": review.run_id if review else None} for spec, review in reviews]
+                 "run_id": review.run_id if review else None,
+                 "flagged_accepted_on_approval": review.accepted_on_approval() if review and review.decision == APPROVED else 0}
+                for spec, review in reviews]
     dev = [HEADINGS.get(spec.slug, spec.title) for spec, review in reviews if review is not None and is_dev_mode_review(review)]
     return {"period": period, "ready": all(s["state"] == APPROVED for s in sections), "sections": sections,
             "is_dev_draft": bool(dev), "dev_sections": dev, "dev_mode_label": DEV_LABEL if dev else None,

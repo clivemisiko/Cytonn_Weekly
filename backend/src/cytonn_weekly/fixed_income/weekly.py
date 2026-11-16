@@ -1385,7 +1385,7 @@ def build_fixed_income_review(
         "week_start": drafted["week_start"], "week_end": drafted["week_end"],
         "blocks": numbered(blocks), "pieces_found": len(drafted["pieces"]), "pieces_expected": N_HIGHLIGHTS,
         "shortfall": drafted["shortfall"],
-        "warnings": list(drafted["warnings"]) + warnings + inputs.analyst.difference_lines() + problems,
+        "warnings": list(drafted["warnings"]) + warnings + inputs.hidden_sheet_lines() + inputs.analyst.difference_lines() + problems,
         "notices": notices,
         "chart_notes": list(CHARTS), "chart_reference": CHART_REFERENCE, "chart_after": CHART_AFTER,
         "summary": compose_summary(blocks),

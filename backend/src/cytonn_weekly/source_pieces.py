@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from typing import Any, Optional, Sequence
 
@@ -25,6 +25,7 @@ class Piece:
     only_domains: bool = field(default=False, compare=False)          # True: one search on ``domains`` and no open-web pass (a company's own website)
     max_pages: Optional[int] = field(default=None, compare=False)     # saved pages per gather; None is the global limit
     site: Any = field(default=None, compare=False)                    # a company whose own website is read before any search (equities/companies.py)
+    section: str = field(default="", compare=False)                   # the section's slug, which the source policy is read by (equities/source_policy.json)
 
     @property
     def window(self) -> tuple[date, date]:
@@ -38,6 +39,12 @@ _PERIODIC = {"global_markets": "global_markets", "ssa": "ssa", "kenya_macro": "k
 
 def pieces_for(report_type: str, period: str, slug: str, *, sections: Sequence[str] = (),
                today: Optional[date] = None) -> Optional[list[Piece]]:
+    pieces = _pieces_for(report_type, period, slug, sections=sections, today=today)
+    return None if pieces is None else [replace(p, section=slug) for p in pieces]
+
+
+def _pieces_for(report_type: str, period: str, slug: str, *, sections: Sequence[str] = (),
+                today: Optional[date] = None) -> Optional[list[Piece]]:
     """The pieces a section's draft will ask the provider about, with the day each is asked as of.
 
     None: the section calls no provider (the Executive Summary) or is not drafted yet. An empty list: the

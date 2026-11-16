@@ -333,6 +333,8 @@ def confirm(week_end: date, h: str, root: Optional[Path] = None, sources_root: O
         raise SnipError("Resolve every [unclear] mark in the text (type what the image shows, or delete the mark), then confirm.")
     _unconfirm(e, sources_root)
     data, _ = image_bytes(week_end, h, root)
+    # With no typed date the snip is saved with the report Friday, so it counts as dated: a draft's date window
+    # (bedrock_provider.within_window) judges it by that day and never flags it "No date on this source".
     src = source_store.from_snip(data, "." + e["ext"], e["text"], LABELS[e["sector"]], week_end,
                                  e["date"] or latest_friday(week_end).isoformat(), e["filename"], root=sources_root)
     e["confirmed"], e["source_id"] = True, src.id

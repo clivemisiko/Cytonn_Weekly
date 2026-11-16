@@ -37,6 +37,7 @@ NOT_GENUINE = (
 
 SCOPE_IR = "investor_relations"
 SCOPE_WEB = "web_fallback"
+SCOPE_PREFERRED = "preferred_sources"
 
 OUTLOOK_SYSTEM = f"""\
 You write the closing sector-outlook paragraph of the Digital Payments section \

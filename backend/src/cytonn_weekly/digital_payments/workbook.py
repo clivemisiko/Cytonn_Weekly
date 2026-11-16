@@ -391,7 +391,7 @@ def read_dp_workbook(book: Workbook, fills: Sequence[Fill] = (), reasons: Option
                 said = said or ttm_side
     if left_out and not said:
         warnings.append(f"Average: the TTM P/E average covers {len(used)} of the seven companies{left}.")
-    return DpBook(rows, avg_ttm, avg_fwd, _price_date(stock, header), warnings, blank, list(fills), left_out)
+    return DpBook(rows, avg_ttm, avg_fwd, _price_date(stock, header), warnings + book.hidden_lines(), blank, list(fills), left_out)
 
 
 # ---- finding a figure for a blank quarter -----------------------------------------------------------------------------

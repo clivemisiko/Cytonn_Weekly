@@ -113,8 +113,7 @@ def draft_highlights(
     Express, PayPal) are always all searched and each one with a release
     appears; any slots left up to 4 are filled from the other companies.
 
-    ``provider`` defaults to ``get_provider()`` (CYTONN_LLM_PROVIDER, default
-    Anthropic).
+    ``provider`` defaults to ``get_provider()`` (CYTONN_LLM_PROVIDER, which must be set).
 
     Returns {"week_start", "week_end", "highlights", "shortfall", "warnings"}.
     Each highlight has company, search_scope ("investor_relations" or

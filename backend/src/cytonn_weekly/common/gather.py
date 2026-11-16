@@ -16,7 +16,7 @@ import httpx
 from cytonn_weekly import paths
 from cytonn_weekly.common import atomic
 from cytonn_weekly.common import run_events as ev
-from cytonn_weekly.common import site_read
+from cytonn_weekly.common import site_read, source_policy
 from cytonn_weekly.common import sources as store
 from cytonn_weekly.source_pieces import Piece
 
@@ -151,8 +151,9 @@ def gather_piece(piece: Piece, *, search: Search, fetch: Fetch, root: Optional[P
                  on_event: Optional[ev.Observer] = None, site: Optional[site_read.SiteRead] = None) -> list[store.SourceText]:
     """Look for the pages of one piece. The query is the piece's label plus the market name (a company piece, whose search
     is about a global company, gets the label alone); the window is the piece's own.
-    Pass 1 is restricted to the brief's domains; pass 2 is open and runs when pass 1 gave fewer than ``enough`` usable pages
-    or the piece has no domains. A company piece (``piece.site``) takes the pages ``site`` read from its own website and is
+    Pass 1 is restricted to the brief's domains; pass 2 is limited to the other hosts the source policy allows for the piece
+    (equities/source_policy.json) and runs when pass 1 gave fewer than ``enough`` usable pages or the piece has no domains;
+    with no such host there is no pass 2. A page whose host the policy does not allow for the piece is never read. A company piece (``piece.site``) takes the pages ``site`` read from its own website and is
     searched only when that gave none; the route used and why is kept with the look."""
     have = store.list_for(piece.subject, piece.end, root)
     if len(have) >= limits.enough:
@@ -164,10 +165,12 @@ def gather_piece(piece: Piece, *, search: Search, fetch: Fetch, root: Optional[P
     route, note = ("site", "") if saved else ("", site.note if site else "its site was not read")
     queries, pool, failed = 0, [], False
     try:
-        for domains in ([] if saved else [list(piece.domains)] if piece.domains else []) + ([] if saved or piece.only_domains else [None]):
+        more = [h for h in source_policy.search_hosts(piece.section, piece.subject) if h not in piece.domains]
+        passes = ([] if saved else [list(piece.domains)] if piece.domains else []) + ([] if saved or piece.only_domains or not more else [more])
+        for n, domains in enumerate(passes):
             if queries >= limits.max_queries or time.monotonic() > deadline:
                 break
-            if domains is None and piece.domains and len(_usable(pool, start, end, skip)) >= limits.enough:
+            if n and len(_usable(pool, start, end, skip)) >= limits.enough:   # a second pass exists only after the brief's own domains
                 break
             queries += 1
             try:
@@ -177,7 +180,8 @@ def gather_piece(piece: Piece, *, search: Search, fetch: Fetch, root: Optional[P
                     raise   # the key is missing or refused: the same for every piece, so gather() says so once
                 failed = True
                 log.warning("gather: search failed for %s: %s", piece.subject, type(exc).__name__)
-        owns = piece.site.owns if piece.site is not None else None
+        allowed = lambda u: source_policy.kind_for(piece.section, piece.subject, store.host_of(u)) is not None  # noqa: E731
+        owns = (lambda u: piece.site.owns(u) and allowed(u)) if piece.site is not None else allowed
         for r in _usable(pool, start, end, skip, owns)[:piece.max_pages or limits.max_pages]:
             if time.monotonic() > deadline:
                 break

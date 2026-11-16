@@ -57,6 +57,21 @@ RESOLUTIONS = (ACCEPT, FIX_NEEDED)
 APPROVED = "approved"
 REJECTED = "rejected"
 
+ACCEPTED_ON_APPROVAL = "Accepted as part of approving the section, at (UTC)"
+
+
+class FlaggedNotAcknowledged(ValueError):
+    """Approval was asked for without the right count of flagged items."""
+
+    def __init__(self, flagged: int, acknowledged: Optional[int]):
+        what = f"{flagged} flagged item" + ("" if flagged == 1 else "s")
+        seen = ("no count of flagged items was sent" if acknowledged is None
+                else f"the count sent was {acknowledged}")
+        super().__init__(f"cannot approve: this section has {what} and {seen}. Reload the review, read the flagged "
+                         "items, then approve again.")
+        self.flagged, self.acknowledged = flagged, acknowledged
+
+
 NOT_AUTO_VERIFIED_NOTE = (
     "Not yet automatically checked: citation verification (task 6b) is not built. "
     "This is not a flag and nothing was found wrong; the tool has simply not verified "
@@ -138,10 +153,18 @@ class CoordinatorReview:
                 n += 1
         return n
 
-    def decide(self, decision: str) -> None:
+    @property
+    def flagged_count(self) -> int:
+        return len(self.by_status(FLAGGED))
+
+    def decide(self, decision: str, acknowledged_flagged: Optional[int] = None) -> None:
         """Record the analyst's final call, once.
 
-        "approved" needs a draft (``is_approvable``); item resolutions do not matter.
+        "approved" needs a draft (``is_approvable``).  With flagged items it also needs
+        ``acknowledged_flagged`` to equal their count, so the caller must have been shown exactly
+        what is flagged now (a stale screen or a guess is refused).  Each flagged item with no
+        resolution is then accepted, with a note saying it was accepted as part of approving the
+        section; one the analyst already resolved is left alone.
         "rejected" is always allowed.
         """
         if decision not in (APPROVED, REJECTED):
@@ -150,8 +173,20 @@ class CoordinatorReview:
             raise ValueError(f"review already decided ({self.decision!r}); build a new review")
         if decision == APPROVED and not self.is_approvable:
             raise ValueError("cannot approve: the review has no items")
+        if decision == APPROVED and self.flagged_count and acknowledged_flagged != self.flagged_count:
+            raise FlaggedNotAcknowledged(self.flagged_count, acknowledged_flagged)
+        decided_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        if decision == APPROVED:
+            for item in self.by_status(FLAGGED):
+                if item.resolution is None:
+                    item.resolve(ACCEPT, f"{ACCEPTED_ON_APPROVAL} {decided_at}.")
         self.decision = decision
-        self.decided_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        self.decided_at = decided_at
+
+    def accepted_on_approval(self) -> int:
+        """How many flagged items were accepted by approving the section (not one by one)."""
+        return sum(1 for i in self.by_status(FLAGGED)
+                   if i.resolution == ACCEPT and (i.resolution_note or "").startswith(ACCEPTED_ON_APPROVAL))
 
 
 def rejected_draft_notes(previous: Optional[CoordinatorReview]) -> Optional[dict[str, Any]]:

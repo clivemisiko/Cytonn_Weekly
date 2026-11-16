@@ -38,7 +38,7 @@ AWS_SESSION_TOKEN=        # only for temporary keys
 Notes:
 
 - `BEDROCK_MODEL_ID` must be an **inference profile ID** such as `us.anthropic.claude-sonnet-4-6` (the default when the line is empty or absent), not a bare foundation model ID, and the profile must exist in `AWS_REGION` (`us-east-1` for the default profile). A prefix like `us.` goes with a US region.
-- `CYTONN_LLM_MODEL` belongs to the Anthropic provider and is ignored here. Only `BEDROCK_MODEL_ID` chooses the Bedrock model.
+- Only `BEDROCK_MODEL_ID` chooses the Bedrock model. `CYTONN_LLM_PROVIDER=anthropic` was removed with the direct Anthropic provider and is refused.
 - If both a bearer token and an access key pair are set, the bearer token is used.
 - `EXA_API_KEY` and the `CYTONN_LOCAL_*` settings are ignored on this path.
 
@@ -127,13 +127,13 @@ Back to the last build that worked, by its commit (from the Actions tab or `git 
 
 That tag stays in use until the next `./deploy.sh` with no argument, which goes back to `latest`.
 
-To go back to the Anthropic provider with no new build, change `.env` alone: set `CYTONN_LLM_PROVIDER=anthropic` (or delete the line, which means the same), make sure `ANTHROPIC_API_KEY` is set, then recreate the api:
+There is no other production provider to go back to (the direct Anthropic provider was removed). To draft for free in dev mode, set `CYTONN_LLM_PROVIDER=local` (do not delete the line: with no provider set every draft is refused) and recreate the api:
 
 ```sh
 docker compose -f docker-compose.yml -f docker-compose.server.yml up -d --force-recreate api
 ```
 
-The Bedrock lines can stay in `.env`; they are ignored on the Anthropic path. Reviews already saved keep their `drafted_by` (`bedrock:<model>`).
+Reviews already saved keep their `drafted_by` (`bedrock:<model>`).
 
 ## 7. Reading what a run used
 

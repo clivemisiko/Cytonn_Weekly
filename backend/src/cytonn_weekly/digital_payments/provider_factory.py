@@ -1,9 +1,10 @@
 """Chooses the drafting provider from the CYTONN_LLM_PROVIDER environment variable.
 
-    (unset) / "anthropic"  -> AnthropicProvider, the production default
-    "bedrock"              -> BedrockProvider (Claude on Amazon Bedrock; sources supplied by the analyst
-                              or fetched in code from approved sites; no search service), production
-    "local"                -> LocalProvider (Ollama + Exa), development only
+    "bedrock"    -> BedrockProvider (Claude on Amazon Bedrock; sources supplied by the analyst
+                    or fetched in code from approved sites; no search service), production
+    "local"      -> LocalProvider (Ollama + Exa), development only
+    (unset or blank) -> refused: the switch must be set on purpose, so a missing variable never
+                    silently selects a path with different sourcing guarantees
 
 Selecting "local" prints a conspicuous warning on every call, because its
 output must never be published.  Local-only options (ignored by the other providers):
@@ -31,16 +32,29 @@ EXA_REFRESH_ENV_VAR = "CYTONN_EXA_REFRESH"
 EXA_CACHE_DIR = DATA_DIR / "exa_cache"
 
 
+NOT_CONFIGURED = (
+    f"{ENV_VAR} is not set, so no draft can start. Set it to 'bedrock' or 'local' "
+    "(in .env or the shell), then restart the API."
+)
+ANTHROPIC_REMOVED = f"{ENV_VAR}=anthropic was removed: the direct Anthropic provider no longer exists. Set it to 'bedrock', then restart the API."
+
+
 def local_warning(model: str) -> str:
     return f"*** DEV MODE: drafting with local {model} -- NOT FOR PUBLICATION ***"
 
 
-def get_provider() -> DraftingProvider:
-    name = (os.environ.get(ENV_VAR) or "anthropic").strip().lower()
+def provider_name() -> str:
+    """The chosen provider, lower case.  Unset or blank raises ValueError(NOT_CONFIGURED), "anthropic" ValueError(ANTHROPIC_REMOVED)."""
+    name = (os.environ.get(ENV_VAR) or "").strip().lower()
+    if not name:
+        raise ValueError(NOT_CONFIGURED)
     if name == "anthropic":
-        from cytonn_weekly.digital_payments.providers.anthropic_provider import AnthropicProvider
+        raise ValueError(ANTHROPIC_REMOVED)
+    return name
 
-        return AnthropicProvider()
+
+def get_provider() -> DraftingProvider:
+    name = provider_name()
     if name == "local":
         from cytonn_weekly.digital_payments.providers.local_provider import MODEL, LocalProvider
 
@@ -54,4 +68,4 @@ def get_provider() -> DraftingProvider:
         from cytonn_weekly.narrative.bedrock_provider import BedrockProvider
 
         return BedrockProvider()
-    raise ValueError(f"Unknown {ENV_VAR} value {name!r}; expected 'anthropic', 'bedrock' or 'local'.")
+    raise ValueError(f"Unknown {ENV_VAR} value {name!r}; expected 'bedrock' or 'local'.")

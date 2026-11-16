@@ -8,14 +8,17 @@ import logging
 import os
 import random
 import re
+import contextlib
+import contextvars
 import threading
 import time
+from dataclasses import dataclass
 from datetime import date
 from typing import Any, Callable, Optional, Sequence
 
 import anthropic
 
-from cytonn_weekly.common import run_events
+from cytonn_weekly.common import run_events, source_policy
 from cytonn_weekly.common import sources as source_store
 from cytonn_weekly.common.checks import check_sourced_claim
 from cytonn_weekly.common.run_events import frames
@@ -113,6 +116,66 @@ class BedrockError(RuntimeError):
     """Written for the analyst and shown as it stands (api/main.failure_message); never holds a secret."""
 
 
+MAX_CALLS_ENV = "CYTONN_BEDROCK_MAX_CALLS_PER_DRAFT"
+DEFAULT_MAX_CALLS = 60
+CALL_LIMIT = ("This draft reached its limit of {n} Amazon Bedrock calls ({var}), so no further call was made and nothing was "
+              "saved from it. Draft again with fewer sections or sources, or ask for the limit to be raised.")
+
+
+def max_calls() -> int:
+    """Calls one draft may make to Bedrock, from the environment; a bad value logs one warning and the default is used."""
+    raw = _clean(MAX_CALLS_ENV)
+    if not raw:
+        return DEFAULT_MAX_CALLS
+    try:
+        n = int(raw)
+    except ValueError:
+        n = 0
+    if n < 1:
+        logger.warning("%s must be a whole number of 1 or more; the default %d is used", MAX_CALLS_ENV, DEFAULT_MAX_CALLS)
+        return DEFAULT_MAX_CALLS
+    return n
+
+
+@dataclass
+class Usage:
+    """Tokens and calls only, never text or money.  One per provider instance, and one per draft summing its instances."""
+
+    calls: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    unreported: int = 0   # calls whose reply stated no token counts
+
+    def add(self, other: "Usage") -> None:
+        self.calls += other.calls
+        self.input_tokens += other.input_tokens
+        self.output_tokens += other.output_tokens
+        self.unreported += other.unreported
+
+
+current_usage: contextvars.ContextVar[Optional[Usage]] = contextvars.ContextVar("bedrock_draft_usage", default=None)
+
+
+@contextlib.contextmanager
+def track_usage():
+    """Everything the providers created in this draft's thread call is counted into one ``Usage`` (the draft's cap too)."""
+    usage = Usage()
+    token = current_usage.set(usage)
+    try:
+        yield usage
+    finally:
+        current_usage.reset(token)
+
+
+def usage_record(usage: Usage, model: str) -> dict[str, Any]:
+    """The ``usage`` entry saved with a review's content."""
+    out: dict[str, Any] = {"model": model, "calls": usage.calls, "input_tokens": usage.input_tokens,
+                           "output_tokens": usage.output_tokens}
+    if usage.unreported:
+        out["calls_without_token_counts"] = usage.unreported
+    return out
+
+
 def _clean(name: str) -> str:
     return (os.environ.get(name) or "").strip()
 
@@ -183,6 +246,62 @@ def sources_for(subject: str, week_end: date) -> list[dict[str, Any]]:
     file that changed since it was saved raises SourceError, which is a plain sentence.
     """
     return [s.as_result() for s in source_store.list_for(subject, week_end)]
+
+
+def _day(value: Any) -> Optional[date]:
+    try:
+        return date.fromisoformat(str(value or "").strip()[:10])
+    except ValueError:
+        return None
+
+
+def by_policy(results: list[dict[str, Any]], section: str, label: str) -> tuple[list[dict[str, Any]], list[str]]:
+    """The sources a draft may read by host: those the source policy allows for this piece, any a person added (fetched,
+    pasted or a snip, or flagged "Added by analyst"), and the sentences saying which were left out and why. Text pasted from
+    a never_read host is kept: the tool never fetches those hosts, but the analyst may type what they say. A run event
+    names each source left out."""
+    kept, notes = [], []
+    observer = run_events.current_observer.get()
+    for r in results:
+        host = r.get("host") or ""
+        by_hand = r.get("origin") in (*source_store.ANALYST_ORIGINS, "snip") or source_store.ADDED_BY_ANALYST in (r.get("flags") or [])
+        if by_hand or source_policy.kind_for(section, label, host):
+            kept.append(r)
+            continue
+        title = " ".join(str(r.get("title") or host or "this source").split())
+        why = "never read by the tool" if source_policy.is_never_read(host) else "not on the source list for this piece"
+        notes.append(f"{label}: the source \"{title}\" from {host or 'an unknown site'} is {why}, so the model was not shown it.")
+        run_events.emit(observer, run_events.SOURCE_LEFT_OUT, title, detail=f"From {host or 'an unknown site'}: {why}, so it was not used for {label}.")
+    return kept, notes
+
+
+def within_window(results: list[dict[str, Any]], label: str, start: date, end: date) -> tuple[list[dict[str, Any]], list[str]]:
+    """The sources a draft may read: those dated from ``start`` to ``end`` (the window the draft gives the provider), and
+    the sentences saying which were left out.
+
+    A source outside the window is not shown to the model; it is named in a draft warning and in a run event (title, host,
+    date), because a pasted source or a snip carries whatever date was typed. A source with no date (or none that reads as
+    a date) is kept and carries the flag "No date on this source". A snip with no typed date was saved with the report
+    Friday (``real_estate/snips.confirm``), so it counts as dated and is judged like any other.
+    """
+    kept, notes = [], []
+    observer = run_events.current_observer.get()
+    for r in results:
+        day = _day(r.get("publishedDate"))
+        if day is None:
+            flags = list(r.get("flags") or [])
+            kept.append({**r, "flags": flags if source_store.NO_DATE_FLAG in flags else [*flags, source_store.NO_DATE_FLAG]})
+        elif start <= day <= end:
+            kept.append(r)
+        else:
+            title, host = " ".join(str(r.get("title") or r.get("host") or "this source").split()), r.get("host") or "an unknown site"
+            notes.append(f"{label}: the source \"{title}\" from {host}, dated {day.isoformat()}, is outside this draft's dates "
+                         f"({start.isoformat()} to {end.isoformat()}), so the model was not shown it. If its date is wrong, "
+                         "remove it and add it again with the right date.")
+            run_events.emit(observer, run_events.SOURCE_LEFT_OUT, title,
+                            detail=f"From {host}, dated {day.isoformat()}, outside {start.isoformat()} to {end.isoformat()}, "
+                                   f"so it was not used for {label}.")
+    return kept, notes
 
 
 def env_problem() -> Optional[str]:
@@ -279,6 +398,7 @@ class _Chat:
         self._sleep = sleep   # injectable, so a test waits for nothing
         self.last_stop = ""   # stop reason of the last call
         self.requests = 0   # Bedrock calls made, a retry of one call not counted; the Focus review shows it
+        self.usage = Usage()   # this instance's own totals; the draft's tracker (track_usage) holds the sum of its instances
 
     @property
     def client(self) -> Any:
@@ -328,7 +448,14 @@ class _Chat:
         if schema:   # the reply as a forced function call, so it arrives as JSON; the same text the local path parses
             extra["tools"] = [{"name": DRAFT_TOOL, "description": "Submit the draft.", "input_schema": schema}]
             extra["tool_choice"] = {"type": "tool", "name": DRAFT_TOOL}
+        draft = current_usage.get()
+        limit = max_calls()
+        if (draft.calls if draft is not None else self.usage.calls) >= limit:
+            raise BedrockError(CALL_LIMIT.format(n=limit, var=MAX_CALLS_ENV))
         self.requests += 1
+        self.usage.calls += 1
+        if draft is not None:
+            draft.calls += 1
         try:
             resp = self._create(
                 model=self.model, max_tokens=max_tokens or MAX_TOKENS,
@@ -341,6 +468,15 @@ class _Chat:
             raise BedrockError(problem_for(exc, self.model, region())) from None
         self.last_stop = resp.stop_reason or ""
         usage = getattr(resp, "usage", None)   # at WARNING so it shows with no logging set up; counts only, never text
+        counted = Usage()
+        tokens = [getattr(usage, n, None) for n in ("input_tokens", "output_tokens")]
+        if all(isinstance(t, int) and not isinstance(t, bool) for t in tokens):
+            counted.input_tokens, counted.output_tokens = tokens
+        else:
+            counted.unreported = 1
+        self.usage.add(counted)
+        if draft is not None:
+            draft.add(counted)
         logger.warning("Bedrock request %d: %s, %s input tokens, %s output tokens, stop reason %s", self.requests, self.model,
                        getattr(usage, "input_tokens", "unknown"), getattr(usage, "output_tokens", "unknown"), resp.stop_reason)
         if schema:   # a reply cut off at max_tokens is half a JSON object: "" is read as invalid JSON and discarded
@@ -425,16 +561,20 @@ class BedrockProvider(_Chat, DraftingProvider):
     ) -> HighlightResult:
         empty = HighlightResult(company=company, search_scope=None, ir_domain=ir_domain,
                                 drafted_by=self.drafted_by, no_story=True)
-        results = sources_for(company, end)
+        results, policy_notes = by_policy(sources_for(company, end), "digital_payments", company)
+        results, notes = within_window(results, company, start, end)
+        notes = [*policy_notes, *notes]
         if not results:
-            empty.draft_warnings = [f"{company}: {NO_SOURCES}"]
+            empty.draft_warnings = [*notes, f"{company}: {NO_SOURCES}"]
             empty.reason = NO_SOURCES
             return empty
-        return self._write(
+        res = self._write(
             empty, company, HIGHLIGHT_SYSTEM.replace("{company}", company), results, None,
             lambda raw, warnings, read: highlight_from_reply(
                 raw, company, ir_domain, SCOPE_SUPPLIED, list(aliases or [company]), results, warnings, who=self.WHO,
                 label=self.LABEL, drafted_by=self.drafted_by, where=WHERE_SUPPLIED, read_claim=read))
+        res.draft_warnings = [*notes, *res.draft_warnings]
+        return res
 
     def draft_outlook(self, table_stats: dict[str, Any], highlights: list[dict[str, Any]]) -> OutlookResult:
         text = self._chat(
@@ -450,16 +590,20 @@ class BedrockNarrativeProvider(_Chat, NarrativeProvider):
     def draft_piece(self, brief: NarrativeBrief, *, start: date, end: date, today: date) -> HighlightResult:
         empty = HighlightResult(company=brief.label, search_scope=None, ir_domain=", ".join(brief.preferred_domains),
                                 drafted_by=self.drafted_by, no_story=True)
-        results = sources_for(brief.label, end)
+        results, policy_notes = by_policy(sources_for(brief.label, end), brief.section, brief.label)
+        results, notes = within_window(results, brief.label, start, end)
+        notes = [*policy_notes, *notes]
         if not results:
-            empty.draft_warnings = [f"{brief.label}: {NO_SOURCES}"]
+            empty.draft_warnings = [*notes, f"{brief.label}: {NO_SOURCES}"]
             empty.reason = NO_SOURCES
             return empty
-        return self._write(
+        res = self._write(
             empty, brief.label, narrative_system(brief), results, brief.max_tokens,
             lambda raw, warnings, read: piece_from_reply(
                 raw, brief, SCOPE_SUPPLIED, results, warnings, who=self.WHO, label=self.LABEL,
                 drafted_by=self.drafted_by, where=WHERE_SUPPLIED, read_claim=read))
+        res.draft_warnings = [*notes, *res.draft_warnings]
+        return res
 
     def complete(self, system: str, prompt: str, *, max_tokens: int) -> str:
         messages = [{"role": "system", "content": system}, {"role": "user", "content": prompt}]
