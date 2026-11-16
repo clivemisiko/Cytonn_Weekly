@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from api.main import create_app
 from cytonn_weekly import db as database
+from cytonn_weekly.run_store import RunStore
 from cytonn_weekly.digital_payments import review_run, review_store
 from tests.review_helpers import ROWS, TODAY, FakeProvider, make_review
 from tests.test_runs_api import WEEKLY_DP, finished, start
@@ -59,6 +60,8 @@ def test_a_finished_draft_costs_one_connection_to_save_and_the_run_view_none(cou
     real = review_run.build_digital_payments_review
     monkeypatch.setattr(review_run, "build_digital_payments_review", lambda on_event=None: real(
         provider=FakeProvider(), today=TODAY, fetch_table=lambda today: ROWS, on_event=on_event))
+    for write in ("put_run", "put_event", "put_usage"):   # a run is also written through to its own tables, one connection a write (test_run_store.py)
+        monkeypatch.setattr(RunStore, write, lambda *a, **k: None)
     opened = []
     real_connect = database.connect
     monkeypatch.setattr(database, "connect", lambda p=None: (opened.append(1), real_connect(p))[1])

@@ -4,11 +4,12 @@ A run is one draft of one section of one report, running in a worker thread.  Th
 registry keeps, per run, what the screen shows while it runs (common/run_events.py's
 events, in order) and, once it ends, the saved review's id.
 
-The registry is a plain dict in process memory, guarded by a lock.  It is NOT persisted:
-a server restart loses every run, running or finished, and a run id from before the
-restart is simply unknown (404).  Nothing is lost that matters: a finished run's review
-is in the database, and the overview shows it.  Only the most recent ``KEEP_ENDED`` ended
-runs are kept, so the dict cannot grow without bound; a running run is never dropped.
+The registry is a plain dict in process memory, guarded by a lock, and live runs stream from it.  With a
+``store`` (run_store.RunStore) every status change and event is also written through to the database, so a run
+the registry no longer holds (an old one dropped from memory, or any run after a restart) is read back from
+there, and a run that was queued or running at a restart is marked ``interrupted`` at the next start
+(run_store.interrupt_active).  Without a store nothing is persisted, as before.  Only the most recent
+``KEEP_ENDED`` ended runs are kept in memory, so the dict cannot grow without bound; a running run is never dropped.
 
 One run per (report type, period, section) at a time: a second start while the first is
 still running or queued is refused (``RunAlreadyRunning``).  The seats (api/draft_slot.py) still apply on top of
@@ -20,9 +21,11 @@ from __future__ import annotations
 import json
 import threading
 import uuid
+from datetime import datetime, timezone
 from typing import Any, Iterator, Optional
 
 from cytonn_weekly.common.run_events import RUN_FAILED, RUN_FINISHED, EventLog, RunEvent
+from cytonn_weekly.run_store import INTERRUPTED, RunStore
 
 QUEUED = "queued"
 RUNNING = "running"
@@ -46,8 +49,9 @@ class Run:
     """One draft run.  ``record`` is the observer handed to the builder (``on_event``)."""
 
     def __init__(self, run_id: str, report_type: str, period: str, section: str, section_title: str, report_title: str,
-                 started_at: float = 0.0, status: str = RUNNING):
+                 started_at: float = 0.0, status: str = RUNNING, store: Optional[RunStore] = None):
         self.run_id = run_id
+        self._store = store
         self.started_at = started_at  # the API's clock() when it was started; elapsed time is the server's, never the browser's
         self.piece_keys: frozenset = frozenset()   # (piece, Friday) of the sources this draft reads (api/main.py)
         self.report_type = report_type
@@ -74,27 +78,63 @@ class Run:
                counts: Optional[dict[str, int]] = None) -> None:
         """Append one event and wake every open stream."""
         with self._changed:
-            self._log(kind, label, detail=detail, counts=counts)
+            event = self._log(kind, label, detail=detail, counts=counts)
             self._changed.notify_all()
+        if self._store is not None:   # outside the lock: a database write must not hold up the streams
+            self._store.put_event(self.run_id, event)
 
     def begin(self, started_at: float) -> None:
         """A queued run got a seat: it is running from now (its elapsed time counts from here)."""
         with self._changed:
             self.status, self.started_at = RUNNING, started_at
             self._changed.notify_all()
+        self.save()
+
+    def save(self, event: Optional[RunEvent] = None, error: Optional[str] = None) -> None:
+        """Write the run's row through to storage (with its closing event, when it has one).  Never raises (run_store)."""
+        if self._store is None:
+            return
+        ended = event is not None and self.status not in ACTIVE
+        self._store.put_run({
+            "run_id": self.run_id, "report_type": self.report_type, "period": self.period, "section": self.section,
+            "section_title": self.section_title, "report_title": self.report_title, "status": self.status,
+            "started_at": datetime.fromtimestamp(self.started_at, tz=timezone.utc).isoformat(timespec="seconds"),
+            "finished_at": event.at if ended else None, "error": error if ended else None, "review_id": self.review_id,
+            "is_dev_draft": None if self.is_dev_draft is None else int(self.is_dev_draft), "dev_mode_label": self.dev_mode_label,
+        }, event)
+
+    def record_usage(self, usage: dict[str, Any]) -> None:
+        """The draft's Bedrock usage (the ``usage`` saved with its review), kept against this run."""
+        if self._store is not None:
+            self._store.put_usage(self.run_id, usage)
+
+    @classmethod
+    def from_store(cls, row: dict[str, Any], events: list[RunEvent]) -> "Run":
+        """An ended run read back from storage.  One stored as queued or running that this process does not hold is read as
+        interrupted: nothing here is working on it.  It has no store, so reading it writes nothing."""
+        status = INTERRUPTED if row["status"] in ACTIVE else row["status"]
+        run = cls(row["run_id"], row["report_type"], row["period"], row["section"], row["section_title"], row["report_title"],
+                  datetime.fromisoformat(row["started_at"]).timestamp(), status)
+        run.review_id = row["review_id"]
+        run.is_dev_draft = None if row["is_dev_draft"] is None else bool(row["is_dev_draft"])
+        run.dev_mode_label = row["dev_mode_label"]
+        run._log = EventLog(events)
+        return run
 
     def finish(self, review_id: int, counts: dict[str, int], is_dev_draft: bool, dev_mode_label: Optional[str]) -> None:
         """The review is saved: record it and the closing event together, so no reader sees one without the other."""
         with self._changed:
             self.review_id, self.is_dev_draft, self.dev_mode_label = review_id, is_dev_draft, dev_mode_label
             self.status = FINISHED
-            self._log(RUN_FINISHED, self.section_title, counts=counts)
+            event = self._log(RUN_FINISHED, self.section_title, counts=counts)
+            self.save(event)   # saved before anyone is told it ended, so a reader never sees an end that storage lacks
             self._changed.notify_all()
 
     def fail(self, message: str) -> None:
         with self._changed:
             self.status = FAILED
-            self._log(RUN_FAILED, self.section_title, detail=message)
+            event = self._log(RUN_FAILED, self.section_title, detail=message)
+            self.save(event, message)
             self._changed.notify_all()
 
     def to_dict(self) -> dict[str, Any]:
@@ -134,10 +174,11 @@ class Run:
 class RunRegistry:
     """Every run this process knows about.  In memory only: see the module docstring."""
 
-    def __init__(self, keep_ended: int = KEEP_ENDED):
+    def __init__(self, keep_ended: int = KEEP_ENDED, store: Optional[RunStore] = None):
         self._lock = threading.Lock()
         self._runs: dict[str, Run] = {}
         self._keep_ended = keep_ended
+        self._store = store
 
     def start(self, report_type: str, period: str, section: str, section_title: str, report_title: str,
               started_at: float = 0.0, status: str = RUNNING) -> Run:
@@ -147,17 +188,20 @@ class RunRegistry:
             for run in self._runs.values():
                 if run.status in ACTIVE and run.key == (report_type, period, section):
                     raise RunAlreadyRunning(run)
-            run = Run(uuid.uuid4().hex, report_type, period, section, section_title, report_title, started_at, status)
+            run = Run(uuid.uuid4().hex, report_type, period, section, section_title, report_title, started_at, status, self._store)
             self._runs[run.run_id] = run
             ended = [r for r in self._runs.values() if r.status not in ACTIVE]
             for old in ended[: max(0, len(ended) - self._keep_ended)]:
                 del self._runs[old.run_id]
-            return run
+        run.save()
+        return run
 
     def discard(self, run: Run) -> None:
         """Forget a run that was registered but never started (its draft slot was refused)."""
         with self._lock:
             self._runs.pop(run.run_id, None)
+        if self._store is not None:
+            self._store.delete_run(run.run_id)
 
     def running_id(self, report_type: str, period: str, section: str) -> Optional[str]:
         """The id of the run of this section of this report that has not ended (running or queued), if any (a draft
@@ -182,5 +226,11 @@ class RunRegistry:
             return list(newest.values())
 
     def get(self, run_id: str) -> Optional[Run]:
+        """The run in memory, else the one saved in storage (an ended run, as ``Run.from_store`` reads it), else None."""
         with self._lock:
-            return self._runs.get(run_id)
+            run = self._runs.get(run_id)
+        if run is None and self._store is not None:
+            stored = self._store.load(run_id)
+            if stored is not None:
+                run = Run.from_store(*stored)
+        return run

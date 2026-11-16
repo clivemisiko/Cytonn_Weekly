@@ -99,3 +99,78 @@ CREATE TABLE IF NOT EXISTS suggestion_decisions (
     decided_at       TEXT NOT NULL,   -- ISO-8601 UTC
     UNIQUE (week_ending, section, suggestion_id)
 );
+
+-- ---------------------------------------------------------------------------
+-- draft_runs, run_events, draft_usage: every draft run started with POST /api/runs (api/runs.py writes through to them on each
+-- status change and event, run_store.py), so a restart or an old run dropped from memory loses nothing.  run_id is the registry's
+-- own id (a uuid in hex), not coordinator_reviews.run_id; review_id is that one.  period is the week or period the draft is for.
+-- A run that was queued or running when the process stopped is marked 'interrupted' at the next start.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS draft_runs (
+    run_id          TEXT    PRIMARY KEY,
+    report_type     TEXT    NOT NULL,
+    period          TEXT    NOT NULL DEFAULT '',
+    section         TEXT    NOT NULL,
+    section_title   TEXT    NOT NULL,
+    report_title    TEXT    NOT NULL,
+    status          TEXT    NOT NULL CHECK (status IN ('queued', 'running', 'finished', 'failed', 'interrupted')),
+    started_at      TEXT    NOT NULL,   -- ISO-8601 UTC; for a queued run, when it joined the queue
+    finished_at     TEXT,               -- ISO-8601 UTC; set exactly when the run has ended
+    error           TEXT,               -- the failure or interruption sentence the run showed
+    review_id       INTEGER,             -- the saved review, once finished
+    is_dev_draft    INTEGER CHECK (is_dev_draft IN (0, 1) OR is_dev_draft IS NULL),
+    dev_mode_label  TEXT,
+    CHECK ((status IN ('queued', 'running')) = (finished_at IS NULL))
+);
+
+-- The events the run's screen and stream show, in order (common/run_events.py).  counts_json is the three review counts, or NULL.
+CREATE TABLE IF NOT EXISTS run_events (
+    run_id       TEXT    NOT NULL,
+    seq          INTEGER NOT NULL,
+    kind         TEXT    NOT NULL,
+    label        TEXT    NOT NULL,
+    detail       TEXT,
+    counts_json  TEXT,
+    event_at     TEXT    NOT NULL,   -- ISO-8601 UTC
+    PRIMARY KEY (run_id, seq)
+);
+
+-- What a finished draft spent on Amazon Bedrock (the "usage" saved with its review): tokens and calls only.  A draft with no
+-- Bedrock call has no row.
+CREATE TABLE IF NOT EXISTS draft_usage (
+    run_id                      TEXT    PRIMARY KEY,
+    model                       TEXT    NOT NULL,
+    calls                       INTEGER NOT NULL,
+    input_tokens                INTEGER NOT NULL,
+    output_tokens               INTEGER NOT NULL,
+    calls_without_token_counts  INTEGER NOT NULL DEFAULT 0,
+    saved_at                    TEXT    NOT NULL   -- ISO-8601 UTC
+);
+
+-- ---------------------------------------------------------------------------
+-- report_jobs, job_messages (jobs.py): one job per report type, period and section, and its messages in order.  The three limits
+-- are the values in force when the job was opened (CYTONN_JOB_*); nothing enforces them yet.  job_messages.job_id refers to
+-- report_jobs.job_id (jobs.py checks it; no foreign key, as nowhere else in this schema).
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS report_jobs (
+    job_id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    report_type     TEXT    NOT NULL,
+    period          TEXT    NOT NULL DEFAULT '',
+    section         TEXT    NOT NULL,
+    max_tool_calls  INTEGER NOT NULL,   -- per message
+    call_budget     INTEGER NOT NULL,   -- model calls over the whole job
+    token_budget    INTEGER NOT NULL,   -- input and output tokens over the whole job
+    created_at      TEXT    NOT NULL,   -- ISO-8601 UTC
+    UNIQUE (report_type, period, section)
+);
+
+CREATE TABLE IF NOT EXISTS job_messages (
+    job_id       INTEGER NOT NULL,
+    seq          INTEGER NOT NULL,   -- 1, 2, 3, ... within one job
+    role         TEXT    NOT NULL CHECK (role IN ('user', 'assistant', 'tool')),
+    content      TEXT    NOT NULL,
+    tool_name    TEXT,               -- a tool turn: which tool
+    tool_result  TEXT,               -- a tool turn: what it returned
+    created_at   TEXT    NOT NULL,   -- ISO-8601 UTC
+    PRIMARY KEY (job_id, seq)
+);

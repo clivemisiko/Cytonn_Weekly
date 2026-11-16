@@ -471,11 +471,11 @@ def test_an_unknown_run_is_not_found(client):
     assert "runs are not kept across a restart" in client.get("/api/runs/nope").json()["detail"]
 
 
-def test_runs_are_in_memory_only_so_a_restart_forgets_them(app, client, db, clock):
+def test_a_finished_run_is_still_known_after_a_restart_because_it_was_saved_as_it_ran(app, client, db, clock):
     run = run_to_end(client, **WEEKLY_DP)
     restarted = TestClient(create_app(db_path=db, load_dotenv=False, clock=clock))
-    assert restarted.get(f"/api/runs/{run['run_id']}").status_code == 404
-    # the review it saved is in the database, so nothing that matters is lost
+    assert restarted.get(f"/api/runs/{run['run_id']}").json() == run   # read back from storage (test_run_store.py has the rest)
+    # and the review it saved is in the database either way
     assert restarted.get(f"/api/reviews/{run['review_id']}").status_code == 200
     saved = next(s for s in restarted.get("/api/sections").json()["sections"] if s["slug"] == "digital_payments")
     assert saved["latest"]["run_id"] == run["review_id"]

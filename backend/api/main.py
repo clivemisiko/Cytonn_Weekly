@@ -11,7 +11,7 @@ for any of them.  /api/report-types lists the types and the companion report kin
 /api/runs starts the same draft in a worker thread and answers at once with a run id;
 /api/runs/{run_id}/events streams what the draft reports about itself as it happens
 (common/run_events.py) and /api/runs/{run_id} returns the same as plain JSON.  The runs
-live in memory only (api/runs.py).  The synchronous draft routes above are unchanged.
+stream from memory and are also saved as they happen (api/runs.py, run_store.py).  The synchronous draft routes above are unchanged.
 
 /api/inputs/weekly/{week_ending} is "This week's inputs": the files an analyst uploads
 for one report week (cytonn_weekly/weekly/inputs.py).  An upload is sent as the request
@@ -121,6 +121,7 @@ from api.problems import ProblemError, problem_handler
 from api.draft_slot import (DRAFT_STALE_AFTER_SECONDS, Claim, DraftBusy, DraftSlot, busy_message, draft_concurrency,
                             draft_queue_max)
 from api.runs import ACTIVE, FAILED, QUEUED, RUNNING, SSE_KEEPALIVE_SECONDS, Run, RunAlreadyRunning, RunRegistry
+from cytonn_weekly.run_store import RunStore
 from api.serialize import DEV_MODE_LABEL, is_dev_draft, serialize_review
 
 log = logging.getLogger(__name__)
@@ -403,7 +404,8 @@ def create_app(
 
     write_lock = threading.Lock()
     draft_slot = DraftSlot(capacity=draft_concurrency(), stale_after=draft_stale_after, clock=clock)
-    runs = RunRegistry()  # in memory only: a restart forgets every run (api/runs.py)
+    run_store = RunStore(db_path)
+    runs = RunRegistry(store=run_store)  # live runs stream from memory; every change is also written through (api/runs.py)
     queue_max = draft_queue_max()
     waiting: deque[tuple[Run, SectionSpec, DraftContext]] = deque()   # runs waiting for a seat, first in first out
     seats = threading.Lock()   # "take a seat or join the queue" and "free a seat, start the next" are each one step
@@ -604,10 +606,11 @@ def create_app(
         except BaseException as exc:
             if claim is not None:
                 free_seat(claim)
+            if isinstance(exc, Exception):   # logged first: once the run says "failed" a reader may look for the line at once
+                log.warning("run %s (%s) failed: %s; %s", run.run_id, spec.slug, safe_describe(exc), frames(exc))
             run.fail(failure_message(exc))
             if not isinstance(exc, Exception):
                 raise
-            log.warning("run %s (%s) failed: %s; %s", run.run_id, spec.slug, safe_describe(exc), frames(exc))
             return
         if claim is not None and not free_seat(claim):   # the seat goes back before the save, so the next run starts at once
             log.warning("draft of %s finished after it was replaced as stuck; its result was discarded", spec.slug)
@@ -617,6 +620,8 @@ def create_app(
             with write_lock:
                 review_store.save_review(review, section=section_slug(review), db_path=db_path)
                 chart_store.persist(review, charts_root)
+            if review.section.get("usage"):
+                run.record_usage(review.section["usage"])
             dev = is_dev_draft(review)
             run.finish(review.run_id, review_counts(review), dev, DEV_MODE_LABEL if dev else None)
         except Exception as exc:  # noqa: BLE001 - the run must end, and say why
@@ -1727,6 +1732,13 @@ def create_app(
             save(review)
             return serialize_review(review)
 
+    def interrupt_leftover_runs() -> None:
+        """A run still queued or running in storage belongs to a process that is gone: mark it interrupted (run_store.py)."""
+        found = run_store.interrupt_active()
+        if found:
+            log.warning("%d draft run(s) were still queued or running when the tool last stopped; marked interrupted", found)
+
+    app.router.on_startup.append(interrupt_leftover_runs)
     app.router.on_shutdown.append(database.close_all)  # the held PostgreSQL connection, if any
     return app
 
