@@ -89,12 +89,13 @@ def _budget_pause(job: dict[str, Any]) -> Optional[tuple[str, int]]:
 
 def answer(db_path: Optional[Union[Path, str]], job_id: int, agent: Any, tools: list[Tool], *,
            summary: Callable[[dict[str, Any]], str] = default_summary, on_event: Optional[run_events.Observer] = None,
-           history_rows: int = HISTORY_ROWS) -> Optional[str]:
+           history_rows: int = HISTORY_ROWS, paths: Optional[dict[str, Any]] = None) -> Optional[str]:
     """Answer the analyst's latest message (already saved by the caller) and return what was said last, or None when another
     worker already has this job.  Each pass is one model call: text ends the turn, tool calls are checked, run, saved and
     answered by the next pass.  A tool-call limit per message and the job's call and token budgets stop it early: the job is
     saved as paused with the reason and a plain assistant message, and waits for the analyst.  A failed model call is saved as
-    its fixed sentence.  The job is never left working, whatever happens."""
+    its fixed sentence.  The job is never left working, whatever happens.  ``paths`` are the folders and registry the tools read from
+    (the ToolContext fields root, sources_dir, snips_dir and runs)."""
     if not jobs.begin(db_path, job_id):
         return None
     by_name = {t.name: t for t in tools}
@@ -131,7 +132,7 @@ def answer(db_path: Optional[Union[Path, str]], job_id: int, agent: Any, tools: 
                     result, pause = {"error": NOT_RUN}, (jobs.TOOL_CALLS, job["max_tool_calls"])
                 else:
                     calls += 1
-                    result = execute(by_name, use.name, use.input, ToolContext(job=job, db_path=db_path))
+                    result = execute(by_name, use.name, use.input, ToolContext(job=job, db_path=db_path, **(paths or {})))
                 run_events.emit(on_event, run_events.TOOL_CALLED, use.name,
                                 detail=f"{json.dumps(use.input, default=str)[:200]} -> {result.get('error') or 'ok'}")
                 jobs.add_message(db_path, job_id, "tool", use.name, use.name, json.dumps(result), tool_use_id=use.id,

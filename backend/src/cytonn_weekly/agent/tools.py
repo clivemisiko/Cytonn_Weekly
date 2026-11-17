@@ -25,12 +25,21 @@ class Params(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class Refused(Exception):
+    """A tool declines with a sentence of our own wording (never text from a source); the model reads it as the result."""
+
+
 @dataclass(frozen=True)
 class ToolContext:
-    """What a tool may read from: the job it runs for and the database.  Later tools add their own defaulted fields."""
+    """What a tool may read from: the job it runs for, the database and the folders the week's files are kept in.  ``runs`` is the
+    API's run registry (api/runs.py), or None where there is none."""
 
     job: dict[str, Any]
     db_path: Optional[Union[Path, str]] = None
+    root: Optional[Path] = None          # the weekly inputs
+    sources_dir: Optional[Path] = None
+    snips_dir: Optional[Path] = None
+    runs: Any = None
 
 
 @dataclass(frozen=True)
@@ -77,6 +86,8 @@ def execute(by_name: dict[str, Tool], name: str, raw_input: Any, ctx: ToolContex
         return {"error": BAD_INPUT, "problems": [f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}"[:MAX_TEXT] for e in exc.errors()][:5]}
     try:
         result = trim(tool.run(args, ctx), tool.shape)
+    except Refused as exc:
+        return {"error": str(exc)}
     except Exception:  # noqa: BLE001 - a tool's failure is the model's to read, not the loop's to crash on
         log.exception("agent tool %s failed", name)
         return {"error": FAILED}
