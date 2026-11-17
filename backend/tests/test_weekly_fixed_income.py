@@ -23,6 +23,7 @@ from cytonn_weekly.common.formatting import MULTIPLE, PCT
 from cytonn_weekly.common.review import build_review, check_section, numbered, table_block
 from cytonn_weekly.common.run_events import EventLog
 from cytonn_weekly.equities import weekly as eqw
+from cytonn_weekly.fixed_income import cbk_auctions
 from cytonn_weekly.fixed_income import weekly as fiw
 from cytonn_weekly.weekly import cbk_bulletin, inputs, previous_issue
 from cytonn_weekly.weekly.week import Week
@@ -907,3 +908,72 @@ def test_the_flag_words_a_monthly_and_a_monthly_after_a_skipped_twin():
     assert twin.endswith("the lookup skipped issue 898 on cytonnreport.com, a copy of this issue with its charts stripped; "
                          "the text is from issue 897, a Cytonn Monthly")
     assert twin.count("Cytonn Monthly") == 1 and "not a weekly" not in twin
+
+
+def test_a_change_that_rounds_to_zero_is_shown_to_three_decimals_and_still_checks_exactly():
+    def change(new, old):
+        return a_figure("c", "Change", PLAIN_PCT, 1, {"a": an_input(new, SOURCE, "CBK"), "b": an_input(old, SOURCE, "CBK")},
+                        computed.pct_change("a", "b"))
+    for new, shown in ((10004, "0.040%"), (9996, "0.040%")):
+        fig = change(new, 10000)
+        assert fig["decimals"] == 3 and fig["display"].lstrip("(-").startswith("0.04")
+        assert computed.check_figure_record(_block(fig), fig) == ([], "")
+        tampered = {**fig, "display": "0.0%"}
+        assert [f.kind for f in computed.check_figure_record(_block(tampered), tampered)[0]] == [MISMATCH]
+    exact = change(10000, 10000)
+    assert exact["decimals"] == 1 and exact["display"] == "0.0%"      # a true zero keeps the usual precision
+    assert change(10050, 10000)["decimals"] == 1                      # a move that shows at one decimal is untouched
+
+
+def test_a_mixed_eurobond_week_names_the_biggest_riser_and_the_biggest_faller(root, monkeypatch):
+    from cytonn_weekly.weekly import fi_workbook
+    real, flipped = fiw._yield_on, fi_workbook.EUROBOND_ISSUES[0][5]
+
+    def mixed(series, bulletin, day, maturity):
+        value, where, other, other_where = real(series, bulletin, day, maturity)
+        return (20 - value, where, None, None) if maturity == flipped and value is not None else (value, where, other, other_where)
+    monkeypatch.setattr(fiw, "_yield_on", mixed)
+    block = blocks(build(root))["eurobonds"]
+    by_key = {f["key"]: f for f in block["figures"]}
+    assert "a mixed trajectory, led by the " in block["body_md"] and ", while the " in block["body_md"] and " fell by " in block["body_md"]
+    assert {"riser_bps", "riser_yield", "riser_previous", "faller_bps", "faller_yield", "faller_previous"} <= by_key.keys()
+    assert not [k for k in by_key if k.startswith("biggest")]
+    # What the record says and what the sentence prints must agree: no mismatch, no missing figure, no unworkable input.
+    # A "sources disagree" is allowed: the synthetic workbook's yields differ from the bulletin's for the riser's issue.
+    problems = {key: [(flag.kind, flag.message) for flag in computed.check_figure_record(block, fig)[0] if flag.kind != SOURCES_DISAGREE]
+                for key, fig in by_key.items()}
+    assert not any(problems.values()), {key: found for key, found in problems.items() if found}
+
+
+def test_a_week_with_every_eurobond_moving_one_way_keeps_the_single_bond_sentence(root):
+    block = blocks(build(root))["eurobonds"]
+    assert "led by" not in block["body_md"] and "increasing the most by" in block["body_md"]
+    assert {f["key"] for f in block["figures"]} == {"biggest_bps", "biggest_yield", "biggest_previous"}
+
+
+def test_a_file_left_out_of_the_bond_results_is_named_and_what_is_included_does_not_change():
+    base = "/uploads/historical_treasury_bond_results/"
+    names = ["Tap Sale IFB1 DATED 05-10-2026.pdf", "Switch FXD4 DATED 05-10-2026.pdf", "Auction results.pdf",
+             "Auction DATED 12-10-2026.pdf"]
+    listing = "".join(f'<a href="{base}{n}">x</a>' for n in names).encode()
+
+    def get(url):
+        return listing if not url.endswith(".pdf") else b"%PDF"
+    out = cbk_auctions.fetch_period_tbonds(date(2026, 10, 3), date(2026, 10, 9), get=get)
+    why = {s["file"]: s["why"] for s in out["skipped_files"]}
+    assert len(why) == 2
+    assert "no value date could be read" in why["Auction results.pdf"]
+    assert "its value date 2026-10-12 is outside 2026-10-03 to 2026-10-09" in why["Auction DATED 12-10-2026.pdf"]
+    assert [a["value_date"] for a in out["auctions"]] == ["2026-10-05", "2026-10-05"]   # inclusion is as before
+
+
+def test_tbonds_blocks_says_when_a_tap_sale_a_switch_or_a_file_is_left_out():
+    results = {"auctions": [
+        {"kind": "tap", "value_date": "2026-10-05", "url": "https://cbk.example/tap.pdf"},
+        {"kind": "switch", "value_date": "2026-10-05", "url": "https://cbk.example/switch.pdf"}],
+        "skipped_files": [{"file": "odd name.pdf", "why": "its name has no value date"}]}
+    problems = []
+    fiw.tbonds_blocks(results, None, WEEK, problems)
+    assert any("tap sale result with value date 2026-10-05 is not printed here" in p for p in problems)
+    assert any("switch result with value date 2026-10-05 is not printed here" in p for p in problems)
+    assert "T-Bonds Primary Market: the CBK result file odd name.pdf was left out because its name has no value date." in problems

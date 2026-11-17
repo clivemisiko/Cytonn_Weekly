@@ -146,3 +146,49 @@ def test_digital_payments_keeps_an_undated_source_with_the_flag_and_makes_no_cal
     paste(OUTSIDE, "2025-01-15", "Old Mastercard release", subject="Mastercard")
     res = highlight(old_only, company="Mastercard")
     assert res.no_story and old_only.calls == [] and any("Old Mastercard release" in w for w in res.draft_warnings)
+
+
+# --- a brief that wants dated sources only, and the analyst's own snips -----------------------------------------------
+
+DATED_BRIEF = NarrativeBrief(id="policy", section="Fixed Income", label="Monetary policy", focus="a decision", words=(1, 400),
+                             context="The event itself must have happened in the report week.", dated_only=True)
+
+
+def test_a_dated_only_brief_leaves_out_an_undated_source_and_says_so(aws, events):
+    undated = src.from_snip(b"image-bytes", ".png", TEXT, "Monetary policy", FRIDAY, "", "Undated snip")
+    dated = src.from_paste(INSIDE, "2026-09-30", TEXT, "Monetary policy", FRIDAY, title="Dated page")
+    client = Client([{"text": "Credit grew 8.75%.", "quote": QUOTE, "source_id": dated.id}])
+    res = bp.BedrockNarrativeProvider(client=client).draft_piece(DATED_BRIEF, start=START, end=END, today=FRIDAY)
+    seen = shown_to_the_model(client)
+    assert dated.id in seen and undated.id not in seen
+    assert any('"Undated snip" from snip has no date, so the model was not shown it' in w for w in res.draft_warnings)
+    (event,) = left_out(events)
+    assert event.detail == "From snip, no date, so it was not used for Monetary policy."
+    assert "The event itself must have happened in the report week." in seen                        # the prompt line
+
+
+def test_the_dated_only_rule_is_the_three_fixed_income_briefs_alone():
+    from cytonn_weekly.fixed_income import weekly as fiw
+    from cytonn_weekly.equities import weekly as eqw
+    assert all(b.dated_only and "recap of an earlier decision" in b.context for b in fiw.BRIEFS)
+    assert not any(b.dated_only for b in eqw.BRIEFS) and not BRIEF.dated_only
+
+
+@pytest.mark.parametrize("day", ["2026-09-01", "2026-10-20"])
+def test_a_confirmed_snip_skips_the_date_window_and_shows_the_typed_date(aws, events, day):
+    snip = src.from_snip(b"image-bytes", ".png", TEXT, SUBJECT, FRIDAY, day, "Typed-date snip", typed_date=True)
+    assert snip.flags == [f"Date typed by the analyst: {day}"] and snip.published_date == day
+    client = Client([{"text": "Credit grew 8.75%.", "quote": QUOTE, "source_id": snip.id}])
+    res = narrative(client)
+    assert snip.id in shown_to_the_model(client) and left_out(events) == [] and not res.no_story
+    assert res.claims[0]["source_flags"] == [f"Date typed by the analyst: {day}"]
+
+
+def test_a_fetched_page_keeps_the_window_and_an_untyped_snip_date_carries_no_flag(aws, events):
+    paste(OUTSIDE, "2026-09-01", "Old page")
+    friday = src.from_snip(b"image-bytes-2", ".png", TEXT, SUBJECT, FRIDAY, FRIDAY.isoformat(), "Friday snip")
+    assert friday.flags == []                                                    # no date was typed, so none is claimed
+    client = Client([{"text": "Credit grew 8.75%.", "quote": QUOTE, "source_id": friday.id}])
+    res = narrative(client)
+    assert OUTSIDE not in shown_to_the_model(client) and len(left_out(events)) == 1
+    assert any("Old page" in w for w in res.draft_warnings)

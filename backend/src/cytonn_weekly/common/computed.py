@@ -46,7 +46,7 @@ from cytonn_weekly.checkers.digital_payments import (
     normalize,
     parse_number,
 )
-from cytonn_weekly.common.formatting import fmt_value, round_half_up
+from cytonn_weekly.common.formatting import PCT, fmt_value, round_half_up
 
 COMPUTED_SCOPE = "computed"
 CARRIED_SCOPE = "carried"
@@ -184,6 +184,8 @@ def a_figure(key: str, label: str, fmt: str, decimals: int, inputs: dict[str, di
             raise ValueError(f"figure {key!r} has {len(inputs)} inputs and no expression")
         expr = next(iter(inputs))
     value = evaluate(expr, inputs)
+    if fmt in (PLAIN_PCT, PCT, POINTS) and value != 0 and round_half_up(value, decimals) == 0:
+        decimals = 3   # a real change that rounds to 0.0% is shown to three decimals; the checker reads this same figure["decimals"]
     return {"key": key, "label": label, "fmt": fmt, "decimals": decimals, "value": float(value),
             "display": show(value, fmt, decimals), "expr": expr, "inputs": inputs, "in_text": in_text, "note": note}
 

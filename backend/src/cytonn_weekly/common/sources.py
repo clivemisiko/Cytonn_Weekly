@@ -58,6 +58,7 @@ NO_DATE_FLAG = "No date on this source"   # added when a draft reads a source wh
 TEXT_FROM_SEARCH = "Text supplied by the search service"   # the text_from_search flag: the page itself could not be read
 NEWS_SITE = "News site: may back highlights and prose, never a table figure"   # the news_site flag (equities/source_policy.json)
 ADDED_BY_ANALYST = "Added by analyst"   # the added_by_analyst flag: fetched or pasted through the Sources panel, not found by the gather step
+TYPED_DATE = "Date typed by the analyst: {date}"   # a confirmed snip carries the date the analyst gave; the draft's date window does not judge it
 ANALYST_ORIGINS = ("fetched", "pasted")   # also what a source saved before the flag existed is judged by
 NEVER_READ = "{host} is never read by the tool. Paste the text with its date, or send a snip."
 MAX_BYTES = 5 * 1024 * 1024
@@ -675,7 +676,8 @@ def from_paste(url: str, date_text: str, text: str, subject: str, week_end: date
 
 
 def from_snip(image: Optional[bytes], ext: str, text: str, subject: str, week_end: date, published: str, title: str, *,
-              page: int = 0, file_sha: str = "", root: Optional[Path] = None, now: Callable[[], str] = _now) -> SourceText:
+              page: int = 0, file_sha: str = "", root: Optional[Path] = None, now: Callable[[], str] = _now,
+              typed_date: bool = False) -> SourceText:
     """Keep the confirmed text of an uploaded image (a Real Estate snip) as a source the quote check can read.
 
     ``subject`` is the sector, ``published`` the date the analyst gave or the report week's Friday (ISO). The image is saved
@@ -692,5 +694,6 @@ def from_snip(image: Optional[bytes], ext: str, text: str, subject: str, week_en
         url = f"snip:{sha[:16]}"
     src = SourceText(id=_id(subject, url, sha), subject=" ".join(subject.split()),
                      week_end=latest_friday(week_end).isoformat(), url=url, host=host, title=title or url,
-                     published_date=published, fetched_at=now(), origin="snip", text=text, sha256=sha, chars=len(text), flags=[])
+                     published_date=published, fetched_at=now(), origin="snip", text=text, sha256=sha, chars=len(text),
+                     flags=[TYPED_DATE.format(date=published)] if typed_date else [])
     return _save(src, image if not page else None, ext if not page else "", root)

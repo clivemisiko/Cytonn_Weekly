@@ -313,16 +313,28 @@ def test_an_unedited_carried_paragraph_keeps_its_red_line(week, tmp_path):
 def test_a_rewritten_carried_paragraph_is_exported_as_plain_text_with_no_red_line(week, tmp_path):
     _rewrite_outlook(week, REWRITTEN)
     _, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
-    assert text.count(NOTE) == 4 and text.count(REWRITTEN) == 1
+    assert text.count(NOTE) == 4
+    [paragraph] = [t for t in text if t.startswith(REWRITTEN)]
+    assert text[text.index("Rates and outlook (closing paragraph)") + 1] == paragraph      # no red line before it
+    assert "is at 58.3% of its pro-rated net domestic borrowing target" in paragraph[len(REWRITTEN):]   # the borrowing sentence follows, in the same paragraph
+
+
+def test_the_borrowing_sentence_is_printed_in_the_outlooks_paragraph_under_one_heading(week, tmp_path):
+    _, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
     heading = text.index("Rates and outlook (closing paragraph)")
-    assert text[heading + 1] == REWRITTEN
+    assert text[heading + 1] == NOTE                      # the red line stays until the analyst edits the paragraph
+    paragraph = text[heading + 2]
+    assert "is at 58.3% of its pro-rated net domestic borrowing target" in paragraph
+    assert sum("is at 58.3% of its pro-rated" in t for t in text) == 1      # printed once, and under no heading of its own
 
 
 def test_a_re_edited_paragraph_exports_the_same_way(week, tmp_path):
     _rewrite_outlook(week, REWRITTEN)
     _rewrite_outlook(week, "Rates eased again.")
     _, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
-    assert text.count(NOTE) == 4 and "Rates eased again." in text and REWRITTEN not in text
+    assert text.count(NOTE) == 4 and not any(REWRITTEN in t for t in text)
+    [paragraph] = [t for t in text if t.startswith("Rates eased again.")]
+    assert "is at 58.3% of its pro-rated net domestic borrowing target" in paragraph[len("Rates eased again."):]
 
 
 # --- the published look (common/word_layout.py) --------------------------------------------------
