@@ -1,3 +1,4 @@
+import { type ChatApi, parseJob, parseListing } from "./chat";
 import type {
   AddedSource,
   AnalystForm,
@@ -389,6 +390,37 @@ export const getExportStatus = (period: string) => request<ExportStatus>(exportP
 
 /** Every fully approved weekly week, newest first, and the week the overview opens on. */
 export const getPreviousWeeks = () => request<PreviousWeeks>("/api/previous/weekly");
+
+// ---- The analyst chat (one conversation per report, period and section) ----
+
+const unexpected = () => new ApiError("The server's answer about the conversation was not in the shape this page expects. Reload the page, and tell the team if it happens again.", null);
+const jobBody = (body: unknown) => (body as { job?: unknown } | null)?.job;
+
+/** The four calls the chat page makes. Each answer is checked whole; one that is not as expected is an error, never half used. */
+export const chatApi: ChatApi = {
+  async open(section, period) {
+    const body = await request<{ job: unknown; created?: boolean }>("/api/jobs", { method: "POST", body: JSON.stringify({ section, report_type: "weekly", period }) });
+    const job = parseJob(body.job);
+    if (!job) throw unexpected();
+    return { job, created: body.created === true };
+  },
+  async list(jobId, after) {
+    const got = parseListing(await request<unknown>(`/api/jobs/${jobId}/messages?after=${after}`));
+    if (!got) throw unexpected();
+    return got;
+  },
+  async send(jobId, content) {
+    const body = await request<{ seq?: unknown; job?: unknown }>(`/api/jobs/${jobId}/messages`, { method: "POST", body: JSON.stringify({ content }) });
+    const job = parseJob(body.job);
+    if (!job || typeof body.seq !== "number") throw unexpected();
+    return { seq: body.seq, job };
+  },
+  async raise(jobId) {
+    const job = parseJob(jobBody(await request<unknown>(`/api/jobs/${jobId}/raise-budget`, { method: "POST" })));
+    if (!job) throw unexpected();
+    return { job };
+  },
+};
 
 /** The approved weekly report as a Word file. The API refuses (409, naming each section) unless all are approved. */
 export const exportWeekly = async (period: string): Promise<{ blob: Blob; name: string }> => {

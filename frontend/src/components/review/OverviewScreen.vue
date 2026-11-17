@@ -238,6 +238,7 @@ const flagged = computed(() =>
               :period="overview.report.period"
               :drafting="draftingFor(drafting, s.slug, report)"
               :draft-again-off="draftAgainOff(s, draftingFor(drafting, s.slug, report), config)"
+              :chat-to="overview.report.type === 'weekly' && overview.report.period ? `/chat?section=${s.slug}&period=${encodeURIComponent(overview.report.period)}` : null"
               @open="(slug, resume) => emit('open', slug, resume)"
               @redraft="(slug) => emit('redraft', slug)"
             />
