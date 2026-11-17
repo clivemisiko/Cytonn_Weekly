@@ -9,7 +9,7 @@ from cytonn_weekly.common import run_events as ev
 from cytonn_weekly.common import source_policy as sp
 from cytonn_weekly.common import sources as src
 from cytonn_weekly.equities import companies
-from cytonn_weekly.narrative import bedrock_provider as bp
+from cytonn_weekly.drafting import bedrock as bp
 from cytonn_weekly.source_pieces import Piece
 from tests.test_sources import FRIDAY, PARAGRAPH, Getter, article, fetch, refused, reply
 

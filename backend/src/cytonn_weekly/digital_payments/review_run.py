@@ -26,8 +26,8 @@ from cytonn_weekly.review.model import (
 )
 from cytonn_weekly.digital_payments.fetcher import fetch_digital_payments, format_table_rows
 from cytonn_weekly.digital_payments.highlights import compose_section, draft_highlights, draft_outlook
-from cytonn_weekly.digital_payments.provider_factory import get_provider
-from cytonn_weekly.digital_payments.providers.base import DraftingProvider
+from cytonn_weekly.drafting.factory import get_provider
+from cytonn_weekly.drafting.highlight_contract import DraftingProvider
 from cytonn_weekly.digital_payments.workbook import (
     Fill, Search, exa_search, fill_blanks, pe_table, read_dp_workbook, year_open_warnings,
 )

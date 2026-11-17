@@ -6,7 +6,7 @@ from datetime import date
 import httpx
 import pytest
 
-from cytonn_weekly.narrative.local_provider import LocalNarrativeProvider
+from cytonn_weekly.drafting.local_narrative import LocalNarrativeProvider
 from cytonn_weekly.periodic import real_estate as periodic_real_estate
 from cytonn_weekly.common import source_policy
 from cytonn_weekly.common import sources as source_store

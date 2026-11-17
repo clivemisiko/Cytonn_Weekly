@@ -2,7 +2,7 @@
 
 A subclass of the Digital Payments ``LocalProvider``, reusing its Ollama check,
 Exa search and chat call unchanged; the brief-shaped prompt and validation are
-shared (``digital_payments/providers/drafting.py``) with the Bedrock provider.  The same caveats apply: claims carry no
+shared (``drafting/prompts.py`` and ``drafting/replies.py``) with the Bedrock provider.  The same caveats apply: claims carry no
 ``cited_text`` (Exa returns page text, not cited spans), so the claim figure
 check can never pass a local draft, only report it as unchecked.
 """
@@ -12,15 +12,11 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from cytonn_weekly.digital_payments.providers import local_provider as dp_local
-from cytonn_weekly.digital_payments.providers.base import SCOPE_PREFERRED, SCOPE_WEB, HighlightResult
-from cytonn_weekly.digital_payments.providers.drafting import (
-    RESPONSE_SCHEMA,
-    narrative_system,
-    piece_from_reply,
-    results_message,
-)
-from cytonn_weekly.narrative.base import NarrativeBrief, NarrativeProvider
+from cytonn_weekly.drafting import local as dp_local
+from cytonn_weekly.drafting.results import SCOPE_PREFERRED, SCOPE_WEB, HighlightResult
+from cytonn_weekly.drafting.prompts import RESPONSE_SCHEMA, narrative_system, results_message
+from cytonn_weekly.drafting.replies import piece_from_reply
+from cytonn_weekly.drafting.base import NarrativeBrief, NarrativeProvider
 
 
 class LocalNarrativeProvider(dp_local.LocalProvider, NarrativeProvider):

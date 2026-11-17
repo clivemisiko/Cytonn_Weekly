@@ -32,9 +32,9 @@ from cytonn_weekly.review.blocks import (
 from cytonn_weekly.common.run_events import Observer, fetch_source, report_blocks
 from cytonn_weekly.review import store as review_store
 from cytonn_weekly.review.model import CoordinatorReview
-from cytonn_weekly.narrative.base import NarrativeBrief, NarrativeProvider
-from cytonn_weekly.narrative.drafter import draft_pieces
-from cytonn_weekly.narrative.factory import get_narrative_provider
+from cytonn_weekly.drafting.base import NarrativeBrief, NarrativeProvider
+from cytonn_weekly.drafting.drafter import draft_pieces
+from cytonn_weekly.drafting.factory import get_narrative_provider
 from cytonn_weekly.real_estate import fetcher, snips
 from cytonn_weekly.weekly import previous_issue as issues
 from cytonn_weekly.weekly.prose import Figures, published, try_fetch

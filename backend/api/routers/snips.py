@@ -3,10 +3,10 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
 from cytonn_weekly.common import sources as source_store
-from cytonn_weekly.digital_payments.provider_factory import NOT_CONFIGURED
-from cytonn_weekly.narrative import bedrock_provider
-from cytonn_weekly.narrative.base import SnipReadError
-from cytonn_weekly.narrative.factory import get_narrative_provider
+from cytonn_weekly.drafting.factory import NOT_CONFIGURED
+from cytonn_weekly.drafting import bedrock as bedrock_provider
+from cytonn_weekly.drafting.base import SnipReadError
+from cytonn_weekly.drafting.factory import get_narrative_provider
 from cytonn_weekly.real_estate import snips as snip_store
 from cytonn_weekly.report_types import WEEKLY
 from cytonn_weekly.weekly.week import latest_friday

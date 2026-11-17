@@ -80,7 +80,7 @@ def exa_search(query: str, start: date, domains: Optional[list[str]] = None) -> 
             return json.loads(cache.read_text(encoding="utf-8"))["results"]
         except (OSError, ValueError, KeyError):
             pass   # absent or unreadable: asked again and rewritten
-    from cytonn_weekly.digital_payments.providers.local_provider import LocalProvider   # the request code only; no model call
+    from cytonn_weekly.drafting.local import LocalProvider
 
     with httpx.Client(timeout=SEARCH_TIMEOUT) as client:   # the provider's own client waits 10 minutes, for a local model
         results = LocalProvider(http_client=client)._exa_search(query, start, domains)

@@ -137,7 +137,7 @@ def isolated_chart_files(tmp_path, monkeypatch):
 def no_bedrock_waiting(monkeypatch):
     """One attempt and no shared cool-off, so a test of a failed Bedrock call never sleeps; a test of the retry sets the
     variable itself and passes a fake ``sleep``."""
-    from cytonn_weekly.narrative import bedrock_provider
+    from cytonn_weekly.drafting import bedrock as bedrock_provider
 
     monkeypatch.setenv("CYTONN_BEDROCK_RETRIES", "1")
     monkeypatch.setattr(bedrock_provider, "_cool_until", 0.0)

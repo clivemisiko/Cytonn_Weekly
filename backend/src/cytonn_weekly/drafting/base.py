@@ -1,6 +1,6 @@
 """The drafting-provider contract for narrative pieces in any section.
 
-Digital Payments' ``DraftingProvider`` (digital_payments/providers/base.py) is
+Digital Payments' ``DraftingProvider`` (drafting/highlight_contract.py) is
 company-shaped: one company, its investor relations domain, one highlight.  The
 other sections draft from a *brief* instead - a theme to search for this week
 (Real Estate: "mortgage lending"), or the analyst's chosen topic (Focus).
@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Optional
 
-from cytonn_weekly.digital_payments.providers.base import HighlightResult
+from cytonn_weekly.drafting.results import HighlightResult
 
 
 @dataclass(frozen=True)

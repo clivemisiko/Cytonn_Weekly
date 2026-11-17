@@ -39,10 +39,10 @@ Kinds, and what each one means:
   already had enough sources emits neither.  ``sources_search_unavailable``: the search service is not configured, so no
   piece was searched (emitted once).
 * ``retrying``: a Bedrock call was throttled or the service was not ready, and the provider is waiting before it tries the
-  same call again (narrative/bedrock_provider.py); ``detail`` says why, how long and which attempt.  The provider reaches
+  same call again (drafting/bedrock.py); ``detail`` says why, how long and which attempt.  The provider reaches
   the run's observer through ``current_observer``, set by the thread that runs the draft.
 * ``source_left_out``: a saved source whose date is outside the window the draft gives its provider, so the model was not shown
-  it (narrative/bedrock_provider.py ``within_window``); ``label`` is the source's title, ``detail`` its host, date and window.
+  it (drafting/bedrock.py ``within_window``); ``label`` is the source's title, ``detail`` its host, date and window.
 """
 
 from __future__ import annotations

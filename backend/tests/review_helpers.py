@@ -12,9 +12,8 @@ from cytonn_weekly.review import model as cr
 from cytonn_weekly.digital_payments.review_run import build_coordinator_review
 from cytonn_weekly.digital_payments.fetcher import format_table_rows
 from cytonn_weekly.digital_payments.highlights import compose_section, draft_highlights, draft_outlook
-from cytonn_weekly.digital_payments.providers.base import (
-    SCOPE_IR, DraftingProvider, HighlightResult, OutlookResult,
-)
+from cytonn_weekly.drafting.results import SCOPE_IR, HighlightResult, OutlookResult
+from cytonn_weekly.drafting.highlight_contract import DraftingProvider
 
 TODAY = date(2026, 9, 30)
 

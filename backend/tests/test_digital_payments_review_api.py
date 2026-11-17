@@ -19,7 +19,7 @@ from cytonn_weekly import env as env_module
 from cytonn_weekly.review import model as cr
 from cytonn_weekly.digital_payments import review_run
 from cytonn_weekly.review import store as rs
-from cytonn_weekly.digital_payments.providers.base import OutlookResult
+from cytonn_weekly.drafting.results import OutlookResult
 
 
 @pytest.fixture
@@ -183,7 +183,7 @@ def test_config_reports_an_unset_provider_as_not_configured(client, monkeypatch,
 
 
 def test_config_says_the_anthropic_provider_was_removed(client, monkeypatch):
-    from cytonn_weekly.digital_payments.provider_factory import ANTHROPIC_REMOVED
+    from cytonn_weekly.drafting.factory import ANTHROPIC_REMOVED
 
     monkeypatch.setenv("CYTONN_LLM_PROVIDER", "anthropic")
     cfg = client.get("/api/config").json()

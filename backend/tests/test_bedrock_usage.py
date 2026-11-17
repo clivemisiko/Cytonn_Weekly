@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from api.main import create_app
 from cytonn_weekly.digital_payments import review_run
 from cytonn_weekly.review import store as review_store
-from cytonn_weekly.narrative import bedrock_provider as bp
+from cytonn_weekly.drafting import bedrock as bp
 from tests.review_helpers import make_review
 
 VAR = "CYTONN_BEDROCK_MAX_CALLS_PER_DRAFT"

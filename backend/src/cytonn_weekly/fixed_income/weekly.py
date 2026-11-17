@@ -61,8 +61,8 @@ from cytonn_weekly.review.blocks import (
 from cytonn_weekly.common.run_events import Observer, report_blocks
 from cytonn_weekly.review.model import CoordinatorReview
 from cytonn_weekly.fixed_income import cbk_auctions, net_borrowing
-from cytonn_weekly.narrative.base import NarrativeBrief, NarrativeProvider
-from cytonn_weekly.narrative.drafter import draft_pieces
+from cytonn_weekly.drafting.base import NarrativeBrief, NarrativeProvider
+from cytonn_weekly.drafting.drafter import draft_pieces
 from cytonn_weekly.weekly import analyst, cbk_bulletin, cbk_rates, fi_workbook, previous_issue
 from cytonn_weekly.weekly.inputs import CBK_BULLETIN, WeeklyInputs, store
 from cytonn_weekly.weekly.prose import (

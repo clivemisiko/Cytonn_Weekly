@@ -13,8 +13,8 @@ from datetime import date, timedelta
 from typing import Any, Optional, Sequence
 
 from cytonn_weekly.common.run_events import PART_SKIPPED, PIECE_FINISHED, PIECE_STARTED, Observer, emit
-from cytonn_weekly.narrative.base import NarrativeBrief, NarrativeProvider
-from cytonn_weekly.narrative.factory import get_narrative_provider
+from cytonn_weekly.drafting.base import NarrativeBrief, NarrativeProvider
+from cytonn_weekly.drafting.factory import get_narrative_provider
 from cytonn_weekly.weekly.previous_issue import norm_url
 
 

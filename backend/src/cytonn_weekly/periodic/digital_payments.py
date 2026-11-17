@@ -51,9 +51,9 @@ from cytonn_weekly.common.run_events import Observer, fetch_source, report_block
 from cytonn_weekly.digital_payments import fetcher as dp_fetcher
 from cytonn_weekly.review.model import CoordinatorReview
 from cytonn_weekly.digital_payments.highlights import N_HIGHLIGHTS, draft_highlights
-from cytonn_weekly.digital_payments.providers.base import DraftingProvider
-from cytonn_weekly.narrative.base import NarrativeProvider
-from cytonn_weekly.narrative.drafter import draft_pieces
+from cytonn_weekly.drafting.highlight_contract import DraftingProvider
+from cytonn_weekly.drafting.base import NarrativeProvider
+from cytonn_weekly.drafting.drafter import draft_pieces
 from cytonn_weekly.periodic.common import PeriodContext, Stub, compose, period_brief
 from cytonn_weekly.report_types import HALF_YEAR, QUARTERLY
 

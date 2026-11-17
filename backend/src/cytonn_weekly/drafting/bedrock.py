@@ -22,24 +22,12 @@ from cytonn_weekly.common import run_events, source_policy
 from cytonn_weekly.common import sources as source_store
 from cytonn_weekly.review.checks import check_sourced_claim
 from cytonn_weekly.common.run_events import frames
-from cytonn_weekly.digital_payments.providers.base import (
-    OUTLOOK_SYSTEM,
-    DraftingProvider,
-    HighlightResult,
-    OutlookResult,
-    outlook_user_message,
-    strip_links,
-)
-from cytonn_weekly.digital_payments.providers.drafting import (
-    HIGHLIGHT_SYSTEM,
-    RESPONSE_SCHEMA,
-    ClaimReader,
-    highlight_from_reply,
-    narrative_system,
-    piece_from_reply,
-    results_message,
-)
-from cytonn_weekly.narrative.base import NarrativeBrief, NarrativeProvider, SnipReadError
+from cytonn_weekly.drafting.highlight_contract import OUTLOOK_SYSTEM, DraftingProvider, outlook_user_message
+from cytonn_weekly.drafting.results import HighlightResult, OutlookResult, strip_links
+from cytonn_weekly.drafting.prompts import HIGHLIGHT_SYSTEM, RESPONSE_SCHEMA, narrative_system, results_message
+from cytonn_weekly.drafting.replies import ClaimReader, highlight_from_reply, piece_from_reply
+from cytonn_weekly.drafting.reply_models import PdfReply
+from cytonn_weekly.drafting.base import NarrativeBrief, NarrativeProvider, SnipReadError
 
 logger = logging.getLogger(__name__)
 
@@ -637,7 +625,6 @@ class BedrockNarrativeProvider(_Chat, NarrativeProvider):
         if self.last_stop == "max_tokens":
             raise SnipReadError(PDF_CUT_OFF)
         try:
-            passages = json.loads(raw)["passages"]
-        except (ValueError, KeyError, TypeError):
+            return PdfReply.model_validate(json.loads(raw)).passages
+        except ValueError:   # bad JSON, or no "passages" (pydantic's ValidationError is a ValueError)
             raise SnipReadError("The model's reply for this PDF could not be read. Read it again.") from None
-        return [p for p in passages if isinstance(p, dict)] if isinstance(passages, list) else []

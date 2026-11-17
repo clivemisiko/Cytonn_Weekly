@@ -9,8 +9,8 @@ from typing import Any, Callable, Optional, Sequence, Union
 
 from cytonn_weekly.review.blocks import numbered, unavailable_block
 from cytonn_weekly.common.run_events import Observer
-from cytonn_weekly.narrative.base import NarrativeBrief, NarrativeProvider
-from cytonn_weekly.narrative.drafter import draft_pieces
+from cytonn_weekly.drafting.base import NarrativeBrief, NarrativeProvider
+from cytonn_weekly.drafting.drafter import draft_pieces
 from cytonn_weekly.report_types import (
     ANNUAL,
     HALF_YEAR,

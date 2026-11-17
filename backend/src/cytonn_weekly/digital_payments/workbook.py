@@ -488,7 +488,7 @@ def fill_blanks(book: Workbook, today: date, search: Optional[Search] = None) ->
 
 def exa_search(q: Quarter, domains: list[str]) -> list[dict[str, Any]]:
     """The tool's Exa search, limited to ``domains``."""
-    from cytonn_weekly.digital_payments.providers.local_provider import LocalProvider
+    from cytonn_weekly.drafting.local import LocalProvider
 
     results = LocalProvider()._exa_search(f"{q.company} {q.label} results net income", date(2000 + (_qkey(q.label) or (0, 1))[0], 1, 1), domains)
     return [{"url": r.get("url", ""), "title": r.get("title", ""), "text": r.get("text", "")} for r in results]

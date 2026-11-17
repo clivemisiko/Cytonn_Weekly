@@ -9,9 +9,9 @@ from cytonn_weekly.review.blocks import ROMAN, build_review, check_section, narr
 from cytonn_weekly.common.computed import carried_block
 from cytonn_weekly.common.run_events import PART_SKIPPED, PIECE_FINISHED, PIECE_STARTED, Observer, emit
 from cytonn_weekly.review.model import CoordinatorReview
-from cytonn_weekly.narrative.base import NarrativeBrief, NarrativeProvider, NothingDrafted
-from cytonn_weekly.narrative.drafter import draft_pieces
-from cytonn_weekly.narrative.factory import get_narrative_provider
+from cytonn_weekly.drafting.base import NarrativeBrief, NarrativeProvider, NothingDrafted
+from cytonn_weekly.drafting.drafter import draft_pieces
+from cytonn_weekly.drafting.factory import get_narrative_provider
 from cytonn_weekly.weekly import previous_issue as previous_issue_mod
 from cytonn_weekly.weekly.prose import try_fetch
 

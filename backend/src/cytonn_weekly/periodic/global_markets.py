@@ -16,7 +16,7 @@ from typing import Optional
 from cytonn_weekly.review.blocks import build_review, check_section, narrative_block
 from cytonn_weekly.common.run_events import Observer, report_blocks
 from cytonn_weekly.review.model import CoordinatorReview
-from cytonn_weekly.narrative.base import NarrativeProvider
+from cytonn_weekly.drafting.base import NarrativeProvider
 from cytonn_weekly.periodic.common import PeriodContext, compose, draft_period, period_brief
 from cytonn_weekly.report_types import ANNUAL, HALF_YEAR, QUARTERLY
 

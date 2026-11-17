@@ -11,8 +11,8 @@ from cytonn_weekly.review.checks import check_sourced_claim, normalise_quote
 from cytonn_weekly.review.blocks import _claim_context as block_claim_context
 from cytonn_weekly.review.model import SOURCE_KEYS
 from cytonn_weekly.digital_payments.review_run import _claim_context as dp_claim_context
-from cytonn_weekly.narrative import bedrock_provider as bp
-from cytonn_weekly.narrative.base import NarrativeBrief
+from cytonn_weekly.drafting import bedrock as bp
+from cytonn_weekly.drafting.base import NarrativeBrief
 from tests.section_helpers import TODAY, FakeNarrativeProvider, real_estate_review
 
 SOURCE = ("The Central Bank of Kenya said private sector credit grew by 8.75% in the year to September 2026, "

@@ -8,7 +8,8 @@ and test_digital_payments_providers.py.  No network access.
 from datetime import date
 
 from cytonn_weekly.digital_payments import highlights as dh
-from cytonn_weekly.digital_payments.providers.base import DraftingProvider, HighlightResult, OutlookResult
+from cytonn_weekly.drafting.highlight_contract import DraftingProvider
+from cytonn_weekly.drafting.results import HighlightResult, OutlookResult
 
 TODAY = date(2026, 9, 29)
 

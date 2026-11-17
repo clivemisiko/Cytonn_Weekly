@@ -62,7 +62,7 @@ from cytonn_weekly import db as database
 from cytonn_weekly.common import gather as source_gather
 from cytonn_weekly.common import sources as source_store
 from cytonn_weekly.env import key_override_warnings, load_env
-from cytonn_weekly.narrative import bedrock_provider
+from cytonn_weekly.drafting import bedrock as bedrock_provider
 from cytonn_weekly.notable.registry import Detector
 from cytonn_weekly.weekly import cbk_bulletin, cbk_rates
 

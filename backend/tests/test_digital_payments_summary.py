@@ -14,7 +14,7 @@ from review_helpers import LocalFakeProvider, make_review
 from cytonn_weekly.review import model as cr
 from cytonn_weekly.review import store as rs
 from cytonn_weekly.digital_payments import summary as sm
-from cytonn_weekly.digital_payments.providers.base import LINK_RE
+from cytonn_weekly.drafting.results import LINK_RE
 
 VISA_LINKED = (
     "During the week, Visa [announced a thing](https://investor.visa.com/a) and "

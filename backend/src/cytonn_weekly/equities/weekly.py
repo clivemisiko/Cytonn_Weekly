@@ -58,8 +58,8 @@ from cytonn_weekly.equities import companies
 from cytonn_weekly.equities import fetcher as afx
 from cytonn_weekly.equities.review_run import BRIEFS
 from cytonn_weekly.fixed_income.weekly import _carried
-from cytonn_weekly.narrative.base import NarrativeProvider
-from cytonn_weekly.narrative.drafter import draft_pieces
+from cytonn_weekly.drafting.base import NarrativeProvider
+from cytonn_weekly.drafting.drafter import draft_pieces
 from cytonn_weekly.weekly import analyst, cbk_bulletin, cbk_rates, equities_workbook, fi_workbook, kcb, nse_price_list, previous_issue
 from cytonn_weekly.weekly.inputs import WeeklyInputs
 from cytonn_weekly.weekly.prose import (

@@ -152,7 +152,7 @@ def test_bad_claim_figure_is_flagged():
 def test_tampered_index_figure_is_flagged():
     from cytonn_weekly.review.blocks import build_review, check_section
     from cytonn_weekly.equities.review_run import compose
-    from cytonn_weekly.narrative.drafter import draft_pieces
+    from cytonn_weekly.drafting.drafter import draft_pieces
 
     content = compose(market(), draft_pieces(BRIEFS, 3, provider=FakeNarrativeProvider(), today=TODAY))
     content["blocks"][0]["rows"][0]["ytd_pct"] = "32.2%"

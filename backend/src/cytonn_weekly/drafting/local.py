@@ -45,22 +45,10 @@ import httpx
 
 from cytonn_weekly import env
 from cytonn_weekly.common import atomic
-from cytonn_weekly.digital_payments.providers.base import (
-    OUTLOOK_SYSTEM,
-    SCOPE_IR,
-    SCOPE_WEB,
-    DraftingProvider,
-    HighlightResult,
-    OutlookResult,
-    outlook_user_message,
-)
-from cytonn_weekly.digital_payments.providers.drafting import (
-    CONTEXT_CHARS_PER_RESULT,
-    HIGHLIGHT_SYSTEM,
-    RESPONSE_SCHEMA,
-    highlight_from_reply,
-    results_message,
-)
+from cytonn_weekly.drafting.highlight_contract import OUTLOOK_SYSTEM, DraftingProvider, outlook_user_message
+from cytonn_weekly.drafting.results import SCOPE_IR, SCOPE_WEB, HighlightResult, OutlookResult
+from cytonn_weekly.drafting.prompts import CONTEXT_CHARS_PER_RESULT, HIGHLIGHT_SYSTEM, RESPONSE_SCHEMA, results_message
+from cytonn_weekly.drafting.replies import highlight_from_reply
 
 MODEL = "phi4-mini"
 DRAFTED_BY = f"local:{MODEL}"
@@ -219,7 +207,7 @@ def model_label(model: str) -> str:
     return "-".join([name, *parts])
 
 
-_HIGHLIGHT_SYSTEM = HIGHLIGHT_SYSTEM   # shared with the Bedrock provider: digital_payments/providers/drafting.py
+_HIGHLIGHT_SYSTEM = HIGHLIGHT_SYSTEM   # shared with the Bedrock provider: drafting/prompts.py
 _RESPONSE_SCHEMA = RESPONSE_SCHEMA
 
 

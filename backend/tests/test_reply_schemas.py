@@ -5,9 +5,9 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from cytonn_weekly.digital_payments.providers import drafting
-from cytonn_weekly.narrative import bedrock_provider as bp
-from cytonn_weekly.narrative.base import NarrativeBrief
+from cytonn_weekly.drafting import prompts
+from cytonn_weekly.drafting import bedrock as bp
+from cytonn_weekly.drafting.base import NarrativeBrief
 
 # The schemas are hand-written and sent to the model as they are. Any change to a key, its order or its wording changes
 # the hash, so a move or a refactor cannot alter what the model is asked for without this test failing.
@@ -16,7 +16,7 @@ HASHES = {
     "SOURCED_SCHEMA": "c7b4beb77783aca2de369c2c1ed42ca4cc4ec3cc3e176b38370dea2ecacc7ad5",
     "PDF_SCHEMA": "5a3db88aee39d84f3a17f7534b484746fd654ccc8855e772fc135030cf74717c",
 }
-SCHEMAS = {"RESPONSE_SCHEMA": drafting.RESPONSE_SCHEMA, "SOURCED_SCHEMA": bp.SOURCED_SCHEMA, "PDF_SCHEMA": bp.PDF_SCHEMA}
+SCHEMAS = {"RESPONSE_SCHEMA": prompts.RESPONSE_SCHEMA, "SOURCED_SCHEMA": bp.SOURCED_SCHEMA, "PDF_SCHEMA": bp.PDF_SCHEMA}
 PAGE = {"id": "a1b2c3d4", "url": "https://investor.example.com/news", "title": "Release", "text": "Visa paid $5 million.",
         "publishedDate": "2026-09-29", "sha256": "f" * 64, "fetched_at": "2026-11-06T10:00:00+00:00",
         "host": "investor.example.com", "origin": "pasted", "flags": []}

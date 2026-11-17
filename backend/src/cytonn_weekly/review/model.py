@@ -203,6 +203,6 @@ def rejected_draft_notes(previous: Optional[CoordinatorReview]) -> Optional[dict
     return {"run_id": previous.run_id, "decided_at": previous.decided_at, "entries": entries}
 
 
-# What a claim quoted from a supplied source adds (narrative/bedrock_provider.py): the quote, which source it is and when
+# What a claim quoted from a supplied source adds (drafting/bedrock.py): the quote, which source it is and when
 # it was saved. Only a claim that has them carries them, so every other claim's context is as it always was.
 SOURCE_KEYS = ("source_id", "sha256", "fetched_at", "host", "published_date", "origin", "source_flags")

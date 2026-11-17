@@ -235,7 +235,7 @@ def test_the_search_key_check_is_local_modes_alone(client, monkeypatch):
     # bedrock never searches with Exa from the model's side, so no Exa key is asked for (conftest leaves none set)
     assert client.get("/api/config").json()["provider_problem"] is None
     assert client.post("/api/sections/equities/draft").status_code == 200
-    from cytonn_weekly.digital_payments.provider_factory import ANTHROPIC_REMOVED
+    from cytonn_weekly.drafting.factory import ANTHROPIC_REMOVED
 
     monkeypatch.setenv("CYTONN_LLM_PROVIDER", "anthropic")   # not a mode any more: the removal sentence, not an Exa key message
     assert client.get("/api/config").json()["provider_problem"] == ANTHROPIC_REMOVED
@@ -254,7 +254,7 @@ def test_an_unset_or_blank_provider_refuses_every_draft_before_anything_starts(a
     monkeypatch.setattr(eq_weekly, "build_equities_weekly_review", lambda *a, **k: called.append(1))
     client = TestClient(create_app(db_path=db, load_dotenv=False, draft_stale_after=STALE_AFTER, clock=clock,
                                    search_sources=lambda *a, **k: searched.append(1) or []))
-    from cytonn_weekly.digital_payments.provider_factory import NOT_CONFIGURED
+    from cytonn_weekly.drafting.factory import NOT_CONFIGURED
 
     for r in (client.post("/api/sections/equities/draft"),
               client.post("/api/runs", json={"section": "equities"}),

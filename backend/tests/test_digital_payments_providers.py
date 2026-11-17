@@ -11,11 +11,11 @@ import httpx
 import pytest
 
 from cytonn_weekly.digital_payments import highlights as dh
-from cytonn_weekly.digital_payments import provider_factory
-from cytonn_weekly.digital_payments.providers.base import DraftingProvider
-from cytonn_weekly.narrative.bedrock_provider import BedrockProvider
+from cytonn_weekly.drafting import factory as provider_factory
+from cytonn_weekly.drafting.highlight_contract import DraftingProvider
+from cytonn_weekly.drafting.bedrock import BedrockProvider
 from cytonn_weekly import env
-from cytonn_weekly.digital_payments.providers.local_provider import EXA_KEY_MISSING, LocalProvider, SearchKeyError
+from cytonn_weekly.drafting.local import EXA_KEY_MISSING, LocalProvider, SearchKeyError
 
 TODAY = date(2026, 9, 29)
 START, END = date(2026, 9, 23), TODAY
@@ -35,7 +35,7 @@ def test_factory_builds_bedrock_when_asked_for_it(monkeypatch, capsys):
 
 def test_both_factories_and_provider_problem_refuse_the_removed_anthropic_provider(monkeypatch):
     from api.deps import provider_problem
-    from cytonn_weekly.narrative.factory import get_narrative_provider
+    from cytonn_weekly.drafting.factory import get_narrative_provider
 
     monkeypatch.setenv("CYTONN_LLM_PROVIDER", "anthropic")
     for make in (provider_factory.get_provider, get_narrative_provider):
@@ -48,7 +48,7 @@ def test_both_factories_and_provider_problem_refuse_the_removed_anthropic_provid
 
 @pytest.mark.parametrize("value", [None, "", "   "])
 def test_both_factories_refuse_when_the_provider_is_unset_or_blank(monkeypatch, value):
-    from cytonn_weekly.narrative.factory import get_narrative_provider
+    from cytonn_weekly.drafting.factory import get_narrative_provider
 
     if value is None:
         monkeypatch.delenv("CYTONN_LLM_PROVIDER", raising=False)
@@ -375,8 +375,8 @@ def test_draft_highlights_and_outlook_carry_drafted_by_from_the_provider():
 # ---------------------------------------------------------------------------
 
 def test_local_prompt_uses_the_shared_genuine_announcement_test():
-    from cytonn_weekly.digital_payments.providers import local_provider as lp
-    from cytonn_weekly.digital_payments.providers.base import GENUINE_ANNOUNCEMENT, NOT_GENUINE
+    from cytonn_weekly.drafting import local as lp
+    from cytonn_weekly.drafting.highlight_contract import GENUINE_ANNOUNCEMENT, NOT_GENUINE
 
     assert GENUINE_ANNOUNCEMENT in lp._HIGHLIGHT_SYSTEM and NOT_GENUINE in lp._HIGHLIGHT_SYSTEM
     assert "NOT a genuine" in lp._HIGHLIGHT_SYSTEM
@@ -390,7 +390,7 @@ GEMMA = "gemma4:26b-a4b-it-qat"
 
 
 def test_model_label_shortens_ollama_tags():
-    from cytonn_weekly.digital_payments.providers.local_provider import model_label
+    from cytonn_weekly.drafting.local import model_label
 
     assert model_label("phi4-mini") == "phi4-mini"
     assert model_label("phi4-mini:latest") == "phi4-mini"
@@ -554,7 +554,7 @@ def _requests_for(model, models=None):
 
 @pytest.mark.parametrize("model", ["openbmb/minicpm5-2b", "openbmb/minicpm5-2b:latest", "minicpm5-2b:q8_0"])
 def test_minicpm5_2b_gets_the_higher_cap_and_keeps_thinking_on(model):
-    from cytonn_weekly.digital_payments.providers import local_provider as lp
+    from cytonn_weekly.drafting import local as lp
 
     highlight, outlook = _requests_for(model)
     for call in (highlight, outlook):
@@ -565,7 +565,7 @@ def test_minicpm5_2b_gets_the_higher_cap_and_keeps_thinking_on(model):
 
 @pytest.mark.parametrize("model", ["phi4-mini", "phi4-mini:latest", GEMMA, "gemma4:latest", "openbmb/minicpm5"])
 def test_other_models_requests_are_unchanged_at_the_default_cap(model):
-    from cytonn_weekly.digital_payments.providers import local_provider as lp
+    from cytonn_weekly.drafting import local as lp
 
     highlight, outlook = _requests_for(model)
     # Exactly the default request shape: no extra keys, the 2048 cap.

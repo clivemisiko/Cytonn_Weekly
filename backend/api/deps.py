@@ -13,14 +13,14 @@ from cytonn_weekly.common import sources as source_store
 from cytonn_weekly.common.run_events import RUN_STARTED, current_observer, describe, frames, redact, review_counts, safe_describe, user_message
 from cytonn_weekly.review import store as review_store
 from cytonn_weekly.review.model import CoordinatorReview
-from cytonn_weekly.digital_payments.provider_factory import ENV_VAR as PROVIDER_ENV_VAR
-from cytonn_weekly.digital_payments.provider_factory import ANTHROPIC_REMOVED, NOT_CONFIGURED
-from cytonn_weekly.digital_payments.providers.local_provider import EXA_KEY_ENV_VAR, EXA_KEY_MISSING, SearchKeyError
+from cytonn_weekly.drafting.factory import ENV_VAR as PROVIDER_ENV_VAR
+from cytonn_weekly.drafting.factory import ANTHROPIC_REMOVED, NOT_CONFIGURED
+from cytonn_weekly.drafting.local import EXA_KEY_ENV_VAR, EXA_KEY_MISSING, SearchKeyError
 from cytonn_weekly.focus.review_run import clean_sections, clean_topic
 from cytonn_weekly import db as database
 from cytonn_weekly import notable
-from cytonn_weekly.narrative import bedrock_provider
-from cytonn_weekly.narrative.base import NothingDrafted
+from cytonn_weekly.drafting import bedrock as bedrock_provider
+from cytonn_weekly.drafting.base import NothingDrafted
 from cytonn_weekly.report_sections import DraftContext, SectionSpec, companion_kinds, section_slug, spec_for
 from cytonn_weekly.source_pieces import pieces_for
 from cytonn_weekly.report_types import COMPANION, TYPES, WEEKLY, PeriodError, normalize_period, week_ending_of
