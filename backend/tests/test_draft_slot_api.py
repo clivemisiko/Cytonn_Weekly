@@ -269,7 +269,7 @@ def test_an_unset_or_blank_provider_refuses_every_draft_before_anything_starts(a
 
 @pytest.mark.parametrize("provider", ["local", "bedrock"])
 def test_each_explicit_provider_still_gets_past_the_provider_check(client, monkeypatch, provider):
-    from api.main import provider_problem
+    from api.deps import provider_problem
 
     monkeypatch.setenv("CYTONN_LLM_PROVIDER", provider)
     monkeypatch.setenv("EXA_API_KEY", "test-placeholder-not-a-real-key")
