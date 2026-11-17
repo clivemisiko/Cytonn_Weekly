@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from api.main import create_app
 from cytonn_weekly.equities import weekly as equities
 from cytonn_weekly.fixed_income import weekly as fixed_income
-from cytonn_weekly.common.review import build_review, check_section
+from cytonn_weekly.review.blocks import build_review, check_section
 from cytonn_weekly.weekly import chart_uploads, export, inputs
 from cytonn_weekly.weekly.week import Week
 from cytonn_weekly.report_sections import BY_SLUG

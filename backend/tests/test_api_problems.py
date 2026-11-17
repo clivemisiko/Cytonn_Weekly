@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 import api.main as api_main
 from api.main import create_app
 from api.problems import PROBLEMS, TARGETS, ProblemError
-from cytonn_weekly.digital_payments import review_store as rs
+from cytonn_weekly.review import store as rs
 from cytonn_weekly.equities import weekly as eq_weekly
 from cytonn_weekly.weekly import inputs as weekly_inputs
 from tests import section_helpers as sh

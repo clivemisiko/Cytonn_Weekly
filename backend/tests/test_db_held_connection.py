@@ -14,7 +14,7 @@ from psycopg import errors as pg_errors
 
 from cytonn_weekly import db as database
 from cytonn_weekly import sections
-from cytonn_weekly.digital_payments import review_store
+from cytonn_weekly.review import store as review_store
 from cytonn_weekly.notable import store as notable_store
 from cytonn_weekly.report_sections import latest_runs
 from tests.review_helpers import make_review

@@ -24,7 +24,7 @@ import pytest
 
 from cytonn_weekly.common.formatting import PCT, fmt_value, pct_change, round_half_up
 from cytonn_weekly.digital_payments import fetcher as dp_fetcher
-from cytonn_weekly.digital_payments.coordinator_review import CLEAN
+from cytonn_weekly.review.model import CLEAN
 from cytonn_weekly.fixed_income import cbk_auctions
 from cytonn_weekly.periodic import digital_payments as periodic_dp
 from cytonn_weekly.periodic import fixed_income

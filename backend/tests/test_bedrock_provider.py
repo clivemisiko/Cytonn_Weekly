@@ -20,15 +20,15 @@ from api.main import create_app
 from api.serialize import is_dev_draft
 from cytonn_weekly import env
 from cytonn_weekly.digital_payments.delivery import is_dev_mode_review
-from cytonn_weekly.digital_payments.provider_factory import get_provider
-from cytonn_weekly.digital_payments.providers import drafting
-from cytonn_weekly.digital_payments.providers.base import DraftingProvider
-from cytonn_weekly.digital_payments.providers.local_provider import EXA_KEY_MISSING, LocalProvider
-from cytonn_weekly.narrative import bedrock_provider as bp
-from cytonn_weekly.narrative.base import NarrativeBrief, NarrativeProvider
-from cytonn_weekly.narrative.drafter import draft_pieces
-from cytonn_weekly.narrative.factory import get_narrative_provider
-from cytonn_weekly.narrative.local_provider import LocalNarrativeProvider
+from cytonn_weekly.drafting.factory import get_provider
+from cytonn_weekly.drafting import prompts, replies
+from cytonn_weekly.drafting.highlight_contract import DraftingProvider
+from cytonn_weekly.drafting.local import EXA_KEY_MISSING, LocalProvider
+from cytonn_weekly.drafting import bedrock as bp
+from cytonn_weekly.drafting.base import NarrativeBrief, NarrativeProvider
+from cytonn_weekly.drafting.drafter import draft_pieces
+from cytonn_weekly.drafting.factory import get_narrative_provider
+from cytonn_weekly.drafting.local_narrative import LocalNarrativeProvider
 from tests.review_helpers import make_review
 from tests.section_helpers import TODAY, focus_review
 
@@ -156,8 +156,8 @@ def _imports(module):
 
 
 def test_the_bedrock_module_does_not_import_the_local_providers_and_does_not_mention_exa():
-    for module in (bp, drafting):
-        assert not [n for n in _imports(module) if "local_provider" in n], module.__name__
+    for module in (bp, prompts, replies):
+        assert not [n for n in _imports(module) if "drafting.local" in n], module.__name__
         assert not re.search(r"\bexa\b|EXA_|exa_", inspect.getsource(module), re.IGNORECASE), module.__name__
 
 
@@ -165,7 +165,7 @@ def test_the_bedrock_providers_do_not_subclass_either_local_provider():
     for cls, base in ((bp.BedrockProvider, DraftingProvider), (bp.BedrockNarrativeProvider, NarrativeProvider)):
         assert issubclass(cls, base)
         assert not issubclass(cls, (LocalProvider, LocalNarrativeProvider))
-        assert not any(c.__module__.endswith("local_provider") for c in cls.__mro__)
+        assert not any(c.__module__ in ("cytonn_weekly.drafting.local", "cytonn_weekly.drafting.local_narrative") for c in cls.__mro__)
 
 
 # --- a draft ---------------------------------------------------------------------------
@@ -489,7 +489,7 @@ def test_a_focus_with_no_sources_anywhere_stops_with_the_no_sources_sentence(aws
 def test_a_provider_with_no_reason_of_its_own_keeps_the_nothing_qualifying_wording(aws):
     class Quiet(NarrativeProvider):
         def draft_piece(self, brief, *, start, end, today):
-            from cytonn_weekly.digital_payments.providers.base import HighlightResult
+            from cytonn_weekly.drafting.results import HighlightResult
             return HighlightResult(company=brief.label, search_scope=None, ir_domain="", drafted_by="x:y", no_story=True)
 
         def complete(self, system, prompt, *, max_tokens):
@@ -503,10 +503,10 @@ def test_the_shared_warnings_keep_the_search_results_wording_unless_a_provider_n
     reply = json.dumps({"is_genuine_announcement": True, "reasoning": "", "headline": "H", "paragraph": f"A [b]({UNSEEN}) c.",
                         "claims": [{"claim": "c", "url": UNSEEN}]})
     local = []
-    res = drafting.piece_from_reply(reply, BRIEF, "web", [dict(PAGE)], [], who="m", label="l", drafted_by="x:y")
+    res = replies.piece_from_reply(reply, BRIEF, "web", [dict(PAGE)], [], who="m", label="l", drafted_by="x:y")
     assert f"link to {UNSEEN} was not in the search results; unlinked" in res.warnings
     assert f"claim cited a URL not in the search results; dropped: {UNSEEN}" in res.warnings
-    res = drafting.piece_from_reply(reply, BRIEF, "supplied", [dict(PAGE)], local, who="m", label="l", drafted_by="x:y",
+    res = replies.piece_from_reply(reply, BRIEF, "supplied", [dict(PAGE)], local, who="m", label="l", drafted_by="x:y",
                                     where="supplied sources")
     assert f"claim cited a URL not in the supplied sources; dropped: {UNSEEN}" in res.warnings
 

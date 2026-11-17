@@ -14,7 +14,7 @@ from datetime import date
 import pytest
 
 from cytonn_weekly.charts import store as chart_store
-from cytonn_weekly.checkers.digital_payments import SOURCES_DISAGREE
+from cytonn_weekly.review.figures import SOURCES_DISAGREE
 from cytonn_weekly.equities import weekly as eqw
 from cytonn_weekly.weekly import inputs, nse_price_list, previous_issue
 from cytonn_weekly.weekly.week import Week

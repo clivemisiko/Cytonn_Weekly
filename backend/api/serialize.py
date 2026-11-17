@@ -11,7 +11,7 @@ Streamlit screen computed on the fly are computed here once:
   write endpoints address it.
 
 Every section except the weekly Digital Payments stores generic blocks whose tables are
-already display-formatted (common/review.py), so ``_serialize_blocks`` passes them
+already display-formatted (review/blocks.py), so ``_serialize_blocks`` passes them
 through; the review's top level is the same shape for every section, plus
 ``section_slug``, ``section_title``, and the report it belongs to (``report_type``,
 ``report_title``, ``period``).
@@ -24,9 +24,7 @@ import re
 from typing import Any
 
 from cytonn_weekly.charts.block import team_chart_chosen
-from cytonn_weekly.digital_payments.coordinator_review import (
-    CLEAN, FIX_NEEDED, FLAGGED, NOT_AUTO_VERIFIED, TABLE_ROW, CoordinatorReview,
-)
+from cytonn_weekly.review.model import CLEAN, FIX_NEEDED, FLAGGED, NOT_AUTO_VERIFIED, TABLE_ROW, CoordinatorReview
 from cytonn_weekly.digital_payments.fetcher import format_table_rows
 from cytonn_weekly.digital_payments.highlights import N_HIGHLIGHTS
 from cytonn_weekly.real_estate.review_run import layout as real_estate_layout

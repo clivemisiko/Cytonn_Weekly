@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from api.main import create_app
 from cytonn_weekly.charts import store
 from cytonn_weekly.charts.block import TEAM_CHART_NOTE, chart_blocks
-from cytonn_weekly.common.review import build_review, check_section
+from cytonn_weekly.review.blocks import build_review, check_section
 from cytonn_weekly.equities import weekly as eq_weekly
 from tests.chart_helpers import FRIDAY, book, day
 from tests.test_charts_block import MISSING_BOOK, QUOTED, STATED

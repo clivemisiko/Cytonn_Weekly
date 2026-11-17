@@ -150,7 +150,7 @@ def main() -> None:
     from api.main import create_app  # noqa: E402
     from cytonn_weekly import paths  # noqa: E402
     from cytonn_weekly.digital_payments import review_run as digital_payments  # noqa: E402
-    from cytonn_weekly.narrative import drafter  # noqa: E402
+    from cytonn_weekly.drafting import drafter
     import chart_demo  # noqa: E402 - e2e/chart_demo.py, beside this file
     import notable_demo  # noqa: E402 - e2e/notable_demo.py, beside this file
     from cytonn_weekly.real_estate import review_run as real_estate  # noqa: E402
@@ -167,7 +167,7 @@ def main() -> None:
 
     from cytonn_weekly.common import sources as source_store  # noqa: E402
     from cytonn_weekly.common.http import Reply  # noqa: E402
-    from cytonn_weekly.narrative import bedrock_provider  # noqa: E402
+    from cytonn_weekly.drafting import bedrock as bedrock_provider
 
     narrative_provider = (lambda: bedrock_provider.BedrockNarrativeProvider(client=BedrockClient())) if VARIANT == "bedrock" else (
         lambda: _E2EProvider())

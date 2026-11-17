@@ -10,7 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.main import create_app
-from cytonn_weekly.digital_payments import review_store
+from cytonn_weekly.review import store as review_store
 from cytonn_weekly.equities import review_run as eq_run
 from cytonn_weekly.equities import weekly as eq_weekly
 from cytonn_weekly.focus import review_run as focus_run
@@ -143,7 +143,7 @@ def test_failed_draft_is_reported_not_saved(client, db, monkeypatch):
 
 
 def test_flagged_table_row_is_marked_in_the_serialized_table(client, db):
-    from cytonn_weekly.common.review import build_review, check_section
+    from cytonn_weekly.review.blocks import build_review, check_section
 
     review = sh.real_estate_review()
     content = review.section

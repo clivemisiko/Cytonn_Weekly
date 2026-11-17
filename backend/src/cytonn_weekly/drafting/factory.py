@@ -17,13 +17,17 @@ Local mode caches each company's Exa results in data/exa_cache/ (one file per
 company per day) so different models can be compared on identical search
 results.  Delete the directory or a file in it, or set CYTONN_EXA_REFRESH=1, to
 force a fresh pull.
+
+get_narrative_provider() reads the same switch for every section after Digital Payments: "bedrock" gives
+BedrockNarrativeProvider and "local" gives LocalNarrativeProvider, with the same DEV MODE banner.
 """
 
 from __future__ import annotations
 
 import os
 
-from cytonn_weekly.digital_payments.providers.base import DraftingProvider
+from cytonn_weekly.drafting.base import NarrativeProvider
+from cytonn_weekly.drafting.highlight_contract import DraftingProvider
 from cytonn_weekly.paths import DATA_DIR
 
 ENV_VAR = "CYTONN_LLM_PROVIDER"
@@ -56,7 +60,7 @@ def provider_name() -> str:
 def get_provider() -> DraftingProvider:
     name = provider_name()
     if name == "local":
-        from cytonn_weekly.digital_payments.providers.local_provider import MODEL, LocalProvider
+        from cytonn_weekly.drafting.local import MODEL, LocalProvider
 
         model = (os.environ.get(LOCAL_MODEL_ENV_VAR) or "").strip() or MODEL
         refresh = (os.environ.get(EXA_REFRESH_ENV_VAR) or "").strip().lower() in ("1", "true", "yes")
@@ -65,7 +69,24 @@ def get_provider() -> DraftingProvider:
         print(f"\n{banner}\n{warning}\n{banner}\n", flush=True)
         return LocalProvider(model=model, cache_dir=EXA_CACHE_DIR, refresh_cache=refresh)
     if name == "bedrock":
-        from cytonn_weekly.narrative.bedrock_provider import BedrockProvider
+        from cytonn_weekly.drafting.bedrock import BedrockProvider
 
         return BedrockProvider()
+    raise ValueError(f"Unknown {ENV_VAR} value {name!r}; expected 'bedrock' or 'local'.")
+
+
+def get_narrative_provider() -> NarrativeProvider:
+    name = provider_name()
+    if name == "local":
+        from cytonn_weekly.drafting.local import MODEL
+        from cytonn_weekly.drafting.local_narrative import LocalNarrativeProvider
+
+        model = (os.environ.get(LOCAL_MODEL_ENV_VAR) or "").strip() or MODEL
+        warning = local_warning(model)
+        print(f"\n{'*' * len(warning)}\n{warning}\n{'*' * len(warning)}\n", flush=True)
+        return LocalNarrativeProvider(model=model)
+    if name == "bedrock":
+        from cytonn_weekly.drafting.bedrock import BedrockNarrativeProvider
+
+        return BedrockNarrativeProvider()
     raise ValueError(f"Unknown {ENV_VAR} value {name!r}; expected 'bedrock' or 'local'.")

@@ -6,8 +6,8 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
 from cytonn_weekly.charts import store as chart_store
 from cytonn_weekly.charts.block import set_team_chart
-from cytonn_weekly.digital_payments import review_store
-from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview, rejected_draft_notes
+from cytonn_weekly.review import store as review_store
+from cytonn_weekly.review.model import CoordinatorReview, rejected_draft_notes
 from cytonn_weekly.report_sections import section_slug
 from cytonn_weekly.report_types import WEEKLY
 from cytonn_weekly.weekly import inputs as weekly_inputs

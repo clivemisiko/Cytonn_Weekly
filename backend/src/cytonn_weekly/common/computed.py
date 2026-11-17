@@ -15,7 +15,7 @@ figure is recorded beside the paragraph with what it was made from::
                     "offered": {...}}}]}
 
 The checking policy, applied to every such figure (and to table rows that say where they
-came from; see common/review.py):
+came from; see review/blocks.py):
 
 * **Computed figures carry their source rows and are exact-matched.**  The checker works
   the figure out again from ``inputs`` with ``expr``, rounds it half up to the display
@@ -36,7 +36,7 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from typing import Any, Optional, Union
 
-from cytonn_weekly.checkers.digital_payments import (
+from cytonn_weekly.review.figures import (
     MISMATCH,
     MISSING,
     SOURCES_DISAGREE,

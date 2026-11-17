@@ -18,7 +18,8 @@ from api.deps import failure_message
 from api.main import create_app
 from api.runs import RunRegistry
 from cytonn_weekly.common import run_events as ev
-from cytonn_weekly.digital_payments import review_run, review_store
+from cytonn_weekly.digital_payments import review_run
+from cytonn_weekly.review import store as review_store
 from cytonn_weekly.equities import review_run as eq_run
 from cytonn_weekly.equities import weekly as eq_weekly
 from cytonn_weekly.focus import review_run as focus_run
@@ -295,7 +296,7 @@ OLD_KEY, NEW_KEY = "exa-old-0123456789abcdef-a420", "exa-new-fedcba9876543210-c0
 def test_a_refused_search_key_ends_the_run_with_a_plain_message_and_no_key(client, monkeypatch, tmp_path, caplog, status):
     """Seen live: a stale key in a Windows variable beat .env, Exa answered 401 and the run page showed httpx's text."""
     from cytonn_weekly import env
-    from cytonn_weekly.digital_payments.providers.local_provider import LocalProvider
+    from cytonn_weekly.drafting.local import LocalProvider
 
     dot_env = tmp_path / ".env"
     dot_env.write_text("=".join(["EXA_API_KEY", NEW_KEY]) + "\n", encoding="utf-8")

@@ -23,8 +23,8 @@ from api import cms_publish
 from api.cms_publish import BLOCKED_REASON, UNBLOCK, PublishNotAllowed, local_pieces, publish_report
 from api.main import create_app
 from cytonn_weekly import db as database
-from cytonn_weekly.digital_payments import review_store
-from cytonn_weekly.digital_payments.coordinator_review import APPROVED, REJECTED
+from cytonn_weekly.review import store as review_store
+from cytonn_weekly.review.model import APPROVED, REJECTED
 from cytonn_weekly.periodic import executive_summary
 from tests import periodic_helpers as ph
 from tests.route_helpers import every_route
@@ -249,7 +249,7 @@ def test_the_stub_imports_nothing_that_could_reach_out():
             imported |= {a.name for a in node.names}
         elif isinstance(node, ast.ImportFrom):
             imported.add(node.module)
-    assert imported == {"__future__", "typing", "cytonn_weekly.digital_payments.coordinator_review",
+    assert imported == {"__future__", "typing", "cytonn_weekly.review.model",
                         "cytonn_weekly.report_sections"}
 
 

@@ -5,8 +5,8 @@ import pytest
 
 from cytonn_weekly.common import run_events
 from cytonn_weekly.common import sources as src
-from cytonn_weekly.narrative import bedrock_provider as bp
-from cytonn_weekly.narrative.base import NarrativeBrief
+from cytonn_weekly.drafting import bedrock as bp
+from cytonn_weekly.drafting.base import NarrativeBrief
 from tests.test_sourced_claims import Client, aws  # noqa: F401 - the fake client and the Bedrock settings fixture
 
 START, END = date(2026, 9, 26), date(2026, 10, 2)

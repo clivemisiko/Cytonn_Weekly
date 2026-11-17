@@ -6,12 +6,12 @@ from datetime import date
 import httpx
 import pytest
 
-from cytonn_weekly.digital_payments.providers.base import SCOPE_PREFERRED
-from cytonn_weekly.narrative import factory
-from cytonn_weekly.narrative.base import NarrativeBrief
-from cytonn_weekly.narrative.bedrock_provider import BedrockNarrativeProvider
-from cytonn_weekly.narrative.drafter import draft_pieces
-from cytonn_weekly.narrative.local_provider import LocalNarrativeProvider
+from cytonn_weekly.drafting.results import SCOPE_PREFERRED
+from cytonn_weekly.drafting import factory
+from cytonn_weekly.drafting.base import NarrativeBrief
+from cytonn_weekly.drafting.bedrock import BedrockNarrativeProvider
+from cytonn_weekly.drafting.drafter import draft_pieces
+from cytonn_weekly.drafting.local_narrative import LocalNarrativeProvider
 from tests.section_helpers import FakeNarrativeProvider
 
 TODAY = date(2026, 10, 2)

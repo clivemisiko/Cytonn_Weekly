@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any, Callable, Optional
 
-from cytonn_weekly.common.review import (
+from cytonn_weekly.review.blocks import (
     build_review,
     check_section,
     narrative_block,
@@ -22,10 +22,10 @@ from cytonn_weekly.common.review import (
     unavailable_block,
 )
 from cytonn_weekly.common.run_events import Observer, fetch_source, report_blocks, report_failed_rows
-from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview
+from cytonn_weekly.review.model import CoordinatorReview
 from cytonn_weekly.equities import fetcher, stubs
-from cytonn_weekly.narrative.base import NarrativeBrief, NarrativeProvider
-from cytonn_weekly.narrative.drafter import draft_pieces
+from cytonn_weekly.drafting.base import NarrativeBrief, NarrativeProvider
+from cytonn_weekly.drafting.drafter import draft_pieces
 
 SECTION = "equities"
 TITLE = "Equities"

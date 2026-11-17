@@ -20,13 +20,21 @@ from typing import Any, Callable, Optional
 from cytonn_weekly.common import sources as source_store
 from cytonn_weekly.common.computed import PLAIN_PCT, carried_block, computed_block
 from cytonn_weekly.common.formatting import PRICE
-from cytonn_weekly.common.review import build_review, check_section, grouped, narrative_block, numbered, table_block, unavailable_block
+from cytonn_weekly.review.blocks import (
+    build_review,
+    check_section,
+    grouped,
+    narrative_block,
+    numbered,
+    table_block,
+    unavailable_block,
+)
 from cytonn_weekly.common.run_events import Observer, fetch_source, report_blocks
-from cytonn_weekly.digital_payments import review_store
-from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview
-from cytonn_weekly.narrative.base import NarrativeBrief, NarrativeProvider
-from cytonn_weekly.narrative.drafter import draft_pieces
-from cytonn_weekly.narrative.factory import get_narrative_provider
+from cytonn_weekly.review import store as review_store
+from cytonn_weekly.review.model import CoordinatorReview
+from cytonn_weekly.drafting.base import NarrativeBrief, NarrativeProvider
+from cytonn_weekly.drafting.drafter import draft_pieces
+from cytonn_weekly.drafting.factory import get_narrative_provider
 from cytonn_weekly.real_estate import fetcher, snips
 from cytonn_weekly.weekly import previous_issue as issues
 from cytonn_weekly.weekly.prose import Figures, published, try_fetch

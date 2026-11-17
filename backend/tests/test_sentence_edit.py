@@ -7,8 +7,8 @@ from fastapi.testclient import TestClient
 from api.main import create_app
 from api.problems import PROBLEMS
 from api.serialize import is_dev_draft, serialize_review
-from cytonn_weekly.common.review import CLAIM, build_review, check_section
-from cytonn_weekly.digital_payments import review_store as rs
+from cytonn_weekly.review.blocks import CLAIM, build_review, check_section
+from cytonn_weekly.review import store as rs
 from cytonn_weekly.equities import weekly as eq_weekly
 from cytonn_weekly.fixed_income import weekly as fi_weekly
 from cytonn_weekly.weekly import sentence_edit as se

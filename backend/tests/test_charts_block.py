@@ -10,11 +10,11 @@ from cytonn_weekly.charts.block import (AVERAGE, CHART_ITEM, CHART_SCOPE, DEFECT
                                         SERIES_DEFECT_FLAG, SOURCE, STALE_FLAG, TEAM_CHART_NOTE, chart_blocks, chart_counts,
                                         chart_parts, set_team_chart, team_chart_chosen)
 from cytonn_weekly.charts.store import sha256
-from cytonn_weekly.checkers.digital_payments import MISMATCH, MISSING, SOURCES_DISAGREE
-from cytonn_weekly.common.review import build_review, check_section
+from cytonn_weekly.review.figures import MISMATCH, MISSING, SOURCES_DISAGREE
+from cytonn_weekly.review.blocks import build_review, check_section
 from cytonn_weekly.common.run_events import (CHECK_FINISHED, PART_SKIPPED, PIECE_FINISHED, PIECE_STARTED, SOURCE_FINISHED,
                                              SOURCE_STARTED)
-from cytonn_weekly.digital_payments.coordinator_review import CLEAN, FLAGGED, NOT_AUTO_VERIFIED
+from cytonn_weekly.review.model import CLEAN, FLAGGED, NOT_AUTO_VERIFIED
 from tests.chart_helpers import FRIDAY, book, day, put
 
 # What the invented draft prints, and an AVERAGE cell that agrees with the invented series' mean.

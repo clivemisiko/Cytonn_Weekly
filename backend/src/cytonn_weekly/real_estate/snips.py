@@ -11,7 +11,7 @@ from typing import Any, Callable, Optional
 from cytonn_weekly import paths
 from cytonn_weekly.common import atomic
 from cytonn_weekly.common import sources as source_store
-from cytonn_weekly.common.checks import normalise_quote
+from cytonn_weekly.review.checks import normalise_quote
 from cytonn_weekly.weekly.week import latest_friday
 
 SECTORS = (("industry", "Industry reports"), ("residential", "Residential sector"), ("land", "Land"),
@@ -386,7 +386,7 @@ def confirm(week_end: date, h: str, root: Optional[Path] = None, sources_root: O
     _unconfirm(e, sources_root)
     data, _ = image_bytes(week_end, h, root)
     # With no typed date the snip is saved with the report Friday, so it counts as dated: a draft's date window
-    # (bedrock_provider.within_window) judges it by that day and never flags it "No date on this source".
+    # (drafting/bedrock.within_window) judges it by that day and never flags it "No date on this source".
     src = source_store.from_snip(data, "." + e["ext"], e["text"], LABELS[e["sector"]], week_end,
                                  e["date"] or latest_friday(week_end).isoformat(), e["filename"], root=sources_root,
                                  typed_date=bool(e["date"]))

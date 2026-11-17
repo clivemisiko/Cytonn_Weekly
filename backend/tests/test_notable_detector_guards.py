@@ -122,7 +122,7 @@ def test_no_other_module_imports_the_verifier_except_the_library():
         "import socket",
         "import subprocess",
         "from cytonn_weekly.weekly import inputs",
-        "from cytonn_weekly.digital_payments import review_store",
+        "from cytonn_weekly.review import store as review_store",
         "from cytonn_weekly.equities.weekly import build_equities_weekly_review",
         "from cytonn_weekly.common.formatting import clean_pdf_number",
         "from cytonn_weekly.weekly import export",

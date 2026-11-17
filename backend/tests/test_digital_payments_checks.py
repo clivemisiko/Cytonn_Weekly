@@ -1,4 +1,4 @@
-"""Unit tests for cytonn_weekly.checkers.digital_payments (task 6a).
+"""Unit tests for cytonn_weekly.digital_payments.checks and cytonn_weekly.review.figures (task 6a).
 
 Pure exact-match logic on mocked figures; no network, no LLM.
 """
@@ -7,10 +7,9 @@ from decimal import Decimal
 
 import pytest
 
-from cytonn_weekly.checkers import digital_payments as ck
-from cytonn_weekly.checkers.digital_payments import (
-    MISMATCH, MISSING, NOT_IMPLEMENTED, SOURCES_DISAGREE, UNSOURCED, SourceValue,
-)
+from cytonn_weekly.digital_payments import checks as ck
+from cytonn_weekly.review import figures as fg
+from cytonn_weekly.review.figures import MISMATCH, MISSING, NOT_IMPLEMENTED, SOURCES_DISAGREE, UNSOURCED, SourceValue
 
 
 def src(ticker, price=100.0, prior=90.0, ytd_open=80.0, wow=11.11, ytd=25.0, pe=24.99, error=None):
@@ -35,7 +34,7 @@ def drafted(ticker, price=100.0, prior=90.0, ytd_open=80.0, wow=11.1, ytd=25.0, 
     (2.675, "2.7"), (-1.25, "-1.3"), ("24.99", "25.0"),
 ])
 def test_normalize_one_decimal_rounds_half_up(raw, expected):
-    assert str(ck.normalize(raw, 1)) == expected
+    assert str(fg.normalize(raw, 1)) == expected
 
 
 @pytest.mark.parametrize("raw,val", [
@@ -43,13 +42,13 @@ def test_normalize_one_decimal_rounds_half_up(raw, expected):
     ("−3.4", "-3.4"), ("£870.40", "870.40"), (5, "5"), (Decimal("2.5"), "2.5"),
 ])
 def test_parse_number_strips_display_formatting(raw, val):
-    assert ck.parse_number(raw) == Decimal(val)
+    assert fg.parse_number(raw) == Decimal(val)
 
 
 @pytest.mark.parametrize("bad", ["abc", "", True, None, float("nan"), float("inf"), [1]])
 def test_parse_number_rejects_non_numbers(bad):
     with pytest.raises(ValueError):
-        ck.parse_number(bad)
+        fg.parse_number(bad)
 
 
 # ---------------------------------------------------------------------------
@@ -57,57 +56,57 @@ def test_parse_number_rejects_non_numbers(bad):
 # ---------------------------------------------------------------------------
 
 def test_exact_match_passes():
-    assert ck.check_figure("table", "V", "current_price", 367.79, 367.79, 2) is None
+    assert fg.check_figure("table", "V", "current_price", 367.79, 367.79, 2) is None
 
 
 def test_normalized_equal_passes_25_0_vs_24_99_at_one_decimal():
-    assert ck.check_figure("table", "V", "forward_pe", 25.0, 24.99, 1) is None
+    assert fg.check_figure("table", "V", "forward_pe", 25.0, 24.99, 1) is None
 
 
 def test_formatted_drafted_string_passes_when_equal():
-    assert ck.check_figure("table", "V", "wow_pct", "+1.22%", 1.2199, 2) is None
-    assert ck.check_figure("table", "V", "forward_pe", "25.0x", 24.99, 1) is None
+    assert fg.check_figure("table", "V", "wow_pct", "+1.22%", 1.2199, 2) is None
+    assert fg.check_figure("table", "V", "forward_pe", "25.0x", 24.99, 1) is None
 
 
 def test_no_tolerance_band_off_by_one_display_unit_is_a_mismatch():
-    f = ck.check_figure("table", "V", "forward_pe", 25.1, 24.99, 1)
+    f = fg.check_figure("table", "V", "forward_pe", 25.1, 24.99, 1)
     assert f.kind == MISMATCH and f.expected == "25.0" and f.drafted == 25.1
     assert f.source_value == 24.99 and f.decimals == 1
 
 
 def test_tiny_difference_is_still_a_mismatch_at_display_precision():
-    f = ck.check_figure("table", "V", "current_price", 367.80, 367.79, 2)
+    f = fg.check_figure("table", "V", "current_price", 367.80, 367.79, 2)
     assert f.kind == MISMATCH  # 0.003% apart, still an error
 
 
 def test_drafted_with_extra_precision_is_flagged_with_note():
-    f = ck.check_figure("table", "V", "forward_pe", 24.99, 24.99, 1)
+    f = fg.check_figure("table", "V", "forward_pe", 24.99, 24.99, 1)
     assert f.kind == MISMATCH and "more than the 1 display decimals" in f.message
 
 
 def test_unparseable_drafted_value_is_a_mismatch_flag():
-    f = ck.check_figure("table", "V", "forward_pe", "twenty", 24.99, 1)
+    f = fg.check_figure("table", "V", "forward_pe", "twenty", 24.99, 1)
     assert f.kind == MISMATCH and "unreadable" in f.message
 
 
 def test_absent_drafted_figure_with_source_is_missing():
-    f = ck.check_figure("table", "V", "forward_pe", None, 24.99, 1)
+    f = fg.check_figure("table", "V", "forward_pe", None, 24.99, 1)
     assert f.kind == MISSING and f.expected == "25.0"
 
 
 def test_drafted_figure_with_no_source_is_unsourced():
-    f = ck.check_figure("table", "CRCL", "forward_pe", 56.3, None, 1)
+    f = fg.check_figure("table", "CRCL", "forward_pe", 56.3, None, 1)
     assert f.kind == UNSOURCED
 
 
 @pytest.mark.parametrize("blank", [None, "", "-", "n/a", "n/m", "—"])
 def test_both_blank_passes(blank):
-    assert ck.check_figure("table", "CRCL", "forward_pe", blank, None, 1) is None
+    assert fg.check_figure("table", "CRCL", "forward_pe", blank, None, 1) is None
 
 
 def test_zero_is_a_real_value_not_blank():
-    assert ck.check_figure("table", "V", "wow_pct", 0.0, 0.0, 2) is None
-    assert ck.check_figure("table", "V", "wow_pct", None, 0.0, 2).kind == MISSING
+    assert fg.check_figure("table", "V", "wow_pct", 0.0, 0.0, 2) is None
+    assert fg.check_figure("table", "V", "wow_pct", None, 0.0, 2).kind == MISSING
 
 
 # ---------------------------------------------------------------------------
@@ -115,7 +114,7 @@ def test_zero_is_a_real_value_not_blank():
 # ---------------------------------------------------------------------------
 
 def test_sources_disagree_is_a_distinct_flag_with_all_sources_listed():
-    f = ck.check_figure(
+    f = fg.check_figure(
         "table", "V", "forward_pe", 25.0, 24.99, 1,
         extra_sources=[SourceValue("other-vendor", 27.4)], primary_source="yahoo",
     )
@@ -128,25 +127,25 @@ def test_sources_disagree_is_a_distinct_flag_with_all_sources_listed():
 
 
 def test_sources_disagree_is_raised_even_when_the_draft_matches_one_source():
-    f = ck.check_figure("table", "V", "forward_pe", 27.4, 24.99, 1,
+    f = fg.check_figure("table", "V", "forward_pe", 27.4, 24.99, 1,
                         extra_sources=[SourceValue("other", 27.4)])
     assert f.kind == SOURCES_DISAGREE
 
 
 def test_agreeing_sources_after_normalization_are_not_a_disagreement():
     # 24.99 and 25.04 both normalize to 25.0 at one decimal.
-    assert ck.check_figure("table", "V", "forward_pe", 25.0, 24.99, 1,
+    assert fg.check_figure("table", "V", "forward_pe", 25.0, 24.99, 1,
                            extra_sources=[SourceValue("other", 25.04)]) is None
 
 
 def test_agreeing_sources_but_wrong_draft_is_an_ordinary_mismatch():
-    f = ck.check_figure("table", "V", "forward_pe", 30.0, 24.99, 1,
+    f = fg.check_figure("table", "V", "forward_pe", 30.0, 24.99, 1,
                         extra_sources=[SourceValue("other", 25.04)])
     assert f.kind == MISMATCH
 
 
 def test_blank_extra_source_is_ignored():
-    assert ck.check_figure("table", "V", "forward_pe", 25.0, 24.99, 1,
+    assert fg.check_figure("table", "V", "forward_pe", 25.0, 24.99, 1,
                            extra_sources=[SourceValue("other", None)]) is None
 
 
@@ -227,7 +226,7 @@ def test_expected_outlook_stats_recomputed_from_source_rows():
     assert e["companies_included"] == 3 and e["companies_failed"] == 1
     assert e["advancers"] == 2 and e["decliners"] == 1
     assert float(e["avg_wow_pct"]) == 1.0 and float(e["avg_forward_pe"]) == 20.0
-    assert str(ck.normalize(e["avg_ytd_pct"], 2)) == "2.67"
+    assert str(fg.normalize(e["avg_ytd_pct"], 2)) == "2.67"
 
 
 def test_outlook_stats_matching_the_table_are_clean():
@@ -374,33 +373,33 @@ def test_real_table_style_values_pass():
     ("(0.0%)", "0.0"), ("0.0%", "0.0"), (" (4.0%) ", "-4.0"), ("(12.5)", "-12.5"),
 ])
 def test_parse_number_handles_real_report_formats(raw, val):
-    assert ck.parse_number(raw) == Decimal(val)
+    assert fg.parse_number(raw) == Decimal(val)
 
 
 @pytest.mark.parametrize("bad", ["(-4.0%)", "(", "()", "(abc)", "4.0%)"])
 def test_parse_number_rejects_malformed_parentheses(bad):
     with pytest.raises(ValueError):
-        ck.parse_number(bad)
+        fg.parse_number(bad)
 
 
 def test_parenthesised_negative_matches_a_negative_source():
-    assert ck.check_figure("table", "V", "wow_pct", "(4.0%)", -4.02, 1) is None
+    assert fg.check_figure("table", "V", "wow_pct", "(4.0%)", -4.02, 1) is None
 
 
 def test_parenthesised_value_does_not_match_a_positive_source():
-    f = ck.check_figure("table", "V", "wow_pct", "(4.0%)", 4.02, 1)
+    f = fg.check_figure("table", "V", "wow_pct", "(4.0%)", 4.02, 1)
     assert f.kind == MISMATCH and f.expected == "4.0"
 
 
 def test_plain_positive_percent_does_not_match_a_negative_source():
-    f = ck.check_figure("table", "V", "wow_pct", "4.0%", -4.02, 1)
+    f = fg.check_figure("table", "V", "wow_pct", "4.0%", -4.02, 1)
     assert f.kind == MISMATCH and f.expected == "-4.0"
 
 
 def test_price_and_pe_strings_in_real_format():
-    assert ck.check_figure("table", "V", "current_price", "372.7", 372.65, 1) is None
-    assert ck.check_figure("table", "V", "forward_pe", "15.5x", 15.46, 1) is None
-    assert ck.check_figure("table", "V", "forward_pe", "15.6x", 15.46, 1).kind == MISMATCH
+    assert fg.check_figure("table", "V", "current_price", "372.7", 372.65, 1) is None
+    assert fg.check_figure("table", "V", "forward_pe", "15.5x", 15.46, 1) is None
+    assert fg.check_figure("table", "V", "forward_pe", "15.6x", 15.46, 1).kind == MISMATCH
 
 
 # ---------------------------------------------------------------------------

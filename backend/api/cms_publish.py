@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Any, Iterator, Sequence
 
-from cytonn_weekly.digital_payments.coordinator_review import APPROVED, CoordinatorReview
+from cytonn_weekly.review.model import APPROVED, CoordinatorReview
 from cytonn_weekly.report_sections import section_slug
 
 DEV_PREFIX = "local:"

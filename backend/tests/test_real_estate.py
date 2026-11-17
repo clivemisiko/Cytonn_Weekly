@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 
 from cytonn_weekly.common.http import NotFound
-from cytonn_weekly.common.review import CLAIM
-from cytonn_weekly.digital_payments.coordinator_review import CLEAN, NOT_AUTO_VERIFIED, TABLE_ROW
+from cytonn_weekly.review.blocks import CLAIM
+from cytonn_weekly.review.model import CLEAN, NOT_AUTO_VERIFIED, TABLE_ROW
 from cytonn_weekly.real_estate import fetcher, stubs
 from cytonn_weekly.real_estate.review_run import SECTION, SECTOR_BRIEFS, build_real_estate_review
 from tests.section_helpers import TODAY, FakeNarrativeProvider, real_estate_review, reits

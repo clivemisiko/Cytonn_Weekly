@@ -1,9 +1,9 @@
 from datetime import date
 
 from cytonn_weekly.common import run_events as ev
-from cytonn_weekly.digital_payments.providers.base import HighlightResult
-from cytonn_weekly.narrative.base import NarrativeBrief, NarrativeProvider
-from cytonn_weekly.narrative.drafter import REPEAT, draft_pieces, repeated_url
+from cytonn_weekly.drafting.results import HighlightResult
+from cytonn_weekly.drafting.base import NarrativeBrief, NarrativeProvider
+from cytonn_weekly.drafting.drafter import REPEAT, draft_pieces, repeated_url
 from cytonn_weekly.weekly import previous_issue as pi
 
 TODAY = date(2026, 11, 13)

@@ -3,9 +3,9 @@
 Orchestrates four highlight write-ups (fewer, with a flagged shortfall, if fewer
 genuinely qualify) and the closing outlook paragraph.  The LLM-judgment work -
 finding and drafting one company's story, and drafting the outlook - is done by
-an injected drafting provider (see ``digital_payments.providers``): Anthropic
+an injected drafting provider (see ``drafting``): Anthropic
 (production default) or a local Ollama model (development).  Which one runs is
-chosen by ``provider_factory.get_provider()`` unless a provider is passed in.
+chosen by ``drafting.factory.get_provider()`` unless a provider is passed in.
 
 Each highlight records, for every span of text the provider cited, the exact
 source URL, title and cited text (``claims``) - what the checking layer verifies
@@ -30,12 +30,9 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Optional
 
 from cytonn_weekly.common.run_events import PART_SKIPPED, PIECE_FINISHED, PIECE_STARTED, Observer, emit
-from cytonn_weekly.digital_payments.provider_factory import get_provider
-from cytonn_weekly.digital_payments.providers.base import (
-    OUTLOOK_WORDS,
-    DraftingProvider,
-    word_count as _word_count,
-)
+from cytonn_weekly.drafting.factory import get_provider
+from cytonn_weekly.drafting.highlight_contract import OUTLOOK_WORDS, DraftingProvider
+from cytonn_weekly.drafting.results import word_count as _word_count
 
 N_HIGHLIGHTS = 4
 N_PRIORITY = 4  # the first four of HIGHLIGHT_COMPANIES

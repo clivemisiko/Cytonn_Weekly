@@ -1,9 +1,9 @@
 """Section content and analyst review for every section after Digital Payments.
 
 Reuses the Digital Payments review model as-is: ``ReviewItem`` and
-``CoordinatorReview`` (coordinator_review.py) were already section-agnostic, and
-review_store.py already takes a ``section`` slug.  Only ``build_coordinator_review``
-there is Digital-Payments-shaped (stock table, outlook stats, highlights), so this
+``CoordinatorReview`` (review/model.py) were already section-agnostic, and
+review/store.py already takes a ``section`` slug.  Only ``build_coordinator_review``
+in digital_payments/review_run.py is Digital-Payments-shaped (stock table, outlook stats, highlights), so this
 module is its counterpart for a section made of generic blocks.
 
 Section content (what ``CoordinatorReview.section`` holds, stored once and never
@@ -61,9 +61,9 @@ from __future__ import annotations
 
 from typing import Any, Callable, Optional
 
-from cytonn_weekly.checkers.digital_payments import NOT_IMPLEMENTED, UNSOURCED, CheckReport, Flag
-from cytonn_weekly.checkers.digital_payments import SourceValue
-from cytonn_weekly.common.checks import (
+from cytonn_weekly.review.figures import NOT_IMPLEMENTED, UNSOURCED, CheckReport, Flag
+from cytonn_weekly.review.figures import SourceValue
+from cytonn_weekly.review.checks import (
     CLAIM_SCOPE,
     TABLE_SCOPE,
     UNAVAILABLE_SCOPE,
@@ -84,7 +84,7 @@ from cytonn_weekly.charts.block import CHART_ITEM, CHART_SCOPE, chart_counts, ch
 from cytonn_weekly.common.formatting import format_rows
 from cytonn_weekly.common.links import LINK, find_links
 from cytonn_weekly.common.run_events import CHECK_FINISHED, CHECK_STARTED, Observer, emit
-from cytonn_weekly.digital_payments.coordinator_review import (
+from cytonn_weekly.review.model import (
     CLEAN,
     FLAGGED,
     NOT_AUTO_VERIFIED,
@@ -286,7 +286,7 @@ def check_section(content: dict[str, Any], on_event: Optional[Observer] = None) 
     return report
 
 
-WRITTEN_ROLES = ("lead", "conclusion")   # written from the finished sections: no claims (common/checks.ROLES_WRITTEN_FROM_SECTIONS)
+WRITTEN_ROLES = ("lead", "conclusion")   # written from the finished sections: no claims (review/checks.ROLES_WRITTEN_FROM_SECTIONS)
 WRITTEN_NOTE = ("Written by the model from the section texts, with no search, so it has no cited claim. Its figures were "
                 "compared with the section bodies and nothing else is checked: read it against the sections.")
 

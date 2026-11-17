@@ -80,7 +80,7 @@ class RunStore:
 
     @_safe
     def put_usage(self, run_id: str, usage: dict[str, Any]) -> None:
-        """The draft's ``section["usage"]`` (narrative/bedrock_provider.usage_record), saved against the run."""
+        """The draft's ``section["usage"]`` (drafting/bedrock.usage_record), saved against the run."""
         conn = db.open_db(self.db_path)
         try:
             with conn.transaction():

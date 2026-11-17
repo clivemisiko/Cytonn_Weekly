@@ -13,9 +13,9 @@ from unittest.mock import MagicMock
 import pytest
 from review_helpers import LocalFakeProvider, make_review
 
-from cytonn_weekly.digital_payments import coordinator_review as cr
+from cytonn_weekly.review import model as cr
 from cytonn_weekly.digital_payments import delivery as dl
-from cytonn_weekly.digital_payments import review_store as rs
+from cytonn_weekly.review import store as rs
 from cytonn_weekly.digital_payments import summary as sm
 
 SCRIPT = Path(__file__).parents[1] / "scripts" / "send_weekly_summary.py"

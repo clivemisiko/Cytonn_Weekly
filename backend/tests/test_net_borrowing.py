@@ -31,10 +31,10 @@ from pathlib import Path
 import pytest
 
 from cytonn_weekly import paths
-from cytonn_weekly.checkers.digital_payments import MISSING, SOURCES_DISAGREE
-from cytonn_weekly.common.checks import check_table_block
+from cytonn_weekly.review.figures import MISSING, SOURCES_DISAGREE
+from cytonn_weekly.review.checks import check_table_block
 from cytonn_weekly.common.formatting import round_half_up
-from cytonn_weekly.common.review import build_review, check_section, numbered, second_sources
+from cytonn_weekly.review.blocks import build_review, check_section, numbered, second_sources
 from cytonn_weekly.fixed_income import cbk_auctions as cbk
 from cytonn_weekly.fixed_income import net_borrowing as nb
 from cytonn_weekly.fixed_income import weekly as fiw

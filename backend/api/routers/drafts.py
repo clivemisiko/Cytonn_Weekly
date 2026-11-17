@@ -4,8 +4,8 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from cytonn_weekly.common import sources as source_store
 from cytonn_weekly.digital_payments import review_run
-from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview
-from cytonn_weekly.narrative import bedrock_provider
+from cytonn_weekly.review.model import CoordinatorReview
+from cytonn_weekly.drafting import bedrock as bedrock_provider
 from cytonn_weekly.periodic.executive_summary import SectionsNotApproved
 from cytonn_weekly.source_pieces import pieces_for
 from cytonn_weekly.report_types import TYPES

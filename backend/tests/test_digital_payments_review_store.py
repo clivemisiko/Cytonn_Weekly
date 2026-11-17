@@ -1,4 +1,4 @@
-"""Tests for cytonn_weekly.digital_payments.review_store, against a real SQLite file.
+"""Tests for cytonn_weekly.review.store, against a real SQLite file.
 
 Every test writes to its own temp database built from the project's actual
 cytonn_weekly/schema.sql (via sections.init_db), not a mock.  The reviews come from the real
@@ -12,8 +12,8 @@ from datetime import date
 import pytest
 from review_helpers import make_review
 
-from cytonn_weekly.digital_payments import coordinator_review as cr
-from cytonn_weekly.digital_payments import review_store as rs
+from cytonn_weekly.review import model as cr
+from cytonn_weekly.review import store as rs
 
 
 @pytest.fixture

@@ -4,12 +4,13 @@ import pytest
 
 from dataclasses import replace
 
-from cytonn_weekly.common.review import CLAIM
-from cytonn_weekly.digital_payments.coordinator_review import FLAGGED, NOT_AUTO_VERIFIED
+from cytonn_weekly.review.blocks import CLAIM
+from cytonn_weekly.review.model import FLAGGED, NOT_AUTO_VERIFIED
 from cytonn_weekly.focus.review_run import (
     GUIDE_NOTE, MAX_SECTION_TITLE, build_focus_review, clean_sections, clean_topic, parse_outline, section_brief,
 )
-from cytonn_weekly.digital_payments.providers.drafting import narrative_system, piece_from_reply
+from cytonn_weekly.drafting.prompts import narrative_system
+from cytonn_weekly.drafting.replies import piece_from_reply
 from tests.section_helpers import TODAY, FakeNarrativeProvider, focus_review, previous_issue
 
 TYPED = "Overview\nSection 3: Yields\nRecommendations and Conclusion"

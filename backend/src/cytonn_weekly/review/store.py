@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Optional, Union
 
 from cytonn_weekly import db
-from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview, ReviewItem
+from cytonn_weekly.review.model import CoordinatorReview, ReviewItem
 from cytonn_weekly.report_types import WEEKLY
 
 SECTION = "digital_payments"

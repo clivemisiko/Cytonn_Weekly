@@ -15,12 +15,12 @@ from datetime import date
 
 import pytest
 
-from cytonn_weekly.checkers.digital_payments import MISMATCH, MISSING, SOURCES_DISAGREE, UNSOURCED
+from cytonn_weekly.review.figures import MISMATCH, MISSING, SOURCES_DISAGREE, UNSOURCED
 from cytonn_weekly.common import computed
 from cytonn_weekly.common.computed import ANALYST, BPS, OCR, PLAIN, PLAIN_PCT, POINTS, SOURCE, a_figure, an_input
-from cytonn_weekly.common.checks import check_table_block
+from cytonn_weekly.review.checks import check_table_block
 from cytonn_weekly.common.formatting import MULTIPLE, PCT
-from cytonn_weekly.common.review import build_review, check_section, numbered, table_block
+from cytonn_weekly.review.blocks import build_review, check_section, numbered, table_block
 from cytonn_weekly.common.run_events import EventLog
 from cytonn_weekly.equities import weekly as eqw
 from cytonn_weekly.fixed_income import cbk_auctions

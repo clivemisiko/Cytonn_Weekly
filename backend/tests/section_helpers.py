@@ -8,10 +8,10 @@ Ibuka PDF and CBK's results PDFs on 2026-10-02.
 
 from datetime import date
 
-from cytonn_weekly.digital_payments.providers.base import SCOPE_WEB, HighlightResult
+from cytonn_weekly.drafting.results import SCOPE_WEB, HighlightResult
 from cytonn_weekly.equities.review_run import build_equities_review
 from cytonn_weekly.focus.review_run import build_focus_review
-from cytonn_weekly.narrative.base import NarrativeProvider
+from cytonn_weekly.drafting.base import NarrativeProvider
 from cytonn_weekly.common import sources as source_store
 from cytonn_weekly.real_estate import snips
 from cytonn_weekly.real_estate.review_run import build_real_estate_review
@@ -162,9 +162,9 @@ def focus_review(provider=None, topic="SSA Eurobonds performance", on_event=None
 
 def old_focus_review(provider=None, topic="SSA Eurobonds performance", on_event=None):
     """A Focus as it was saved before the structure existed: one cited piece, a headline and a body, no roles."""
-    from cytonn_weekly.common.review import build_review, check_section, narrative_block, numbered
-    from cytonn_weekly.narrative.base import NarrativeBrief
-    from cytonn_weekly.narrative.drafter import draft_pieces
+    from cytonn_weekly.review.blocks import build_review, check_section, narrative_block, numbered
+    from cytonn_weekly.drafting.base import NarrativeBrief
+    from cytonn_weekly.drafting.drafter import draft_pieces
 
     brief = NarrativeBrief(id="focus", section="Focus of the Week", label=topic, focus=f"recent, sourced data on: {topic}",
                            words=(400, 700), opener=None, max_searches=8)

@@ -15,8 +15,8 @@ import pytest
 from dotenv import dotenv_values
 
 from cytonn_weekly import db as database
-from cytonn_weekly.digital_payments import coordinator_review as cr
-from cytonn_weekly.digital_payments import review_store as rs
+from cytonn_weekly.review import model as cr
+from cytonn_weekly.review import store as rs
 from cytonn_weekly.notable import store as notable_store
 from cytonn_weekly.paths import REPO_ROOT
 from tests.review_helpers import make_review
