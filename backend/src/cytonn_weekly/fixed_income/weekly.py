@@ -1403,7 +1403,8 @@ def build_fixed_income_review(
     blocks += shilling_blocks(inputs, bulletin, rates, week, issue, warnings)
 
     drafted = (draft or draft_pieces)(BRIEFS, N_HIGHLIGHTS, provider=provider, today=today,
-                                      window=(week.ending - timedelta(days=6), week.ending), on_event=on_event)
+                                      window=(week.ending - timedelta(days=6), week.ending), on_event=on_event,
+                                      earlier=previous_issue.digest(issue, "fixed-income"))
     blocks += [narrative_block(f"highlight_{p['brief_id']}", p) for p in drafted["pieces"]]
     blocks.append(_carried(issue, "outlook", "Rates and outlook (closing paragraph)", outlook_text))
     fy_start = inputs.analyst.borrowing()["fy_start"].day

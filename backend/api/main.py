@@ -1278,11 +1278,13 @@ def create_app(
     def snip_view(day: date) -> dict:
         try:
             items = snip_store.list_snips(day, snips_dir)
+            warnings = snip_store.misfiled_lines(day, snips_dir, sources_dir)
         except snip_store.SnipError as exc:
             raise HTTPException(409, str(exc))
         return {"week_ending": day.isoformat(), "sectors": [{"id": i, "label": label} for i, label in snip_store.SECTORS],
                 "max_per_sector": snip_store.MAX_PER_SECTOR, "max_bytes": snip_store.MAX_BYTES,
-                "pdf_max_bytes": snip_store.PDF_MAX_BYTES, "pdf_max_pages": snip_store.PDF_MAX_PAGES, "snips": items}
+                "pdf_max_bytes": snip_store.PDF_MAX_BYTES, "pdf_max_pages": snip_store.PDF_MAX_PAGES, "snips": items,
+                "warnings": warnings}
 
     def snip_guard(day: date, h: str, *also: str) -> None:
         """A confirmed snip is a source of its sector's piece, so none may change while a draft reads that piece."""

@@ -1,5 +1,5 @@
 {
-  "_comment": "Which hosts the gather step may search and read, per section and piece (common/source_policy.py). named: an official or company site. news: a news site; it may back highlights and prose, but table figures come only from the readers (CBK, KCB IB, the NSE price list, the workbooks, the analyst form), never from a page, which is what figures_from_sources false says. never_read: the tool never reads these; the analyst types the value or sends a snip (a page pasted with its text and date is still accepted). A host the analyst adds through the Sources panel is read at once whatever this file says, except never_read. A piece listed under pieces uses that list instead of its section's. In equities a piece named after a company reads that company's own site and hosts from companies.json. Restart the API after editing.",
+  "_comment": "Which hosts the gather step may search and read, per section and piece (common/source_policy.py). named: an official or company site. news: a news site; it may back highlights and prose, but table figures come only from the readers (CBK, KCB IB, the NSE price list, the workbooks, the analyst form), never from a page, which is what figures_from_sources false says. never_read: the tool never reads these; the analyst types the value or sends a snip (a page pasted with its text and date is still accepted). A host the analyst adds through the Sources panel is read at once whatever this file says, except never_read. A piece listed under pieces uses that list instead of its section's. In equities a piece named after a company reads that company's own site and hosts from companies.json, and a piece listed under company_sites may read every company's site and hosts from companies.json as well. Restart the API after editing.",
   "never_read": ["bloomberg.com", "businessdailyafrica.com", "nation.africa", "nation.co.ke"],
   "sections": {
     "fixed_income": {
@@ -8,6 +8,7 @@
     },
     "equities": {
       "titles": ["Listed banks and insurers"],
+      "company_sites": ["Listed company earnings and dividends"],
       "named": ["nse.co.ke", "cma.or.ke", "centralbank.go.ke", "afx.kwayisi.org"],
       "news": {"figures_from_sources": false, "hosts": []}
     },

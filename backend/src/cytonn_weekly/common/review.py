@@ -246,14 +246,14 @@ def check_section(content: dict[str, Any], on_event: Optional[Observer] = None) 
                 counts["flagged" if flags else "not_auto_verified" if note else "clean"] += 1
             emit(on_event, CHECK_FINISHED, b["title"], counts=counts)
         elif b["kind"] == "carried":
-            if not b.get("edits"):
+            if not b.get("edits") and not b.get("guide"):
                 report.flags.append(carried_flag(b))
         elif b["kind"] == "narrative":
             emit(on_event, CHECK_STARTED, b.get("headline", ""))
             claims = b.get("claims") or []
             flagged_claims = 0
             for n, claim in enumerate(claims):
-                flags = check_claim(b["id"], n, claim).flags
+                flags = [] if b.get("guide") else check_claim(b["id"], n, claim).flags   # research notes are never flagged
                 report.flags.extend(flags)
                 flagged_claims += bool(flags)
             piece_flags = check_piece(b, content.get("blocks", []))
@@ -272,7 +272,7 @@ def check_section(content: dict[str, Any], on_event: Optional[Observer] = None) 
             report.flags.extend(chart_flags(b))
             report.checked += 2 if b["status"] == "drawn" else 0      # the last point and the average
             emit(on_event, CHECK_FINISHED, b["title"], counts=chart_counts(b))
-        elif b["kind"] == "unavailable":
+        elif b["kind"] == "unavailable" and not b.get("guide"):
             report.flags.append(Flag(
                 kind=NOT_IMPLEMENTED, scope=UNAVAILABLE_SCOPE, subject=b["id"], field=None,
                 message=(f"{b['title']} is not drafted by the tool. Accept to publish the section without it, "
@@ -377,6 +377,8 @@ def build_review(content: dict[str, Any], report: CheckReport) -> CoordinatorRev
         elif b["kind"] == "carried":
             subject = (CARRIED_SCOPE, b["id"])
             used.add(subject)
+            if b.get("guide"):
+                continue   # a Focus aid that is never exported: its text is shown, and nothing in it needs acknowledging
             ref = f"{b['title']} (carried forward)"
             if b.get("edits"):
                 items.append(ReviewItem(kind=CARRIED_TEXT, ref=ref, status=NOT_AUTO_VERIFIED, detail=EDITED_PARAGRAPH_NOTE,
@@ -392,7 +394,12 @@ def build_review(content: dict[str, Any], report: CheckReport) -> CoordinatorRev
                 used.add(subject)
                 ref = f"{b.get('numeral', '')} {b.get('headline', '')}: {_short(claim.get('text', ''))}".strip()
                 flags = by_subject.get(subject, [])
-                if flags:
+                if b.get("guide"):   # a research note: its check result is shown, but it is never flagged, so it never needs acknowledging
+                    res = check_claim(b["id"], n, claim)
+                    items.append(ReviewItem(kind=CLAIM, ref=ref, status=NOT_AUTO_VERIFIED,
+                                            detail=" ".join(f.message for f in res.flags) or res.note,
+                                            context=_claim_context(claim)))
+                elif flags:
                     items.append(ReviewItem(kind=CLAIM, ref=ref, status=FLAGGED, detail=flags,
                                             context=_claim_context(claim)))
                 else:
@@ -413,7 +420,7 @@ def build_review(content: dict[str, Any], report: CheckReport) -> CoordinatorRev
             elif piece_flags:
                 items.append(ReviewItem(kind=PIECE_CHECK, ref=ref, status=FLAGGED, detail=piece_flags,
                                         context={"text": b.get("body_md", "")}))
-            if not b.get("claims") and b.get("role") not in WRITTEN_ROLES:
+            if not b.get("claims") and b.get("role") not in WRITTEN_ROLES and not b.get("guide"):
                 # A drafted piece with no cited claim at all still needs a human look.
                 items.append(ReviewItem(
                     kind=CLAIM, ref=f"{b.get('numeral', '')} {b.get('headline', '')}".strip(), status=FLAGGED,
@@ -433,8 +440,9 @@ def build_review(content: dict[str, Any], report: CheckReport) -> CoordinatorRev
             subject = (UNAVAILABLE_SCOPE, b["id"])
             used.add(subject)
             items.append(ReviewItem(
-                kind=UNAVAILABLE_PART, ref=f"{b['title']} (not available yet)", status=FLAGGED,
-                detail=by_subject.get(subject) or None,
+                kind=UNAVAILABLE_PART, ref=f"{b['title']} (not available yet)",
+                status=NOT_AUTO_VERIFIED if b.get("guide") else FLAGGED,
+                detail=b["reason"] if b.get("guide") else by_subject.get(subject) or None,
                 context={"text": f"{b['reason']} Unblocked by: {b['unblock']}"},
             ))
     for subject, flags in by_subject.items():

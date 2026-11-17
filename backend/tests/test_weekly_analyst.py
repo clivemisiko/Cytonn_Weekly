@@ -21,7 +21,7 @@ from fastapi.testclient import TestClient
 from api.main import create_app
 from cytonn_weekly.charts.specs import SPECS
 from cytonn_weekly.checkers.digital_payments import SOURCES_DISAGREE
-from cytonn_weekly.weekly import analyst, inputs
+from cytonn_weekly.weekly import analyst, inputs, previous_issue
 from cytonn_weekly.weekly.inputs import InputError
 from cytonn_weekly.weekly.week import Week
 from tests import test_weekly_equities as eq
@@ -353,7 +353,9 @@ def test_the_model_is_handed_nothing_from_the_form(typed_week):
 
     fi.fiw.build_fixed_income_review(WEEK.ending, inputs=inputs.WeeklyInputs(WEEK, typed_week), fetchers=fi.fetchers(), draft=drafting)
     briefs, target, kwargs = seen[0]
-    assert set(kwargs) == {"provider", "today", "window", "on_event"} and briefs is fi.fiw.BRIEFS
+    assert set(kwargs) == {"provider", "today", "window", "on_event", "earlier"} and briefs is fi.fiw.BRIEFS
+    # "earlier" is the previous issue's own section and nothing else, so no form value (liquidity_driver included) can travel in it
+    assert kwargs["earlier"] == previous_issue.digest(fi.ISSUE, "fixed-income")
     typed = json.dumps(analyst.read_form(WEEK, typed_week))
     assert "10.8" in typed and not any("10.8" in str(b) for b in briefs)   # no typed figure is in what the drafter is given
 

@@ -45,6 +45,24 @@ def test_a_company_piece_of_equities_reads_its_own_site_and_nothing_else():
     assert sp.kind_for("equities", company.name, "nse.co.ke") is None
 
 
+def test_the_earnings_piece_reads_every_listed_companys_own_site_as_well_as_the_named_hosts():
+    earnings = "Listed company earnings and dividends"
+    company = next(c for c in companies.load() if c.domain)
+    assert sp.kind_for("equities", earnings, company.domain) == "named"
+    assert sp.kind_for("equities", earnings, "nse.co.ke") == "named"
+    assert company.domain in sp.search_hosts("equities", earnings)
+    assert sp.kind_for("equities", earnings, "example.org") is None
+    assert sp.kind_for("equities", earnings, "bloomberg.com") is None   # never read stays never read
+    assert sp.kind_for("equities", "Corporate actions and deals", company.domain) is None   # the other pieces keep their lists
+
+
+def test_the_regulation_brief_asks_for_rules_that_touch_listed_companies_or_trading():
+    from cytonn_weekly.equities.review_run import BRIEFS
+
+    brief = next(b for b in BRIEFS if b.id == "market_regulation")
+    assert "applies to listed companies or to trading" in brief.focus and "does not qualify" in brief.focus
+
+
 def test_a_never_read_host_is_none_everywhere():
     for slug in SLUGS:
         for host in NEVER:

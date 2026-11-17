@@ -47,8 +47,11 @@ def has_unclear(text: str) -> bool:
     return bool(UNCLEAR.search(text or ""))
 
 
+_DEFAULT_ROOT: Optional[Path] = None   # tests point this at a temp folder, as the sources and charts stores do
+
+
 def _root(root: Optional[Path]) -> Path:
-    return Path(root) if root is not None else paths.DATA_DIR / "inputs" / "snips"
+    return Path(root) if root is not None else _DEFAULT_ROOT or paths.DATA_DIR / "inputs" / "snips"
 
 
 def _folder(week_end: date, root: Optional[Path]) -> Path:
@@ -81,6 +84,54 @@ def _entry(items: list[dict[str, Any]], h: str) -> dict[str, Any]:
 
 def list_snips(week_end: date, root: Optional[Path] = None) -> list[dict[str, Any]]:
     return _load(_folder(week_end, root))
+
+
+NEIGHBOUR_DAYS = 14   # a folder this close to the draft's Friday is named when it holds snips the draft will not read
+
+
+def _name(e: dict[str, Any]) -> str:
+    return f"\"{e.get('filename') or e['hash'][:8]}\""
+
+
+def unconfirmed_lines(items: list[dict[str, Any]]) -> list[str]:
+    """One line per snip that is uploaded and not confirmed: a draft does not read it."""
+    return [f"{LABELS[e['sector']]}: the snip {_name(e)} is uploaded but not confirmed, so this draft does not use it. "
+            "Read and confirm it on the start screen, then draft again." for e in items if not e["confirmed"]]
+
+
+def misfiled_lines(week_end: date, root: Optional[Path] = None, sources_root: Optional[Path] = None) -> list[str]:
+    """Snips the draft will not read although they exist: filed under another Friday within two weeks, and confirmed snips whose
+    saved source is not filed under their sector this week (so that sector's draft does not see them)."""
+    friday = latest_friday(week_end)
+    lines = []
+    base = _root(root)
+    for folder in sorted(base.iterdir()) if base.is_dir() else []:
+        try:
+            other = date.fromisoformat(folder.name)
+        except ValueError:
+            continue
+        if other != friday and abs((other - friday).days) <= NEIGHBOUR_DAYS:
+            held = _load(folder)
+            if held:
+                lines.append(f"{len(held)} {'snip is' if len(held) == 1 else 'snips are'} filed under the week ending {other.isoformat()} "
+                             f"({', '.join(sorted({LABELS[e['sector']] for e in held}))}), not this draft's week ending "
+                             f"{friday.isoformat()}, so {'it is' if len(held) == 1 else 'they are'} not used.")
+    for e in _load(_folder(week_end, root)):
+        if e["confirmed"]:
+            try:
+                saved = {x.id for x in source_store.list_for(LABELS[e["sector"]], friday, sources_root)}
+            except source_store.SourceError as exc:   # a saved file changed: said as it stands
+                lines.append(f"{LABELS[e['sector']]}: {exc}")
+                continue
+            if not set(e.get("source_ids") or [e.get("source_id")]) <= saved:
+                lines.append(f"{LABELS[e['sector']]}: the confirmed snip {_name(e)} has no saved source filed under this sector for "
+                             f"the week ending {friday.isoformat()}, so this draft does not use it. Confirm it again.")
+    return lines
+
+
+def problems(week_end: date, root: Optional[Path] = None, sources_root: Optional[Path] = None) -> list[str]:
+    """Every reason an uploaded snip will not be read by the draft for this week; drafting still goes ahead."""
+    return [*unconfirmed_lines(_load(_folder(week_end, root))), *misfiled_lines(week_end, root, sources_root)]
 
 
 def _file_sha(e: dict[str, Any]) -> str:

@@ -25,17 +25,13 @@ MAX_TOPIC_CHARS = 500
 MAX_SECTIONS = 8
 MAX_SECTION_TITLE = 120
 # The caps that bound a draft's cost (see CLAUDE.md, Focus of the Week).
-SECTION_WORDS = (350, 650)
 SECTION_SEARCHES = 5
-SECTION_MAX_TOKENS = 6000   # a sourced reply is the body (650 words, about 900 tokens) plus every claim and its quote
-LEAD_WORDS = (100, 200)
-LEAD_MAX_TOKENS = 600
+SECTION_MAX_TOKENS = 3000   # findings only: each claim and its quote, no paragraph
 OUTLINE_TITLES = (4, 6)
 OUTLINE_MAX_TOKENS = 300
 
-JUDGEMENT = "Analyst judgement: confirm the recommendations"
-ANALYST_ADDS = "Analyst to add: Cytonn's own tables and charts for this section"
-LEAD_LABEL = "Lead paragraph"
+GUIDE_NOTE = ("Research notes for the analyst to write this section from. They are not report text and are not "
+              "exported; Cytonn's own tables, charts and recommendations are the analyst's.")
 CONTENTS_LABEL = "Contents"
 DISCLAIMER_LABEL = "Disclaimer"
 CLOSING_RE = re.compile(r"conclusion|recommendation", re.I)
@@ -129,69 +125,24 @@ def propose_outline(provider: NarrativeProvider, topic: str, on_event: Optional[
 
 
 # ---------------------------------------------------------------------------
-# The sections, the conclusion and the lead
+# The sections
 # ---------------------------------------------------------------------------
 
 def section_brief(topic: str, titles: Sequence[str], index: int) -> NarrativeBrief:
-    """The brief of section ``index``: the whole title list is in the prompt so the sections do not repeat each other."""
+    """The brief of section ``index``: findings only (claim, verified quote, source), no prose.  The whole title list is in
+    the prompt so the sections do not repeat each other."""
     listing = "\n".join(heading(i, t) for i, t in enumerate(titles))
     return NarrativeBrief(
         id=f"focus_section_{index + 1}", section=TITLE, label=titles[index],
         focus=(f"recent, sourced data and developments on: {topic}, for the section \"{titles[index]}\". Material may be "
                "published before the report week if it is the latest available data on the topic; say when each figure "
                "dates from"),
-        words=SECTION_WORDS, opener=None, max_searches=SECTION_SEARCHES, headed=False, max_tokens=SECTION_MAX_TOKENS,
-        context=("This is one section of a longer report on the topic. The report's sections, in order:\n"
-                 f"{listing}\nWrite only the body of {heading(index, titles[index])}; do not repeat what the other "
-                 f"sections cover. Keep the body within {SECTION_WORDS[0]} to {SECTION_WORDS[1]} words and each quote "
-                 "no longer than its figures need, so the whole reply is complete."),
+        words=(0, 0), opener=None, max_searches=SECTION_SEARCHES, headed=False, max_tokens=SECTION_MAX_TOKENS, findings=True,
+        context=("These findings feed one section of a longer report on the topic. The report's sections, in order:\n"
+                 f"{listing}\nCollect findings only for {heading(index, titles[index])}; do not repeat what the other "
+                 "sections cover. Give 5 to 12 findings and keep each quote no longer than its figures need, so the whole "
+                 "reply is complete."),
     )
-
-
-CLOSING_SYSTEM = f"""\
-You write the closing part of a "Focus of the Week" investment research report on Kenya (formal, third person).
-
-You are given the report's topic and the finished text of its other sections. Write the closing part from those texts \
-alone: {SECTION_WORDS[0]}-{SECTION_WORDS[1]} words of prose in paragraphs separated by blank lines.
-- Introduce no new figure, date, name or factual claim: restate and draw together only what the sections say.
-- Recommendations are conditional and plainly worded; do not state a rating (no NEUTRAL, POSITIVE or NEGATIVE).
-- No headline, no heading of any kind (no line starting with #), no links, no lists.
-"""
-
-LEAD_SYSTEM = f"""\
-You write the opening paragraph of a "Focus of the Week" investment research report on Kenya (formal, third person).
-
-You are given the report's topic, its section titles and the finished text of its sections. Write ONE paragraph of \
-{LEAD_WORDS[0]}-{LEAD_WORDS[1]} words that says what the report covers and why it matters now.
-- Use only what the sections say; introduce no figure that is not in them.
-- No headline, no heading of any kind, no links, no lists, no contents list.
-"""
-
-
-def _plain(text: str) -> str:
-    """A model's plain-text reply as paragraphs: lines starting with # dropped, whitespace tidied."""
-    lines = [ln.rstrip() for ln in (text or "").splitlines() if not ln.lstrip().startswith("#")]
-    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
-
-
-def _words(text: str) -> int:
-    return len(text.split())
-
-
-def _written_block(block_id: str, role: str, headline: str, body: str, words: tuple[int, int], provider: NarrativeProvider,
-                   topic: str, **more: Any) -> dict[str, Any]:
-    """A narrative block the model wrote from other text, with no search: no claims, no links.  Its checks are block-level."""
-    warnings = [f"body is {_words(body)} words, outside {words[0]}-{words[1]}"] if not words[0] <= _words(body) <= words[1] else []
-    return narrative_block(block_id, {
-        "brief_id": block_id, "topic": topic, "headline": headline, "body": body, "body_md": body, "links": [],
-        "claims": [], "warnings": warnings, "search_scope": None, "preferred_domains": [],
-        "drafted_by": provider.drafted_by, "role": role, **more})
-
-
-def _sections_message(topic: str, titles: Sequence[str], blocks: Sequence[dict[str, Any]]) -> str:
-    parts = [f"Topic: {topic}", "Sections:\n" + "\n".join(heading(i, t) for i, t in enumerate(titles))]
-    parts += [f"{b['group_heading']}\n{b['body']}" for b in blocks if b.get("body")]
-    return "\n\n".join(parts)
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +167,7 @@ def disclaimer_block(issue: Optional[previous_issue_mod.Issue], problem: str = "
     if issue is None:
         return {**unavailable_block("focus_disclaimer", DISCLAIMER_LABEL,
                                     "The previous issue could not be read from cytonnreport.com, so there is no disclaimer to "
-                                    f"carry forward.{' ' + problem if problem else ''}", paste), "role": "disclaimer", "numeral": ""}
+                                    f"carry forward.{' ' + problem if problem else ''}", paste), "role": "disclaimer", "numeral": "", "guide": True}
     items = sorted(issue.sections.items(), key=lambda i: not _is_focus(*i))   # the Focus first, then any other section
     for slug, sec in items:
         text = next((p for p in previous_issue_mod.html_paragraphs(sec["body"]) if p.lower().startswith("disclaimer:")), None)
@@ -230,10 +181,10 @@ def disclaimer_block(issue: Optional[previous_issue_mod.Issue], problem: str = "
         if not _is_focus(slug, sec):
             source["section"] = slug
             source["note"] = f"taken from the {sec['name'] or slug} section of issue {issue.issue_id}, not from its Focus of the Week"
-        return {**carried_block("focus_disclaimer", DISCLAIMER_LABEL, text, source), "role": "disclaimer", "numeral": ""}
+        return {**carried_block("focus_disclaimer", DISCLAIMER_LABEL, text, source), "role": "disclaimer", "numeral": "", "guide": True}
     return {**unavailable_block("focus_disclaimer", DISCLAIMER_LABEL,
                                 f"The previous issue (cytonnreport.com issue {issue.issue_id}) has no paragraph starting "
-                                "\"Disclaimer:\".", paste), "role": "disclaimer", "numeral": ""}
+                                "\"Disclaimer:\".", paste), "role": "disclaimer", "numeral": "", "guide": True}
 
 
 # ---------------------------------------------------------------------------
@@ -292,40 +243,22 @@ def build_focus_review(topic: str, provider: Optional[NarrativeProvider] = None,
 
     blocks: list[dict[str, Any]] = []
     for i, title in enumerate(searched):
-        head = {"role": "section", "numeral": ROMAN[i], "group_heading": heading(i, title), "headline": title}
+        head = {"numeral": ROMAN[i], "group_heading": heading(i, title)}
         piece = drafted.get(f"focus_section_{i + 1}")
         if piece:
-            blocks.append(narrative_block(f"focus_section_{i + 1}", {**piece, **head, "analyst_note": ANALYST_ADDS}))
+            blocks.append(narrative_block(f"focus_section_{i + 1}", {**piece, **head, "role": "findings", "guide": True, "headline": title,
+                                                                     "analyst_note": GUIDE_NOTE}))
         else:
             reason = skipped.get(f"focus_section_{i + 1}") or f"Nothing qualifying was found for \"{title}\"."
             blocks.append({**unavailable_block(f"focus_section_{i + 1}", title, reason,
                                                "Write the section by hand, or draft again with other section titles."),
-                           "role": "section", "numeral": ROMAN[i], "group_heading": heading(i, title)})
-    if closing:
-        i = len(titles) - 1
-        emit(on_event, PIECE_STARTED, titles[i])
-        text = _plain(provider.complete(CLOSING_SYSTEM, _sections_message(topic, titles, blocks), max_tokens=SECTION_MAX_TOKENS))
-        model_calls += 1
-        head = {"numeral": ROMAN[i], "group_heading": heading(i, titles[i]), "analyst_note": ANALYST_ADDS}
-        blocks.append(_written_block(f"focus_section_{i + 1}", "conclusion", titles[i], text, SECTION_WORDS, provider, titles[i], **head)
-                      if text else {**unavailable_block(f"focus_section_{i + 1}", titles[i], "The model returned no text for this part.",
-                                                        "Write it by hand, or draft again."), "role": "conclusion",
-                                    "numeral": ROMAN[i], "group_heading": heading(i, titles[i])})
-        emit(on_event, PIECE_FINISHED, titles[i], detail=titles[i])
-
-    emit(on_event, PIECE_STARTED, LEAD_LABEL)
-    lead = _plain(provider.complete(LEAD_SYSTEM, _sections_message(topic, titles, blocks), max_tokens=LEAD_MAX_TOKENS))
-    model_calls += 1
-    emit(on_event, PIECE_FINISHED, LEAD_LABEL, detail=LEAD_LABEL)
-    lead_block = (_written_block("focus_lead", "lead", LEAD_LABEL, lead, LEAD_WORDS, provider, topic, numeral="") if lead else
-                  {**unavailable_block("focus_lead", LEAD_LABEL, "The model returned no text for the lead paragraph.",
-                                       "Write it by hand, or draft again."), "role": "lead", "numeral": ""})
+                           "role": "section", "guide": True, **head})
 
     problems: list[str] = []
     issue = try_fetch(on_event, "Previous issue on cytonnreport.com", previous_issue or _default_previous, today, problems=problems)
-    blocks = [lead_block, contents_block(titles), *blocks, disclaimer_block(issue, problems[0] if problems else "")]
+    blocks = [contents_block(titles), *blocks, disclaimer_block(issue, problems[0] if problems else "")]
     api_requests = None if requests_before is None else getattr(provider, "requests", 0) - requests_before
-    content = compose(topic, titles, outline, draft, blocks, 1 + len(titles),
+    content = compose(topic, titles, outline, draft, blocks, len(searched),
                       {"model_calls": model_calls, "api_requests": api_requests})
     emit(on_event, PIECE_FINISHED, CONTENTS_LABEL)
     for b in blocks:   # a section with nothing to draft was reported by draft_pieces; these parts were not

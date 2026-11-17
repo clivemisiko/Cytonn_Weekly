@@ -45,8 +45,10 @@ BRIEFS: list[NarrativeBrief] = [
     ),
     NarrativeBrief(
         id="market_regulation", section=TITLE, label="Capital markets regulation",
-        focus=("a policy, rule or market-structure change announced by the Capital Markets Authority or the "
-               "Nairobi Securities Exchange"),
+        focus=("a rule or market-structure change announced by the Capital Markets Authority or the Nairobi "
+               "Securities Exchange that applies to listed companies or to trading on the exchange, such as listing, "
+               "disclosure, trading, settlement or market-conduct rules; a consultation or rule on another topic does "
+               "not qualify"),
         preferred_domains=("cma.or.ke", "nse.co.ke"),
     ),
 ]
