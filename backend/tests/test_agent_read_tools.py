@@ -48,7 +48,7 @@ def items(form):
 def test_every_tool_name_is_one_the_messages_api_accepts():
     import re
 
-    assert len(BY_NAME) == len(READ_TOOLS) == 10
+    assert len(BY_NAME) == len(READ_TOOLS) == 11
     assert all(re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", n) for n in BY_NAME)
 
 
@@ -135,7 +135,7 @@ def test_draft_status_follows_this_sections_newest_run(env):
     run = env.runs.start("weekly", PERIOD, "equities", "Equities", "Weekly report")
     run.record("source_started", "CBK bulletin")
     got = env.use("draft_status")
-    assert got["state"] == "running" and got["events"][-1]["label"] == "CBK bulletin"
+    assert (got["state"], got["source"]) == ("running", "live") and got["events"][-1]["label"] == "CBK bulletin"
     assert env.use("draft_status", section="fixed_income") == {"state": "none"}   # another section's run is not this conversation's
 
 

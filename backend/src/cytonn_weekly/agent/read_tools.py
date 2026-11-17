@@ -5,11 +5,13 @@ from typing import Any, Literal, Optional
 
 from cytonn_weekly import report_sections, source_pieces
 from cytonn_weekly.agent.tools import Params, Refused, Tool, ToolContext
+from cytonn_weekly.agent import readiness
 from cytonn_weekly.common import source_policy
 from cytonn_weekly.common import sources as source_store
 from cytonn_weekly.real_estate import snips as snip_store
 from cytonn_weekly.report_types import WEEKLY, week_ending_of
 from cytonn_weekly.review import store as review_store
+from cytonn_weekly.run_store import ACTIVE, INTERRUPTED, RunStore
 from cytonn_weekly.weekly import analyst as weekly_analyst
 from cytonn_weekly.weekly import export as weekly_export
 from cytonn_weekly.weekly import inputs as weekly_inputs
@@ -132,17 +134,42 @@ def snips_list(args: NoParams, ctx: ToolContext) -> dict[str, Any]:
                         for sid, label in snip_store.SECTORS]}
 
 
+# --- week_status -------------------------------------------------------------------------------
+
+def week_status(args: NoParams, ctx: ToolContext) -> dict[str, Any]:
+    section = ctx.job["section"]
+    if ctx.job["report_type"] != WEEKLY or report_sections.spec_for(WEEKLY, section) is None:
+        raise Refused("There is no weekly readiness check for this conversation.")
+    week = _week(ctx)
+    form = weekly_analyst.status(week, ctx.root, section) if section in FORM_SECTIONS else None
+    got = readiness.classify(section, weekly_inputs.status(week, ctx.root), form)
+    # Real Estate and Focus have parts the two functions above do not cover: counts only, no verdict (nothing says what is enough).
+    if section == "real_estate":
+        got["snips"] = snips_list(args, ctx)["sectors"]
+    if section in ("real_estate", "focus"):
+        found = sources_list(SourcesList(), ctx)["sources"]
+        got["sources"] = {"total": len(found), "in_week": sum(1 for s in found if s["in_week"]),
+                          "outside_week": sum(1 for s in found if s["in_week"] is False)}
+        got["note"] = "The snip and source counts are as they are: this check does not say whether they are enough."
+    return got
+
+
 # --- draft.status, review.summary, review.explain, export.status -----------------------------
 
 def draft_status(args: NoParams, ctx: ToolContext) -> dict[str, Any]:
-    if ctx.runs is None:
-        raise Refused("Draft runs are not available in this conversation.")
     key = (ctx.job["report_type"], ctx.job["period"], ctx.job["section"])
-    run = next((r for r in ctx.runs.latest_by_key() if r.key == key), None)
-    if run is None:
+    run = next((r for r in ctx.runs.latest_by_key() if r.key == key), None) if ctx.runs is not None else None
+    if run is not None:
+        got = run.to_dict()
+        return {"state": got["status"], "source": "live", "review_id": got["review_id"], "is_dev_draft": got["is_dev_draft"],
+                "events": got["events"][-12:]}
+    stored = RunStore(ctx.db_path).latest_for(*key)   # after a restart, or once the registry has dropped an old run
+    if stored is None:
         return {"state": "none"}
-    got = run.to_dict()
-    return {"state": got["status"], "review_id": got["review_id"], "is_dev_draft": got["is_dev_draft"], "events": got["events"][-12:]}
+    row, events = stored
+    return {"state": INTERRUPTED if row["status"] in ACTIVE else row["status"], "source": "saved_record",
+            "note": "The live run is gone from memory; this is the record saved in the database.", "review_id": row["review_id"],
+            "is_dev_draft": None if row["is_dev_draft"] is None else bool(row["is_dev_draft"]), "events": [e.to_dict() for e in events[-12:]]}
 
 
 def _review(ctx: ToolContext):
@@ -186,6 +213,7 @@ def export_status(args: NoParams, ctx: ToolContext) -> dict[str, Any]:
 
 # --- the list ---------------------------------------------------------------------------------
 
+_ENTRY = ("kind", "key", "label", "why")
 _REVIEW_ITEM = ("index", "kind", "ref", "status", "resolution")
 READ_TOOLS = [
     Tool("inputs_list", "List the week's uploaded files per input: received or not, the date read from each, whether it fits the week, "
@@ -207,8 +235,16 @@ READ_TOOLS = [
          SitesSuggest, sites_suggest, {"section": None, "piece": None, "hosts": ("host", "kind")}),
     Tool("snips_list", "Count the week's Real Estate snips per sector: uploaded, read and confirmed.", NoParams, snips_list,
          {"sectors": ("sector", "uploaded", "read", "confirmed")}),
-    Tool("draft_status", "Say where this section's draft run is: its state and its latest steps.", NoParams, draft_status,
-         {"state": None, "review_id": None, "is_dev_draft": None, "events": ("seq", "kind", "label", "detail", "at")}),
+    Tool("week_status", "Say what this section still needs for the week: what is fetched, what is carried or suggested and not yet "
+         "confirmed, what needs the analyst, what is optional, and what is in place. For Real Estate and Focus it also gives snip "
+         "and source counts, with no verdict.", NoParams, week_status,
+         {"section": None, "week_ending": None, "counts": readiness.GROUPS, "note": None,
+          "groups": dict.fromkeys(readiness.GROUPS, _ENTRY),
+          "snips": ("sector", "uploaded", "read", "confirmed"), "sources": ("total", "in_week", "outside_week")}),
+    Tool("draft_status", "Say where this section's draft run is: its state and its latest steps. 'source' says whether it is the live "
+         "run or a saved record.", NoParams, draft_status,
+         {"state": None, "source": None, "note": None, "review_id": None, "is_dev_draft": None,
+          "events": ("seq", "kind", "label", "detail", "at")}),
     Tool("review_summary", "Summarise this section's saved draft review: the counts by status and every item that is flagged or not "
          "automatically verified.", NoParams, review_summary,
          {"review_id": None, "decision": None, "decided_at": None, "counts": ("flagged", "not_auto_verified", "clean"), "items": _REVIEW_ITEM}),

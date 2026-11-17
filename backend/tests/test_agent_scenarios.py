@@ -40,10 +40,12 @@ def converse(env, section, question, *replies):
 
 # 1. A missing input: the equities workbook was never uploaded.
 def test_a_missing_upload_is_shown_as_not_received(env):
-    said, client, shown = converse(env, "equities", "What is missing?", call(("inputs_list", {})),
+    said, client, shown = converse(env, "equities", "What is missing?", call(("inputs_list", {}), ("week_status", {})),
                                    say("The equities workbook has not been uploaded."))
     slot = next(s for s in shown["inputs_list"][0]["slots"] if s["slug"] == "equities_workbook")
     assert (slot["received"], slot["file"], slot["optional"]) == (False, None, False)
+    missing = next(e for e in shown["week_status"][0]["groups"]["needs_analyst"] if e["key"] == "equities_workbook")
+    assert (missing["kind"], missing["why"]) == ("upload", "not uploaded")
     assert said == "The equities workbook has not been uploaded."
 
 
@@ -89,7 +91,10 @@ def test_a_typed_figure_that_differs_from_the_workbook_is_reported_with_both_val
 
 # 5. The Bloomberg P/E is nowhere: not typed and not in a workbook.
 def test_a_p_e_that_nobody_supplied_is_shown_empty_with_where_it_comes_from(env):
-    _, _, shown = converse(env, "equities", "What do you still need?", call(("form_get", {})), say("The P/E, from Bloomberg."))
+    _, _, shown = converse(env, "equities", "What do you still need?", call(("form_get", {}), ("week_status", {})),
+                           say("The P/E, from Bloomberg."))
+    needed = {e["key"]: e["why"] for e in shown["week_status"][0]["groups"]["needs_analyst"]}
+    assert needed["pe"] == "nothing typed and no workbook value" and "pe_average" in needed
     pe = items(shown["form_get"][0])["pe"]
     assert (pe["has_value"], pe["has_workbook_value"], pe["value"]) == (False, False, None)
     assert (pe["source"], pe["used_in"]) == ("Bloomberg NASI P/E", "Valuation") and shown["form_get"][0]["workbooks"]["equities"] is False
