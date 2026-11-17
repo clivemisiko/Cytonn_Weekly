@@ -59,6 +59,8 @@ class NarrativeBrief:
     headed: bool = True
     context: str = ""
     max_tokens: Optional[int] = None
+    # True: a source with no date is left out (and said so) instead of kept with the "No date on this source" flag.
+    dated_only: bool = False
 
 
 class SnipReadError(RuntimeError):

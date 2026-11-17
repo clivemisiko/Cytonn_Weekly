@@ -275,7 +275,8 @@ def by_policy(results: list[dict[str, Any]], section: str, label: str) -> tuple[
     return kept, notes
 
 
-def within_window(results: list[dict[str, Any]], label: str, start: date, end: date) -> tuple[list[dict[str, Any]], list[str]]:
+def within_window(results: list[dict[str, Any]], label: str, start: date, end: date,
+                  dated_only: bool = False) -> tuple[list[dict[str, Any]], list[str]]:
     """The sources a draft may read: those dated from ``start`` to ``end`` (the window the draft gives the provider), and
     the sentences saying which were left out.
 
@@ -288,10 +289,16 @@ def within_window(results: list[dict[str, Any]], label: str, start: date, end: d
     observer = run_events.current_observer.get()
     for r in results:
         day = _day(r.get("publishedDate"))
-        if day is None:
+        if day is None and dated_only:
+            title, host = " ".join(str(r.get("title") or r.get("host") or "this source").split()), r.get("host") or "an unknown site"
+            notes.append(f"{label}: the source \"{title}\" from {host} has no date, so the model was not shown it. If it has one, "
+                         "remove it and add it again with its date.")
+            run_events.emit(observer, run_events.SOURCE_LEFT_OUT, title,
+                            detail=f"From {host}, no date, so it was not used for {label}.")
+        elif day is None:
             flags = list(r.get("flags") or [])
             kept.append({**r, "flags": flags if source_store.NO_DATE_FLAG in flags else [*flags, source_store.NO_DATE_FLAG]})
-        elif start <= day <= end:
+        elif r.get("origin") == "snip" or start <= day <= end:   # a confirmed snip is the analyst's own choice: its date is shown, not judged
             kept.append(r)
         else:
             title, host = " ".join(str(r.get("title") or r.get("host") or "this source").split()), r.get("host") or "an unknown site"
@@ -591,7 +598,7 @@ class BedrockNarrativeProvider(_Chat, NarrativeProvider):
         empty = HighlightResult(company=brief.label, search_scope=None, ir_domain=", ".join(brief.preferred_domains),
                                 drafted_by=self.drafted_by, no_story=True)
         results, policy_notes = by_policy(sources_for(brief.label, end), brief.section, brief.label)
-        results, notes = within_window(results, brief.label, start, end)
+        results, notes = within_window(results, brief.label, start, end, brief.dated_only)
         notes = [*policy_notes, *notes]
         if not results:
             empty.draft_warnings = [*notes, f"{brief.label}: {NO_SOURCES}"]

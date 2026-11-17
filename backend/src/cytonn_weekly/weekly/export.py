@@ -376,7 +376,8 @@ def _add_blocks(doc, review: CoordinatorReview, charts_root: Optional[Union[Path
             _chart(doc, caption, charts.get(caption), review, charts_root, (uploads or {}).get(caption))
 
     placed: set[str] = set()
-    for block in real_estate_layout(section, WEEKLY):
+    layout = list(real_estate_layout(section, WEEKLY))
+    for n, block in enumerate(layout):
         kind = block["kind"]
         if block.get("export") is False:
             continue   # shown on the review screen only; its content is inside another block's table
@@ -403,8 +404,9 @@ def _add_blocks(doc, review: CoordinatorReview, charts_root: Optional[Union[Path
         elif kind == "computed" and block.get("role") == "contents":
             _add_text(doc, block["body_md"])   # the Focus's contents list: plain lines, one per paragraph
         elif kind == "computed":
-            doc.add_heading(block["title"], level=2)
-            _add_text(doc, block["body_md"])
+            if not block.get("continues"):   # a sentence that continues the carried paragraph before it is printed there
+                doc.add_heading(block["title"], level=2)
+                _add_text(doc, block["body_md"])
             names = [s["name"] for s in block.get("sources") or [] if s.get("name")]
             if names:
                 small_line(doc, "Source: " + "; ".join(names))
@@ -421,7 +423,8 @@ def _add_blocks(doc, review: CoordinatorReview, charts_root: Optional[Union[Path
             if not block.get("edits"):   # a paragraph the reviewer rewrote (sentence_edit.apply_paragraph) is no longer carried text
                 note = _mark(doc, CARRIED_NOTE)
                 note.bold, note.font.color.rgb = True, _RED
-            _add_text(doc, block["body_md"])
+            after = layout[n + 1] if n + 1 < len(layout) else {}
+            _add_text(doc, block["body_md"] + (" " + after["body_md"] if after.get("continues") == block["id"] else ""))
         elif kind == "supplied":
             if len(section.get("blocks", [])) > 1:
                 doc.add_heading(block["title"], level=2)

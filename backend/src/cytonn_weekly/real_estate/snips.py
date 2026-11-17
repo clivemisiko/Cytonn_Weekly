@@ -336,7 +336,8 @@ def confirm(week_end: date, h: str, root: Optional[Path] = None, sources_root: O
     # With no typed date the snip is saved with the report Friday, so it counts as dated: a draft's date window
     # (bedrock_provider.within_window) judges it by that day and never flags it "No date on this source".
     src = source_store.from_snip(data, "." + e["ext"], e["text"], LABELS[e["sector"]], week_end,
-                                 e["date"] or latest_friday(week_end).isoformat(), e["filename"], root=sources_root)
+                                 e["date"] or latest_friday(week_end).isoformat(), e["filename"], root=sources_root,
+                                 typed_date=bool(e["date"]))
     e["confirmed"], e["source_id"] = True, src.id
     _save(folder, items)
     return e
@@ -357,7 +358,7 @@ def _confirm_pdf(week_end: date, folder: Path, items: list[dict[str, Any]], e: d
         by_page.setdefault(p["page"], []).append(p["quote"])
     ids = [source_store.from_snip(None, "", "\n\n".join(quotes), LABELS[e["sector"]], week_end,
                                   e["date"] or latest_friday(week_end).isoformat(), f"{e['filename']}, uploaded PDF, page {n}",
-                                  page=n, file_sha=e["file_sha"], root=sources_root).id
+                                  page=n, file_sha=e["file_sha"], root=sources_root, typed_date=bool(e["date"])).id
            for n, quotes in sorted(by_page.items())]
     e["confirmed"], e["source_id"], e["source_ids"] = True, ids[0], ids
     _save(folder, items)

@@ -900,3 +900,20 @@ def test_the_label_carries_forward_and_is_used_at_once(tmp_path):
     assert "mmf_source" in done["carried"] and "mmf_source" not in done["unconfirmed"]
     assert source_label(tmp_path, NEXT) == "Invented Paper"
     assert analyst.status(NEXT, tmp_path)["unconfirmed"] == []
+
+
+def test_the_liquidity_driver_is_the_teams_own_words_printed_and_marked_as_analyst_input(typed_week):
+    clause = "partly attributable to tax payments that offset government payments"
+    assert clause not in blocks(fi.build(typed_week))["liquidity"]["body_md"]     # nothing is written by the tool
+    save(typed_week, {"liquidity_driver": f"  {clause}. "})
+    block = blocks(fi.build(typed_week))["liquidity"]
+    assert f", {clause}." in block["body_md"] and ".." not in block["body_md"]
+    assert any(clause in n and "analyst input typed on the weekly form" in n for n in block["notes"])
+    assert analyst.read_form(WEEK, typed_week)["fields"]["liquidity_driver"] == f"{clause}."   # trimmed; kept as typed
+
+
+def test_the_liquidity_driver_is_one_line_of_at_most_200_characters_and_is_not_carried_forward(tmp_path):
+    save(tmp_path, {"liquidity_driver": "x" * 200})
+    assert "at most 200 characters" in refused(tmp_path, {"liquidity_driver": "x" * 201})
+    assert "one line" in refused(tmp_path, {"liquidity_driver": "one\ntwo"})
+    assert "liquidity_driver" not in analyst.SLOW_FIELDS + analyst.WEEKLY_FIELDS

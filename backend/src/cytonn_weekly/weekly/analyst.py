@@ -82,6 +82,7 @@ MAX_ROWS = 400
 MAX_NAME = 120
 MIN_FUNDS = 5   # the Top 5 average needs five funds
 MAX_LABEL = 60
+MAX_CAUSE = 200   # the liquidity driver: one clause, longer than a label
 MMF_READ_FROM = "Daily Nation e-paper"   # the investments team, 2026-10-30
 MMF_SOURCE_DEFAULT = "Daily Nation"      # printed under the fund table: the Daily Nation e-paper (Ryan, 2026-10-19)
 
@@ -124,6 +125,7 @@ class Field:
     lo: Optional[float] = None
     hi: Optional[float] = None
     scale: int = 1            # the workbook holds the typed value divided by this (100 for a percentage)
+    max_chars: int = MAX_LABEL   # a text item's longest value
 
 
 @dataclass(frozen=True)
@@ -178,6 +180,10 @@ FIELD_LIST = (
     Field("mmf_source", FI, "money_market", "Fund table source label", MMF_READ_FROM, "The source line under the fund table",
           "The table is copied from the e-paper issue of that Friday, or of the last working day of the week. Funds the team "
           "keeps its own rate for are typed like any other row.", kind=TEXT),
+    Field("liquidity_driver", FI, "liquidity", "What drove liquidity this week (optional)", "The fixed income team's own reading",
+          "Liquidity", "Optional. Type it as a clause that continues the first sentence of the Liquidity paragraph, for example "
+          "\"partly attributable to tax payments that offset government payments\". It is printed as typed and is the team's own "
+          "view: the tool never writes a cause itself, and it is not carried to the next week.", kind=TEXT, max_chars=MAX_CAUSE),
     Field("borrowing_target", FI, "borrowing", "Net domestic borrowing target for the fiscal year",
           "Exchequer releases (National Treasury)", "Net domestic borrowing against the pro-rated target",
           "The full-year target from the Exchequer releases. It changes only when the National Treasury issues revised "
@@ -283,7 +289,7 @@ TABLES = {t.key: t for t in TABLE_LIST}
 
 # The workbook reading each item comes from (the key its error is kept under), for the "why it is missing" wording.
 _READING = {"placements": "placements", "cmmf_last_week": "cmmf_last_week", "mmf_published": "mmf", "mmf": "mmf",
-            "mmf_source": "mmf_source",
+            "mmf_source": "mmf_source", "liquidity_driver": "liquidity_driver",
             "interbank": "interbank", "eurobond_issues": "eurobonds", "eurobond_yields": "eurobonds",
             "remittances": "remittances", "borrowing_target": "borrowing", "borrowing_log": "borrowing",
             "fiscal_year_start": "borrowing", "borrowing_redemptions": "borrowing",
@@ -688,8 +694,8 @@ def clean_field(spec: Field, raw: Any, week: Week) -> Any:
     if not text:
         return None
     if spec.kind == TEXT:
-        if len(text) > MAX_LABEL or "".join(str(raw).splitlines()) != str(raw):
-            raise InputError(f"{spec.label}: type one line of at most {MAX_LABEL} characters.")
+        if len(text) > spec.max_chars or "".join(str(raw).splitlines()) != str(raw):
+            raise InputError(f"{spec.label}: type one line of at most {spec.max_chars} characters.")
         return text
     value = clean_date(text, spec.label) if spec.kind == DATE else clean_number(text, spec, spec.label)
     _check_field(spec, value, week)
@@ -980,7 +986,7 @@ class Analyst:
 
     def wb_field(self, key: str) -> Any:
         """The uploaded workbook's cell for a field (a list of cells for the large-cap list), or None."""
-        if key == "mmf_source":
+        if key in ("mmf_source", "liquidity_driver"):
             return None
         if key == "placements":
             return self._read(FI, key, fi_workbook.read_placements)
