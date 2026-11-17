@@ -46,8 +46,8 @@ flowchart TB
         FETCH["Table fetchers and input readers<br/>CBK, KCB, NSE OCR, workbooks"]
         GATHER["Source gathering<br/>common/gather.py, common/sources.py"]
         SRC[("Saved source texts<br/>data folder")]
-        PROV["Narrative provider<br/>narrative/"]
-        CHECK["Checking layer<br/>common/checks.py, checkers/"]
+        PROV["Narrative provider<br/>drafting/"]
+        CHECK["Checking layer<br/>review/checks.py, review/figures.py, digital_payments/checks.py"]
         STORE[("review_store<br/>SQLite or PostgreSQL")]
         FILES[("Data folder<br/>inputs, charts, exports, caches")]
         DOCX["Word export<br/>weekly/export.py"]
@@ -87,8 +87,8 @@ flowchart TB
 | Table fetchers | `<section>/` packages | Per-section fetchers (Yahoo Finance, CBK result files, Ibuka REIT summary and so on). Tables and computed paragraphs need no model. |
 | Source gathering | `common/gather.py`, `common/sources.py` | Finds and saves the pages a Bedrock draft is written from. See below. |
 | Narrative providers | `drafting/` | Write the cited narrative. `CYTONN_LLM_PROVIDER` picks one. See below. |
-| Checking layer | `common/checks.py`, `checkers/` | Exact-match of every table figure against its normalized source (rounding half up), a check of every claim's figures against its cited text, and a flag for every missing part. |
-| Review model | `digital_payments/coordinator_review.py`, `review_store.py` | `CoordinatorReview` with one item per figure, claim or missing part. Status (machine) is separate from resolution (analyst). A decided review is frozen. |
+| Checking layer | `review/checks.py`, `review/figures.py`, `digital_payments/checks.py` | Exact-match of every table figure against its normalized source (rounding half up), a check of every claim's figures against its cited text, and a flag for every missing part. |
+| Review model | `review/model.py`, `review/store.py` | `CoordinatorReview` with one item per figure, claim or missing part. Status (machine) is separate from resolution (analyst). A decided review is frozen. |
 | Storage | `db.py`, `schema.sql`, `schema_postgres.sql` | SQLite by default, PostgreSQL (Supabase) when `CYTONN_DATABASE_URL` is set. Uploads, saved sources, charts and exports are files under the data folder. |
 
 ### Drafting providers

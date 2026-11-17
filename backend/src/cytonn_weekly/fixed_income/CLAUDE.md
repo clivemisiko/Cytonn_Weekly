@@ -27,7 +27,7 @@ The closing sentence's net borrowing is no longer read from the pasted or workbo
   | 25 Sep 2026 | 28 Sep | 529.995 bn, 235.8% (530.0 and 235.8% in #38.2026) | 507.484 bn, 225.8% | 22,510.91 mn |
   | 2 Oct 2026 | 5 Oct | 594.807 bn, 245.3% (594.8 and 245.3% in the Q3'2026 review) | 572.296 bn, 236.0% | 22,510.91 mn |
 
-  The difference is the 26 August switch the workbook counts (22,510.90 mn) plus the 0.01 mn of the 6 July T-bill row (see Open items). The public test builds the team's log from CBK's own rows plus that switch (difference 22,510.90 exactly); the test on the real workbook skips without it.
+  The difference is the 26 August switch the workbook counts (22,510.90 mn) plus the 0.01 mn of the 6 July T-bill row (see Open items in CLAUDE.md). The public test builds the team's log from CBK's own rows plus that switch (difference 22,510.90 exactly); the test on the real workbook skips without it.
 
 ### Fixed Income (`fixed_income/weekly.py`)
 
