@@ -131,7 +131,7 @@ CREATE TABLE IF NOT EXISTS draft_usage (
 
 -- ---------------------------------------------------------------------------
 -- report_jobs, job_messages (jobs.py): one job per report type, period and section, and its messages in order.  The three limits
--- are the values in force when the job was opened (CYTONN_JOB_*); nothing enforces them yet.  job_messages.job_id refers to
+-- are the values in force when the job was opened (CYTONN_JOB_*); agent/loop.py enforces them.  job_messages.job_id refers to
 -- report_jobs.job_id (jobs.py checks it; no foreign key, as nowhere else in this schema).
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS report_jobs (
@@ -143,6 +143,12 @@ CREATE TABLE IF NOT EXISTS report_jobs (
     call_budget     INTEGER NOT NULL,   -- model calls over the whole job
     token_budget    INTEGER NOT NULL,   -- input and output tokens over the whole job
     created_at      TEXT    NOT NULL,   -- ISO-8601 UTC
+    status          TEXT    NOT NULL DEFAULT 'idle',
+    paused_reason   TEXT,
+    calls_used      INTEGER NOT NULL DEFAULT 0,
+    input_tokens    INTEGER NOT NULL DEFAULT 0,
+    output_tokens   INTEGER NOT NULL DEFAULT 0,
+    budget_raises   INTEGER NOT NULL DEFAULT 0,
     UNIQUE (report_type, period, section)
 );
 
@@ -154,8 +160,26 @@ CREATE TABLE IF NOT EXISTS job_messages (
     tool_name    TEXT,               -- a tool turn: which tool
     tool_result  TEXT,               -- a tool turn: what it returned
     created_at   TEXT    NOT NULL,   -- ISO-8601 UTC
+    tool_use_id  TEXT,
+    tool_input   TEXT,
+    usage        TEXT,
+    cards        TEXT,
     PRIMARY KEY (job_id, seq)
 );
+
+-- A database made before the chat columns existed gets them here (a no-op on a new one).  Same columns and meanings as schema.sql.
+ALTER TABLE report_jobs
+    ADD COLUMN IF NOT EXISTS status        TEXT    NOT NULL DEFAULT 'idle',
+    ADD COLUMN IF NOT EXISTS paused_reason TEXT,
+    ADD COLUMN IF NOT EXISTS calls_used    INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS input_tokens  INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS output_tokens INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS budget_raises INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE job_messages
+    ADD COLUMN IF NOT EXISTS tool_use_id TEXT,
+    ADD COLUMN IF NOT EXISTS tool_input  TEXT,
+    ADD COLUMN IF NOT EXISTS usage       TEXT,
+    ADD COLUMN IF NOT EXISTS cards       TEXT;
 
 -- ---------------------------------------------------------------------------
 -- Row level security on, with no policies: Supabase's web API roles (anon, authenticated) see and change nothing here.

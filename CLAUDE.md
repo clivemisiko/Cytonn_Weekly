@@ -122,6 +122,7 @@ The notes below were moved out of this file, word for word, into the folder each
 | Notable this week and the detector library | `backend/src/cytonn_weekly/notable/CLAUDE.md` |
 | Sources per section, and the blocked stubs | `backend/src/cytonn_weekly/CLAUDE.md` |
 | Report types: Markets Reviews, the Monthly, companion reports | `backend/src/cytonn_weekly/periodic/CLAUDE.md` |
+| The analyst chat agent (Phase 8): the loop, the read tools, the job limits | `backend/src/cytonn_weekly/agent/CLAUDE.md` |
 
 ## Architecture
 

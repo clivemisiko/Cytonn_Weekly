@@ -463,6 +463,17 @@ _ADDED_REVIEW_COLUMNS = (
 )
 
 
+# Chat columns report_jobs and job_messages gained after their first release (the same clauses as schema.sql).
+_ADDED_JOB_COLUMNS = {
+    "report_jobs": (("status", "status TEXT NOT NULL DEFAULT 'idle'"), ("paused_reason", "paused_reason TEXT"),
+                    ("calls_used", "calls_used INTEGER NOT NULL DEFAULT 0"), ("input_tokens", "input_tokens INTEGER NOT NULL DEFAULT 0"),
+                    ("output_tokens", "output_tokens INTEGER NOT NULL DEFAULT 0"),
+                    ("budget_raises", "budget_raises INTEGER NOT NULL DEFAULT 0")),
+    "job_messages": (("tool_use_id", "tool_use_id TEXT"), ("tool_input", "tool_input TEXT"), ("usage", "usage TEXT"),
+                     ("cards", "cards TEXT")),
+}
+
+
 def _migrate(conn: Db) -> None:
     """Bring an existing SQLite database up to schema.sql.  Idempotent; changes no existing value.
 
@@ -474,6 +485,11 @@ def _migrate(conn: Db) -> None:
     for name, clause in _ADDED_REVIEW_COLUMNS:
         if name not in have:
             conn.execute(f"ALTER TABLE coordinator_reviews ADD COLUMN {clause}")
+    for table, columns in _ADDED_JOB_COLUMNS.items():
+        have = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+        for name, clause in columns:
+            if name not in have:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {clause}")
     _allow_monthly_sqlite(conn)
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_coordinator_reviews_report "

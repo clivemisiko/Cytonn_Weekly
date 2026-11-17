@@ -220,6 +220,15 @@ def model_id() -> str:
     return _clean(MODEL_ENV_VAR) or DEFAULT_MODEL
 
 
+CHAT_MODEL_ENV = "CYTONN_CHAT_MODEL_ID"
+CHAT_MAX_TOKENS = 1500   # one reply or one batch of tool calls from the analyst chat; a reply cut off at it is kept as it is
+
+
+def chat_model_id() -> str:
+    """The analyst chat's model: CYTONN_CHAT_MODEL_ID, else the drafting model (BEDROCK_MODEL_ID, else the default)."""
+    return _clean(CHAT_MODEL_ENV) or model_id()
+
+
 def boto3_installed() -> bool:
     return importlib.util.find_spec("boto3") is not None
 
@@ -628,3 +637,32 @@ class BedrockNarrativeProvider(_Chat, NarrativeProvider):
             return PdfReply.model_validate(json.loads(raw)).passages
         except ValueError:   # bad JSON, or no "passages" (pydantic's ValidationError is a ValueError)
             raise SnipReadError("The model's reply for this PDF could not be read. Read it again.") from None
+
+
+
+class BedrockAgent(_Chat):
+    """The analyst chat's model: Claude on Bedrock with tools, one call at a time (agent/loop.py).  It shares the client, the
+    retry and back-off and the fixed error sentences with a draft, but not a draft's call cap or usage tracker: the job loop
+    counts its own calls against the job's budgets."""
+
+    WHO = "Bedrock chat model"
+    LABEL = "Bedrock chat"
+
+    def __init__(self, client: Any = None, model: Optional[str] = None, sleep: Callable[[float], None] = time.sleep):
+        super().__init__(client, model or chat_model_id(), sleep)
+
+    def converse(self, system: str, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> Any:
+        """One call.  The whole reply comes back (text and tool_use blocks, stop_reason, usage), because the loop needs all of it."""
+        self.requests += 1
+        try:
+            resp = self._create(model=self.model, max_tokens=CHAT_MAX_TOKENS, system=system, messages=messages, tools=tools)
+        except BedrockError:
+            raise
+        except Exception as exc:
+            logger.warning("Bedrock chat call failed: %s (aws error %r, HTTP %s)", type(exc).__name__, _kind(exc),
+                           getattr(exc, "status_code", None))
+            raise BedrockError(problem_for(exc, self.model, region())) from None
+        usage = getattr(resp, "usage", None)   # counts only, never text
+        logger.warning("Bedrock chat request %d: %s, %s input tokens, %s output tokens, stop reason %s", self.requests, self.model,
+                       getattr(usage, "input_tokens", "unknown"), getattr(usage, "output_tokens", "unknown"), resp.stop_reason)
+        return resp
