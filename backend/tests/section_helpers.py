@@ -65,6 +65,9 @@ class FakeNarrativeProvider(NarrativeProvider):
             {"text": second, "url": url, "title": brief.label,
              "cited_text": "Lending rose to Sh30.1bn this quarter." if self.cited else ""},
         ]
+        if brief.findings:   # findings only: the claims, no paragraph
+            return HighlightResult(company=brief.label, search_scope=SCOPE_WEB, ir_domain="", drafted_by=self.drafted_by,
+                                   headline=brief.label, paragraph="", paragraph_md="", claims=claims)
         body = " ".join(c["text"] for c in claims)
         return HighlightResult(
             company=brief.label, search_scope=SCOPE_WEB, ir_domain="", drafted_by=self.drafted_by,

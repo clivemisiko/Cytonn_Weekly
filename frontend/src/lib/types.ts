@@ -158,6 +158,7 @@ export interface SnipsListing {
   pdf_max_bytes: number;
   pdf_max_pages: number;
   snips: SnipMeta[];
+  warnings?: string[];
 }
 
 export interface SourcesListing {
@@ -352,8 +353,8 @@ export interface NarrativeBlock {
   /** Real Estate (weekly) only: the group it is printed under, and on the group's first block its heading ("I. Residential Sector"). */
   group?: string;
   group_heading?: string;
-  /** Focus of the Week only: which part of the report this is. A lead and a conclusion are written from the sections, with no cited claim. */
-  role?: "lead" | "section" | "conclusion";
+  /** Focus of the Week only: which part of the report this is. "findings" is a section's research notes (claims with their quotes), not report text. A saved older Focus may hold a lead, section or conclusion written by the model. */
+  role?: "lead" | "section" | "conclusion" | "findings";
   /** Focus of the Week only: a plain note for the analyst under a section, not a claim or a flag. */
   analyst_note?: string;
   /** Real Estate (weekly): the closing outlook, printed bold italic; every sentence must rest on a cited claim. */

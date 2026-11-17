@@ -130,11 +130,18 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
       </h3>
       <article v-if="b.kind === 'narrative'" :class="PIECE" :aria-labelledby="`blk-${b.id}`">
         <!-- A Focus section's visible heading is its "Section I: ..." line above; this one names the article for a screen reader. -->
-        <component :is="b.group ? 'h4' : 'h3'" :id="`blk-${b.id}`" :class="[HEAD, b.role === 'section' || b.role === 'conclusion' ? 'sr-only' : '']">
+        <component :is="b.group ? 'h4' : 'h3'" :id="`blk-${b.id}`" :class="[HEAD, b.role === 'section' || b.role === 'conclusion' || b.role === 'findings' ? 'sr-only' : '']">
           <Numeral v-if="b.numeral || !b.role">{{ b.numeral }}</Numeral>
           <span>{{ b.headline }}</span>
         </component>
-        <Markdown :class="[BODY, b.outlook && 'font-bold italic']" :text="b.body_md" />
+        <ul v-if="b.role === 'findings'" :aria-label="`${b.headline}: research notes`" class="max-w-[68ch] list-disc space-y-2 pl-5 text-sm leading-6 md:ml-11">
+          <li v-for="c in b.claims" :key="c.text + c.url" class="[overflow-wrap:anywhere]">
+            {{ c.text }}
+            <a v-if="safeUrl(c.url)" :href="safeUrl(c.url)!" target="_blank" rel="noopener noreferrer" :class="SOURCE_LINK">{{ c.title || c.url }}</a>
+            <span v-if="c.cited_text" class="block text-xs text-muted-foreground">Quote: “{{ c.cited_text }}”</span>
+          </li>
+        </ul>
+        <Markdown v-else :class="[BODY, b.outlook && 'font-bold italic']" :text="b.body_md" />
         <p v-if="b.analyst_note" class="text-xs text-muted-foreground md:pl-11">{{ b.analyst_note }}</p>
         <ul v-if="edited(b).length" aria-label="Sentences you edited" class="space-y-1 text-xs text-muted-foreground md:pl-11">
           <li v-for="e in edited(b)" :key="`${e.at}|${e.now}`" class="[overflow-wrap:anywhere]">

@@ -109,6 +109,26 @@ def html_paragraphs(body: str) -> list[str]:
     return [" ".join(line.split()) for line in text.split("\n") if line.strip()]
 
 
+def norm_url(url: str) -> str:
+    """An address as two mentions of one page would agree on it: no scheme, no www, no fragment, no trailing slash."""
+    parts = urlparse(str(url or "").strip())
+    host = (parts.hostname or "").lower().removeprefix("www.")
+    return f"{host}{parts.path.rstrip('/')}" + (f"?{parts.query}" if parts.query else "") if host else ""
+
+
+def digest(issue: Optional[Issue], *slugs: str) -> Optional[dict[str, Any]]:
+    """What an issue's section already reported: {"headings": bold or heading lines, "urls": every address it linked}.
+    ponytail: a heading is only what the section marks bold; None when the issue or section is missing, so nothing is filtered."""
+    section = issue.section(*slugs) if issue else None
+    if section is None:
+        return None
+    body = section.get("body") or ""
+    heads = [" ".join(html.unescape(re.sub(r"<[^>]+>", "", m)).replace("\xa0", " ").split())
+             for m in re.findall(r"(?is)<(?:strong|b|h[1-6])\b[^>]*>(.*?)</(?:strong|b|h[1-6])>", body)]
+    urls = {norm_url(u) for u in re.findall(r"""(?i)href\s*=\s*["']([^"']+)["']""", body)}
+    return {"headings": [h for h in dict.fromkeys(heads) if 12 <= len(h) <= 200], "urls": urls - {""}}
+
+
 def parse_issue(issue_id: int, payload: bytes) -> Issue:
     try:
         rows = json.loads(payload.decode("utf-8"))

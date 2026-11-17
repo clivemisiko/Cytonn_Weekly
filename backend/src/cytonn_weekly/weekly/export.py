@@ -72,6 +72,7 @@ from cytonn_weekly.weekly.week import Week, day_text, latest_friday, ordinal, we
 DEV_LABEL = "DEV MODE DRAFT (local model): NOT FOR PUBLICATION OR CIRCULATION"
 WATERMARK = "DEV MODE DRAFT"
 SUMMARY_HEADING = "Executive Summary:"
+GUIDE_LINE = "Focus of the Week: analyst to write"
 CARRIED_NOTE = "[Carried forward from the previous issue: edit before publishing]"
 CHART_WIDTH = Inches(6.0)
 CHART_NOT_VERIFIED = f"{PROVENANCE[0].upper()}{PROVENANCE[1:]}."   # its own paragraph, so the editor can delete it
@@ -368,6 +369,10 @@ def _chart(doc, caption: str, chart: Optional[dict[str, Any]], review: Coordinat
 def _add_blocks(doc, review: CoordinatorReview, charts_root: Optional[Union[Path, str]] = None,
                 uploads: Optional[dict[str, tuple[bytes, str, str]]] = None) -> None:
     section = review.section
+    if any(b.get("role") == "findings" for b in section.get("blocks", [])):   # the Focus is the analyst's: its findings are never printed
+        note = _mark(doc, GUIDE_LINE)
+        note.bold, note.font.color.rgb = True, _RED
+        return
     chart_after: dict[str, list[str]] = section.get("chart_after") or {}
     charts = {b["caption"]: b for b in section.get("blocks", []) if b.get("kind") == "chart"}
 

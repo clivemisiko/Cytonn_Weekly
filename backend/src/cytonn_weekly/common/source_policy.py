@@ -31,6 +31,7 @@ def _policy() -> dict[str, Any]:
     sections: dict[str, dict[str, Any]] = {}
     for slug, block in raw["sections"].items():
         entry = {NAMED: _hosts(block, NAMED), NEWS: _hosts(block, NEWS),
+                 "company_sites": {_norm(t) for t in block.get("company_sites", [])},
                  "pieces": {_norm(label): {NAMED: _hosts(p, NAMED), NEWS: _hosts(p, NEWS)} for label, p in (block.get("pieces") or {}).items()}}
         for name in (slug, *block.get("titles", [])):
             sections[_norm(name)] = entry
@@ -57,6 +58,11 @@ def _lists(section: str, piece: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
         if own:
             return (own.domain, *own.hosts), ()
     chosen = entry["pieces"].get(_norm(piece), entry)
+    if _norm(piece) in entry["company_sites"]:   # the earnings piece reads every listed company's own site (companies.json)
+        try:
+            return (*chosen[NAMED], *companies.domains()), chosen[NEWS]
+        except (OSError, ValueError):
+            pass
     return chosen[NAMED], chosen[NEWS]
 
 

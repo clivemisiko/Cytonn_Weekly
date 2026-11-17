@@ -47,7 +47,7 @@ def test_every_weekly_section_has_a_summary_composed_from_its_own_text():
     dp = make_review().section                       # the weekly Digital Payments shape: highlights as items
     highlights = [i for i in dp["items"] if i["kind"] == "highlight"]
     assert section_summary(dp).split("\n\n")[0] == " ".join(highlights[0]["body_md"].split("\n\n")[0].split())
-    assert section_summary(sh.focus_review(topic="SSA Eurobonds").section)
+    assert section_summary(sh.focus_review(topic="SSA Eurobonds").section) == ""   # the analyst writes the Focus: no summary
     assert section_summary({"blocks": [], "summary": "Already composed."}) == "Already composed."
     assert section_summary({"blocks": [{"kind": "unavailable", "id": "x", "title": "X", "reason": "r", "unblock": "u"}]}) == ""
     # never cut inside a paragraph: a paragraph that does not fit is left out whole

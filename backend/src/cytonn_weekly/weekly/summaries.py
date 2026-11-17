@@ -36,6 +36,8 @@ def section_summary(section: dict[str, Any]) -> str:
     if isinstance(section.get("summary"), str):
         return section["summary"]
     if "blocks" in section:
+        if any(b.get("role") == "findings" for b in section["blocks"]):   # a Focus the analyst writes has no summary yet
+            return ""
         leads = [b for b in section["blocks"] if b.get("role") == "lead"]   # a Focus: its lead paragraph, not each section's opening
         if leads:
             return _fit([_first_paragraph(b.get("body_md", "")) for b in leads])

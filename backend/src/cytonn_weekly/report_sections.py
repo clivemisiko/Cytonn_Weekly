@@ -229,8 +229,8 @@ SECTIONS: tuple[SectionSpec, ...] = (
         slug="focus", title="Focus of the Week", available=True, needs_topic=True, build=_focus,
         steps=(
             ("Your topic", "You choose this week's theme; the tool never picks it."),
-            ("Research and draft", "One long-form piece written only from what the search returned, every claim cited."),
-            ("Check", "Each claim's figures matched to the text it cites."),
+            ("Research", "Research notes for each section, only findings with a quote from a supplied source. The tool writes no Focus text; you write it."),
+            ("Check", "Each finding's figures matched to the text it cites."),
             _YOUR_REVIEW,
         ),
     ),

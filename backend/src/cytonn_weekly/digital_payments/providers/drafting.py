@@ -90,7 +90,32 @@ def results_message(subject: str, results: list[dict[str, Any]], heading: str = 
     return f"Company: {subject}\n\n{heading}:\n\n" + "\n\n".join(blocks)
 
 
+def findings_system(brief: NarrativeBrief) -> str:
+    extra = f"\n\n{brief.context}" if brief.context else ""
+    return f"""\
+You help collect research findings for the {brief.section} section of a {brief.report} investment research report \
+on Kenya from search results. You do not write the report: an analyst does.
+
+Subject: {brief.label}. What qualifies: {brief.focus}{extra}
+
+Step 1 - judge the material. Decide whether the search results contain material that genuinely \
+qualifies. Analysis, opinion pieces or unrelated material do not. Do not force a finding.
+
+Step 2 - only if it qualifies: write no prose. Leave paragraph empty and set headline to the subject. \
+Every finding goes in claims, and only facts stated in the search results; never add figures, dates, names or \
+claims from memory. Give each finding as one plain sentence with its date where the result states one.
+
+Step 3 - list each finding as a claim with the exact URL of the result that supports it.
+
+If nothing qualifies, set is_genuine_announcement to false, explain briefly in reasoning, and leave \
+headline and paragraph empty and claims an empty list.
+
+Reply with JSON only."""
+
+
 def narrative_system(brief: NarrativeBrief) -> str:
+    if brief.findings:
+        return findings_system(brief)
     opener = f'begins exactly with "{brief.opener}"' if brief.opener else "is formal prose"
     extra = f"\n\n{brief.context}" if brief.context else ""
     head = "a short headline and " if brief.headed else (
@@ -247,6 +272,19 @@ def piece_from_reply(
         warnings.append(f"{brief.label}: {who} judged the {scope} results not qualifying "
                         f"({' '.join((out.get('reasoning') or '').split())})")
         return None
+    if brief.findings:   # no paragraph is wanted or kept: the claims, each checked against its source, are the piece
+        by_url = {r.get("url"): r for r in results if r.get("url")}
+        hl: list[str] = []
+        claims, citations = _claims(out, by_url, hl, where, read_claim)
+        if not claims:
+            warnings.append(f"{brief.label}: {who} returned no findings; discarded")
+            return None
+        if not read_claim:
+            hl.append(f"{label}: claims carry no cited_text (model-mapped URLs only)")
+        return HighlightResult(
+            company=brief.label, search_scope=scope, ir_domain=", ".join(brief.preferred_domains), drafted_by=drafted_by,
+            headline=brief.label, paragraph="", paragraph_md="", word_count=0, links=[], claims=claims,
+            citations=citations, warnings=hl)
     headline = (out.get("headline") or "").strip().strip("*").strip() if brief.headed else brief.label
     paragraph_md = (out.get("paragraph") or "").strip()
     if not brief.headed:   # a heading line never cuts a Focus section; it is dropped

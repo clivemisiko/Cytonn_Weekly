@@ -61,6 +61,9 @@ class NarrativeBrief:
     max_tokens: Optional[int] = None
     # True: a source with no date is left out (and said so) instead of kept with the "No date on this source" flag.
     dated_only: bool = False
+    # True (Focus of the Week): the model returns findings only, each a claim with its verified quote and source, and no
+    # paragraph; the tool writes no Focus prose.
+    findings: bool = False
 
 
 class SnipReadError(RuntimeError):

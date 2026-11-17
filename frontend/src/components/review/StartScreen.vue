@@ -92,8 +92,8 @@ const nothingFound = computed(() => (bedrock.value && sourcePieces.value ? piece
 const titlesNeeded = computed(() => bedrock.value && props.section.needs_topic && sectionTitles(sections.value).length === 0);
 const sectionsHint = computed(() =>
   bedrock.value
-    ? "Enter custom section titles, one per line (e.g. Overview, Market Performance, Recommendations and Conclusion). The tool numbers them Section I, II, III… and each draws from its own verified sources below. End with a “Recommendations and Conclusion” part for the closing section."
-    : "Leave blank and the tool proposes four to six titles from the topic (one model call). Typed titles are used exactly as typed and numbered Section I, II, III… by the tool; end with a \"Recommendations and Conclusion\" part for the closing section.",
+    ? "Enter the section titles of the guide, one per line (e.g. Overview, Market Performance, Recommendations and Conclusion). The tool numbers them Section I, II, III… and collects research notes for each from its own verified sources below. It writes no section text: you write each section. A closing “Recommendations and Conclusion” title gets no notes; it only appears in the contents list."
+    : "Leave blank and the tool proposes four to six titles from the topic (one model call). Typed titles are used exactly as typed and numbered Section I, II, III… by the tool. The tool builds a guide of research notes for each section; you write the sections. A closing \"Recommendations and Conclusion\" title gets no notes and only appears in the contents list.",
 );
 
 // Only this section's own draft (running or queued) holds its Draft button; other sections drafting never do.

@@ -163,8 +163,9 @@ def test_the_checks_counts_add_up_to_the_reviews_own_items(name):
             total[k] += v
     # What no check event covers: an unavailable or carried part is one flagged item, supplied text one unverified item.
     blocks = review.section.get("blocks", [])
-    total["flagged"] += sum(1 for b in blocks if b["kind"] == "unavailable" or b["kind"] == "carried")   # a carried paragraph is one flagged item
-    total["not_auto_verified"] += sum(1 for b in blocks if b["kind"] == "supplied")
+    total["flagged"] += sum(1 for b in blocks if b["kind"] in ("unavailable", "carried") and not b.get("guide"))   # a carried paragraph is one flagged item
+    # a Focus's unavailable section is one unverified item; its carried disclaimer has no item (it is never exported)
+    total["not_auto_verified"] += sum(1 for b in blocks if b["kind"] == "supplied" or (b["kind"] == "unavailable" and b.get("guide")))
     assert total == ev.review_counts(review)
     assert sum(total.values()) == len(review.review_items)
 

@@ -228,6 +228,10 @@ def build_real_estate_review(
     except Exception as exc:  # noqa: BLE001 - a lookup that fails leaves the placeholder, and says so
         log.warning("the saved Real Estate review could not be read for the standing text: %s", type(exc).__name__)
         warnings.append("The earlier Real Estate review could not be read, so the standing text is a placeholder.")
+    try:   # an uploaded snip the draft will not read is said before the draft starts; drafting goes ahead either way
+        warnings += snips.problems(friday)
+    except snips.SnipError as exc:
+        warnings.append(str(exc))
     drafting = [b for b in SECTOR_BRIEFS if b.id in have]
     draft = draft_pieces(drafting, len(drafting), provider=provider or get_narrative_provider(), today=today, on_event=on_event)
     draft["warnings"] = warnings + draft["warnings"]

@@ -118,6 +118,14 @@ def isolated_sources(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def isolated_snips(tmp_path, monkeypatch):
+    """The uploaded snips default to a folder under the real data directory, which a draft now reads; every test gets its own."""
+    from cytonn_weekly.real_estate import snips
+
+    monkeypatch.setattr(snips, "_DEFAULT_ROOT", tmp_path / "inputs" / "snips")
+
+
+@pytest.fixture(autouse=True)
 def isolated_chart_files(tmp_path, monkeypatch):
     """Chart files default to a folder under the real data directory; every test gets its own."""
     from cytonn_weekly.charts import store
