@@ -318,6 +318,9 @@ def check_computed_block(block: dict[str, Any]) -> CheckReport:
 
 def carried_flag(block: dict[str, Any]) -> Flag:
     src = block.get("carried_from") or {}
+    if block.get("role") == "analyst":   # a part only the analyst can write: nothing was carried, so say that
+        return Flag(kind=CARRIED_FORWARD, scope=CARRIED_SCOPE, subject=block["id"], field=None,
+                    message=f"Analyst to write: {block['title']}. The tool writes no text here; write it by editing this paragraph before approving")
     where = f"issue {src.get('issue_id')} on cytonnreport.com" if src.get("issue_id") else "the previous issue"
     when = f", published {src['published']}" if src.get("published") else ""
     return Flag(kind=CARRIED_FORWARD, scope=CARRIED_SCOPE, subject=block["id"], field=None,

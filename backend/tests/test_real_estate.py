@@ -56,7 +56,7 @@ def test_fetch_reits_walks_back_to_the_latest_summary_and_computes_changes():
     out = fetcher.fetch_reits(TODAY, get=_getter(files))
     d = {r["reit"]: r for r in out["rows"]}
     assert out["as_of"] == "2026-09-25" and out["warnings"] == []
-    assert d["ACORN_D"]["price"] == 29.65 and d["ACORN_D"]["inception_gain_pct"] == 48.5
+    assert d["ACORN_D"]["price"] == 29.65 and d["ACORN_D"]["inception_gain_pct"] == 48.25
     assert d["ACORN_D"]["wow_pct"] == 0.0 and d["ACORN_D"]["ytd_pct"] == 0.0  # still carried, not drafted
     assert d["FAHARI"]["market_cap_kes_bn"] == pytest.approx(2.49741774)
 
@@ -80,10 +80,10 @@ def test_review_closes_with_reits_and_checks_clean():
     review = real_estate_review()
     blocks = review.section["blocks"]
     assert review.section["section"] == SECTION
-    assert [b["id"] for b in blocks] == ["sector_industry", "sector_residential", "sector_land", "sector_hospitality",
-                                         "reits", "standing", "outlook_reits"]
-    assert _reits_block(review)["numeral"] == "V"
-    assert _reits_block(review)["rows"][1] == {"reit": "ACORN_I", "name": "Acorn I-REIT", "price": "24.4", "inception_gain_pct": "22.0%"}
+    assert [b["id"] for b in blocks] == ["sector_industry", "industry_closing", "sector_residential", "sector_land",
+                                         "sector_hospitality", "reits_prices", "reits", "standing", "outlook_reits"]
+    assert _reits_block(review)["numeral"] == "VII" and _reits_block(review)["export"] is False
+    assert _reits_block(review)["rows"][1] == {"reit": "ACORN_I", "name": "Acorn I-REIT", "price": "24.4", "inception_gain_pct": "22.2%"}
     rows = [i for i in review.review_items if i.kind == TABLE_ROW]
     assert len(rows) == 3 and all(i.status == CLEAN for i in rows)
     assert all(i.status == NOT_AUTO_VERIFIED for i in review.review_items if i.kind == CLAIM)
@@ -96,18 +96,18 @@ def test_reit_prices_print_as_cytonn_weekly_38_2026_did():
     assert prices == ["29.7", "24.4", "13.8"]
 
 
-def test_reit_gains_are_from_the_inception_price_as_cytonn_weekly_38_2026_printed_them():
-    """Regression: #38.2026 printed "a 48.5% and 22.0% gain for the D-REIT and I-REIT, respectively, from the Kshs 20.0
-    inception price" and Fahari's "31.0 % loss from the Kshs 20.0 inception price", from the 18 Sept 2026 Ibuka prices
-    29.65 / 24.44 / 13.80.  Gains on the raw prices would be 48.3% and 22.2%; the report's are on the printed prices
-    (29.7, 24.4), so the gain is taken from the 1 dp price.  Not w/w, not YTD."""
+def test_reit_gains_are_from_the_unrounded_price_as_cytonn_weekly_45_2026_printed_them():
+    """#45.2026 printed "a 48.3% and 22.2% gain for the D-REIT and I-REIT, respectively, from the Kshs 20.0 inception
+    price" beside prices of Kshs 29.7 and 24.4, and Fahari's "31.0% loss", so the gain is taken from Ibuka's 2 dp price
+    (29.65 / 24.44 / 13.80), not from the 1 dp price shown (which would give #38.2026's 48.5% and 22.0%), and rounded half
+    up once at the end: 48.25 prints as 48.3.  Not w/w, not YTD."""
     files = {fetcher.ibuka_url(date(2026, 9, 18)): IBUKA_PDF}  # same REIT prices as the 18 Sept summary (checked)
     out = fetcher.fetch_reits(date(2026, 9, 18), get=_getter(files))
     assert [r["price"] for r in out["rows"]] == [29.65, 24.44, 13.8]
-    assert [r["inception_gain_pct"] for r in out["rows"]] == [48.5, 22.0, -31.0]
+    assert [r["inception_gain_pct"] for r in out["rows"]] == [48.25, 22.2, -31.0]
     assert [c["key"] for c in fetcher.COLUMNS] == ["name", "price", "inception_gain_pct"]
     shown = [r["inception_gain_pct"] for r in _reits_block(real_estate_review())["rows"]]
-    assert shown == ["48.5%", "22.0%", "(31.0%)"]
+    assert shown == ["48.3%", "22.2%", "(31.0%)"]
     assert fetcher.inception_gain_pct(None) is None
 
 

@@ -18,8 +18,8 @@ from datetime import date
 from typing import Any, Callable, Optional
 
 from cytonn_weekly.common import sources as source_store
-from cytonn_weekly.common.computed import carried_block, show
-from cytonn_weekly.common.formatting import PCT, PRICE
+from cytonn_weekly.common.computed import PLAIN_PCT, carried_block, computed_block
+from cytonn_weekly.common.formatting import PRICE
 from cytonn_weekly.common.review import build_review, check_section, grouped, narrative_block, numbered, table_block, unavailable_block
 from cytonn_weekly.common.run_events import Observer, fetch_source, report_blocks
 from cytonn_weekly.digital_payments import review_store
@@ -28,6 +28,8 @@ from cytonn_weekly.narrative.base import NarrativeBrief, NarrativeProvider
 from cytonn_weekly.narrative.drafter import draft_pieces
 from cytonn_weekly.narrative.factory import get_narrative_provider
 from cytonn_weekly.real_estate import fetcher, snips
+from cytonn_weekly.weekly import previous_issue as issues
+from cytonn_weekly.weekly.prose import Figures, published, try_fetch
 from cytonn_weekly.weekly.week import latest_friday
 
 log = logging.getLogger(__name__)
@@ -131,47 +133,113 @@ FACTS_ONLY = ("Write only from facts that appear in the supplied sources: a figu
               "sentence must rest on one of them and be quoted. Leave out any sentence you cannot support, and make no "
               "general statement, forecast or advice that the sources do not state.")
 SNIP_FOCUS = "the figures, named proposals and named events printed in the analyst's snips for this sector"
-OUTLOOK_FOCUS = ("what this week's REIT prices and the snips' facts mean for the REITs sector, as the section's closing "
-                 "outlook, in one short paragraph")
+# Every snip sector is drafted. The Markets Review link paragraph, the hospitality outlook and the REITs outlook are the
+# analyst's own text (analyst_block), and the REITs prices are worked out from the Ibuka rows, so REITs has no snips or brief.
 SECTOR_BRIEFS: list[NarrativeBrief] = [
-    NarrativeBrief(id=sid, section=TITLE, label=label, focus=SNIP_FOCUS, opener=None, context=FACTS_ONLY)
-    for sid, label in snips.SECTORS if sid != "reits"
-] + [NarrativeBrief(id="reits", section=TITLE, label=snips.LABELS["reits"], focus=OUTLOOK_FOCUS, opener=None, words=(60, 120),
-                    headed=False, context=FACTS_ONLY)]
+    NarrativeBrief(id=sid, section=TITLE, label=label, focus=SNIP_FOCUS, opener=None, context=FACTS_ONLY,
+                   **({"takeouts": True, "words": (110, 420)} if sid == "industry" else {}),
+                   **({"words": (120, 320)} if sid == "hospitality" else {}))
+    for sid, label in snips.SECTORS
+]
 
 NEEDS_BEDROCK = ("The weekly Real Estate section is written from the snips you upload, and reading and drafting them needs "
                  "the production model on Amazon Bedrock (CYTONN_LLM_PROVIDER=bedrock). This server is not using it, so nothing was drafted.")
 NO_SNIP = "No snip was uploaded and confirmed for this sector, so it is not included."
 UNBLOCK = "Upload a snip for this sector on the start screen, read and confirm it, then draft again."
 PLACEHOLDER = "Analyst to add the standing text"
+INDUSTRY_CLOSING = "Industry reports: link to the Markets Review"
+HOSPITALITY_OUTLOOK = "Hospitality: going forward"
+REITS_OUTLOOK = "REITs sector outlook"
+BENEFITS_START = "REITs offer various benefits"   # how the standing text opens in the published issues
+CHALLENGES_START = "Additional general challenges include"
+CHALLENGES_END = "Together,"
+OUTLOOK_START = "We expect"
+LOWER_ROMAN = ("i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x")
 
 
-def ibuka_text(reits: dict[str, Any]) -> str:
-    """The Ibuka figures as plain sentences, saved as a source so the outlook can quote them like a snip."""
+def analyst_block(block_id: str, title: str, sector: str, **extra: Any) -> dict[str, Any]:
+    """A part only the analyst can write: a carried block with no text, flagged until they write it by editing the paragraph."""
+    return {**carried_block(block_id, title, f"Analyst to write: {title}", {"note": "the tool writes no text here"}),
+            "sector": sector, "role": "analyst", "placeholder": True, **extra}
+
+
+def reits_prices_block(reits: dict[str, Any]) -> Optional[dict[str, Any]]:
+    """The REIT prices paragraph, worked out from Ibuka's unrounded prices; the checker works every figure out again."""
     rows = [r for r in reits["rows"] if r.get("price") is not None]
-    return "\n".join([f"NSE Unquoted Securities Platform (Ibuka) weekly summary as at {reits['as_of']}."] + [
-        f"{r['name']}: closing unit price Kshs {show(r['price'], PRICE, 1)}; change from the Kshs 20.0 inception price "
-        f"{show(r['inception_gain_pct'], PCT, 1)}." for r in rows])
+    if not rows:
+        return None
+    src = f"{fetcher.SOURCE_NAME} as at {reits['as_of']}"
+    inception = float(fetcher.INCEPTION_PRICE)
+    figs, sentences = Figures(), []
+    for r in rows:
+        key = r["reit"].lower()
+        price = figs.add(f"{key}_price", f"{r['name']} unit price", PRICE, fetcher.PRICE_DECIMALS,
+                         {"price": published(r["price"], src)})
+        change = figs.add(f"{key}_change", f"{r['name']} change from the inception price", PLAIN_PCT, 1,
+                          {"price": published(r["price"], src)}, ["mul", ["div", ["sub", "price", inception], inception], 100])
+        word = "gain" if figs.value(f"{key}_change") >= 0 else "loss"
+        sentences.append(f"{r['name']} closed at Kshs {price} per unit, representing a {change} {word} from the Kshs "
+                         f"{inception:.1f} inception price.")
+    return {**computed_block("reits_prices", "REITs weekly performance", " ".join(sentences), figs.items,
+                             sources=[{"name": fetcher.SOURCE_NAME, "url": reits["source_url"]}]), "sector": "reits"}
 
 
-def standing_block(previous: Optional[CoordinatorReview]) -> dict[str, Any]:
-    """The REITs standing text (the benefits paragraph and the list of challenges), copied from the newest saved Real Estate
-    review, never written by the model; with none saved, a placeholder the analyst fills in by editing the paragraph."""
-    old = next((b for b in (previous.section.get("blocks", []) if previous else [])
+def standing_text(paragraphs: list[str]) -> Optional[str]:
+    """The REITs benefits paragraph and the challenges list from a published issue's Real Estate section, the list numbered
+    i., ii., iii. as the issue prints it; None when the section does not hold the benefits paragraph."""
+    start = next((i for i, p in enumerate(paragraphs) if p.startswith(BENEFITS_START)), None)
+    if start is None:
+        return None
+    end = next((i for i in range(start + 1, len(paragraphs)) if paragraphs[i].startswith(OUTLOOK_START)), len(paragraphs))
+    lines, n = [], None
+    for p in paragraphs[start:end]:
+        if n is not None and p.startswith(CHALLENGES_END):
+            n = None
+        if n is not None and n < len(LOWER_ROMAN):
+            lines.append(f"{LOWER_ROMAN[n]}. {p}")
+            n += 1
+        else:
+            lines.append(p)
+        if p.startswith(CHALLENGES_START):
+            n = 0
+    return "\n".join(lines)
+
+
+def standing_block(approved: Optional[CoordinatorReview], issue: Optional[Any] = None) -> dict[str, Any]:
+    """The REITs standing text, never written by the model. In order: the newest APPROVED Real Estate review's copy, else the
+    previous published issue's text (cytonnreport.com), else a placeholder the analyst fills in by editing the paragraph."""
+    from cytonn_weekly.fixed_income.weekly import _carried
+
+    old = next((b for b in (approved.section.get("blocks", []) if approved else [])
                 if b.get("id") == "standing" and b.get("kind") == "carried" and not b.get("placeholder")), None)
     extra = {"sector": "reits", "role": "standing"}
-    if old is None:
-        return {**carried_block("standing", "Standing text: the benefits of REITs and their challenges", PLACEHOLDER,
-                                {"note": "no earlier Real Estate review holds this text; type it by editing this paragraph"}),
-                **extra, "placeholder": True}
-    week = previous.section.get("week_end")
-    return {**carried_block("standing", old["title"], old["body_md"],
-                            {"published": week, "note": f"taken from this tool's saved Real Estate review (run {previous.run_id}, "
-                                                        f"week ending {week}); the text does not change from week to week"}), **extra}
+    title = "Standing text: the benefits of REITs and their challenges"
+    if old is not None:
+        week = approved.section.get("week_end")
+        return {**carried_block("standing", old["title"], old["body_md"],
+                                {"published": week, "note": f"taken from this tool's approved Real Estate review (run {approved.run_id}, "
+                                                            f"week ending {week}); the text does not change from week to week"}), **extra}
+    if issue is not None:
+        found = _carried(issue, "standing", title, standing_text, slugs=("real-estate",))
+        if found["kind"] == "carried":
+            return {**found, **extra}
+    return {**carried_block("standing", title, PLACEHOLDER,
+                            {"note": "no approved Real Estate review and no previous issue holds this text; type it by editing this paragraph"}),
+            **extra, "placeholder": True}
 
 
-def compose(draft: dict[str, Any], reits: dict[str, Any], previous: Optional[CoordinatorReview] = None,
-            have: Optional[set[str]] = None) -> dict[str, Any]:
+def industry_briefs(friday: date) -> list[NarrativeBrief]:
+    """One brief for each report the analyst confirmed: a PDF's pages are one report, every image its own."""
+    base = next(b for b in SECTOR_BRIEFS if b.id == "industry")
+    reports: dict[str, list[str]] = {}
+    for s in source_store.list_for(base.label, friday):
+        if s.origin == "snip":
+            reports.setdefault(s.url.split("#")[0], []).append(s.id)
+    return [replace(base, id=base.id if n == 0 else f"{base.id}_{n + 1}", source_ids=tuple(ids))
+            for n, ids in enumerate(reports.values())]
+
+
+def compose(draft: dict[str, Any], reits: dict[str, Any], standing: dict[str, Any], have: Optional[set[str]] = None) -> dict[str, Any]:
     """Sector by sector in the issue's order: a sector with a drafted piece, else a part saying why it is not included."""
     pieces = {p["brief_id"]: p for p in draft["pieces"]}
     skipped = draft.get("skipped", {})
@@ -182,22 +250,28 @@ def compose(draft: dict[str, Any], reits: dict[str, Any], previous: Optional[Coo
                                            if brief.id in (have or set()) else NO_SNIP)
         return {**unavailable_block(block_id, title, reason, UNBLOCK), "sector": brief.id}
 
+    closing = {"industry": analyst_block("industry_closing", INDUSTRY_CLOSING, "industry"),
+               "hospitality": analyst_block("hospitality_going_forward", HOSPITALITY_OUTLOOK, "hospitality")}
     for b in SECTOR_BRIEFS:
-        if b.id == "reits":
-            continue
-        blocks.append({**narrative_block(f"sector_{b.id}", pieces[b.id]), "sector": b.id} if b.id in pieces
-                      else missing(b, f"sector_{b.id}", b.label))
-    reit_brief = SECTOR_BRIEFS[-1]
+        found = [p for pid, p in pieces.items() if pid == b.id or (b.id == "industry" and pid.startswith("industry_"))]
+        for p in found:
+            blocks.append({**narrative_block(f"sector_{p['brief_id']}", p), "sector": b.id})
+        if not found:
+            blocks.append(missing(b, f"sector_{b.id}", b.label))
+        elif b.id in closing:
+            blocks.append(closing[b.id])
+    if (prices := reits_prices_block(reits)) is not None:
+        blocks.append(prices)
     blocks.append({**table_block("reits", "REITs weekly performance", fetcher.COLUMNS, reits["rows"], "reit", "name",
                                  {"name": fetcher.SOURCE_NAME, "url": reits["source_url"], "as_of": reits["as_of"]}),
-                   "sector": "reits"})
-    blocks.append(standing_block(previous))
-    blocks.append({**narrative_block("outlook_reits", pieces["reits"]), "sector": "reits", "outlook": True} if "reits" in pieces
-                  else missing(reit_brief, "outlook_reits", "REITs outlook"))
+                   "sector": "reits", "export": False})   # the review screen's table; the Word file prints the paragraph
+    blocks.append(standing)
+    blocks.append(analyst_block("outlook_reits", REITS_OUTLOOK, "reits", outlook=True))
+    sectors = {b["sector"] for b in blocks if b["kind"] == "narrative"}
     return {
         "section": SECTION, "title": TITLE, "week_start": draft["week_start"], "week_end": draft["week_end"],
-        "blocks": numbered(blocks), "pieces_found": len(pieces), "pieces_expected": len(SECTOR_BRIEFS),
-        "shortfall": len(SECTOR_BRIEFS) - len(pieces), "warnings": list(draft["warnings"]) + list(reits["warnings"]),
+        "blocks": numbered(blocks), "pieces_found": len(sectors), "pieces_expected": len(SECTOR_BRIEFS),
+        "shortfall": len(SECTOR_BRIEFS) - len(sectors), "warnings": list(draft["warnings"]) + list(reits["warnings"]),
     }
 
 
@@ -207,6 +281,7 @@ def build_real_estate_review(
     fetch_reits: Callable[[Optional[date]], dict[str, Any]] = fetcher.fetch_reits,
     on_event: Optional[Observer] = None,
     db_path: Optional[Any] = None,
+    fetch_previous_issue: Callable[[date], Any] = lambda day: issues.find_previous_issue(day),
 ) -> CoordinatorReview:
     """Read the confirmed snips and the Ibuka summary, draft, check; return the review.  Provider and fetch errors propagate.
 
@@ -217,24 +292,22 @@ def build_real_estate_review(
     today = today or date.today()
     friday = latest_friday(today)
     reits = fetch_source(on_event, fetcher.SOURCE_NAME, fetch_reits, today)
-    if any(r.get("price") is not None for r in reits["rows"]):   # the Ibuka figures, saved so the outlook can quote them
-        source_store.from_paste(reits["source_url"], reits["as_of"], ibuka_text(reits), snips.LABELS["reits"], friday,
-                                title=fetcher.SOURCE_NAME, origin="found")   # the tool's own reader, not a page an analyst added
-    have = {b.id for b in SECTOR_BRIEFS
-            if any(s.origin == "snip" or b.id == "reits" for s in source_store.list_for(b.label, friday))}
-    previous, warnings = None, []
+    have = {b.id for b in SECTOR_BRIEFS if any(s.origin == "snip" for s in source_store.list_for(b.label, friday))}
+    approved, issue, warnings = None, None, []
     try:
-        previous = review_store.load_latest_review(SECTION, report_type="weekly", db_path=db_path)
-    except Exception as exc:  # noqa: BLE001 - a lookup that fails leaves the placeholder, and says so
-        log.warning("the saved Real Estate review could not be read for the standing text: %s", type(exc).__name__)
-        warnings.append("The earlier Real Estate review could not be read, so the standing text is a placeholder.")
+        approved = review_store.load_latest_review(SECTION, report_type="weekly", db_path=db_path, approved_only=True)
+    except Exception as exc:  # noqa: BLE001 - a lookup that fails goes on to the previous issue, and says so
+        log.warning("the approved Real Estate review could not be read for the standing text: %s", type(exc).__name__)
+        warnings.append("The approved Real Estate review could not be read, so the standing text is looked for in the previous issue.")
+    if approved is None:   # only then is the published issue read
+        issue = try_fetch(on_event, "Previous issue on cytonnreport.com", fetch_previous_issue, friday, problems=warnings)
     try:   # an uploaded snip the draft will not read is said before the draft starts; drafting goes ahead either way
         warnings += snips.problems(friday)
     except snips.SnipError as exc:
         warnings.append(str(exc))
-    drafting = [b for b in SECTOR_BRIEFS if b.id in have]
+    drafting = [r for b in SECTOR_BRIEFS if b.id in have for r in (industry_briefs(friday) if b.id == "industry" else [b])]
     draft = draft_pieces(drafting, len(drafting), provider=provider or get_narrative_provider(), today=today, on_event=on_event)
     draft["warnings"] = warnings + draft["warnings"]
-    content = compose(draft, reits, previous, have)
+    content = compose(draft, reits, standing_block(approved, issue), have)
     report_blocks(on_event, content)
     return build_review(content, check_section(content, on_event))

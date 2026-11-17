@@ -10,9 +10,8 @@ from cytonn_weekly.narrative.local_provider import LocalNarrativeProvider
 from cytonn_weekly.periodic import real_estate as periodic_real_estate
 from cytonn_weekly.common import source_policy
 from cytonn_weekly.common import sources as source_store
-from cytonn_weekly.real_estate import fetcher, review_run, snips
+from cytonn_weekly.real_estate import review_run
 from tests import periodic_helpers as ph
-from tests import section_helpers as sh
 
 SITES = ("standardmedia.co.ke",)   # Nation, Business Daily and Bloomberg are never read (equities/source_policy.json)
 SOCIAL = ("x.com", "twitter.com", "facebook.com", "instagram.com", "tiktok.com")
@@ -84,10 +83,3 @@ def test_exa_excludes_social_media_only_in_the_open_web_pass():
     preferred, web = bodies
     assert preferred["includeDomains"] == list(_brief().preferred_domains) and "excludeDomains" not in preferred
     assert web["excludeDomains"] == list(SOCIAL) and "includeDomains" not in web
-
-
-def test_the_ibuka_text_is_saved_as_a_found_source_not_one_the_analyst_added():
-    sh.real_estate_review()
-    saved = [s for s in source_store.list_for(snips.LABELS["reits"], sh.TODAY) if s.title == fetcher.SOURCE_NAME]
-    assert len(saved) == 1 and saved[0].origin == "found"
-    assert source_store.ADDED_BY_ANALYST not in saved[0].flags

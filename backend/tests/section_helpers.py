@@ -112,9 +112,9 @@ def market(shares=None, as_of="2026-10-02T13:00:00+00:00"):
 def reits(warnings=()):
     """The real Ibuka figures of 25 Sept 2026 (prices unchanged from the 18 Sept summary)."""
     rows = [
-        {"reit": "ACORN_D", "name": "Acorn D-REIT", "price": 29.65, "inception_gain_pct": 48.5, "prior_price": 29.65,
+        {"reit": "ACORN_D", "name": "Acorn D-REIT", "price": 29.65, "inception_gain_pct": 48.25, "prior_price": 29.65,
          "ytd_base_price": 25.0, "wow_pct": 0.0, "ytd_pct": 18.6, "market_cap_kes_bn": 8.674903573, "error": None},
-        {"reit": "ACORN_I", "name": "Acorn I-REIT", "price": 24.44, "inception_gain_pct": 22.0, "prior_price": 23.75,
+        {"reit": "ACORN_I", "name": "Acorn I-REIT", "price": 24.44, "inception_gain_pct": 22.2, "prior_price": 23.75,
          "ytd_base_price": 22.0, "wow_pct": 2.905263157894737, "ytd_pct": 11.09, "market_cap_kes_bn": 9.898749704,
          "error": None},
         {"reit": "FAHARI", "name": "ILAM Fahari I-REIT", "price": 13.8, "inception_gain_pct": -31.0, "prior_price": 13.8,

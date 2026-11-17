@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from cytonn_weekly.common.review import CARRIED_TEXT, CLAIM, ROMAN, build_review, check_section, numbered
+from cytonn_weekly.common.review import CARRIED_TEXT, CLAIM, ROMAN, build_review, carried_ref, check_section, numbered
 from cytonn_weekly.digital_payments.coordinator_review import FLAGGED, HIGHLIGHT_CLAIM, CoordinatorReview, ReviewItem
 from cytonn_weekly.weekly.recheck import EQUITIES, FIXED_INCOME, _module, carry_marks, copy_chart_files
 
@@ -205,7 +205,7 @@ def _carried_at(review: CoordinatorReview, index: int) -> int:
     if "blocks" not in review.section or not 0 <= index < len(items) or items[index].kind != CARRIED_TEXT:
         raise NotPossible(NOT_A_PARAGRAPH)
     found = [bi for bi, b in enumerate(review.section["blocks"])
-             if b.get("kind") == "carried" and f"{b.get('title')} (carried forward)" == items[index].ref]
+             if b.get("kind") == "carried" and carried_ref(b) == items[index].ref]
     if len(found) != 1:
         raise NotFound(PARAGRAPH_NOT_FOUND)
     if review.section["blocks"][found[0]].get("source_run_id") is not None:

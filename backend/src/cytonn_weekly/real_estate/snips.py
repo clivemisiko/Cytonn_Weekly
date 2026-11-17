@@ -15,8 +15,9 @@ from cytonn_weekly.common.checks import normalise_quote
 from cytonn_weekly.weekly.week import latest_friday
 
 SECTORS = (("industry", "Industry reports"), ("residential", "Residential sector"), ("land", "Land"),
-           ("hospitality", "Hospitality and Tourism"), ("reits", "REITs"))
-LABELS = dict(SECTORS)
+           ("hospitality", "Hospitality and Tourism"))
+LIVE = dict(SECTORS)   # the sectors a snip can be uploaded to; REITs is the Ibuka table and the analyst's own text, so no draft reads a REITs snip
+LABELS = {**LIVE, "reits": "REITs"}   # names every sector ever stored, so a REITs snip saved earlier still reads back and shows
 MAX_BYTES = 5 * 1024 * 1024
 MAX_PER_SECTOR = 6
 MAX_TEXT_CHARS = 20_000
@@ -96,7 +97,7 @@ def _name(e: dict[str, Any]) -> str:
 def unconfirmed_lines(items: list[dict[str, Any]]) -> list[str]:
     """One line per snip that is uploaded and not confirmed: a draft does not read it."""
     return [f"{LABELS[e['sector']]}: the snip {_name(e)} is uploaded but not confirmed, so this draft does not use it. "
-            "Read and confirm it on the start screen, then draft again." for e in items if not e["confirmed"]]
+            "Read and confirm it on the start screen, then draft again." for e in items if not e["confirmed"] and e["sector"] in LIVE]
 
 
 def misfiled_lines(week_end: date, root: Optional[Path] = None, sources_root: Optional[Path] = None) -> list[str]:
@@ -111,13 +112,13 @@ def misfiled_lines(week_end: date, root: Optional[Path] = None, sources_root: Op
         except ValueError:
             continue
         if other != friday and abs((other - friday).days) <= NEIGHBOUR_DAYS:
-            held = _load(folder)
+            held = [e for e in _load(folder) if e["sector"] in LIVE]
             if held:
                 lines.append(f"{len(held)} {'snip is' if len(held) == 1 else 'snips are'} filed under the week ending {other.isoformat()} "
                              f"({', '.join(sorted({LABELS[e['sector']] for e in held}))}), not this draft's week ending "
                              f"{friday.isoformat()}, so {'it is' if len(held) == 1 else 'they are'} not used.")
     for e in _load(_folder(week_end, root)):
-        if e["confirmed"]:
+        if e["confirmed"] and e["sector"] in LIVE:
             try:
                 saved = {x.id for x in source_store.list_for(LABELS[e["sector"]], friday, sources_root)}
             except source_store.SourceError as exc:   # a saved file changed: said as it stands
@@ -285,8 +286,8 @@ def pdf_reading(week_end: date, h: str, read: dict[str, Any], root: Optional[Pat
 @atomic.locked
 def add(week_end: date, sector: str, filename: str, data: bytes, root: Optional[Path] = None) -> dict[str, Any]:
     """Keep one uploaded image (under its content hash) or PDF, in the sector the analyst chose. Nothing is read from it here."""
-    if sector not in LABELS:
-        raise SnipError(f"{sector!r} is not a sector. Choose one of: {', '.join(LABELS.values())}.")
+    if sector not in LIVE:
+        raise SnipError(f"{sector!r} is not a sector. Choose one of: {', '.join(LIVE.values())}.")
     if not data:
         raise SnipError("The file is empty.")
     if data.startswith(b"%PDF-"):
@@ -348,7 +349,7 @@ def update(week_end: date, h: str, *, text: Optional[str], sector: Optional[str]
     if e.get("kind") == "pdf" and sector is not None and sector != e["sector"]:
         raise SnipError("A PDF is read for the sector it was uploaded to. Upload it again under the other sector instead.")
     if sector is not None and sector != e["sector"]:
-        if sector not in LABELS:
+        if sector not in LIVE:
             raise SnipError(f"{sector!r} is not a sector.")
         if sum(x["sector"] == sector for x in items) >= MAX_PER_SECTOR:
             raise SnipError(f"{LABELS[sector]} already has {MAX_PER_SECTOR} snips. Remove one first.")

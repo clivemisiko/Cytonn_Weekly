@@ -315,15 +315,17 @@ def test_a_rewritten_carried_paragraph_is_exported_as_plain_text_with_no_red_lin
     _, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
     assert text.count(NOTE) == 3
     [paragraph] = [t for t in text if t.startswith(REWRITTEN)]
-    assert text[text.index("Rates and outlook (closing paragraph)") + 1] == paragraph      # no red line before it
+    assert "Rates and outlook (closing paragraph)" not in text                              # the issue prints no label
+    assert text[text.index(paragraph) - 1] != NOTE                                          # no red line before it
     assert "is at 58.3% of its pro-rated net domestic borrowing target" in paragraph[len(REWRITTEN):]   # the borrowing sentence follows, in the same paragraph
 
 
 def test_the_borrowing_sentence_is_printed_in_the_outlooks_paragraph_under_one_heading(week, tmp_path):
     _, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
-    heading = text.index("Rates and outlook (closing paragraph)")
-    assert text[heading + 1] == NOTE                      # the red line stays until the analyst edits the paragraph
-    paragraph = text[heading + 2]
+    assert "Rates and outlook (closing paragraph)" not in text and "Equities outlook (closing paragraph)" not in text
+    assert "Kenya Shilling: what pressures the shilling" not in text   # the issue prints these paragraphs with no label
+    paragraph = next(t for t in text if "is at 58.3% of its pro-rated" in t)
+    assert text[text.index(paragraph) - 1] == NOTE        # the red line stays until the analyst edits the paragraph
     assert "is at 58.3% of its pro-rated net domestic borrowing target" in paragraph
     assert sum("is at 58.3% of its pro-rated" in t for t in text) == 1      # printed once, and under no heading of its own
 

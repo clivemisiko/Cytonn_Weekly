@@ -217,6 +217,9 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
           Edited by you, {{ friendlyTime(b.edits[b.edits.length - 1].at) }}. You wrote this paragraph, so the checker has no source for it. It was
           copied from {{ b.carried_from.issue_id ? `issue ${b.carried_from.issue_id}` : "the previous issue" }} before you changed it.
         </Notice>
+        <Notice v-else-if="b.role === 'analyst'" tone="flag" class="font-medium md:ml-11">
+          Analyst to write. The tool writes no text here; write it by editing this paragraph before approving.
+        </Notice>
         <Notice v-else-if="b.role === 'standing'" tone="flag" class="font-medium md:ml-11">
           Carried forward, edit before approving. {{ b.carried_from.note }}
         </Notice>

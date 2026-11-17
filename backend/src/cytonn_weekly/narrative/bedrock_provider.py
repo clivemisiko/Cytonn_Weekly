@@ -597,7 +597,8 @@ class BedrockNarrativeProvider(_Chat, NarrativeProvider):
     def draft_piece(self, brief: NarrativeBrief, *, start: date, end: date, today: date) -> HighlightResult:
         empty = HighlightResult(company=brief.label, search_scope=None, ir_domain=", ".join(brief.preferred_domains),
                                 drafted_by=self.drafted_by, no_story=True)
-        results, policy_notes = by_policy(sources_for(brief.label, end), brief.section, brief.label)
+        saved = [r for r in sources_for(brief.label, end) if not brief.source_ids or r.get("id") in brief.source_ids]
+        results, policy_notes = by_policy(saved, brief.section, brief.label)
         results, notes = within_window(results, brief.label, start, end, brief.dated_only)
         notes = [*policy_notes, *notes]
         if not results:

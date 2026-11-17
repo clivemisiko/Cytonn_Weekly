@@ -64,6 +64,11 @@ class NarrativeBrief:
     # True (Focus of the Week): the model returns findings only, each a claim with its verified quote and source, and no
     # paragraph; the tool writes no Focus prose.
     findings: bool = False
+    # True (an industry report): a short report title, one introductory sentence ending "The following are the key take-outs
+    # from the report:", then take-outs numbered i., ii., iii., each its own paragraph, and no closing paragraph.
+    takeouts: bool = False
+    # Non-empty: only these saved sources (by id) are shown to the model, so a piece is written from one report alone.
+    source_ids: tuple[str, ...] = ()
 
 
 class SnipReadError(RuntimeError):

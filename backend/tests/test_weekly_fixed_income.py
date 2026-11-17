@@ -935,7 +935,9 @@ def test_a_mixed_eurobond_week_names_the_biggest_riser_and_the_biggest_faller(ro
     monkeypatch.setattr(fiw, "_yield_on", mixed)
     block = blocks(build(root))["eurobonds"]
     by_key = {f["key"]: f for f in block["figures"]}
-    assert "a mixed trajectory, led by the " in block["body_md"] and ", while the " in block["body_md"] and " fell by " in block["body_md"]
+    body = block["body_md"]   # as issue #45.2026 prints it: names without "Eurobond", "increased the most by", "decreased the most by"
+    assert "registered a mixed performance with the " in body and " issued in " in body and "Eurobond issued" not in body
+    assert " increased the most by " in body and " while the yields on the " in body and " decreased the most by " in body
     assert {"riser_bps", "riser_yield", "riser_previous", "faller_bps", "faller_yield", "faller_previous"} <= by_key.keys()
     assert not [k for k in by_key if k.startswith("biggest")]
     # What the record says and what the sentence prints must agree: no mismatch, no missing figure, no unworkable input.

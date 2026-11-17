@@ -134,16 +134,19 @@ def load_latest_review(
     period: Optional[str] = None,
     run_date: Union[date, str, None] = None,
     db_path: Optional[Union[Path, str]] = None,
+    approved_only: bool = False,
 ) -> Optional[CoordinatorReview]:
     """The most recently saved ``report_type`` review for ``section``, or None.
 
     ``period`` narrows it to one period label (None: any period of that type, "": only
     unlabelled ones) and ``run_date`` to one run date.  The default is the weekly report,
     so the weekly Word summary and its delivery can never pick up a newer quarterly review
-    of the same section.  Decided or not: the caller checks ``.decision``.
+    of the same section.  Decided or not: the caller checks ``.decision`` (or asks for ``approved_only``, the newest approved one).
     """
     sql = "SELECT * FROM coordinator_reviews WHERE section = ? AND report_type = ?"
     params: list = [section, report_type]
+    if approved_only:
+        sql += " AND decision = 'approved'"
     if period is not None:
         sql += " AND period = ?"
         params.append(period)

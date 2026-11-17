@@ -826,9 +826,11 @@ def eurobond_blocks(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bullet
         if risers and fallers:   # mixed: the biggest riser and the biggest faller
             rn, rb, ry, rw = figures("riser", max(risers, key=lambda m: m[0]))
             fn, fb, fy, fw = figures("faller", max(fallers, key=lambda m: m[0]))
-            text = (f"During the week, the yields on Kenya's Eurobonds were on a mixed trajectory, led by the {rn} up {rb} to {ry} "
-                    f"from {rw} recorded the previous week, while the {fn} fell by {fb} to {fy} from {fw} recorded the previous "
-                    f"week. {tail}")
+            # worded as issue #45.2026 prints it (p. 7): "the 10-year issued in 2018", with no "Eurobond" in the names
+            rn, fn = rn.replace(" Eurobond", ""), fn.replace(" Eurobond", "")
+            text = (f"During the week, the yields on the Eurobonds registered a mixed performance with the {rn} increased the "
+                    f"most by {rb} to {ry} from {rw} recorded the previous week while the yields on the {fn} decreased the most "
+                    f"by {fb} to {fy} from {fw} recorded the previous week. {tail}")
         else:
             biggest = max(moves, key=lambda m: m[0])
             name, bps, now, was = figures("biggest", biggest)
