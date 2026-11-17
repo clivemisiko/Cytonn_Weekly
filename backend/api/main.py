@@ -59,6 +59,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from cytonn_weekly import db as database
+from cytonn_weekly import jobs as job_store
 from cytonn_weekly.common import gather as source_gather
 from cytonn_weekly.common import sources as source_store
 from cytonn_weekly.env import key_override_warnings, load_env
@@ -69,7 +70,7 @@ from cytonn_weekly.weekly import cbk_bulletin, cbk_rates
 from api.deps import Deps, configured_provider
 from api.draft_slot import DRAFT_STALE_AFTER_SECONDS
 from api.problems import ProblemError, problem_handler
-from api.routers import drafts, export, inputs, notable, overview, reviews, sources, snips
+from api.routers import drafts, export, inputs, jobs, notable, overview, reviews, sources, snips
 from api.runs import SSE_KEEPALIVE_SECONDS
 
 log = logging.getLogger(__name__)
@@ -94,6 +95,7 @@ def create_app(
     sources_root: Optional[Union[Path, str]] = None,
     fetch_source: Callable[..., source_store.SourceText] = source_store.fetch_page,
     search_sources: source_gather.Search = source_gather.exa_search,
+    chat_agent: Optional[Callable[[], object]] = None,
 ) -> FastAPI:
     """Build the app.  ``db_path`` defaults to data/app.db; tests pass a temp file.
 
@@ -109,6 +111,7 @@ def create_app(
     ``sources_root`` is where the sources a Bedrock draft is written from are kept (default: under the data directory;
     common/sources.py) and ``fetch_source`` how one is fetched (tests pass a fake, so none reaches a site).
     ``search_sources`` is how the gather step searches for them (common/gather.py; Exa by default, tests pass a fake).
+    ``chat_agent`` builds the analyst chat's model client for one answer (Bedrock by default; tests pass a scripted one).
 
     ``notable_registry`` is where the "Notable this week" detectors come from (section slug -> detectors).  Left out it is
     the real registry, which is empty: the real app shows no suggestion.  Only a caller that passes one, as the end-to-end
@@ -140,11 +143,11 @@ def create_app(
     deps = Deps(db_path, draft_stale_after=draft_stale_after, clock=clock, run_keepalive=run_keepalive, inputs_root=inputs_root,
                 fetch_bulletin=fetch_bulletin, export_root=export_root, fetch_usd_rates=fetch_usd_rates,
                 notable_registry=notable_registry, charts_root=charts_root, sources_root=sources_root,
-                fetch_source=fetch_source, search_sources=search_sources)
+                fetch_source=fetch_source, search_sources=search_sources, chat_agent=chat_agent)
     # The order is the order the routes were first registered in; where two patterns can match one path the earlier wins
     # (/api/reviews/latest before /api/reviews/{run_id}; notes, analyst and charts before the {slot} upload), and each of
     # those pairs sits inside one module in that order (tests/test_api_routes.py locks them).
-    for area in (overview, reviews, inputs, export, notable, sources, snips, drafts):
+    for area in (overview, reviews, inputs, export, notable, sources, snips, drafts, jobs):
         app.include_router(area.make_router(deps))
 
     def interrupt_leftover_runs() -> None:
@@ -153,7 +156,18 @@ def create_app(
         if found:
             log.warning("%d draft run(s) were still queued or running when the tool last stopped; marked interrupted", found)
 
+    def interrupt_leftover_jobs() -> None:
+        """A chat answer still working in storage belongs to a process that is gone: the job goes idle and says so (jobs.py)."""
+        try:
+            found = job_store.interrupt_working(db_path)
+        except Exception as exc:  # noqa: BLE001 - the app must start; a job left working is refused politely until it is reset
+            log.warning("chat jobs could not be reset at startup: %s", type(exc).__name__)
+            return
+        if found:
+            log.warning("%d chat answer(s) were still working when the tool last stopped; the conversations were reset", found)
+
     app.router.on_startup.append(interrupt_leftover_runs)
+    app.router.on_startup.append(interrupt_leftover_jobs)
     app.router.on_shutdown.append(database.close_all)  # the held PostgreSQL connection, if any
     return app
 

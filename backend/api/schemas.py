@@ -5,6 +5,19 @@ from cytonn_weekly.report_types import WEEKLY
 from cytonn_weekly.weekly import inputs as weekly_inputs
 
 
+class JobRequest(BaseModel):
+    """The conversation for one section of one report: ``period`` is normalized as for a draft."""
+
+    section: str
+    report_type: Literal["weekly", "monthly", "quarterly", "half_year", "annual", "companion"] = "weekly"
+    period: Optional[str] = None
+    kind: Optional[str] = None
+
+
+class JobMessage(BaseModel):
+    content: str = Field(min_length=1, max_length=2000)
+
+
 class ItemResolution(BaseModel):
     """``resolution`` is required (null clears it).  An omitted ``note`` keeps the item's
     existing note; a present one replaces it (blank or null clears it)."""

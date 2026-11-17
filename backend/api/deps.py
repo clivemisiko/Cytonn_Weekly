@@ -26,6 +26,7 @@ from cytonn_weekly.source_pieces import pieces_for
 from cytonn_weekly.report_types import COMPANION, TYPES, WEEKLY, PeriodError, normalize_period, week_ending_of
 from cytonn_weekly.weekly.week import NotAFriday, Week, latest_friday
 from api.problems import ProblemError
+from api.chat import Chat
 from api.draft_slot import Claim, DraftBusy, DraftSlot, busy_message, draft_concurrency, draft_queue_max
 from api.runs import ACTIVE, RUNNING, Run, RunRegistry
 from cytonn_weekly.run_store import RunStore
@@ -136,7 +137,7 @@ class Deps:
     roots the weekly inputs, sources, snips, charts and exports are kept under, and the injected fetchers (create_app builds it)."""
 
     def __init__(self, db_path, *, draft_stale_after, clock, run_keepalive, inputs_root, fetch_bulletin, export_root,
-                 fetch_usd_rates, notable_registry, charts_root, sources_root, fetch_source, search_sources):
+                 fetch_usd_rates, notable_registry, charts_root, sources_root, fetch_source, search_sources, chat_agent=None):
         self.db_path = db_path
         self.draft_stale_after = draft_stale_after
         self.clock = clock
@@ -160,6 +161,7 @@ class Deps:
         self.detectors = notable.REGISTRY if notable_registry is None else notable_registry
         self.gather_stamps: dict[tuple[str, str], float] = {}   # (Friday, piece) -> when it was last looked for, in memory only
         self.gather_cooldown = 3600.0
+        self.chat = Chat(self, chat_agent)   # the analyst chat's seats and worker, apart from the drafting seats above
 
     def load(self, run_id: int) -> CoordinatorReview:
         try:
@@ -372,6 +374,7 @@ class Deps:
             if review.section.get("usage"):
                 run.record_usage(review.section["usage"])
             dev = is_dev_draft(review)
+            self.chat.run_finished(run.key, review.run_id, dev)   # before the run ends, so whoever sees it finished sees the card
             run.finish(review.run_id, review_counts(review), dev, DEV_MODE_LABEL if dev else None)
         except Exception as exc:  # noqa: BLE001 - the run must end, and say why
             # no traceback for a database error: its message can name the host and the user

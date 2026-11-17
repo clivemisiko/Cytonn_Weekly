@@ -89,14 +89,15 @@ def _budget_pause(job: dict[str, Any]) -> Optional[tuple[str, int]]:
 
 def answer(db_path: Optional[Union[Path, str]], job_id: int, agent: Any, tools: list[Tool], *,
            summary: Callable[[dict[str, Any]], str] = default_summary, on_event: Optional[run_events.Observer] = None,
-           history_rows: int = HISTORY_ROWS, paths: Optional[dict[str, Any]] = None) -> Optional[str]:
+           history_rows: int = HISTORY_ROWS, paths: Optional[dict[str, Any]] = None, claimed: bool = False) -> Optional[str]:
     """Answer the analyst's latest message (already saved by the caller) and return what was said last, or None when another
     worker already has this job.  Each pass is one model call: text ends the turn, tool calls are checked, run, saved and
     answered by the next pass.  A tool-call limit per message and the job's call and token budgets stop it early: the job is
     saved as paused with the reason and a plain assistant message, and waits for the analyst.  A failed model call is saved as
     its fixed sentence.  The job is never left working, whatever happens.  ``paths`` are the folders and registry the tools read from
-    (the ToolContext fields root, sources_dir, snips_dir and runs)."""
-    if not jobs.begin(db_path, job_id):
+    (the ToolContext fields root, sources_dir, snips_dir and runs).  ``claimed`` says the caller already took the job with
+    jobs.begin (the API does, so it can refuse with 409 before it saves the analyst's message)."""
+    if not claimed and not jobs.begin(db_path, job_id):
         return None
     by_name = {t.name: t for t in tools}
     listed = schemas(tools)
