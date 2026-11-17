@@ -48,7 +48,7 @@ flowchart TB
         SRC[("Saved source texts<br/>data folder")]
         PROV["Narrative provider<br/>drafting/"]
         CHECK["Checking layer<br/>review/checks.py, review/figures.py, digital_payments/checks.py"]
-        STORE[("review_store<br/>SQLite or PostgreSQL")]
+        STORE[("review/store.py<br/>SQLite or PostgreSQL")]
         FILES[("Data folder<br/>inputs, charts, exports, caches")]
         DOCX["Word export<br/>weekly/export.py"]
     end
@@ -187,7 +187,7 @@ Frontend, from `frontend/`: `npm ci`, then `npm run dev`, `npm run lint`, `npm r
 
 ## Run the app
 
-A FastAPI layer (`backend/api/`) over `review_store` and the section builders, and a Vue app (`frontend/`) that talks to it:
+A FastAPI layer (`backend/api/`) over `review/store.py` and the section builders, and a Vue app (`frontend/`) that talks to it:
 
 ```sh
 cd backend
