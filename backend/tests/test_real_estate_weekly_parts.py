@@ -3,9 +3,9 @@ from datetime import date
 
 from docx import Document
 
-from cytonn_weekly.common.review import CARRIED_TEXT, COMPUTED_FIGURE
-from cytonn_weekly.digital_payments import review_store
-from cytonn_weekly.digital_payments.coordinator_review import CLEAN, FLAGGED
+from cytonn_weekly.review.blocks import CARRIED_TEXT, COMPUTED_FIGURE
+from cytonn_weekly.review import store as review_store
+from cytonn_weekly.review.model import CLEAN, FLAGGED
 from cytonn_weekly.real_estate import review_run
 from cytonn_weekly.real_estate.review_run import build_real_estate_review, industry_briefs, standing_text
 from cytonn_weekly.report_sections import BY_SLUG

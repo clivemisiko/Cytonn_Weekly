@@ -1,6 +1,6 @@
 """The one place a database is opened.
 
-Every runtime SQL call goes through here (sections.py, digital_payments/review_store.py, notable/store.py and
+Every runtime SQL call goes through here (sections.py, review/store.py, notable/store.py and
 report_sections.py); no other file imports sqlite3 or psycopg or opens a connection.  This module owns the connection,
 rows by column name, the transaction, the schema run, the placeholder style and the id of an inserted row.
 

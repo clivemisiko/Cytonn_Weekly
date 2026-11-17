@@ -7,7 +7,7 @@ accept_all_clean / claim context are what the web screen shows.  No network, no 
 
 from review_helpers import ROWS, TODAY, FakeProvider, make_review
 
-from cytonn_weekly.digital_payments import coordinator_review as cr
+from cytonn_weekly.review import model as cr
 from cytonn_weekly.digital_payments import review_run
 
 

@@ -6,7 +6,7 @@ Hidden and look-alike characters are written as chr(...) so none sits invisibly 
 import pytest
 
 from cytonn_weekly.common.links import EMAIL, LINK, MISSING, POSSIBLE, URL, find_links
-from cytonn_weekly.common.review import (
+from cytonn_weekly.review.blocks import (
     LINK_FLAG,
     POSSIBLE_LINK_FLAG,
     SUPPLIED_NOTE,
@@ -15,7 +15,7 @@ from cytonn_weekly.common.review import (
     check_section,
     supplied_block,
 )
-from cytonn_weekly.digital_payments.coordinator_review import FLAGGED, NOT_AUTO_VERIFIED
+from cytonn_weekly.review.model import FLAGGED, NOT_AUTO_VERIFIED
 
 ZWSP, CYRILLIC_ES = chr(0x200B), chr(0x0441)
 

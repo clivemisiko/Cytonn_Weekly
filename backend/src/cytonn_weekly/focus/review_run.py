@@ -5,10 +5,10 @@ from collections import Counter
 from datetime import date
 from typing import Any, Callable, Optional, Sequence
 
-from cytonn_weekly.common.review import ROMAN, build_review, check_section, narrative_block, unavailable_block
+from cytonn_weekly.review.blocks import ROMAN, build_review, check_section, narrative_block, unavailable_block
 from cytonn_weekly.common.computed import carried_block
 from cytonn_weekly.common.run_events import PART_SKIPPED, PIECE_FINISHED, PIECE_STARTED, Observer, emit
-from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview
+from cytonn_weekly.review.model import CoordinatorReview
 from cytonn_weekly.narrative.base import NarrativeBrief, NarrativeProvider, NothingDrafted
 from cytonn_weekly.narrative.drafter import draft_pieces
 from cytonn_weekly.narrative.factory import get_narrative_provider

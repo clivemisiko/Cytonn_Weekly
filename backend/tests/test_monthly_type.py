@@ -7,7 +7,7 @@ from api.main import create_app
 from cytonn_weekly import db as db_module
 from cytonn_weekly import report_sections as rs
 from cytonn_weekly import report_types as rt
-from cytonn_weekly.digital_payments import review_store
+from cytonn_weekly.review import store as review_store
 from cytonn_weekly.report_types import (
     MONTHLY,
     PeriodError,

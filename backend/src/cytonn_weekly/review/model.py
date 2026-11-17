@@ -1,4 +1,4 @@
-"""Analyst review model for the Digital Payments section (backlog task 8).
+"""Analyst review model, shared by every report section (backlog task 8).
 
 Turns compose_section()'s output plus the checking layer's CheckReport into one
 flat list of ReviewItems, one per checkable unit (a table row, an outlook stat,
@@ -18,11 +18,11 @@ Statuses
                            tool just has not checked it.
 
 This module only consumes existing outputs; it changes nothing in
-compose_section(), checkers/digital_payments.py or any provider.
+compose_section(), digital_payments/checks.py or any provider.
 
 Typical usage
 -------------
-    review = build_coordinator_review(compose_section(draft, table, outlook), report)
+    review = build_coordinator_review(compose_section(draft, table, outlook), report)   # digital_payments/review_run.py
     review.items[0].resolve("accept")
     ...
     if review.is_approvable:
@@ -35,7 +35,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional, Union
 
-from cytonn_weekly.checkers.digital_payments import NOT_IMPLEMENTED, CheckReport, Flag
+from cytonn_weekly.review.figures import Flag
 
 # ReviewItem.kind
 TABLE_ROW = "table_row"
@@ -77,8 +77,6 @@ NOT_AUTO_VERIFIED_NOTE = (
     "This is not a flag and nothing was found wrong; the tool has simply not verified "
     "this claim, so check it against its cited source by hand."
 )
-
-_REF_CLAIM_CHARS = 80
 
 
 @dataclass
@@ -205,122 +203,6 @@ def rejected_draft_notes(previous: Optional[CoordinatorReview]) -> Optional[dict
     return {"run_id": previous.run_id, "decided_at": previous.decided_at, "entries": entries}
 
 
-# ---------------------------------------------------------------------------
-# Building
-# ---------------------------------------------------------------------------
-
-def _item(kind: str, ref: str, flags: list[Flag]) -> ReviewItem:
-    if flags:
-        return ReviewItem(kind=kind, ref=ref, status=FLAGGED, detail=flags)
-    return ReviewItem(kind=kind, ref=ref, status=CLEAN)
-
-
-def _claim_ref(numeral: str, h: dict[str, Any], text: str) -> str:
-    text = " ".join(text.split())
-    if len(text) > _REF_CLAIM_CHARS:
-        text = text[: _REF_CLAIM_CHARS - 1].rstrip() + "…"
-    who = h.get("company") or h.get("headline", "")
-    return f"Highlight {numeral} ({who}): {text}" if text else f"Highlight {numeral} ({who})"
-
-
 # What a claim quoted from a supplied source adds (narrative/bedrock_provider.py): the quote, which source it is and when
 # it was saved. Only a claim that has them carries them, so every other claim's context is as it always was.
 SOURCE_KEYS = ("source_id", "sha256", "fetched_at", "host", "published_date", "origin", "source_flags")
-
-
-def _claim_context(claim: dict[str, Any]) -> dict[str, Any]:
-    context = {k: claim.get(k, "") for k in ("text", "url", "title", "cited_text")}
-    context.update({k: claim[k] for k in SOURCE_KEYS if k in claim})
-    return context
-
-
-def _unverified(ref: str, claim: dict[str, Any]) -> ReviewItem:
-    return ReviewItem(
-        kind=HIGHLIGHT_CLAIM, ref=ref, status=NOT_AUTO_VERIFIED,
-        detail=NOT_AUTO_VERIFIED_NOTE, context=_claim_context(claim),
-    )
-
-
-def build_coordinator_review(compose_result: dict[str, Any], check_report: CheckReport) -> CoordinatorReview:
-    """Build the analyst's review items from compose_section() and its CheckReport.
-
-    CheckReport holds only flags and a count of figures compared; it records
-    nothing about what passed.  "Clean" is therefore derived: every unit that
-    compose_section() contains and that no flag points at.  Every flag the
-    checker raised (other than the NOT_IMPLEMENTED placeholder, which the
-    ``not_auto_verified`` highlight items stand in for) ends up on some item,
-    even if it points at something compose_section() does not contain, so none
-    can go missing.
-
-    Raises ValueError if the report compared nothing at all while the section
-    has things to check, since every item would then read "clean" without
-    anything having been checked.
-    """
-    flags = [f for f in check_report.flags if f.kind != NOT_IMPLEMENTED]
-    table_flags: dict[str, list[Flag]] = {}
-    outlook_flags: dict[str, list[Flag]] = {}
-    highlight_flags: dict[str, list[Flag]] = {}
-    for f in flags:
-        if f.scope == "table":
-            table_flags.setdefault(f.subject, []).append(f)
-        elif f.scope == "outlook":
-            outlook_flags.setdefault(f.field or "outlook", []).append(f)
-        elif f.scope == "highlight":
-            highlight_flags.setdefault(f.subject, []).append(f)
-        else:
-            raise ValueError(f"flag with unrecognised scope {f.scope!r}: {f.message}")
-
-    items: list[dict[str, Any]] = compose_result.get("items", [])
-    outlook = compose_result.get("outlook") or {}
-    stats: dict[str, Any] = outlook.get("stats") or {}
-    table_rows = [r for it in items if it.get("kind") == "stock_table" for r in it.get("rows", [])]
-
-    if check_report.checked == 0 and not flags and (table_rows or stats):
-        raise ValueError(
-            "check_report compared no figures, so nothing would be checked; "
-            "run check_digital_payments() with the drafted table rows and outlook stats first"
-        )
-
-    review: list[ReviewItem] = []
-
-    # Table rows: one per source row, then any flagged ticker compose does not contain.
-    seen: set[str] = set()
-    for r in table_rows:
-        ticker = r["ticker"]
-        seen.add(ticker)
-        review.append(_item(TABLE_ROW, f"{r.get('company', ticker)} ({ticker})", table_flags.get(ticker, [])))
-    for ticker, fl in table_flags.items():
-        if ticker not in seen:
-            review.append(_item(TABLE_ROW, ticker, fl))
-
-    # Outlook stats: one per drafted stat, then any flagged stat that was not drafted (e.g. missing).
-    stat_keys = list(stats) + [k for k in outlook_flags if k not in stats]
-    for key in stat_keys:
-        review.append(_item(OUTLOOK_STAT, f"Outlook: {key}", outlook_flags.get(key, [])))
-
-    # Highlight claims: always not_auto_verified until 6b; a highlight flag (6b's, once it
-    # exists) marks every claim of that highlight as flagged rather than being dropped.
-    matched: set[str] = set()
-    for it in items:
-        if it.get("kind") != "highlight":
-            continue
-        numeral = it.get("numeral", "")
-        headline = it.get("headline", "")
-        own = highlight_flags.get(headline, [])
-        if own:
-            matched.add(headline)
-        claims = it.get("claims") or [{"text": ""}]  # no claims: still list the highlight itself
-        for c in claims:
-            ref = _claim_ref(numeral, it, c.get("text", ""))
-            if own:
-                review.append(ReviewItem(
-                    kind=HIGHLIGHT_CLAIM, ref=ref, status=FLAGGED, detail=list(own),
-                    context=_claim_context(c),
-                ))
-            else:
-                review.append(_unverified(ref, c))
-    for headline, fl in highlight_flags.items():
-        if headline not in matched:
-            review.append(ReviewItem(kind=HIGHLIGHT_CLAIM, ref=headline, status=FLAGGED, detail=fl))
-
-    return CoordinatorReview(section=compose_result, review_items=review)

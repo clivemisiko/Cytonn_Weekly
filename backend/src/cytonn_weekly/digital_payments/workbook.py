@@ -8,7 +8,7 @@ from decimal import Decimal, DivisionByZero, InvalidOperation
 from typing import Any, Callable, Collection, Mapping, Optional, Sequence
 from urllib.parse import urlparse
 
-from cytonn_weekly.checkers.digital_payments import check_figure, parse_number
+from cytonn_weekly.review.figures import check_figure, parse_number
 from cytonn_weekly.common.formatting import round_half_up
 from cytonn_weekly.digital_payments.highlights import HIGHLIGHT_COMPANIES
 from cytonn_weekly.weekly.workbook import Sheet, Workbook, WorkbookError, norm, read_title_date

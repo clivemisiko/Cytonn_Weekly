@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 
 from api.main import create_app
 from cytonn_weekly.charts import store as chart_store
-from cytonn_weekly.digital_payments import review_store
+from cytonn_weekly.review import store as review_store
 from cytonn_weekly.digital_payments.delivery import DevModeDeliveryBlocked
 from cytonn_weekly.equities import weekly as eq_weekly
 from cytonn_weekly.fixed_income import weekly as fi_weekly
@@ -422,7 +422,7 @@ def test_a_focus_of_findings_is_exported_as_one_line_for_the_analyst_to_write(we
 
 def test_a_prose_focus_saved_before_findings_still_exports_its_disclaimer_with_the_carried_note(week, tmp_path):
     from cytonn_weekly.common.computed import carried_block
-    from cytonn_weekly.common.review import build_review, check_section, narrative_block
+    from cytonn_weekly.review.blocks import build_review, check_section, narrative_block
 
     lead = narrative_block("focus_lead", {"brief_id": "focus_lead", "topic": "SSA Eurobonds", "headline": "Lead paragraph",
                                            "body": "The lead.", "body_md": "The lead.", "links": [], "claims": [], "warnings": [],

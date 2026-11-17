@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from typing import Any, Mapping, Optional
 
-from cytonn_weekly.checkers.digital_payments import (
+from cytonn_weekly.review.figures import (
     MISMATCH,
     MISSING,
     SOURCES_DISAGREE,

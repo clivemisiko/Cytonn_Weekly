@@ -5,8 +5,8 @@ from pathlib import Path
 import httpx
 import pytest
 
-from cytonn_weekly.common.review import CLAIM, UNAVAILABLE_PART
-from cytonn_weekly.digital_payments.coordinator_review import CLEAN, FLAGGED, NOT_AUTO_VERIFIED, TABLE_ROW
+from cytonn_weekly.review.blocks import CLAIM, UNAVAILABLE_PART
+from cytonn_weekly.review.model import CLEAN, FLAGGED, NOT_AUTO_VERIFIED, TABLE_ROW
 from cytonn_weekly.equities import fetcher, stubs
 from cytonn_weekly.equities.review_run import BRIEFS, SECTION, build_equities_review
 from tests.section_helpers import TODAY, FakeNarrativeProvider, equities_review, market, share
@@ -150,7 +150,7 @@ def test_bad_claim_figure_is_flagged():
 
 
 def test_tampered_index_figure_is_flagged():
-    from cytonn_weekly.common.review import build_review, check_section
+    from cytonn_weekly.review.blocks import build_review, check_section
     from cytonn_weekly.equities.review_run import compose
     from cytonn_weekly.narrative.drafter import draft_pieces
 

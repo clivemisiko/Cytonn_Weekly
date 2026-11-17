@@ -46,10 +46,10 @@ from datetime import date, timedelta
 from typing import Any, Callable, Optional
 
 from cytonn_weekly.common.formatting import MULTIPLE, PCT, PRICE, TEXT, pct_change
-from cytonn_weekly.common.review import build_review, check_section, narrative_block, table_block
+from cytonn_weekly.review.blocks import build_review, check_section, narrative_block, table_block
 from cytonn_weekly.common.run_events import Observer, fetch_source, report_blocks, report_failed_rows
 from cytonn_weekly.digital_payments import fetcher as dp_fetcher
-from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview
+from cytonn_weekly.review.model import CoordinatorReview
 from cytonn_weekly.digital_payments.highlights import N_HIGHLIGHTS, draft_highlights
 from cytonn_weekly.digital_payments.providers.base import DraftingProvider
 from cytonn_weekly.narrative.base import NarrativeProvider

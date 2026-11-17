@@ -50,8 +50,8 @@ from cytonn_weekly.common.word_layout import (
     title,
     title_line,
 )
-from cytonn_weekly.digital_payments import review_store
-from cytonn_weekly.digital_payments.coordinator_review import APPROVED, CoordinatorReview
+from cytonn_weekly.review import store as review_store
+from cytonn_weekly.review.model import APPROVED, CoordinatorReview
 from cytonn_weekly.digital_payments.delivery import DevModeDeliveryBlocked, is_dev_mode_review
 from cytonn_weekly.digital_payments.fetcher import format_table_rows
 from cytonn_weekly.digital_payments.providers.base import LINK_RE

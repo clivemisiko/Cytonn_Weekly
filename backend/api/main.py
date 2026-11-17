@@ -24,7 +24,7 @@ Run from backend/ (the package is installed editable):
     uvicorn api.main:app --port 8000
 
 Every write endpoint is stateless: it loads the review fresh from review_store, mutates
-it with the coordinator_review methods, saves it, and returns the whole updated review,
+it with the review.model methods, saves it, and returns the whole updated review,
 the same read-modify-write the Streamlit screen did per callback.  The routes are in
 api/routers/ (one module per area, each a make_router(deps)), the state they share is
 api.deps.Deps, and this module only builds the app.  The API adds three guards the store

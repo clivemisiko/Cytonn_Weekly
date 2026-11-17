@@ -6,7 +6,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.main import create_app
-from cytonn_weekly.digital_payments import review_run, review_store
+from cytonn_weekly.digital_payments import review_run
+from cytonn_weekly.review import store as review_store
 from cytonn_weekly.narrative import bedrock_provider as bp
 from tests.review_helpers import make_review
 

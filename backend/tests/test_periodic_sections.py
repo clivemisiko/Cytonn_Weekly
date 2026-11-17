@@ -5,8 +5,8 @@ from datetime import date
 import pytest
 
 from api.serialize import is_dev_draft
-from cytonn_weekly.digital_payments import review_store
-from cytonn_weekly.digital_payments.coordinator_review import APPROVED, CLEAN, FLAGGED, NOT_AUTO_VERIFIED
+from cytonn_weekly.review import store as review_store
+from cytonn_weekly.review.model import APPROVED, CLEAN, FLAGGED, NOT_AUTO_VERIFIED
 from cytonn_weekly.fixed_income import cbk_auctions
 from cytonn_weekly.digital_payments.providers.drafting import narrative_system
 from cytonn_weekly.narrative.base import NarrativeBrief

@@ -3,7 +3,7 @@ from datetime import date
 from fastapi.testclient import TestClient
 
 from api.main import create_app
-from cytonn_weekly.digital_payments import review_store
+from cytonn_weekly.review import store as review_store
 from cytonn_weekly.report_sections import SECTIONS
 from cytonn_weekly.weekly import export
 from cytonn_weekly.weekly.week import latest_friday

@@ -11,8 +11,8 @@ from docx import Document
 from docx.table import Table
 from review_helpers import LocalFakeProvider, make_review
 
-from cytonn_weekly.digital_payments import coordinator_review as cr
-from cytonn_weekly.digital_payments import review_store as rs
+from cytonn_weekly.review import model as cr
+from cytonn_weekly.review import store as rs
 from cytonn_weekly.digital_payments import summary as sm
 from cytonn_weekly.digital_payments.providers.base import LINK_RE
 

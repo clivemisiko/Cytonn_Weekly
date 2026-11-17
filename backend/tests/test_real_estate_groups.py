@@ -10,7 +10,7 @@ import io
 from docx import Document
 
 from api.serialize import serialize_review
-from cytonn_weekly.common.review import ROMAN, grouped, letter, numbered
+from cytonn_weekly.review.blocks import ROMAN, grouped, letter, numbered
 from cytonn_weekly.real_estate.review_run import GROUPS, REITS_GROUP, group_of, layout
 from cytonn_weekly.report_sections import BY_SLUG
 from cytonn_weekly.weekly import export

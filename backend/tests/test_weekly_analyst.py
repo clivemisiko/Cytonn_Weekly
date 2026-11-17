@@ -20,7 +20,7 @@ from fastapi.testclient import TestClient
 
 from api.main import create_app
 from cytonn_weekly.charts.specs import SPECS
-from cytonn_weekly.checkers.digital_payments import SOURCES_DISAGREE
+from cytonn_weekly.review.figures import SOURCES_DISAGREE
 from cytonn_weekly.weekly import analyst, inputs, previous_issue
 from cytonn_weekly.weekly.inputs import InputError
 from cytonn_weekly.weekly.week import Week
@@ -829,7 +829,7 @@ def test_kcbs_friday_price_equals_the_workbooks_for_all_thirteen_companies(tmp_p
 
 
 def checked(table):
-    from cytonn_weekly.common.review import check_section, numbered
+    from cytonn_weekly.review.blocks import check_section, numbered
 
     content = {"section": "equities", "blocks": numbered([table])}
     return content, check_section(content)

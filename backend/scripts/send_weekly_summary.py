@@ -27,7 +27,8 @@ import sys
 from pathlib import Path
 from typing import Any, Iterator, Optional, Union
 
-from cytonn_weekly.digital_payments import delivery, review_store, summary
+from cytonn_weekly.digital_payments import delivery, summary
+from cytonn_weekly.review import store as review_store
 
 # Sections summary.py can render.  Others have reviews but no Word summary yet.
 SUMMARY_SECTIONS = ("digital_payments",)

@@ -20,7 +20,7 @@ from fastapi.testclient import TestClient
 from api.main import create_app
 from cytonn_weekly import db as db_module
 from cytonn_weekly import notable, sections
-from cytonn_weekly.digital_payments import review_store
+from cytonn_weekly.review import store as review_store
 from cytonn_weekly.notable.registry import DetectorContext, run_detectors
 from cytonn_weekly.notable.suggestion import InvalidSuggestion, Suggestion
 from cytonn_weekly.weekly import export

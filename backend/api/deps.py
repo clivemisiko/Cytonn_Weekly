@@ -11,8 +11,8 @@ from cytonn_weekly.charts import store as chart_store
 from cytonn_weekly.common import gather as source_gather
 from cytonn_weekly.common import sources as source_store
 from cytonn_weekly.common.run_events import RUN_STARTED, current_observer, describe, frames, redact, review_counts, safe_describe, user_message
-from cytonn_weekly.digital_payments import review_store
-from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview
+from cytonn_weekly.review import store as review_store
+from cytonn_weekly.review.model import CoordinatorReview
 from cytonn_weekly.digital_payments.provider_factory import ENV_VAR as PROVIDER_ENV_VAR
 from cytonn_weekly.digital_payments.provider_factory import ANTHROPIC_REMOVED, NOT_CONFIGURED
 from cytonn_weekly.digital_payments.providers.local_provider import EXA_KEY_ENV_VAR, EXA_KEY_MISSING, SearchKeyError

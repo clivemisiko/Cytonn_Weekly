@@ -49,7 +49,7 @@ from cytonn_weekly.common.computed import (
     ratio_pct,
 )
 from cytonn_weekly.common.formatting import NUMBER, PCT, TEXT, round_half_up
-from cytonn_weekly.common.review import (
+from cytonn_weekly.review.blocks import (
     build_review,
     check_section,
     narrative_block,
@@ -59,7 +59,7 @@ from cytonn_weekly.common.review import (
     unavailable_block,
 )
 from cytonn_weekly.common.run_events import Observer, report_blocks
-from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview
+from cytonn_weekly.review.model import CoordinatorReview
 from cytonn_weekly.fixed_income import cbk_auctions, net_borrowing
 from cytonn_weekly.narrative.base import NarrativeBrief, NarrativeProvider
 from cytonn_weekly.narrative.drafter import draft_pieces

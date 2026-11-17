@@ -87,7 +87,7 @@ KINDS = (RUN_STARTED, SOURCE_STARTED, SOURCE_FINISHED, SOURCE_FAILED, PIECE_STAR
          RETRYING, SOURCE_LEFT_OUT)
 TERMINAL = (RUN_FINISHED, RUN_FAILED)
 
-# The review model's statuses (digital_payments/coordinator_review.py), which the counts are keyed by.
+# The review model's statuses (review/model.py), which the counts are keyed by.
 COUNT_KEYS = ("clean", "flagged", "not_auto_verified")
 
 Observer = Callable[..., Any]

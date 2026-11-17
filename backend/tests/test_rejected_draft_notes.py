@@ -8,8 +8,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.main import create_app
-from cytonn_weekly.digital_payments import review_store
-from cytonn_weekly.digital_payments.coordinator_review import ACCEPT, FIX_NEEDED, rejected_draft_notes
+from cytonn_weekly.review import store as review_store
+from cytonn_weekly.review.model import ACCEPT, FIX_NEEDED, rejected_draft_notes
 from tests.review_helpers import make_review
 
 WEEK = "Week ending 2026-10-09"

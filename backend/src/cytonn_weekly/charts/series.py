@@ -37,7 +37,7 @@ from typing import Any, Mapping, Optional
 from openpyxl.utils import get_column_letter
 
 from cytonn_weekly.charts.specs import AVERAGE_FROM, ChartSpec
-from cytonn_weekly.checkers.digital_payments import Flag, SourceValue, check_figure, parse_number
+from cytonn_weekly.review.figures import Flag, SourceValue, check_figure, parse_number
 from cytonn_weekly.common.formatting import round_half_up
 from cytonn_weekly.weekly.workbook import Cell, Sheet, Workbook, WorkbookError, average_range
 

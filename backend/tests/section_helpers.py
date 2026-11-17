@@ -162,7 +162,7 @@ def focus_review(provider=None, topic="SSA Eurobonds performance", on_event=None
 
 def old_focus_review(provider=None, topic="SSA Eurobonds performance", on_event=None):
     """A Focus as it was saved before the structure existed: one cited piece, a headline and a body, no roles."""
-    from cytonn_weekly.common.review import build_review, check_section, narrative_block, numbered
+    from cytonn_weekly.review.blocks import build_review, check_section, narrative_block, numbered
     from cytonn_weekly.narrative.base import NarrativeBrief
     from cytonn_weekly.narrative.drafter import draft_pieces
 

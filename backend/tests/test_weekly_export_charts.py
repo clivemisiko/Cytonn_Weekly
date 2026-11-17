@@ -20,8 +20,8 @@ from docx.shared import Inches, RGBColor
 from cytonn_weekly.charts import store
 from cytonn_weekly.charts.block import chart_blocks, set_team_chart
 from cytonn_weekly.charts.specs import NASI_PE, NASI_YIELD
-from cytonn_weekly.common.review import build_review, check_section
-from cytonn_weekly.digital_payments import review_store
+from cytonn_weekly.review.blocks import build_review, check_section
+from cytonn_weekly.review import store as review_store
 from cytonn_weekly.report_sections import BY_SLUG
 from cytonn_weekly.weekly import export
 from tests.chart_helpers import FRIDAY, book, day

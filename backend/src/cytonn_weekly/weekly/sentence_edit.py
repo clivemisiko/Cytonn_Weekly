@@ -7,8 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from cytonn_weekly.common.review import CARRIED_TEXT, CLAIM, ROMAN, build_review, carried_ref, check_section, numbered
-from cytonn_weekly.digital_payments.coordinator_review import FLAGGED, HIGHLIGHT_CLAIM, CoordinatorReview, ReviewItem
+from cytonn_weekly.review.blocks import CARRIED_TEXT, CLAIM, ROMAN, build_review, carried_ref, check_section, numbered
+from cytonn_weekly.review.model import FLAGGED, HIGHLIGHT_CLAIM, CoordinatorReview, ReviewItem
 from cytonn_weekly.weekly.recheck import EQUITIES, FIXED_INCOME, _module, carry_marks, copy_chart_files
 
 MAX_CHARS = 600

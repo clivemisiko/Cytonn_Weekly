@@ -9,7 +9,8 @@ from fastapi.testclient import TestClient
 
 from api.draft_slot import DraftSlot
 from api.main import create_app
-from cytonn_weekly.digital_payments import review_store, summary
+from cytonn_weekly.digital_payments import summary
+from cytonn_weekly.review import store as review_store
 from cytonn_weekly.equities import review_run as eq_run
 from cytonn_weekly.equities import weekly as eq_weekly
 from cytonn_weekly.periodic import (

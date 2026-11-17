@@ -18,7 +18,8 @@ from api.deps import failure_message
 from api.main import create_app
 from api.runs import RunRegistry
 from cytonn_weekly.common import run_events as ev
-from cytonn_weekly.digital_payments import review_run, review_store
+from cytonn_weekly.digital_payments import review_run
+from cytonn_weekly.review import store as review_store
 from cytonn_weekly.equities import review_run as eq_run
 from cytonn_weekly.equities import weekly as eq_weekly
 from cytonn_weekly.focus import review_run as focus_run

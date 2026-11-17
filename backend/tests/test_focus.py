@@ -4,8 +4,8 @@ import pytest
 
 from dataclasses import replace
 
-from cytonn_weekly.common.review import CLAIM
-from cytonn_weekly.digital_payments.coordinator_review import FLAGGED, NOT_AUTO_VERIFIED
+from cytonn_weekly.review.blocks import CLAIM
+from cytonn_weekly.review.model import FLAGGED, NOT_AUTO_VERIFIED
 from cytonn_weekly.focus.review_run import (
     GUIDE_NOTE, MAX_SECTION_TITLE, build_focus_review, clean_sections, clean_topic, parse_outline, section_brief,
 )

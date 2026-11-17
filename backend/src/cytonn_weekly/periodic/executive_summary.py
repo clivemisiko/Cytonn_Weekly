@@ -16,10 +16,10 @@ from __future__ import annotations
 
 from typing import Any, Callable, Optional
 
-from cytonn_weekly.common.review import build_review, check_section, narrative_block, unavailable_block
+from cytonn_weekly.review.blocks import build_review, check_section, narrative_block, unavailable_block
 from cytonn_weekly.common.run_events import Observer
-from cytonn_weekly.digital_payments import review_store
-from cytonn_weekly.digital_payments.coordinator_review import APPROVED, CoordinatorReview
+from cytonn_weekly.review import store as review_store
+from cytonn_weekly.review.model import APPROVED, CoordinatorReview
 from cytonn_weekly.periodic.common import PeriodContext, compose
 
 SECTION = "executive_summary"

@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 import pytest
 
 from api import serialize, sso
-from cytonn_weekly.checkers import digital_payments as dp_checks
+from cytonn_weekly.digital_payments import checks as dp_checks
 from cytonn_weekly.common import run_events as ev
 from cytonn_weekly.digital_payments.review_run import build_digital_payments_review
 from cytonn_weekly.equities import stubs as eq_stubs

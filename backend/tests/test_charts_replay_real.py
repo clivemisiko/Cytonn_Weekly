@@ -13,7 +13,7 @@ import pytest
 
 from cytonn_weekly.charts.series import average, compare_average, read_series, windowed
 from cytonn_weekly.charts.specs import NASI_PE, NASI_YIELD
-from cytonn_weekly.checkers.digital_payments import parse_number
+from cytonn_weekly.review.figures import parse_number
 from cytonn_weekly.weekly import equities_workbook
 from cytonn_weekly.weekly.week import Week
 from cytonn_weekly.weekly.workbook import Workbook

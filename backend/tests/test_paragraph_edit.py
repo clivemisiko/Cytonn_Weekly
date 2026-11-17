@@ -7,8 +7,14 @@ from api.main import create_app
 from api.problems import PROBLEMS
 from api.serialize import serialize_review
 from cytonn_weekly.common.computed import carried_block
-from cytonn_weekly.common.review import EDITED_PARAGRAPH_NOTE, build_review, check_section, supplied_block, unavailable_block
-from cytonn_weekly.digital_payments import review_store as rs
+from cytonn_weekly.review.blocks import (
+    EDITED_PARAGRAPH_NOTE,
+    build_review,
+    check_section,
+    supplied_block,
+    unavailable_block,
+)
+from cytonn_weekly.review import store as rs
 from cytonn_weekly.fixed_income import weekly as fi_weekly
 from cytonn_weekly.weekly import sentence_edit as se
 

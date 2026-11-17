@@ -11,7 +11,7 @@ from typing import Any, Callable, Optional
 from cytonn_weekly import paths
 from cytonn_weekly.common import atomic
 from cytonn_weekly.common import sources as source_store
-from cytonn_weekly.common.checks import normalise_quote
+from cytonn_weekly.review.checks import normalise_quote
 from cytonn_weekly.weekly.week import latest_friday
 
 SECTORS = (("industry", "Industry reports"), ("residential", "Residential sector"), ("land", "Land"),

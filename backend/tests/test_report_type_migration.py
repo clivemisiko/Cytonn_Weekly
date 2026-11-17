@@ -12,7 +12,7 @@ import sqlite3
 import pytest
 
 from cytonn_weekly import paths, sections
-from cytonn_weekly.digital_payments import review_store as rs
+from cytonn_weekly.review import store as rs
 from cytonn_weekly.report_sections import latest_runs
 from tests.review_helpers import make_review
 

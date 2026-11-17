@@ -17,7 +17,7 @@ from cytonn_weekly.charts import series as cs
 from cytonn_weekly.charts.series import (AverageCheck, ChartSeries, Point, Stated, average, check_quoted,
                                          compare_average, read_series, window_start, windowed)
 from cytonn_weekly.charts.specs import AVERAGE_FROM, NASI_PE, NASI_YIELD, SPECS
-from cytonn_weekly.checkers.digital_payments import MISMATCH, MISSING, SOURCES_DISAGREE
+from cytonn_weekly.review.figures import MISMATCH, MISSING, SOURCES_DISAGREE
 from cytonn_weekly.common.formatting import round_half_up
 from cytonn_weekly.equities import weekly as eqw
 from cytonn_weekly.weekly.workbook import Workbook

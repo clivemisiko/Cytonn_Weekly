@@ -9,7 +9,7 @@ from openpyxl import Workbook as XlsxWorkbook
 
 from cytonn_weekly.common.formatting import round_half_up
 from cytonn_weekly.digital_payments import workbook as dpw
-from cytonn_weekly.digital_payments.coordinator_review import ACCEPT, FIX_NEEDED, WORKBOOK_QUARTER
+from cytonn_weekly.review.model import ACCEPT, FIX_NEEDED, WORKBOOK_QUARTER
 from cytonn_weekly.digital_payments.review_run import build_digital_payments_review, workbook_pe
 from datetime import date
 

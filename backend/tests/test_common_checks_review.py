@@ -1,13 +1,13 @@
-"""The shared checking layer and generic review builder (common/checks.py, common/review.py)."""
+"""The shared checking layer and generic review builder (review/checks.py, review/blocks.py)."""
 
 from decimal import Decimal
 
 import pytest
 
-from cytonn_weekly.checkers.digital_payments import MISMATCH, MISSING, UNSOURCED, CheckReport
+from cytonn_weekly.review.figures import MISMATCH, MISSING, UNSOURCED, CheckReport
 from cytonn_weekly.common import formatting as fm
-from cytonn_weekly.common.checks import check_claim, check_table_block, figures_in
-from cytonn_weekly.common.review import (
+from cytonn_weekly.review.checks import check_claim, check_table_block, figures_in
+from cytonn_weekly.review.blocks import (
     CLAIM,
     UNAVAILABLE_PART,
     build_review,
@@ -15,9 +15,7 @@ from cytonn_weekly.common.review import (
     numbered,
     unavailable_block,
 )
-from cytonn_weekly.digital_payments.coordinator_review import (
-    CLEAN, FLAGGED, NOT_AUTO_VERIFIED, TABLE_ROW, ReviewItem,
-)
+from cytonn_weekly.review.model import CLEAN, FLAGGED, NOT_AUTO_VERIFIED, TABLE_ROW, ReviewItem
 
 COLS = [
     {"key": "name", "label": "Name", "fmt": fm.TEXT},

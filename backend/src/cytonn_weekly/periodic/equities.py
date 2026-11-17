@@ -22,9 +22,9 @@ from __future__ import annotations
 from typing import Any, Callable, Optional
 
 from cytonn_weekly.common.http import http_get
-from cytonn_weekly.common.review import build_review, check_section, narrative_block, table_block, unavailable_block
+from cytonn_weekly.review.blocks import build_review, check_section, narrative_block, table_block, unavailable_block
 from cytonn_weekly.common.run_events import Observer, fetch_source, report_blocks
-from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview
+from cytonn_weekly.review.model import CoordinatorReview
 from cytonn_weekly.equities import fetcher, stubs as weekly_stubs
 from cytonn_weekly.narrative.base import NarrativeProvider
 from cytonn_weekly.periodic.common import PeriodContext, Stub, compose, draft_period, period_brief

@@ -132,7 +132,7 @@ def part(friday: date, window: tuple[date, date], today: date, provider: Any, ex
     """(the blocks of the part, warnings).  A company is drafted only from pages already saved for it (the gather step, or the
     analyst); no source means no model call.  Notes in the first block name each company not searched, quiet or shown elsewhere."""
     from cytonn_weekly.common import sources as store
-    from cytonn_weekly.common.review import narrative_block
+    from cytonn_weekly.review.blocks import narrative_block
     from cytonn_weekly.narrative.drafter import draft_pieces
 
     companies = load()

@@ -44,7 +44,7 @@ from cytonn_weekly.common.formatting import MULTIPLE, PCT, PRICE, TEXT, round_ha
 from cytonn_weekly.common.http import http_get
 from cytonn_weekly.charts.block import chart_blocks
 from cytonn_weekly.charts.store import attach as attach_chart_files
-from cytonn_weekly.common.review import (
+from cytonn_weekly.review.blocks import (
     build_review,
     check_section,
     narrative_block,
@@ -53,7 +53,7 @@ from cytonn_weekly.common.review import (
     unavailable_block,
 )
 from cytonn_weekly.common.run_events import Observer, report_blocks
-from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview
+from cytonn_weekly.review.model import CoordinatorReview
 from cytonn_weekly.equities import companies
 from cytonn_weekly.equities import fetcher as afx
 from cytonn_weekly.equities.review_run import BRIEFS

@@ -25,8 +25,8 @@ from pathlib import Path
 from typing import Any, Optional
 
 from cytonn_weekly.charts import store as chart_store
-from cytonn_weekly.common.review import COMPUTED_FIGURE, UNAVAILABLE_PART, build_review, check_section, numbered
-from cytonn_weekly.digital_payments.coordinator_review import TABLE_ROW, CoordinatorReview, ReviewItem
+from cytonn_weekly.review.blocks import COMPUTED_FIGURE, UNAVAILABLE_PART, build_review, check_section, numbered
+from cytonn_weekly.review.model import TABLE_ROW, CoordinatorReview, ReviewItem
 from cytonn_weekly.weekly import inputs as wi
 from cytonn_weekly.weekly.week import Week
 

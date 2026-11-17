@@ -16,9 +16,9 @@ from review_helpers import ROWS, TODAY, FakeProvider, LocalFakeProvider, make_re
 
 from api.main import CORS_ENV_VAR, create_app
 from cytonn_weekly import env as env_module
-from cytonn_weekly.digital_payments import coordinator_review as cr
+from cytonn_weekly.review import model as cr
 from cytonn_weekly.digital_payments import review_run
-from cytonn_weekly.digital_payments import review_store as rs
+from cytonn_weekly.review import store as rs
 from cytonn_weekly.digital_payments.providers.base import OutlookResult
 
 

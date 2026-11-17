@@ -21,7 +21,8 @@ from api.deps import failure_message
 from api.main import create_app
 from cytonn_weekly import db as database
 from cytonn_weekly.common import run_events as ev
-from cytonn_weekly.digital_payments import review_run, review_store
+from cytonn_weekly.digital_payments import review_run
+from cytonn_weekly.review import store as review_store
 from cytonn_weekly.paths import BACKEND_ROOT
 from tests.test_runs_api import WEEKLY_DP, finished, start
 

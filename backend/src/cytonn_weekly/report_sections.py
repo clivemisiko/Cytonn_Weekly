@@ -33,7 +33,7 @@ from typing import Any, Callable, Optional, Union
 
 from cytonn_weekly import db
 from cytonn_weekly.common.run_events import Observer
-from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview
+from cytonn_weekly.review.model import CoordinatorReview
 from cytonn_weekly.report_types import ANNUAL, COMPANION, HALF_YEAR, MONTHLY, QUARTERLY, WEEKLY
 
 
