@@ -18,6 +18,7 @@ dependencies = [
     "yfinance==1.7.0",
     "python-dotenv==1.2.3",
     "fastapi==0.142.2",
+    "pydantic==2.13.5",  # fastapi already needs it; listed because the model-reply classes (drafting/replies.py) import it directly
     "uvicorn==0.54.0",
     "httpx==0.28.1",
     # OCR for the NSE daily price list, which is a scanned image (weekly/nse_price_list.py).  Its
