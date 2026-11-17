@@ -14,8 +14,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.cms_publish import local_pieces, publish_report
-from api.main import SECTIONS_REQUIRED as SECTIONS_REQUIRED_TEXT
-from api.main import create_app, failure_message, provider_problem
+from api.deps import SECTIONS_REQUIRED as SECTIONS_REQUIRED_TEXT
+from api.deps import failure_message, provider_problem
+from api.main import create_app
 from api.serialize import is_dev_draft
 from cytonn_weekly import env
 from cytonn_weekly.digital_payments.delivery import is_dev_mode_review

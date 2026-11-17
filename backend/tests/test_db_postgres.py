@@ -17,7 +17,8 @@ from psycopg import errors as pg_errors
 from psycopg.conninfo import conninfo_to_dict
 from psycopg.rows import dict_row
 
-from api.main import create_app, failure_message
+from api.deps import failure_message
+from api.main import create_app
 from cytonn_weekly import db as database
 from cytonn_weekly.common import run_events as ev
 from cytonn_weekly.digital_payments import review_run, review_store

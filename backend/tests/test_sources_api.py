@@ -86,7 +86,7 @@ def another_day(monkeypatch):
         def today(cls):
             return date(2026, 11, 9)
 
-    monkeypatch.setattr("api.main.date", Monday)
+    monkeypatch.setattr("api.routers.sources.date", Monday)
 
 
 @pytest.mark.parametrize("subject", [None, SUBJECT])

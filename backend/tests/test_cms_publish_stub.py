@@ -27,6 +27,7 @@ from cytonn_weekly.digital_payments import review_store
 from cytonn_weekly.digital_payments.coordinator_review import APPROVED, REJECTED
 from cytonn_weekly.periodic import executive_summary
 from tests import periodic_helpers as ph
+from tests.route_helpers import every_route
 from tests import section_helpers as sh
 from tests.review_helpers import LocalFakeProvider, make_review
 
@@ -260,6 +261,6 @@ def test_nothing_in_the_app_can_reach_the_stub(tmp_path):
                 or "publish_report" in p.read_text(encoding="utf-8", errors="replace")]
     assert mentions == [Path(cms_publish.__file__)]
     app = create_app(db_path=tmp_path / "app.db", load_dotenv=False)
-    paths = [route.path.lower() for route in app.routes]
+    paths = [route.path.lower() for route in every_route(app)]
     assert paths and not [p for p in paths if "publish" in p or "cms" in p]
     assert TestClient(app).post("/api/publish").status_code == 404

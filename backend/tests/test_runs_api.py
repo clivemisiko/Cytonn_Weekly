@@ -14,7 +14,8 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from api.main import create_app, failure_message
+from api.deps import failure_message
+from api.main import create_app
 from api.runs import RunRegistry
 from cytonn_weekly.common import run_events as ev
 from cytonn_weekly.digital_payments import review_run, review_store

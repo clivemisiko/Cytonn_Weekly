@@ -34,7 +34,7 @@ def test_factory_builds_bedrock_when_asked_for_it(monkeypatch, capsys):
 
 
 def test_both_factories_and_provider_problem_refuse_the_removed_anthropic_provider(monkeypatch):
-    from api.main import provider_problem
+    from api.deps import provider_problem
     from cytonn_weekly.narrative.factory import get_narrative_provider
 
     monkeypatch.setenv("CYTONN_LLM_PROVIDER", "anthropic")

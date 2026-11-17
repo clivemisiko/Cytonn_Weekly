@@ -21,7 +21,8 @@ from tests.review_helpers import make_review
 TITLES = "Overview\nRisks"   # Focus under Bedrock needs typed section titles
 
 WEEK = "2026-10-02"
-MAIN = Path(api_main.__file__)
+API_FILES = [Path(api_main.__file__), Path(api_main.__file__).with_name("deps.py"),
+             *sorted(Path(api_main.__file__).with_name("routers").glob("*.py"))]   # the modules that raise ProblemError
 
 
 @pytest.fixture
@@ -56,11 +57,12 @@ def test_every_entry_is_well_formed():
 
 def test_every_call_site_names_a_code_in_the_table_and_every_code_is_used():
     used = []
-    for node in ast.walk(ast.parse(MAIN.read_text(encoding="utf-8"))):
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "ProblemError":
-            code = node.args[2]
-            assert isinstance(code, ast.Constant) and code.value in PROBLEMS, ast.dump(code)
-            used.append(code.value)
+    for file in API_FILES:
+        for node in ast.walk(ast.parse(file.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "ProblemError":
+                code = node.args[2]
+                assert isinstance(code, ast.Constant) and code.value in PROBLEMS, ast.dump(code)
+                used.append(code.value)
     assert set(used) == set(PROBLEMS)
 
 
