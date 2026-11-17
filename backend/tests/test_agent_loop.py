@@ -237,3 +237,13 @@ def test_the_chat_model_is_its_own_setting_and_falls_back_to_the_drafting_model(
     assert bedrock.chat_model_id() == "drafting-model" and bedrock.BedrockAgent(client=object()).model == "drafting-model"
     monkeypatch.setenv(bedrock.CHAT_MODEL_ENV, " chat-model ")
     assert bedrock.chat_model_id() == "chat-model" and bedrock.model_id() == "drafting-model"
+
+
+def test_an_empty_chat_model_setting_counts_as_unset(monkeypatch):
+    # The server compose passes the name with no value when .env lacks it, so the variable exists and is empty.
+    monkeypatch.setenv("BEDROCK_MODEL_ID", "drafting-model")
+    for empty in ("", "   "):
+        monkeypatch.setenv(bedrock.CHAT_MODEL_ENV, empty)
+        assert bedrock.chat_model_id() == "drafting-model"
+    monkeypatch.delenv("BEDROCK_MODEL_ID")
+    assert bedrock.chat_model_id() == bedrock.DEFAULT_MODEL

@@ -2,18 +2,24 @@
 import { PhCircleNotch, PhPauseCircle } from "@phosphor-icons/vue";
 import { computed, nextTick, onUnmounted, ref, shallowRef, useTemplateRef, watch } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
+import FullView from "@/components/chat/FullView.vue";
+import LiveCards from "@/components/chat/LiveCards.vue";
+import ReadinessCard from "@/components/chat/ReadinessCard.vue";
+import ReviewSummaryCard from "@/components/chat/ReviewSummaryCard.vue";
 import PageGrid from "@/components/nav/PageGrid.vue";
 import Masthead from "@/components/review/Masthead.vue";
 import Notice from "@/components/review/Notice.vue";
 import Button from "@/components/ui/Button.vue";
 import { FIELD, LINK } from "@/components/ui/button";
 import * as api from "@/lib/api";
-import { cardView, composerOff, createConversation, statusLine, toolLine } from "@/lib/chat";
+import { type ChatCard, composerOff, createConversation, statusLine, toolLine } from "@/lib/chat";
+import { parseReadiness, parseReviewSnapshot } from "@/lib/chatcards";
+import { draftingFor, draftingList } from "@/lib/drafting";
 import { friendlyDate } from "@/lib/format";
 import { type BackTarget, useBack } from "@/lib/nav";
 import { weekChoiceLabel } from "@/lib/previous";
 import { shell, useShellActions, useShellHere, useShellRibbon } from "@/lib/shell";
-import type { AppConfig, Overview, WeekChoice } from "@/lib/types";
+import type { AppConfig, Overview, ReportChoice, WeekChoice } from "@/lib/types";
 
 const route = useRoute();
 const router = useRouter();
@@ -26,6 +32,7 @@ const defaultPeriod = ref("");
 const overview = shallowRef<Overview | null>(null);
 const problem = ref<string | null>(null);
 const loading = ref(true);
+const full = ref<{ reviewId: number; index: number | null } | null>(null); // the aside's read-only view; declared before load() runs
 
 const convo = createConversation(api.chatApi);
 const { job, messages, notice, lost, sending } = convo;
@@ -33,6 +40,7 @@ onUnmounted(convo.stop);
 
 const period = computed(() => (WEEK.test(first(route.query.period)) ? first(route.query.period) : defaultPeriod.value));
 const slug = computed(() => first(route.query.section) || null);
+const report = computed<ReportChoice>(() => ({ type: "weekly", period: period.value, kind: null }));
 const sections = computed(() => overview.value?.sections ?? []);
 const current = computed(() => sections.value.find((s) => s.slug === slug.value) ?? null);
 const weekOptions = computed(() => {
@@ -40,6 +48,7 @@ const weekOptions = computed(() => {
   const p = period.value;
   return p && !list.some((o) => o.period === p) ? [{ period: p, label: friendlyDate(p.slice("Week ending ".length)) }, ...list] : list;
 });
+const drafting = computed(() => (overview.value && current.value ? draftingFor(draftingList(overview.value), current.value.slug, report.value) : null));
 
 const oldPage = (section: string) => ({ path: "/overview", query: { report: "weekly", period: period.value, section } });
 const status = computed(() => statusLine(job.value));
@@ -47,6 +56,7 @@ const off = computed(() => composerOff(job.value, config.value, sending.value));
 const used = computed(() => (job.value ? job.value.input_tokens + job.value.output_tokens : 0));
 
 function choose(next: string | null) {
+  full.value = null;
   void router.push({ path: "/chat", query: { period: period.value, ...(next ? { section: next } : {}) } });
 }
 /** "Whole report" opens the first section in the issue's order: each section is its own conversation. */
@@ -58,6 +68,7 @@ function chooseWeek(event: Event) {
 async function load() {
   loading.value = true;
   problem.value = null;
+  full.value = null;
   try {
     if (!config.value) {
       const [c, weeks] = await Promise.all([api.getConfig(), api.getPreviousWeeks()]);
@@ -66,7 +77,7 @@ async function load() {
       choices.value = weeks.choices ?? [];
       defaultPeriod.value = api.weekPeriod(weeks.default_week_ending);
     }
-    overview.value = await api.getOverview({ type: "weekly", period: period.value, kind: null });
+    overview.value = await api.getOverview(report.value);
     shell.setOverview(overview.value); // the rail takes the same payload
     const wanted = slug.value;
     if (wanted && overview.value.sections.some((s) => s.slug === wanted && s.available)) await convo.open(wanted, period.value);
@@ -78,6 +89,33 @@ async function load() {
   }
 }
 watch(() => [route.query.section, route.query.period], load, { immediate: true });
+
+// After any button on a card: the rail and the overview are read again, so neither shows an old state, and the cards read the server again.
+const tick = ref(0);
+async function changed() {
+  shell.invalidate();
+  tick.value++;
+  try {
+    overview.value = await api.getOverview(report.value);
+    shell.setOverview(overview.value);
+  } catch {
+    /* the rail stays unknown rather than showing what may be old */
+  }
+}
+
+const openFull = (reviewId: number, index?: number | null) => (full.value = { reviewId, index: index ?? null });
+
+// A saved card is read into its own shape here, once; one that is not as expected is shown by its name only.
+const rows = computed(() =>
+  messages.value.map((m) => ({
+    m,
+    cards: (m.cards ?? []).map((c: ChatCard) => {
+      if (c.type === "readiness") return { type: c.type, readiness: parseReadiness(c.data) } as const;
+      if (c.type === "review_summary") return { type: c.type, snapshot: parseReviewSnapshot(c) } as const;
+      return { type: c.type } as const;
+    }),
+  })),
+);
 
 const draft = ref("");
 async function submit() {
@@ -139,20 +177,16 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
             <Notice v-if="lost" tone="warn" role="alert">{{ lost }}</Notice>
 
             <ol role="log" aria-label="Conversation" class="space-y-3">
-              <li v-for="m in messages" :key="m.seq">
+              <li v-for="{ m, cards } in rows" :key="m.seq">
                 <p v-if="m.role === 'tool'" class="text-sm text-muted-foreground">{{ toolLine(m) }}</p>
                 <div v-else class="space-y-2 rounded-lg border px-3.5 py-2.5" :class="m.role === 'user' ? 'bg-muted' : 'bg-card'">
                   <p class="eyebrow">{{ m.role === "user" ? "You" : "Assistant" }}</p>
                   <p v-if="m.content" class="max-w-[70ch] whitespace-pre-wrap text-base leading-7 [overflow-wrap:anywhere]">{{ m.content }}</p>
-                  <section v-for="(card, i) in m.cards ?? []" :key="i" :aria-label="cardView(card).title" class="space-y-2 rounded-md border bg-background px-3 py-2.5">
-                    <h3 class="text-sm font-semibold">{{ cardView(card).title }}</h3>
-                    <div v-for="b in cardView(card).blocks" :key="b.heading" class="space-y-1">
-                      <p class="eyebrow">{{ b.heading }}</p>
-                      <ul class="list-disc space-y-0.5 pl-5 text-sm [overflow-wrap:anywhere]">
-                        <li v-for="line in b.lines" :key="line">{{ line }}</li>
-                      </ul>
-                    </div>
-                  </section>
+                  <template v-for="(c, i) in cards" :key="i">
+                    <ReadinessCard v-if="c.type === 'readiness' && c.readiness" :readiness="c.readiness" :title="current.title" :at="m.created_at" />
+                    <ReviewSummaryCard v-else-if="c.type === 'review_summary' && c.snapshot" :snapshot="c.snapshot" :title="current.title" :at="m.created_at" @full="openFull" />
+                    <p v-else class="text-sm text-muted-foreground">Card: {{ c.type.replace(/_/g, " ") }}</p>
+                  </template>
                 </div>
               </li>
             </ol>
@@ -167,6 +201,21 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
                 <Button v-if="status.canRaise" variant="outline" @click="convo.raise()">Raise the budget</Button>
               </span>
             </Notice>
+
+            <LiveCards
+              v-if="job"
+              :job="job"
+              :section="current"
+              :report="report"
+              :drafting="drafting"
+              :config="config"
+              :old-page="`/overview?report=weekly&period=${encodeURIComponent(period)}&section=${current.slug}`"
+              :tick="tick"
+              @changed="changed"
+              @draft-ended="convo.refresh()"
+              @full="openFull"
+              @close="choose(null)"
+            />
 
             <form class="space-y-2" @submit.prevent="submit">
               <label for="chat-message" class="eyebrow block">Message</label>
@@ -188,6 +237,7 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
       </div>
 
       <template #aside>
+        <FullView v-if="full" :key="`${full.reviewId}-${full.index}`" :review-id="full.reviewId" :index="full.index" @close="full = null" />
         <dl v-if="current" class="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-[max-content_1fr] min-[1100px]:grid-cols-1">
           <dt class="eyebrow">Section</dt>
           <dd>{{ current.title }}</dd>

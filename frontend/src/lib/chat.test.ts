@@ -5,7 +5,6 @@ import {
   type Job,
   MAX_FAILED_POLLS,
   POLL_MS,
-  cardView,
   composerOff,
   createConversation,
   lastSeq,
@@ -105,42 +104,6 @@ describe("what the job's state says", () => {
     expect(composerOff(job(), config(), true)).toContain("answering");
     expect(composerOff(job({ status: "paused", paused_reason: "token_budget" }), config(), false)).toContain("Raise the budget");
     expect(composerOff(job({ status: "paused", paused_reason: "tool_calls" }), config(), false)).toBeNull();
-  });
-});
-
-describe("cards", () => {
-  it("summarises a readiness card by group, with snips and sources", () => {
-    const v = cardView({
-      type: "readiness",
-      data: {
-        section: "fixed_income", week_ending: "2026-10-02",
-        groups: { needs_analyst: [{ label: "Bidding range", why: "typed by the team" }], fetched: [{ label: "CBK bulletin", why: "fetched" }] },
-        sources: { total: 3, in_week: 2, outside_week: 1 },
-      },
-    });
-    expect(v.title).toBe("What fixed income needs for the week ending 2026-10-02");
-    expect(v.blocks[0]).toEqual({ heading: "Needs you (1)", lines: ["Bidding range: typed by the team"] });
-    expect(v.blocks.map((b) => b.heading)).toEqual(["Needs you (1)", "Fetched (1)", "Sources"]);
-  });
-
-  it("caps a long list and says how many were left out", () => {
-    const items = Array.from({ length: 13 }, (_, i) => ({ label: `L${i}`, why: "w" }));
-    const lines = cardView({ type: "readiness", data: { groups: { optional: items } } }).blocks[0].lines;
-    expect(lines).toHaveLength(11);
-    expect(lines[10]).toBe("and 3 more");
-  });
-
-  it("summarises a review card, with the dev mark in words", () => {
-    const v = cardView({ type: "review_summary", review_id: 12, is_dev_draft: true, data: { counts: { flagged: 1, not_auto_verified: 2, clean: 3 }, items: [{ index: 4, ref: "yield", status: "not_auto_verified" }] } });
-    expect(v.title).toBe("Draft saved as review 12");
-    expect(v.blocks[0].lines).toEqual(["Flagged: 1", "Not automatically verified: 2", "Clean: 3"]);
-    expect(v.blocks[1].lines).toEqual(["Item 4, yield: not automatically verified"]);
-    expect(v.blocks.at(-1)?.heading).toBe("Dev draft");
-  });
-
-  it("labels a card it does not know and does not fail on odd data", () => {
-    expect(cardView({ type: "approve_buttons" }).title).toBe("Card: approve buttons");
-    expect(() => cardView({ type: "readiness", data: "nonsense" })).not.toThrow();
   });
 });
 
@@ -248,6 +211,19 @@ describe("a conversation's polling", () => {
     expect(c.notice.value).toBe("Already answering.");
     await new Promise((r) => setTimeout(r, 0));
     expect(calls.list).toBe(before + 1);
+  });
+
+  it("refresh reads once, and polls on only while the job is working", async () => {
+    const t = manual();
+    const { api, calls } = fake([job(), job({ status: "working" }), job()]);
+    const c = createConversation(api, t.timers);
+    await c.open("fixed_income", "Week ending 2026-10-02");
+    expect(calls.list).toBe(1);
+    await c.refresh();
+    expect(calls.list).toBe(2);
+    expect(t.count()).toBe(1); // working: the next poll is set, and only one
+    await c.refresh();
+    expect(t.count()).toBe(0);
   });
 
   it("starts polling after a message is accepted, and ignores an empty one", async () => {

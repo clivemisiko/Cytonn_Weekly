@@ -199,8 +199,14 @@ def main() -> None:
     chart_demo.offline_equities()
 
     _real_dp = digital_payments.build_digital_payments_review
-    digital_payments.build_digital_payments_review = lambda today=None, on_event=None, **_: _real_dp(
-        provider=review_helpers.FakeProvider(), today=today, fetch_table=lambda _today: review_helpers.ROWS, on_event=on_event)
+    TAMPERED_FRIDAY = date(2027, 1, 8)   # chat card tests (T123): this one week's draft has flagged items (a wrong price, a missing row)
+
+    def _dp(today=None, on_event=None, **_):
+        if today == TAMPERED_FRIDAY:
+            return review_helpers.make_review(tamper=True)
+        return _real_dp(provider=review_helpers.FakeProvider(), today=today, fetch_table=lambda _today: review_helpers.ROWS, on_event=on_event)
+
+    digital_payments.build_digital_payments_review = _dp
 
     # Markets Review sections: the test suite's own builders, which hold the real ones and feed them captured sources.
     for _slug, _helper in periodic_helpers.BUILDERS.items():

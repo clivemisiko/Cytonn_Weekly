@@ -396,6 +396,9 @@ export const getPreviousWeeks = () => request<PreviousWeeks>("/api/previous/week
 const unexpected = () => new ApiError("The server's answer about the conversation was not in the shape this page expects. Reload the page, and tell the team if it happens again.", null);
 const jobBody = (body: unknown) => (body as { job?: unknown } | null)?.job;
 
+/** What the section needs for the week, worked out now (not the saved card). The page checks the shape (parseReadiness in chatcards.ts). */
+export const getReadiness = (jobId: number) => request<{ readiness: unknown }>(`/api/jobs/${jobId}/readiness`);
+
 /** The four calls the chat page makes. Each answer is checked whole; one that is not as expected is an error, never half used. */
 export const chatApi: ChatApi = {
   async open(section, period) {

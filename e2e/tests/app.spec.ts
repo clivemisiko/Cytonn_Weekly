@@ -46,6 +46,10 @@ test("T01 landing page loads, Home becomes current on the overview, Back disable
   await expect(home).not.toHaveAttribute("aria-current", /.*/); // Home is the overview, and this page is /
   await expect(topbar(page).getByRole("button", { name: "Back (this is the start screen)" })).toBeDisabled();
   await page.getByRole("link", { name: "Continue without signing in" }).click();
+  await expect(page).toHaveURL(/\/chat$/); // the chat's section picker is where the welcome page leads
+  await expect(page.getByRole("heading", { name: "Choose what to talk about" })).toBeVisible();
+  await expect(home).not.toHaveAttribute("aria-current", /.*/); // Home is still the overview
+  await page.getByRole("navigation", { name: "Report sections" }).getByRole("button", { name: "Overview" }).click(); // the overview stays one click away
   await expect(page).toHaveURL(DEFAULT_WEEK); // a bare /overview opens on a labelled week
   await expect(page.getByRole("heading", { name: "Analyst review", level: 1 })).toBeVisible();
   await expect(home).toHaveAttribute("aria-current", "page");

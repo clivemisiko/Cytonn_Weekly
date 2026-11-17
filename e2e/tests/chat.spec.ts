@@ -19,6 +19,10 @@ async function stubChat(page: Page, handle: (method: string) => { status?: numbe
   });
   await page.route("**/api/jobs", (route) => route.fulfill({ json: { job: job("idle"), created: false } }));
   await page.route("**/api/jobs/5/**", (route) => route.fulfill(handle(route.request().method())));
+  // The readiness read is a code check, not a message; a route added later wins over the one above.
+  await page.route("**/api/jobs/5/readiness", (route) =>
+    route.fulfill({ json: { readiness: { section: "fixed_income", week_ending: "2026-10-09", groups: { needs_analyst: [], carried_or_suggested: [], fetched: [], in_place: [], optional: [] } } } }),
+  );
 }
 
 test("T116 the chat opens on a section picker with the week, a section opens its conversation with the readiness card, and the old page is one link away", async ({ page }) => {
@@ -37,7 +41,7 @@ test("T116 the chat opens on a section picker with the week, a section opens its
   await expect(page).toHaveURL(/section=fixed_income/);
   await expect(page.getByRole("heading", { name: "Fixed Income", level: 2 })).toBeVisible();
   const log = page.getByRole("log", { name: "Conversation" });
-  await expect(log.getByRole("region", { name: /What fixed income needs for the week ending 2026-10-09/ })).toBeVisible();
+  await expect(log.getByRole("region", { name: /What Fixed Income needs for the week ending 2026-10-09/ })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Report sections" }).getByRole("button", { name: /^Fixed Income/ })).toHaveAttribute("aria-current", "page");
 
   // This copy is in local mode, so the assistant cannot answer: the box is off and says why in words.

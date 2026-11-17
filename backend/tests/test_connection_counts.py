@@ -85,6 +85,7 @@ def test_the_chat_routes_cost(counted, tmp_path, monkeypatch):
     assert count("chat: open it again", lambda c: c.post("/api/jobs", json=week)) == 1
     assert count("chat: the job", lambda c: c.get("/api/jobs/1")) == 1
     assert count("chat: one poll for messages", lambda c: c.get("/api/jobs/1/messages", params={"after": 0})) == 2
+    assert count("chat: the readiness check, run again", lambda c: c.get("/api/jobs/1/readiness")) == 1
     jobs.finish(tmp_path / "app.db", 1, jobs.CALL_BUDGET)
     assert count("chat: raise the budget", lambda c: c.post("/api/jobs/1/raise-budget")) == 4
     # a message: the worker is held at the model factory, so only the request's own connections are counted

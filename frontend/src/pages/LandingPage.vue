@@ -85,7 +85,7 @@ const rise = (order: number) => ({ animationDelay: `${order * 60}ms` });
 
       <div class="rise-slow" :style="rise(5)">
         <RouterLink
-          to="/overview"
+          to="/chat"
           data-slot="button"
           :class="cn(buttonVariants({ size: 'lg', variant: 'outline' }), 'w-full gap-2 font-medium hover:border-foreground/30 sm:w-auto')"
         >

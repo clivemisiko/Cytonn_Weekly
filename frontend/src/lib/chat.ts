@@ -21,7 +21,7 @@ export interface Job {
   created_at: string;
 }
 
-/** A card the API saved with a message. Only its type is relied on here; `cardView` reads the rest defensively. */
+/** A card the API saved with a message. Only its type is relied on here; `chatcards.ts` reads the rest defensively. */
 export interface ChatCard {
   type: string;
   [key: string]: unknown;
@@ -136,60 +136,6 @@ export function composerOff(job: Job | null, config: AppConfig | null, sending: 
   if (sending || job?.status === "working") return "The assistant is answering. Wait for it, then send your message.";
   if (job?.status === "paused" && (job.paused_reason === "call_budget" || job.paused_reason === "token_budget")) return "Raise the budget first, then send your message.";
   return null;
-}
-
-// ---- Cards: a simple labelled summary of each; the real designs are a later step ----
-
-export interface CardView {
-  type: string;
-  title: string;
-  blocks: { heading: string; lines: string[] }[];
-}
-
-const GROUPS: [key: string, heading: string][] = [
-  ["needs_analyst", "Needs you"],
-  ["carried_or_suggested", "Carried or suggested, not yet confirmed"],
-  ["optional", "Optional"],
-  ["fetched", "Fetched"],
-  ["in_place", "In place"],
-];
-const STATUS_WORDS: Record<string, string> = { flagged: "flagged", not_auto_verified: "not automatically verified", clean: "clean" };
-const MAX_LINES = 10;
-
-const list = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v.filter(isObject) : []);
-const text = (v: unknown) => (typeof v === "string" ? v : "");
-const num = (v: unknown) => (typeof v === "number" ? v : 0);
-const capped = (lines: string[]) => (lines.length > MAX_LINES ? [...lines.slice(0, MAX_LINES), `and ${lines.length - MAX_LINES} more`] : lines);
-
-export function cardView(card: ChatCard): CardView {
-  const data = isObject(card.data) ? card.data : {};
-  if (card.type === "readiness") {
-    const groups = isObject(data.groups) ? data.groups : {};
-    const blocks: CardView["blocks"] = [];
-    for (const [key, heading] of GROUPS) {
-      const items = list(groups[key]);
-      if (items.length > 0) blocks.push({ heading: `${heading} (${items.length})`, lines: capped(items.map((i) => `${text(i.label)}: ${text(i.why)}`)) });
-    }
-    const snips = list(data.snips);
-    if (snips.length > 0) blocks.push({ heading: "Snips", lines: snips.map((s) => `${text(s.sector)}: ${num(s.uploaded)} uploaded, ${num(s.read)} read, ${num(s.confirmed)} confirmed`) });
-    if (isObject(data.sources)) {
-      const s = data.sources;
-      blocks.push({ heading: "Sources", lines: [`${num(s.total)} saved, ${num(s.in_week)} dated inside the week, ${num(s.outside_week)} outside it`] });
-    }
-    if (text(data.note)) blocks.push({ heading: "Note", lines: [text(data.note)] });
-    return { type: card.type, title: `What ${text(data.section).replace(/_/g, " ") || "this section"} needs for the week ending ${text(data.week_ending)}`, blocks };
-  }
-  if (card.type === "review_summary") {
-    const counts = isObject(data.counts) ? data.counts : {};
-    const blocks: CardView["blocks"] = [
-      { heading: "Counts", lines: [`Flagged: ${num(counts.flagged)}`, `Not automatically verified: ${num(counts.not_auto_verified)}`, `Clean: ${num(counts.clean)}`] },
-    ];
-    const items = list(data.items).map((i) => `Item ${num(i.index)}, ${text(i.ref)}: ${STATUS_WORDS[text(i.status)] ?? text(i.status)}`);
-    if (items.length > 0) blocks.push({ heading: "Items to look at", lines: capped(items) });
-    if (card.is_dev_draft === true) blocks.push({ heading: "Dev draft", lines: ["Watermarked, not for circulation."] });
-    return { type: card.type, title: `Draft saved as review ${num(card.review_id)}`, blocks };
-  }
-  return { type: card.type, title: `Card: ${card.type.replace(/_/g, " ")}`, blocks: [] };
 }
 
 // ---- One conversation: opening it, sending, polling ----
@@ -309,5 +255,11 @@ export function createConversation(api: ChatApi, timers: Timers = browserTimers)
     }
   }
 
-  return { job, messages, notice, lost, sending, open, send, raise, stop };
+  /** Read once now (after a draft finished, say): the new messages, and the job's state, with polling carried on only while it is working. */
+  async function refresh() {
+    stop();
+    await tick();
+  }
+
+  return { job, messages, notice, lost, sending, open, send, raise, refresh, stop };
 }

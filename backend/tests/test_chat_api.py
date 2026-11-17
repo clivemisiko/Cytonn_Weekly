@@ -79,6 +79,20 @@ def test_the_first_open_saves_the_readiness_card_before_the_model_says_anything(
     assert env.client_calls.calls == []   # no model call: code posted it
 
 
+def test_the_readiness_check_runs_again_now_with_no_model_call(env):
+    job_id = env.open()
+    got = env.client.get(f"/api/jobs/{job_id}/readiness").json()["readiness"]
+    assert got == env.messages(job_id)["messages"][0]["cards"][0]["data"]   # nothing changed since the card was saved
+    assert "equities_workbook" in {e["key"] for e in got["groups"]["needs_analyst"]}
+    assert env.client_calls.calls == []
+
+
+def test_the_readiness_check_is_refused_for_a_report_with_no_week(env):
+    job_id = env.open(report_type="quarterly", period="Q3'2026", section="equities")
+    assert env.client.get(f"/api/jobs/{job_id}/readiness").status_code == 409
+    assert env.client.get("/api/jobs/999/readiness").status_code == 404
+
+
 def test_opening_again_returns_the_same_job_and_adds_no_second_card(env):
     first = env.client.post("/api/jobs", json=EQUITIES).json()
     again = env.client.post("/api/jobs", json=EQUITIES).json()
@@ -107,7 +121,8 @@ def test_opening_refuses_what_a_draft_refuses(env):
 def test_a_message_is_202_and_the_answer_arrives_through_polling(env):
     job_id = env.open()
     r = env.say(job_id, "  What is missing?  ")
-    assert r.status_code == 202 and r.json()["seq"] == 2 and r.json()["job"]["status"] == "working"
+    # the scripted answer can finish before the response reads the job, so "idle" is as valid as "working" here
+    assert r.status_code == 202 and r.json()["seq"] == 2 and r.json()["job"]["status"] in ("working", "idle")
     got = env.idle(job_id)
     assert [(m["role"], m["content"][:18]) for m in got["messages"][1:]] == [("user", "What is missing?"), ("assistant", "Hello back.")]
     assert [m["seq"] for m in env.messages(job_id, after=2)["messages"]] == [3]   # the poll cursor: only what is new
@@ -137,6 +152,14 @@ def test_a_second_message_while_the_assistant_is_working_is_409_and_saves_nothin
     env.model.gate.set()
     env.idle(job_id)
     assert env.say(job_id, "two").status_code == 202   # free again
+
+
+def test_an_empty_chat_concurrency_setting_counts_as_unset(monkeypatch):
+    from api.chat import DEFAULT_CONCURRENCY, chat_concurrency
+
+    for empty in ("", "  "):
+        monkeypatch.setenv("CYTONN_CHAT_CONCURRENCY", empty)
+        assert chat_concurrency() == DEFAULT_CONCURRENCY == 2
 
 
 def test_chat_seats_are_their_own_and_a_full_house_is_429(tmp_path, monkeypatch):

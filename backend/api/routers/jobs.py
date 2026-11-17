@@ -6,6 +6,8 @@ from fastapi import APIRouter, HTTPException, Query
 
 from cytonn_weekly import jobs as job_store
 from cytonn_weekly import report_sections
+from cytonn_weekly.agent.tools import execute
+from api.chat import BY_NAME
 from api.deps import Deps, chosen_report, configured_provider, provider_problem
 from api.schemas import JobMessage, JobRequest
 
@@ -82,6 +84,16 @@ def make_router(d: Deps) -> APIRouter:
         job = find(job_id)
         rows = job_store.messages(d.db_path, job_id, after)
         return {"job": view(job), "messages": [message_view(m) for m in rows if m["content"] or m["cards"] or m["role"] == "tool"]}
+
+    @router.get("/api/jobs/{job_id}/readiness")
+    def readiness(job_id: int) -> dict:
+        """What the section needs for the week, worked out now: the check the first-open card was made from, run again so the cards that
+        carry buttons never show a state that has changed.  Code runs it, never the model; 409 when the conversation has no weekly check."""
+        job = find(job_id)
+        got = execute(BY_NAME, "week_status", {}, d.chat.context(job))
+        if "error" in got:
+            raise HTTPException(409, got["error"])
+        return {"readiness": got}
 
     @router.post("/api/jobs/{job_id}/raise-budget")
     def raise_budget(job_id: int) -> dict:

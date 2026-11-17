@@ -18,6 +18,7 @@ ROUTES = [
     "GET /api/inputs/weekly/{week_ending}/charts/{key}/image",
     "GET /api/jobs/{job_id}",
     "GET /api/jobs/{job_id}/messages",
+    "GET /api/jobs/{job_id}/readiness",
     "GET /api/notable/{section}",
     "GET /api/previous/weekly",
     "GET /api/report-types",
