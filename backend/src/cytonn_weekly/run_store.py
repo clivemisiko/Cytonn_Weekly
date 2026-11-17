@@ -119,6 +119,17 @@ class RunStore:
             conn.close()
 
     @_safe
+    def latest_for(self, report_type: str, period: str, section: str) -> Optional[tuple[dict[str, Any], list[RunEvent]]]:
+        """The newest saved run of this section of this report, as ``load`` gives it, or None."""
+        conn = db.open_db(self.db_path)
+        try:
+            row = conn.execute("SELECT run_id FROM draft_runs WHERE report_type = ? AND period = ? AND section = ? "
+                               "ORDER BY started_at DESC LIMIT 1", (report_type, period, section)).fetchone()
+        finally:
+            conn.close()
+        return None if row is None else self.load(row["run_id"])
+
+    @_safe
     def interrupt_active(self) -> int:
         """At startup: every run still queued or running belongs to a process that is gone.  Each becomes ``interrupted``, with a
         closing ``run_failed`` event that says so (the kind the run screen already shows as a stop).  Returns how many.

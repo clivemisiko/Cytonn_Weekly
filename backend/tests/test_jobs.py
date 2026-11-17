@@ -1,9 +1,14 @@
 """Report jobs and their messages (jobs.py): the settings with their environment overrides, one job per report, period and section,
-the limits stored on the job, and messages in order.  SQLite in a temp folder; no model, no network, nothing enforces a limit.
+the limits stored on the job, its status and counters, and messages in order.  SQLite in a temp folder; no model, no network;
+the loop that enforces the limits is tested in test_agent_loop.py.
 """
+
+import json
+import sqlite3
 
 import pytest
 
+from cytonn_weekly import db as database
 from cytonn_weekly import jobs
 
 PERIOD = "Week ending 2026-10-02"
@@ -81,3 +86,71 @@ def test_a_message_needs_a_known_role_and_an_existing_job(db):
     with pytest.raises(LookupError, match="no job 999"):
         jobs.add_message(db, 999, "user", "x")
     assert jobs.messages(db, job_id) == []
+
+
+def test_a_new_job_is_idle_with_nothing_used_and_the_chat_columns_round_trip(db):
+    job = jobs.open_job(db, "weekly", PERIOD, "equities")
+    assert (job["status"], job["paused_reason"], job["calls_used"], job["input_tokens"], job["output_tokens"], job["budget_raises"]) == (
+        "idle", None, 0, 0, 0, 0)
+    job_id = job["job_id"]
+    jobs.add_message(db, job_id, "assistant", "Here.", usage={"model": "m", "input_tokens": 3, "output_tokens": 4},
+                     cards=[{"kind": "readiness", "data": {"n": 1}}])
+    jobs.add_message(db, job_id, "tool", "lookup", "lookup", "{}", tool_use_id="t1", tool_input={"section": "equities"})
+    a, t = jobs.messages(db, job_id)
+    assert json.loads(a["usage"]) == {"model": "m", "input_tokens": 3, "output_tokens": 4} and json.loads(a["cards"]) == [{"kind": "readiness", "data": {"n": 1}}]
+    assert (t["tool_use_id"], json.loads(t["tool_input"]), t["usage"], t["cards"]) == ("t1", {"section": "equities"}, None, None)
+
+
+def test_begin_takes_a_job_once_and_finish_gives_it_back_idle_or_paused(db):
+    job_id = jobs.open_job(db, "weekly", PERIOD, "equities")["job_id"]
+    assert jobs.begin(db, job_id) is True and jobs.begin(db, job_id) is False
+    jobs.finish(db, job_id, jobs.CALL_BUDGET)
+    assert (jobs.get_job(db, job_id)["status"], jobs.get_job(db, job_id)["paused_reason"]) == ("paused", "call_budget")
+    assert jobs.begin(db, job_id) is True and jobs.get_job(db, job_id)["paused_reason"] is None   # a new message resumes it
+    jobs.finish(db, job_id)
+    assert jobs.get_job(db, job_id)["status"] == "idle"
+    with pytest.raises(ValueError, match="unknown pause reason"):
+        jobs.finish(db, job_id, "tired")
+    with pytest.raises(LookupError, match="no job 999"):
+        jobs.get_job(db, 999)
+
+
+def test_usage_adds_up_one_call_at_a_time(db):
+    job_id = jobs.open_job(db, "weekly", PERIOD, "equities")["job_id"]
+    jobs.add_usage(db, job_id, 100, 20)
+    jobs.add_usage(db, job_id, 0, 0)
+    job = jobs.get_job(db, job_id)
+    assert (job["calls_used"], job["input_tokens"], job["output_tokens"]) == (2, 100, 20)
+
+
+def test_raising_a_budget_changes_that_job_only(db):
+    a = jobs.open_job(db, "weekly", PERIOD, "equities")["job_id"]
+    b = jobs.open_job(db, "weekly", PERIOD, "fixed_income")["job_id"]
+    jobs.begin(db, a)
+    jobs.finish(db, a, jobs.TOKEN_BUDGET)
+    raised = jobs.raise_budget(db, a)
+    assert (raised["call_budget"], raised["token_budget"]) == (30 + jobs.RAISE_CALLS, 300_000 + jobs.RAISE_TOKENS)
+    assert (raised["status"], raised["paused_reason"], raised["budget_raises"]) == ("idle", None, 1)
+    assert (jobs.get_job(db, b)["call_budget"], jobs.get_job(db, b)["budget_raises"]) == (30, 0)
+    with pytest.raises(ValueError):   # the pause is gone, so a second press changes nothing
+        jobs.raise_budget(db, a)
+
+
+def test_a_database_made_before_the_chat_columns_gets_them_and_keeps_its_rows(tmp_path):
+    path = tmp_path / "old.db"
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        "CREATE TABLE report_jobs (job_id INTEGER PRIMARY KEY AUTOINCREMENT, report_type TEXT NOT NULL, period TEXT NOT NULL DEFAULT '', "
+        "section TEXT NOT NULL, max_tool_calls INTEGER NOT NULL, call_budget INTEGER NOT NULL, token_budget INTEGER NOT NULL, "
+        "created_at TEXT NOT NULL, UNIQUE (report_type, period, section));"
+        "CREATE TABLE job_messages (job_id INTEGER NOT NULL, seq INTEGER NOT NULL, role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'tool')), "
+        "content TEXT NOT NULL, tool_name TEXT, tool_result TEXT, created_at TEXT NOT NULL, PRIMARY KEY (job_id, seq));"
+        "INSERT INTO report_jobs VALUES (1, 'weekly', 'Week ending 2026-10-02', 'equities', 8, 30, 300000, 'then');"
+        "INSERT INTO job_messages VALUES (1, 1, 'user', 'old question', NULL, NULL, 'then');")
+    conn.commit()
+    conn.close()
+    database.init_db(path)
+    database.init_db(path)   # idempotent
+    job = jobs.open_job(path, "weekly", "Week ending 2026-10-02", "equities")
+    assert (job["job_id"], job["created_at"], job["status"], job["calls_used"]) == (1, "then", "idle", 0)
+    assert jobs.messages(path, 1)[0]["content"] == "old question" and jobs.messages(path, 1)[0]["cards"] is None

@@ -126,6 +126,7 @@ class Field:
     hi: Optional[float] = None
     scale: int = 1            # the workbook holds the typed value divided by this (100 for a percentage)
     max_chars: int = MAX_LABEL   # a text item's longest value
+    required: bool = True     # False exactly where the label or help says "Optional" (a test pins it)
 
 
 @dataclass(frozen=True)
@@ -153,6 +154,7 @@ class Table:
     mode: str = PASTE
     fixed_rows: tuple[tuple[str, str], ...] = ()   # (row key, label): a grid whose rows are given
     example: str = ""
+    required: bool = True     # False exactly where the help says "Optional"
 
 
 GROUPS = (
@@ -174,7 +176,7 @@ FIELD_LIST = (
           "Money Market Performance", "The rate the week ended at, as a percentage (9.0, not 0.09).", **_PCT),
     Field("cmmf_last_week", FI, "money_market", "Cytonn Money Market Fund yield, previous week", "Cytonn Money Market Fund",
           "Money Market Performance", "Optional. Left empty, the sentence gives this week's yield only. This week's yield is "
-          "the Cytonn row of the fund table.", **_PCT),
+          "the Cytonn row of the fund table.", required=False, **_PCT),
     Field("mmf_published", FI, "money_market", "Fund table published on", MMF_READ_FROM, "Money Market Performance",
           "The day's paper the fund table below is copied from.", kind=DATE),
     Field("mmf_source", FI, "money_market", "Fund table source label", MMF_READ_FROM, "The source line under the fund table",
@@ -183,7 +185,7 @@ FIELD_LIST = (
     Field("liquidity_driver", FI, "liquidity", "What drove liquidity this week (optional)", "The fixed income team's own reading",
           "Liquidity", "Optional. Type it as a clause that continues the first sentence of the Liquidity paragraph, for example "
           "\"partly attributable to tax payments that offset government payments\". It is printed as typed and is the team's own "
-          "view: the tool never writes a cause itself, and it is not carried to the next week.", kind=TEXT, max_chars=MAX_CAUSE),
+          "view: the tool never writes a cause itself, and it is not carried to the next week.", kind=TEXT, max_chars=MAX_CAUSE, required=False),
     Field("borrowing_target", FI, "borrowing", "Net domestic borrowing target for the fiscal year",
           "Exchequer releases (National Treasury)", "Net domestic borrowing against the pro-rated target",
           "The full-year target from the Exchequer releases. It changes only when the National Treasury issues revised "
@@ -191,7 +193,7 @@ FIELD_LIST = (
           unit="Kshs bn", lo=1, hi=5000),
     Field("fiscal_year_start", FI, "borrowing", "Fiscal year starts on", "National Treasury (Kenya's fiscal year)",
           "Net domestic borrowing against the pro-rated target", "Optional: 1 July is used when this is empty. The net borrowing "
-          "log starts on this day and the target is pro-rated from it. Typed once, it is carried forward.", kind=DATE),
+          "log starts on this day and the target is pro-rated from it. Typed once, it is carried forward.", kind=DATE, required=False),
     Field("large_caps", EQ, "market", "Large-cap list", "The equities team's large-cap list", "Large-cap movers",
           "One company a line, as the team names them. The movers are picked from this list by KCB IB's week-on-week changes.",
           kind=NAMES),
@@ -201,7 +203,7 @@ FIELD_LIST = (
           "Foreign investors", "Including this week. Net selling is negative.", unit="USD mn", lo=-20_000, hi=20_000),
     Field("foreign_prior_year", EQ, "market", "Foreign net position recorded in the previous year",
           "The equities team's running total", "Foreign investors", "Optional. Net selling is negative.", unit="USD mn",
-          lo=-20_000, hi=20_000),
+          lo=-20_000, hi=20_000, required=False),
     Field("pe", EQ, "valuation", "Market P/E", "Bloomberg NASI P/E", "Valuation", "After Friday's close.", unit="x", lo=1, hi=60),
     Field("pe_average", EQ, "valuation", "Historical average P/E", "The equities team's P/E series", "Valuation",
           "The average of the series, this Friday included.", unit="x", lo=1, hi=60),
@@ -255,7 +257,7 @@ TABLE_LIST = (
           "Optional. Leave this empty: the log is built from CBK's auction results. A log typed here is used instead of CBK's, as "
           "analyst input, and is the fallback when CBK cannot be reached. One auction a line since 1 July, up to this "
           "week's. Redemptions are negative, as in the team's log.",
-          example="2026-10-05  41196.84  (30511.20)"),
+          example="2026-10-05  41196.84  (30511.20)", required=False),
     # CBK prints a bond redemption only in the results of a bond auction settling that day, so a bond that matures on a
     # day with no bond auction is on no result file (first case: IFB1/2014/12, 12 October 2026).  It is typed here.
     Table("borrowing_redemptions", FI, "borrowing", "Other bond redemptions",
@@ -1479,7 +1481,7 @@ def status(week: Week, root: Optional[Path] = None, section: Optional[str] = Non
         if wb:
             workbook = ({"value": [shown(c) for c in wb], "ref": wb[0].ref} if spec.kind == NAMES
                         else {"value": shown(wb, spec.scale), "ref": wb.ref})
-        return {"type": "field", "key": spec.key, "label": spec.label, "kind": spec.kind, "unit": spec.unit, "min": spec.lo,
+        return {"type": "field", "key": spec.key, "label": spec.label, "required": spec.required, "kind": spec.kind, "unit": spec.unit, "min": spec.lo,
                 "max": spec.hi, "source": spec.source, "help": spec.help, "used_in": spec.used_in,
                 "value": form["fields"].get(spec.key), "workbook": workbook,
                 "workbook_note": analyst.errors.get(_READING[spec.key]), "differences": differences.get(spec.key, []),
@@ -1503,7 +1505,7 @@ def status(week: Week, root: Optional[Path] = None, section: Optional[str] = Non
                          **({"last_price": shown(before.number)} if before else {})}
                 if len(found) > 1:
                     auto.append(found)
-        return {"type": "table", "key": table.key, "label": table.label, "mode": table.mode, "source": table.source,
+        return {"type": "table", "key": table.key, "label": table.label, "required": table.required, "mode": table.mode, "source": table.source,
                 "help": table.help, "example": table.example, "used_in": table.used_in,
                 "columns": [{"key": c.key, "label": c.label, "kind": c.kind, "unit": c.unit, "min": c.lo, "max": c.hi,
                              "required": c.required} for c in table.columns],

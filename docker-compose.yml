@@ -51,6 +51,8 @@ services:
       CYTONN_JOB_MAX_TOOL_CALLS:
       CYTONN_JOB_CALL_BUDGET:
       CYTONN_JOB_TOKEN_BUDGET:
+      CYTONN_CHAT_MODEL_ID:
+      CYTONN_CHAT_CONCURRENCY:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

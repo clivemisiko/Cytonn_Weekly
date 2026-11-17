@@ -4,7 +4,7 @@ import { createRouter, createWebHistory } from "vue-router";
 // of a report, so it goes to the overview with its whole query string intact.
 const OVERVIEW_PARAMS = ["report", "period", "kind"];
 
-/** The three addresses: the landing page, the overview (whose screens are phases), one draft run. */
+/** The addresses: the landing page, the overview (whose screens are phases), the chat, one draft run. */
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
@@ -15,6 +15,7 @@ export const router = createRouter({
     },
     { path: "/overview", component: () => import("./pages/OverviewPage.vue") },
     { path: "/previous", component: () => import("./pages/PreviousReportsPage.vue") },
+    { path: "/chat", component: () => import("./pages/ChatPage.vue") },
     {
       path: "/sections/:slug",
       redirect: (to) => ({ path: "/overview", query: { ...to.query, section: to.params.slug } }),

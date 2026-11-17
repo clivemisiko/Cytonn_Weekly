@@ -41,6 +41,8 @@ Kinds, and what each one means:
 * ``retrying``: a Bedrock call was throttled or the service was not ready, and the provider is waiting before it tries the
   same call again (drafting/bedrock.py); ``detail`` says why, how long and which attempt.  The provider reaches
   the run's observer through ``current_observer``, set by the thread that runs the draft.
+* ``tool_called``: the analyst chat's agent called one read tool (agent/loop.py); ``label`` is the tool, ``detail`` its checked
+  input and how it ended.  ``budget_raised``: the analyst gave a chat job more calls and tokens (jobs.py).
 * ``source_left_out``: a saved source whose date is outside the window the draft gives its provider, so the model was not shown
   it (drafting/bedrock.py ``within_window``); ``label`` is the source's title, ``detail`` its host, date and window.
 """
@@ -81,10 +83,12 @@ SOURCES_FOUND = "sources_found"
 SOURCES_SEARCH_UNAVAILABLE = "sources_search_unavailable"
 RETRYING = "retrying"
 SOURCE_LEFT_OUT = "source_left_out"
+TOOL_CALLED = "tool_called"
+BUDGET_RAISED = "budget_raised"
 
 KINDS = (RUN_STARTED, SOURCE_STARTED, SOURCE_FINISHED, SOURCE_FAILED, PIECE_STARTED, PIECE_FINISHED, PART_SKIPPED,
          CHECK_STARTED, CHECK_FINISHED, RUN_FINISHED, RUN_FAILED, SOURCES_LOOKING, SOURCES_FOUND, SOURCES_SEARCH_UNAVAILABLE,
-         RETRYING, SOURCE_LEFT_OUT)
+         RETRYING, SOURCE_LEFT_OUT, TOOL_CALLED, BUDGET_RAISED)
 TERMINAL = (RUN_FINISHED, RUN_FAILED)
 
 # The review model's statuses (review/model.py), which the counts are keyed by.

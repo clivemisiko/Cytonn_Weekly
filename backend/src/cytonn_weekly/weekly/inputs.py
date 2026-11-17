@@ -64,26 +64,27 @@ class Slot:
     per_day: bool        # one file per trading day
     fetchable: bool      # the tool can fetch it itself
     help: str
+    sections: tuple[str, ...] = ()   # the weekly sections whose draft reads it (a test records the reads and checks this)
 
 
 SLOTS: tuple[Slot, ...] = (
     Slot(EQUITIES_WORKBOOK, "Equities workbook", "xlsx", False, False, False,
          "The equities team's workbook, updated for the Friday (index levels, turnover, foreign flows, "
-         "market P/E, Universe of Coverage)."),
+         "market P/E, Universe of Coverage).", sections=("equities",)),
     Slot(FI_WORKBOOK, "Fixed income workbook", "xlsx", False, False, False,
          "The fixed income mastersheet, updated for the week's auction (T-bills, money market funds, Eurobonds, "
-         "government borrowing)."),
+         "government borrowing).", sections=("fixed_income",)),
     Slot(KCB_DAILY, "KCB IB daily trading reports", "pdf", False, True, False,
-         "One per trading day, Monday to Friday. Each is filed under the date printed in it."),
+         "One per trading day, Monday to Friday. Each is filed under the date printed in it.", sections=("equities",)),
     Slot(KCB_WEEKLY, "KCB IB weekly trading report", "pdf", False, False, False,
-         "The Friday's weekly report: week-on-week moves and the daily foreign flows."),
+         "The Friday's weekly report: week-on-week moves and the daily foreign flows.", sections=("equities",)),
     Slot(CBK_BULLETIN, "CBK Weekly Bulletin", "pdf", False, False, True,
-         "The Friday's bulletin. It can be fetched from centralbank.go.ke, or uploaded."),
+         "The Friday's bulletin. It can be fetched from centralbank.go.ke, or uploaded.", sections=("fixed_income", "equities")),
     Slot(NSE_YIELD_CURVE, "NSE yield curve", "pdf", True, False, False,
-         "Optional. Shown beside the T-bond bidding range as context only."),
+         "Optional. Shown beside the T-bond bidding range as context only.", sections=("fixed_income",)),
     Slot(DP_WORKBOOK, "Digital Payments workbook", "xlsx", True, False, False,
          "Optional. Its P/Es are checked by company name and its Year Open against the first trading day's close; "
-         "differences show as warnings on the Digital Payments review."),
+         "differences show as warnings on the Digital Payments review.", sections=("digital_payments",)),
 )
 BY_SLUG = {s.slug: s for s in SLOTS}
 
@@ -309,7 +310,7 @@ def status(week: Week, root: Optional[Path] = None) -> dict[str, Any]:
     for slot in SLOTS:
         files = sorted((e for e in present.values() if e.get("slot") == slot.slug), key=lambda e: e["stored_name"])
         view: dict[str, Any] = {"slug": slot.slug, "title": slot.title, "kind": slot.kind, "optional": slot.optional,
-                                "per_day": slot.per_day, "fetchable": slot.fetchable, "help": slot.help}
+                                "per_day": slot.per_day, "fetchable": slot.fetchable, "help": slot.help, "sections": list(slot.sections)}
         if slot.per_day:
             by_day = {e["read_date"]: e for e in files}
             view["days"] = [{"date": d.isoformat(), "weekday": d.strftime("%A"), "received": d.isoformat() in by_day,

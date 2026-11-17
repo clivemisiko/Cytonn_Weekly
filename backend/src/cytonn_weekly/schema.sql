@@ -149,7 +149,7 @@ CREATE TABLE IF NOT EXISTS draft_usage (
 
 -- ---------------------------------------------------------------------------
 -- report_jobs, job_messages (jobs.py): one job per report type, period and section, and its messages in order.  The three limits
--- are the values in force when the job was opened (CYTONN_JOB_*); nothing enforces them yet.  job_messages.job_id refers to
+-- are the values in force when the job was opened (CYTONN_JOB_*); agent/loop.py enforces them.  job_messages.job_id refers to
 -- report_jobs.job_id (jobs.py checks it; no foreign key, as nowhere else in this schema).
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS report_jobs (
@@ -161,6 +161,12 @@ CREATE TABLE IF NOT EXISTS report_jobs (
     call_budget     INTEGER NOT NULL,   -- model calls over the whole job
     token_budget    INTEGER NOT NULL,   -- input and output tokens over the whole job
     created_at      TEXT    NOT NULL,   -- ISO-8601 UTC
+    status          TEXT    NOT NULL DEFAULT 'idle',   -- idle, working or paused (jobs.STATUSES)
+    paused_reason   TEXT,               -- when paused: tool_calls, call_budget or token_budget
+    calls_used      INTEGER NOT NULL DEFAULT 0,   -- model calls so far, against call_budget
+    input_tokens    INTEGER NOT NULL DEFAULT 0,   -- tokens so far, input plus output against token_budget
+    output_tokens   INTEGER NOT NULL DEFAULT 0,
+    budget_raises   INTEGER NOT NULL DEFAULT 0,   -- how many times the analyst pressed the raise button
     UNIQUE (report_type, period, section)
 );
 
@@ -172,5 +178,9 @@ CREATE TABLE IF NOT EXISTS job_messages (
     tool_name    TEXT,               -- a tool turn: which tool
     tool_result  TEXT,               -- a tool turn: what it returned
     created_at   TEXT    NOT NULL,   -- ISO-8601 UTC
+    tool_use_id  TEXT,               -- a tool turn: the id the model gave the call, so the result pairs with it
+    tool_input   TEXT,               -- a tool turn: the validated input, as JSON
+    usage        TEXT,               -- an assistant turn the model wrote: {"model", "input_tokens", "output_tokens"} as JSON
+    cards        TEXT,               -- an assistant turn: the cards shown with it, as JSON; never sent to the model
     PRIMARY KEY (job_id, seq)
 );

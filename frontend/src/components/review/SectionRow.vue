@@ -3,7 +3,7 @@ import { PhArrowsClockwise, PhCaretRight, PhCircleNotch, PhLockSimple } from "@p
 import { computed } from "vue";
 import { RouterLink } from "vue-router";
 import Button from "@/components/ui/Button.vue";
-import { CHIP as CHIP_BASE } from "@/components/ui/button";
+import { CHIP as CHIP_BASE, LINK } from "@/components/ui/button";
 import { type SectionState, draftingStatus, stateOf, useLiveElapsed, when } from "@/lib/drafting";
 import { elapsed, friendlyDate, plural, weekRange } from "@/lib/format";
 import { textOf } from "@/lib/run";
@@ -25,6 +25,8 @@ const props = defineProps<{
   drafting: Drafting | null;
   /** Why "Draft again" is off (this section is running or queued, the provider cannot run), or null when it is on. */
   draftAgainOff: string | null;
+  /** Where this section's chat is (a weekly week only), or null for a report with no chat. */
+  chatTo?: string | null;
 }>();
 const emit = defineEmits<{ open: [slug: string, resume: boolean]; redraft: [slug: string] }>();
 
@@ -189,6 +191,7 @@ const lists = computed(() =>
                 <PhArrowsClockwise weight="bold" data-icon="inline-start" aria-hidden="true" />
                 Draft again
               </Button>
+              <RouterLink v-if="chatTo" :to="chatTo" :class="['self-center text-sm', LINK]" :aria-label="`Chat about ${s.title}`">Chat</RouterLink>
             </div>
             <p v-if="canRedraft && draftAgainOff" :id="`redraft-off-${s.slug}`" class="max-w-72 text-xs text-muted-foreground @md:text-right">
               {{ draftAgainOff }}
