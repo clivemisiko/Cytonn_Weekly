@@ -79,6 +79,8 @@ CHART_NOT_VERIFIED = f"{PROVENANCE[0].upper()}{PROVENANCE[1:]}."   # its own par
 PICTURE_UNVERIFIED = "[Chart not drawn: the stored picture could not be verified]"
 UPLOAD_UNREADABLE = "[Chart image not used: the uploaded picture could not be read. Upload it again.]"
 
+UNLABELLED_CARRIED = ("outlook", "shilling_pressure")   # carried blocks the export prints with no heading
+
 # The issue's own section headings (#38.2026).
 HEADINGS = {"fixed_income": "Fixed Income", "equities": "Equities",
             "real_estate": "Real Estate", "digital_payments": "Digital Payments Weekly Highlights", "focus": "Focus of the Week"}
@@ -410,11 +412,14 @@ def _add_blocks(doc, review: CoordinatorReview, charts_root: Optional[Union[Path
             _add_text(doc, block["body_md"])   # the Focus's contents list: plain lines, one per paragraph
         elif kind == "computed":
             if not block.get("continues"):   # a sentence that continues the carried paragraph before it is printed there
-                doc.add_heading(block["title"], level=2)
+                if not block.get("group"):   # a Real Estate paragraph sits under its group's heading, as the issue prints it
+                    doc.add_heading(block["title"], level=2)
                 _add_text(doc, block["body_md"])
             names = [s["name"] for s in block.get("sources") or [] if s.get("name")]
             if names:
                 small_line(doc, "Source: " + "; ".join(names))
+        elif kind == "carried" and block.get("role") == "analyst" and not block.get("edits"):
+            _red_line(doc, f"[Analyst to write: {block['title']}]")
         elif kind == "carried" and block.get("role") == "standing":
             if not block.get("edits"):
                 note = _mark(doc, CARRIED_NOTE)
@@ -423,7 +428,9 @@ def _add_blocks(doc, review: CoordinatorReview, charts_root: Optional[Union[Path
                 if line.strip():
                     doc.add_paragraph(line.strip())
         elif kind == "carried":
-            if block.get("role") != "disclaimer":   # the Focus's disclaimer starts with its own word, "Disclaimer:"
+            # the issue prints these as plain paragraphs: the Focus's disclaimer starts with its own word, and the closing
+            # outlooks and the shilling's pressure bullets sit under their section with no label (issue #45.2026, pp. 8 and 13)
+            if block.get("role") not in ("disclaimer", "analyst") and block["id"] not in UNLABELLED_CARRIED:
                 doc.add_heading(block["title"], level=2)
             if not block.get("edits"):   # a paragraph the reviewer rewrote (sentence_edit.apply_paragraph) is no longer carried text
                 note = _mark(doc, CARRIED_NOTE)

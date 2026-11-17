@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from cytonn_weekly.narrative.base import NarrativeBrief
 
 CONTEXT_CHARS_PER_RESULT = 3000  # enough text per result to draft from
+TAKEOUT_NUMERALS = ("i", "ii", "iii", "iv", "v", "vi", "vii", "viii")
 WHERE_SEARCHED = "search results"   # how a warning names the material the model was shown; Bedrock says "supplied sources"
 
 # Turns one claim from the model's reply into the claim dict kept in the draft (url, title, cited_text and any extra
@@ -121,6 +122,14 @@ def narrative_system(brief: NarrativeBrief) -> str:
     head = "a short headline and " if brief.headed else (
         "body paragraphs only, with no heading of any kind (set the headline to the subject, and put no line starting "
         "with # in the paragraph): ")
+    if brief.takeouts:
+        head = ("a short report title (the publisher, the period and the report, for example \"Hass Consult Q3'2026 Land "
+                "Index\"; never a news headline) and ")
+        extra += ("\n\nWrite the paragraph as one introductory sentence naming the publisher, what kind of firm it is and the "
+                  "report and what it highlights, ending with \"The following are the key take-outs from the report:\". Then "
+                  "give three to five key take-outs, each its own paragraph (separated by a blank line) that starts with its "
+                  "numeral and a full stop: \"i.\", \"ii.\", \"iii.\" and so on. Write no closing or summary paragraph and no "
+                  "comparison, opinion or outlook.")
     return f"""\
 You help draft one item for the {brief.section} section of a {brief.report} investment research report \
 on Kenya (formal, data-forward, third person) from search results.
@@ -314,6 +323,10 @@ def piece_from_reply(
         hl.append(f"body is {n} words, outside {brief.words[0]}-{brief.words[1]}")
     if brief.opener and not body.startswith(brief.opener):
         hl.append(f'body does not open with "{brief.opener}"')
+    if brief.takeouts:
+        parts = [p for p in paragraph_md.split("\n\n") if p.strip()][1:]
+        if not parts or [p.split(".", 1)[0].strip() for p in parts] != list(TAKEOUT_NUMERALS[:len(parts)]):
+            hl.append("the take-outs are not numbered i., ii., iii. in order, each as its own paragraph after the introduction")
     if not claims:
         hl.append("no cited claims recorded for this piece")
     elif not read_claim:

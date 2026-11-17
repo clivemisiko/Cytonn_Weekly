@@ -1,5 +1,7 @@
 from datetime import date
 
+import pytest
+
 from cytonn_weekly.common import sources as src
 from cytonn_weekly.real_estate import snips
 from tests import section_helpers as sh
@@ -23,6 +25,16 @@ def test_an_uploaded_snip_that_is_not_confirmed_is_named_with_its_sector():
     snips.add(FRIDAY, "land", "land.png", PNG)
     [line] = snips.problems(FRIDAY)
     assert line.startswith("Land: ") and '"land.png"' in line and "not confirmed" in line and "does not use it" in line
+
+
+def test_reits_takes_no_snip_and_one_saved_earlier_is_ignored_without_breaking_anything(tmp_path, monkeypatch):
+    assert "reits" not in dict(snips.SECTORS) and "reits" not in snips.LIVE
+    with pytest.raises(snips.SnipError, match="is not a sector"):
+        snips.add(FRIDAY, "reits", "r.png", PNG, tmp_path / "snips")
+    monkeypatch.setitem(snips.LIVE, "reits", "REITs")   # as when the sector was still on the form
+    snips.add(FRIDAY, "reits", "r.png", PNG, tmp_path / "snips")
+    monkeypatch.delitem(snips.LIVE, "reits")
+    assert problems(tmp_path) == [] and [e["sector"] for e in snips.list_snips(FRIDAY, tmp_path / "snips")] == ["reits"]
 
 
 def test_a_confirmed_snip_and_an_empty_week_are_no_problem(tmp_path):

@@ -124,6 +124,11 @@ ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII
 _REF_CHARS = 80
 
 
+def carried_ref(block: dict[str, Any]) -> str:
+    """The review item's label for a carried block: a part only the analyst can write says so, real carried text keeps its own."""
+    return f"{block['title']} ({'analyst to write' if block.get('role') == 'analyst' else 'carried forward'})"
+
+
 def numbered(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Give every block its roman numeral in order (the report numbers its sub-items)."""
     return [{**b, "numeral": ROMAN[i]} for i, b in enumerate(blocks)]
@@ -379,7 +384,7 @@ def build_review(content: dict[str, Any], report: CheckReport) -> CoordinatorRev
             used.add(subject)
             if b.get("guide"):
                 continue   # a Focus aid that is never exported: its text is shown, and nothing in it needs acknowledging
-            ref = f"{b['title']} (carried forward)"
+            ref = carried_ref(b)
             if b.get("edits"):
                 items.append(ReviewItem(kind=CARRIED_TEXT, ref=ref, status=NOT_AUTO_VERIFIED, detail=EDITED_PARAGRAPH_NOTE,
                                         context={"text": b.get("body_md", ""), "edited_at": b["edits"][-1]["at"],

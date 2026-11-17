@@ -64,12 +64,14 @@ def test_the_weekly_layout_numbers_groups_and_letters_stories_with_reits_last():
     out = layout(review.section, "weekly")
     assert [(b["id"], b["numeral"], b.get("group_heading")) for b in out] == [
         ("sector_industry", "a", f"I. {INDUSTRY}"),
+        ("industry_closing", "b", None),
         ("sector_residential", "a", f"II. {RES_SECTOR}"),
         ("sector_land", "a", f"III. {LAND}"),
         ("sector_hospitality", "a", f"IV. {HOSPITALITY}"),
-        ("reits", "a", f"V. {REITS}"),
-        ("standing", "b", None),
-        ("outlook_reits", "c", None),
+        ("reits_prices", "a", f"V. {REITS}"),
+        ("reits", "b", None),
+        ("standing", "c", None),
+        ("outlook_reits", "d", None),
     ]
     assert review.section == stored   # derived when shown: nothing saved changes
     assert section_summary(review.section) == section_summary(stored)
@@ -84,20 +86,20 @@ def test_markets_reviews_and_other_sections_are_left_as_they_are():
 
 def test_the_review_screen_gets_group_headings_and_letters():
     blocks = serialize_review(_review())["section"]["blocks"]
-    assert [b["numeral"] for b in blocks] == ["a", "a", "a", "a", "a", "b", "c"]
-    assert [b.get("group_heading") for b in blocks] == [f"I. {INDUSTRY}", f"II. {RES_SECTOR}", f"III. {LAND}",
-                                                        f"IV. {HOSPITALITY}", f"V. {REITS}", None, None]
-    assert blocks[1]["group"] == RES_SECTOR
+    assert [b["numeral"] for b in blocks] == ["a", "b", "a", "a", "a", "a", "b", "c", "d"]
+    assert [b.get("group_heading") for b in blocks] == [f"I. {INDUSTRY}", None, f"II. {RES_SECTOR}", f"III. {LAND}",
+                                                        f"IV. {HOSPITALITY}", f"V. {REITS}", None, None, None]
+    assert blocks[2]["group"] == RES_SECTOR
 
 
 def _old_review():
     """A review saved before pieces carried their brief id: its stories have no group."""
     review = _review()
-    review.section["blocks"] = [b for b in review.section["blocks"]
-                                if b["kind"] != "unavailable" and b["id"] not in ("standing", "outlook_reits")]
+    review.section["blocks"] = numbered([b for b in review.section["blocks"] if b["kind"] in ("narrative", "table")])   # as compose numbered them then
     for b in review.section["blocks"]:
         b.pop("brief_id", None)
         b.pop("sector", None)
+        b.pop("export", None)   # saved before the table was left out of the Word file
     return review
 
 
@@ -125,9 +127,9 @@ def test_the_export_prints_groups_as_heading_2_and_lettered_stories_as_heading_3
     assert h3 == ["a. Industry reports: a development", "a. Residential sector: a development", "a. Land: a development"]
     text = [p.text for p in paras]
     reits = text.index(f"V. {REITS}")
-    assert text[reits + 1].startswith("Source: ")      # the table, its title in its own first row, then its source line
-    table = paras[reits]._parent.tables[-1]
-    assert table.rows[0].cells[0].text == "REITs weekly performance" and len({c._tc for c in table.rows[0].cells}) == 1
+    assert text[reits + 1].startswith("Acorn D-REIT closed at Kshs 29.7 per unit, representing a 48.3% gain")   # the paragraph, no table
+    assert text[reits + 2].startswith("Source: ") and "REITs weekly performance" not in [p.text for p in paras if p.style.name == "Heading 2"]
+    assert not paras[reits]._parent.tables   # the price table is the review screen's, not the Word file's
     assert reits > max(text.index(h) for h in h3)
 
 
