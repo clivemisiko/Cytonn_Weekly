@@ -68,12 +68,12 @@ describe("the needs you card", () => {
       data({
         groups: {
           needs_analyst: [entry("remarks", { kind: "table" })],
-          optional: [entry("interbank", { kind: "table", why: "not filled" })],
+          optional: [entry("interbank", { kind: "table", why: "not filled" }), entry("eurobond_yields", { kind: "table" })],
         },
       }),
     )!;
     const n = needsYou(r);
-    expect(n.fetch.map((e) => e.key)).toEqual(["interbank"]);
+    expect(n.fetch.map((e) => e.key)).toEqual(["interbank", "eurobond_yields"]);
     expect(n.typed.map((e) => e.key)).toEqual(["remarks"]);
     expect(hasNeeds(needsYou(parseReadiness(data({ groups: { optional: [entry("interbank", { kind: "table" })] } }))!))).toBe(true);
   });

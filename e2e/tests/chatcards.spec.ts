@@ -282,3 +282,15 @@ test("T128 the needs-you card has a fetch button for the interbank rates, and a 
   await expect(needs.getByRole("alert")).toContainText("Type them under");
   await sections;
 });
+
+test("T129 the needs-you card has a fetch button for the Eurobond openings, and a refusal says to type them", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  const sentence = "Eurobond yields on days the bulletin does not print are not available yet: the issue of 2026-08-07 is not in CBK's archive. Try again later, or type them under \"Weekly analyst inputs\".";
+  await page.route("**/api/inputs/weekly/*/analyst/fetch/eurobond_yields*", (route) =>
+    route.fulfill({ status: 404, headers: json, body: JSON.stringify({ detail: sentence, problems: [{ code: "item_fetch_failed", headline: "The figures could not be fetched", target: "analyst-form" }] }) }),
+  );
+  await page.goto(chatUrl("fixed_income", "Week ending 2026-08-28"));
+  const needs = page.getByRole("region", { name: "Needs you" });
+  await needs.getByRole("button", { name: /^Fetch Eurobond openings from CBK/ }).click();
+  await expect(needs.getByRole("alert")).toContainText("type them under");
+});

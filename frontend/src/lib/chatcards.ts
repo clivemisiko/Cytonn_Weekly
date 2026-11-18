@@ -73,7 +73,7 @@ export const sourcesLine = (s: SourceCount) => `${s.total} saved, ${s.inWeek} da
 export const FETCHABLE = ["cbk_bulletin"];
 
 /** Form tables the tool fetches from CBK (POST .../analyst/fetch/{key}), with the words on their buttons. */
-export const FETCHABLE_ITEMS: Record<string, string> = { interbank: "Fetch interbank rates from CBK", remittances: "Fetch remittances from CBK" };
+export const FETCHABLE_ITEMS: Record<string, string> = { interbank: "Fetch interbank rates from CBK", remittances: "Fetch remittances from CBK", eurobond_yields: "Fetch Eurobond openings from CBK" };
 
 export interface NeedsYou {
   /** Files to upload (and, for the bulletin, to fetch). */

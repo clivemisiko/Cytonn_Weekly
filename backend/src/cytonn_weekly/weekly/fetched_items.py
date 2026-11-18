@@ -5,7 +5,8 @@ from typing import Any, Optional
 
 from decimal import Decimal
 
-from cytonn_weekly.weekly import cbk_kesonia, cbk_remittances
+from cytonn_weekly.common.http import http_get
+from cytonn_weekly.weekly import cbk_eurobond_opens, cbk_kesonia, cbk_remittances
 from cytonn_weekly.weekly.week import Week, closures
 
 Fetched = tuple[list[dict[str, str]], str]   # the form table's rows, and the note kept with them: source, address, day, sha256
@@ -39,7 +40,28 @@ def remittances(week: Week, today: date, get: Optional[Any] = None) -> Fetched:
     return rows, _note(cbk_remittances.SOURCE_NAME, cbk_remittances.PAGE, today, sha)
 
 
-FETCHERS = {"interbank": interbank, "remittances": remittances}
+def eurobond_yields(week: Week, today: date, get: Any = http_get) -> Fetched:
+    seen: dict[str, bytes] = {}
+
+    def once(url: str) -> bytes:   # the year's and the month's opening are often in the same issue
+        if url not in seen:
+            seen[url] = get(url)
+        return seen[url]
+
+    picks = [("year_open", week.as_at.year, 1, 8), ("month_open", week.thursday.year, week.thursday.month, 7)]
+    rows, urls, shas = [], [], []
+    for row, year, month, cap in picks:
+        try:
+            day, yields, url, sha = cbk_eurobond_opens.opening(year, month, cap, week.ending, once)
+        except LookupError as exc:
+            raise LookupError(f"the {'year' if row == 'year_open' else 'month'}'s first day: {exc}") from None
+        rows.append({"row": row, "date": day.isoformat(), **yields})
+        urls += [url] * (url not in urls)
+        shas += [sha] * (sha not in shas)
+    return rows, _note(cbk_eurobond_opens.SOURCE_NAME, " and ".join(urls), today, " and ".join(shas))
+
+
+FETCHERS = {"interbank": interbank, "remittances": remittances, "eurobond_yields": eurobond_yields}
 
 
 def fetch(key: str, week: Week, today: Optional[date] = None) -> Fetched:

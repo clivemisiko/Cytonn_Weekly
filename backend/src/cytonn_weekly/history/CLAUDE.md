@@ -68,3 +68,4 @@ A small separate .xlsx of the week's rows, from the store's **confirmed points o
 ## Fetched points (Phase 5)
 
 `history.weekly.record_fetch` writes a fetched table's points once per series and date (`only_new`, origin `fetched`, source kind `source`, `source_ref` = the fetch note with the sha256, confirmed by `store.FETCHED`); `sync` skips a table still marked fetched, so the form save writes nothing twice. Interbank goes to `fi.interbank.rate` (4 dp from KESONIA; `fi.kesonia` stays the bulletin's 2 dp). New series `fi.remittances.total` and `fi.remittances.north_america` (usd_mn, month cadence, `as_of` the month's last day); typed remittances now sync to them too (`TABLE_SERIES`). The store this machine reads held no `fi.interbank.rate` points on 2026-11-18, so the overlap with the workbook history could not be counted.
+Fetched Eurobond openings write `fi.eurobond.yield` per issue and day, with both bulletins' addresses and sha256 in the source reference.
