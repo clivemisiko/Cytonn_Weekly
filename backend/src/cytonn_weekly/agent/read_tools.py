@@ -4,10 +4,14 @@ from datetime import date
 from typing import Any, Literal, Optional
 
 from cytonn_weekly import report_sections, source_pieces
-from cytonn_weekly.agent.tools import Params, Refused, Tool, ToolContext
+from cytonn_weekly.agent.tools import LONG, Params, Refused, Tool, ToolContext
 from cytonn_weekly.agent import readiness
 from cytonn_weekly.common import source_policy
 from cytonn_weekly.common import sources as source_store
+from cytonn_weekly.history import reads as history_reads
+from cytonn_weekly.history import store as history_store
+from cytonn_weekly.history import weekly as history_weekly
+from cytonn_weekly.history.importer import CATALOG
 from cytonn_weekly.real_estate import snips as snip_store
 from cytonn_weekly.report_types import WEEKLY, week_ending_of
 from cytonn_weekly.review import store as review_store
@@ -151,7 +155,55 @@ def week_status(args: NoParams, ctx: ToolContext) -> dict[str, Any]:
         got["sources"] = {"total": len(found), "in_week": sum(1 for s in found if s["in_week"]),
                           "outside_week": sum(1 for s in found if s["in_week"] is False)}
         got["note"] = "The snip and source counts are as they are: this check does not say whether they are enough."
+    if form is not None:   # where a carried or suggested figure came from, when the store holds it (nothing with CYTONN_HISTORY_READS off)
+        lines = history_reads.source_lines(week, ctx.db_path)
+        for entry in got["groups"]["carried_or_suggested"]:
+            if entry["key"] in lines:
+                entry["source"] = lines[entry["key"]]
     return got
+
+
+# --- history_status, history_working ------------------------------------------------------------
+
+def history_status(args: NoParams, ctx: ToolContext) -> dict[str, Any]:
+    section, week = ctx.job["section"], _week(ctx)
+    keys = [k for k, spec in CATALOG.items() if spec[2] == section]
+    if ctx.job["report_type"] != WEEKLY or not keys:
+        raise Refused("The history store holds no series for this section.")
+    rows = []
+    for key in keys:
+        points = history_store.current(ctx.db_path, key, None, confirmed_only=False, since=week.monday.isoformat(), through=week.ending.isoformat())
+        sure, waiting = [p for p in points if p["confirmed_at"]], [p for p in points if not p["confirmed_at"]]
+        rows.append({"series": key, "label": CATALOG[key][3], "state": "confirmed" if sure else "unconfirmed" if waiting else "none",
+                     "confirmed": len(sure), "unconfirmed": len(waiting), "confirmed_dates": sorted({p["as_of"] for p in sure}),
+                     "unconfirmed_dates": sorted({p["as_of"] for p in waiting}), "subjects": len({p["subject"] for p in points})})
+    return {"section": section, "week_ending": week.ending.isoformat(), "setting": history_reads.mode(), "series": rows,
+            "failed_store_writes": history_weekly.failed_writes(), "failed_store_reads": history_reads.counts["failed_reads"],
+            "compare_differences": history_reads.counts["differences"]}
+
+
+class HistoryWorking(Params):
+    series: Literal[tuple(CATALOG)]   # type: ignore[valid-type]
+    day: date
+
+
+def history_working(args: HistoryWorking, ctx: ToolContext) -> dict[str, Any]:
+    week = _week(ctx)
+    if not week.monday <= args.day <= week.ending:
+        raise Refused(f"Only dates in this report's week are available: {week.monday.isoformat()} to {week.ending.isoformat()}.")
+    secret = args.series in history_reads.CONFIDENTIAL
+    points = []
+    for p in history_store.current(ctx.db_path, args.series, None, confirmed_only=False, since=args.day.isoformat(), through=args.day.isoformat()):
+        row = {"origin": p["origin"], "source_kind": p["source_kind"], "confirmed": p["confirmed_at"] is not None}
+        if p["source_kind"] != "working":
+            row["source_ref"] = p["source_ref"]
+        if not secret:   # a confidential series gives its provenance only: no value, no subject and no working
+            row.update(subject=p["subject"], value=p["value"], unit=CATALOG[args.series][0])
+            if p["source_kind"] == "working":
+                row["working"] = p["source_ref"]
+        points.append(row)
+    return {"series": args.series, "day": args.day.isoformat(), "confidential": secret, "count": len(points), "points": points,
+            "note": "This series' values and workings are not shown." if secret else None}
 
 
 # --- draft.status, review.summary, review.explain, export.status -----------------------------
@@ -239,8 +291,17 @@ READ_TOOLS = [
          "confirmed, what needs the analyst, what is optional, and what is in place. For Real Estate and Focus it also gives snip "
          "and source counts, with no verdict.", NoParams, week_status,
          {"section": None, "week_ending": None, "counts": readiness.GROUPS, "note": None,
-          "groups": dict.fromkeys(readiness.GROUPS, _ENTRY),
+          "groups": dict.fromkeys(readiness.GROUPS, (*_ENTRY, "source")),
           "snips": ("sector", "uploaded", "read", "confirmed"), "sources": ("total", "in_week", "outside_week")}),
+    Tool("history_status", "Say, for this section and week, which history-store series have a confirmed point, only an unconfirmed one, or none, "
+         "with counts and dates, and how many store writes failed and compare-mode differences were found. No values.", NoParams, history_status,
+         {"section": None, "week_ending": None, "setting": None, "failed_store_writes": None, "failed_store_reads": None, "compare_differences": None,
+          "series": ("series", "label", "state", "confirmed", "unconfirmed", "confirmed_dates", "unconfirmed_dates", "subjects")}),
+    Tool("history_working", "Show where one history-store figure for one date of this week came from: its origin and source reference and, for a "
+         "figure the tool worked out, the working. The market P/E, the fund table and the placements show their provenance only, never a value.",
+         HistoryWorking, history_working,
+         {"series": None, "day": None, "confidential": None, "count": None, "note": None,
+          "points": {"origin": None, "source_kind": None, "confirmed": None, "source_ref": None, "subject": None, "value": None, "unit": None, "working": LONG}}),
     Tool("draft_status", "Say where this section's draft run is: its state and its latest steps. 'source' says whether it is the live "
          "run or a saved record.", NoParams, draft_status,
          {"state": None, "source": None, "note": None, "review_id": None, "is_dev_draft": None,

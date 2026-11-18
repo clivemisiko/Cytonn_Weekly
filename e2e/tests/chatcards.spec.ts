@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
-import { API, PERIOD, VARIANT, overviewUrl, topbar } from "./helpers";
+import { API, PERIOD, VARIANT, WEEK, overviewUrl, topbar } from "./helpers";
 
 test.skip(!!VARIANT, "runs on the default test backend");
 test.describe.configure({ mode: "serial" });
@@ -244,4 +244,27 @@ test("T126 Open inputs form opens the form, and Back to chat returns to the same
   await page.goto(`${overviewUrl(bare)}&section=fixed_income`);
   await expect(page.getByRole("heading", { name: "Weekly analyst inputs" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Back to chat" })).toHaveCount(0);
+});
+
+test("T127 the export card has This week's rows (xlsx): it saves the workbook, and the 409 and 422 answers are shown in plain words", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(chatUrl("equities"));
+  const button = page.getByRole("button", { name: "This week's rows (xlsx)" });
+  await expect(button).toBeEnabled();
+  const [download] = await Promise.all([page.waitForEvent("download"), button.click()]);
+  expect(download.suggestedFilename()).toBe(`Weekly rows, week ending ${WEEK}.xlsx`);
+  await expect(button).toBeEnabled();
+
+  const refuse = (status: number, detail: string) => page.route("**/api/export/weekly-rows/*", (route) => route.fulfill({ status, headers: json, body: JSON.stringify({ detail }) }));
+  await refuse(409, "An uploaded workbook cannot be read, so the layout cannot be taken from it: eq.xlsx could not be opened");
+  await button.click();
+  const alert = page.getByRole("alert").filter({ hasText: "cannot be taken from it" });
+  await expect(alert).toContainText("Upload that workbook again or remove it, then try again.");
+  await page.unroute("**/api/export/weekly-rows/*");
+  await refuse(422, "'2026-10-01' is not a Friday");
+  await button.click();
+  await expect(page.getByRole("alert").filter({ hasText: "Choose the Friday the week ends on, then try again." })).toBeVisible();
+  await expect(alert).toHaveCount(0); // the new answer replaced the old one
+  await page.unroute("**/api/export/weekly-rows/*");
+  await expect(page.getByRole("button", { name: "Export weekly report" })).toBeVisible(); // the weekly report's own button is as it was
 });

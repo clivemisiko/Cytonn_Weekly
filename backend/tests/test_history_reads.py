@@ -239,3 +239,23 @@ def test_the_suggest_route_in_compare_returns_the_forms_total_and_logs_the_diffe
     assert r.status_code == 200 and note_of(r, "turnover_ytd").startswith(f"Suggested: 3,035.6000 saved for the week ending {LAST} + ")   # the form's
     assert "history compare: eq.turnover.ytd 2026-09-25: the form and the store differ" in caplog.text
     assert not any(v in caplog.text for v in ("3035", "3099"))
+
+
+def test_every_store_read_and_write_names_a_series_of_the_catalog_never_a_form_field(tmp_path, text_pdfs, mode, monkeypatch):
+    from tests.test_history_weekly import FUNDS
+
+    seen, wrote = [], []
+    real_current, real_many = store.current, store.record_many
+    monkeypatch.setattr(store, "current", lambda path, key, *a, **k: (seen.append(key), real_current(path, key, *a, **k))[1])
+    monkeypatch.setattr(store, "record_many", lambda path, items, **k: (wrote.extend(i["key"] for i in items), real_many(path, items, **k))[1])
+    mode("on")
+    root, db, suggest = suggest_client(tmp_path)
+    suggest("turnover_ytd"), suggest("foreign_ytd")
+    analyst.save_form(WEEK, {"fields": {"pe": "9.5", "dividend_yield": "5.8", "turnover_ytd": "3052.2", "foreign_ytd": "-160.1", "placements": "9.1"},
+                             "tables": {"mmf": {"text": FUNDS}, "interbank": {"text": "2026-10-01 9.9"}, "universe": {"rows": [{"company": "Alpha Bank", "price": "42"}]}},
+                             "confirm": []}, root, db)
+    form = inputs.WeeklyInputs(WEEK, root).analyst
+    form.field("pe_average"), form.field("foreign_prior_year"), form.foreign_history(), form.universe(), form.previous_mmf(None)
+    assert {"eq.turnover.ytd", "eq.foreign.ytd", "eq.pe", "eq.foreign.week", "eq.price", "fi.mmf.rate"} <= set(seen)
+    assert {"eq.pe", "eq.dividend_yield", "eq.turnover.ytd", "eq.foreign.ytd", "fi.placements", "fi.mmf.rate", "fi.interbank.rate", "eq.price"} <= set(wrote)
+    assert not (set(seen) | set(wrote)) - set(CATALOG)

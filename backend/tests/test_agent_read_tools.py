@@ -48,7 +48,7 @@ def items(form):
 def test_every_tool_name_is_one_the_messages_api_accepts():
     import re
 
-    assert len(BY_NAME) == len(READ_TOOLS) == 11
+    assert len(BY_NAME) == len(READ_TOOLS) == 13
     assert all(re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", n) for n in BY_NAME)
 
 

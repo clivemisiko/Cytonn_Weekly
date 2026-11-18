@@ -1,4 +1,5 @@
 import { type ChatApi, parseJob, parseListing } from "./chat";
+import { fileNameOf } from "./rows";
 import type {
   AddedSource,
   AnalystForm,
@@ -426,10 +427,15 @@ export const chatApi: ChatApi = {
 };
 
 /** The approved weekly report as a Word file. The API refuses (409, naming each section) unless all are approved. */
-export const exportWeekly = async (period: string): Promise<{ blob: Blob; name: string }> => {
+export const exportWeekly = (period: string) => postForFile(exportPath(period), "cytonn-weekly.docx");
+
+/** This week's rows from the history store as an .xlsx. 422 for a day that is not a Friday, 409 when an uploaded workbook cannot be read. */
+export const exportWeeklyRows = (weekEnding: string) => postForFile(`/api/export/weekly-rows/${encodeURIComponent(weekEnding)}`, "weekly-rows.xlsx");
+
+async function postForFile(path: string, fallbackName: string): Promise<{ blob: Blob; name: string }> {
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}${exportPath(period)}`, { method: "POST", cache: "no-store" });
+    res = await fetch(`${API_BASE}${path}`, { method: "POST", cache: "no-store" });
   } catch {
     throw new ApiError(`Could not reach the report tool's server (${API_NAME}). Check that it is running, then try again.`, null);
   }
@@ -442,9 +448,8 @@ export const exportWeekly = async (period: string): Promise<{ blob: Blob; name: 
     }
     throw failed(detailText(body, `${res.status} ${res.statusText}`), res.status, parseProblems(body), true);
   }
-  const named = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "");
-  return { blob: await res.blob(), name: named ? named[1] : "cytonn-weekly.docx" };
-};
+  return { blob: await res.blob(), name: fileNameOf(res.headers.get("content-disposition"), fallbackName) };
+}
 
 const notablePath = (section: string) => `/api/notable/${encodeURIComponent(section)}`;
 const weekQuery = (weekEnding: string) => `week_ending=${encodeURIComponent(weekEnding)}`;

@@ -92,7 +92,7 @@ const done = () => {
     <DraftCard v-if="draft.kind !== 'none'" :section="section" :card="draft" :report="report" :config="config" :old-page="oldPage" @changed="done" @ended="ended" />
     <LiveReviewCard v-if="review" :key="review.run_id" :initial="review" @full="(id, i) => emit('full', id, i)" @decided="done" @close="emit('close')" />
     <template v-if="weekly">
-      <ExportBar :period="report.period" :refresh-key="`${tick}-${section.latest?.run_id ?? 0}-${section.latest?.decision ?? ''}`" @error="(m) => (exportProblem = m)" />
+      <ExportBar rows :period="report.period" :refresh-key="`${tick}-${section.latest?.run_id ?? 0}-${section.latest?.decision ?? ''}`" @error="(m) => (exportProblem = m)" />
       <Notice v-if="exportProblem" role="alert" class="font-medium">{{ exportProblem }}</Notice>
     </template>
   </section>

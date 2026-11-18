@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from collections import Counter
 from datetime import date, timedelta
 from decimal import Decimal
@@ -12,6 +13,7 @@ from typing import Any, Callable, Optional, Union
 from cytonn_weekly.common.formatting import round_half_up
 from cytonn_weekly.history import store
 from cytonn_weekly.history.importer import CATALOG
+from cytonn_weekly.history.weekly import FIELD_SERIES
 from cytonn_weekly.weekly import analyst, equities_workbook
 from cytonn_weekly.weekly.week import Week
 
@@ -24,7 +26,10 @@ OFF, COMPARE, ON = "off", "compare", "on"
 # 13 Nov 2026 workbooks: row 8, the current week, down to the row dated 12 Dec 2008; the earlier 2008 rows are outside it).
 PE_AVERAGE_FROM = date(2008, 12, 12)
 
-_LOGGED = 20   # lines one comparison writes to the log; every difference is counted
+# Series whose values and workings the chat never shows: the market P/E, the fund table and the 3-month placements.
+CONFIDENTIAL = ("eq.pe", "fi.mmf.rate", "fi.placements")
+
+_LOGGED = 20  # lines one comparison writes to the log; every difference is counted
 counts: Counter = Counter()   # compared, differences, failed_reads: for this process, read by the status tool later
 _warned_mode = False
 
@@ -222,3 +227,28 @@ def previous_fund_table(week: Week, form_value: Optional[dict[str, Any]], db_pat
                 for f in (form or {"funds": []})["funds"] if not _same(f["rate"].number, theirs.get(analyst.fund_key(f["fund"].value)))]
 
     return resolve("fi.mmf.rate", form_value, read, differ)
+
+
+# -- where a figure that still waits for confirmation came from ------------------------------------------------------------------
+
+def source_lines(week: Week, db_path: Optional[Union[Path, str]] = None) -> dict[str, str]:
+    """For each form field whose point in the store this week is carried or suggested and not yet confirmed: where it came from, in words
+    and never a value.  Empty with the setting off, so the chat's readiness check is then exactly what it was."""
+    if mode() == OFF:
+        return {}
+    out: dict[str, str] = {}
+    try:
+        for field, key in FIELD_SERIES.items():
+            p = _last_on(store.current(db_path, key, confirmed_only=False, since=week.monday.isoformat(), through=week.ending.isoformat()), _dates(week))
+            if p is None or p["confirmed_at"] is not None:
+                continue
+            if p["origin"] == "worked_out":
+                out[field] = f"suggested: last confirmed total for {week.previous.as_at:%d %b} plus this week's figure"
+            elif p["origin"] == "carried":
+                came = re.search(r"week ending (\d{4}-\d{2}-\d{2})", p["source_ref"])
+                out[field] = f"carried: from the week ending {came.group(1)}" if came else "carried: from an earlier week"
+    except Exception as exc:  # noqa: BLE001 - a display line never fails the readiness check
+        counts["failed_reads"] += 1
+        log.warning("history store: the source lines could not be read (%s)", type(exc).__name__)
+        return {}
+    return out
