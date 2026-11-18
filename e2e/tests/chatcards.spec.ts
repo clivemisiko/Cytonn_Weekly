@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
-import { API, PERIOD, VARIANT, overviewUrl } from "./helpers";
+import { API, PERIOD, VARIANT, overviewUrl, topbar } from "./helpers";
 
 test.skip(!!VARIANT, "runs on the default test backend");
 test.describe.configure({ mode: "serial" });
@@ -46,12 +46,12 @@ test("T120 the readiness card shows every group, and the needs-you card works: f
   await expect(needs.getByRole("alert")).toContainText("bad.xlsx:");
 
   const form = needs.getByRole("link", { name: "Open inputs form" });
-  await expect(form).toHaveAttribute("href", /\/overview\?report=weekly&period=Week%20ending%202026-08-28&section=fixed_income$/);
+  await expect(form).toHaveAttribute("href", /\/overview\?report=weekly&period=Week\+ending\+2026-08-28&section=fixed_income&from=chat$/);
   await form.click();
   await expect(page.getByRole("heading", { name: "Fixed Income: analyst review", level: 1 })).toBeVisible();
 });
 
-test("T121 Real Estate shows its snip counts and Focus its source counts as they are, with the not-judged note; Focus sends the topic to the old page", async ({ page }) => {
+test("T121 Real Estate shows its snip counts and Focus its source counts as they are, with the not-judged note; Focus sends the topic to the Focus page", async ({ page }) => {
   const NOT_JUDGED = "The snip and source counts are as they are: this check does not say whether they are enough.";
   await page.goto(chatUrl("real_estate"));
   const readiness = page.getByRole("region", { name: /What Real Estate needs/ });
@@ -61,12 +61,18 @@ test("T121 Real Estate shows its snip counts and Focus its source counts as they
   const sources = page.getByRole("region", { name: "Sources and snips" });
   await expect(sources.getByText("Hospitality and Tourism: 0 uploaded, 0 read, 0 confirmed")).toBeVisible();
   await expect(sources.getByText(NOT_JUDGED)).toBeVisible();
-  await expect(sources.getByRole("link", { name: /Open snips and sources/ })).toHaveAttribute("href", /section=real_estate$/);
+  await expect(sources.getByRole("link", { name: /Open snips and sources/ })).toHaveAttribute("href", /section=real_estate&from=chat$/);
 
   await page.goto(chatUrl("focus"));
   await expect(page.getByRole("region", { name: "Sources and snips" }).or(page.getByRole("region", { name: "Sources" })).getByText("0 saved, 0 dated inside the week, 0 outside it")).toBeVisible();
-  await expect(live(page).getByText("This section needs a topic and section titles, which are typed on the old page.")).toBeVisible();
+  await expect(live(page).getByText("This section needs a topic and section titles, which are typed on the Focus page.")).toBeVisible();
   await expect(live(page).getByRole("button", { name: /Start draft/ })).toHaveCount(0);
+  await live(page).getByRole("link", { name: "Open the Focus page" }).click();
+  await expect(page.getByRole("heading", { name: "Focus of the Week: analyst review", level: 1 })).toBeVisible();
+  await expect(page.getByLabel(/topic/i).first()).toBeVisible(); // where the topic is typed
+  await page.getByRole("link", { name: "Back to chat" }).click();
+  await expect(page).toHaveURL(/\/chat\?.*section=focus/);
+  await expect(page.getByRole("heading", { name: "Focus of the Week", level: 2 })).toBeVisible();
 });
 
 test("T122 Start draft shows the steps as they happen, then the review summary joins the conversation and the review is read-only in the aside until it is decided here", async ({ page }) => {
@@ -198,4 +204,44 @@ test("T124 a queued draft has Cancel and a running one shows its steps and no Ca
   await expect(page.getByRole("list", { name: "Draft steps" }).getByText("Starting the draft.")).toBeVisible();
   await expect(page.getByRole("region", { name: "Draft" }).getByRole("button", { name: "Cancel this draft" })).toHaveCount(0);
   await expect(page.getByText("A draft that is running cannot be stopped.")).toBeVisible();
+});
+
+test("T125 the rail and the chat have no way to the old pages: no Overview or Previous reports item, no Old page or overview link, and a rail section opens its chat", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  const OLD = 'a[href*="/overview"], a[href*="/previous"], a[href*="/runs/"], a[href*="/sources/"]';
+  for (const url of [`/chat?period=${encodeURIComponent(PERIOD)}`, chatUrl("fixed_income"), chatUrl("real_estate"), chatUrl("focus")]) {
+    await page.goto(url);
+    await expect(rail(page).getByRole("button", { name: /^Fixed Income, / })).toBeVisible();
+    for (const name of ["Overview", "Previous reports", "Change report"]) await expect(rail(page).getByRole("button", { name, exact: true })).toHaveCount(0);
+    await expect(rail(page).locator(OLD)).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /Old page/ })).toHaveCount(0);
+    await expect(page.getByRole("banner").locator(OLD)).toHaveCount(0); // the top bar's Home is the chat
+  }
+  // Only the chat buttons that need an old page reach one, and each says it comes back (T126); nothing in the picker or the aside does.
+  await page.goto(`/chat?period=${encodeURIComponent(PERIOD)}`);
+  await expect(page.getByRole("main").locator(OLD)).toHaveCount(0);
+  await page.goto(chatUrl("fixed_income"));
+  await expect(aside(page).locator(OLD)).toHaveCount(0);
+  await rail(page).getByRole("button", { name: /^Equities, / }).click();
+  await expect(page).toHaveURL(/\/chat\?.*section=equities/);
+});
+
+test("T126 Open inputs form opens the form, and Back to chat returns to the same section and week", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  const bare = "Week ending 2026-08-28";
+  await page.goto(chatUrl("fixed_income", bare));
+  await page.getByRole("region", { name: "Needs you" }).getByRole("link", { name: "Open inputs form" }).click();
+  await expect(page.getByRole("heading", { name: "Fixed Income: analyst review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Weekly analyst inputs" })).toBeVisible();
+  await expect(topbar(page).getByRole("button", { name: "Back to chat" })).toBeVisible(); // the top bar's Back goes there too
+  await page.getByRole("link", { name: "Back to chat" }).click();
+  await expect(page).toHaveURL(/\/chat\?.*section=fixed_income/);
+  expect(new URL(page.url()).searchParams.get("period")).toBe(bare);
+  await expect(page.getByRole("heading", { name: "Fixed Income", level: 2 })).toBeVisible();
+  await expect(page.getByLabel("Week", { exact: true })).toHaveValue(bare);
+
+  // The same page by its address, not from the chat: no Back to chat, and it works as it always did.
+  await page.goto(`${overviewUrl(bare)}&section=fixed_income`);
+  await expect(page.getByRole("heading", { name: "Weekly analyst inputs" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Back to chat" })).toHaveCount(0);
 });

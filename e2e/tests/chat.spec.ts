@@ -34,7 +34,6 @@ test("T116 the chat opens on a section picker with the week, a section opens its
   await expect(main.getByRole("button", { name: "Whole report" })).toBeVisible();
   for (const title of TITLES) {
     await expect(main.getByRole("button", { name: title, exact: true })).toBeVisible();
-    await expect(main.getByRole("link", { name: `Old page for ${title}` })).toHaveAttribute("href", /\/overview\?report=weekly&period=.*&section=/);
   }
 
   await main.getByRole("button", { name: "Whole report" }).click();
@@ -51,8 +50,6 @@ test("T116 the chat opens on a section picker with the week, a section opens its
 
   await page.setViewportSize({ width: 390, height: 800 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await page.getByRole("link", { name: "Old page for this section" }).click();
-  await expect(page).toHaveURL(/\/overview\?.*section=fixed_income/);
 });
 
 test("T117 an answer arrives by polling as plain text, and polling stops once the job is idle", async ({ page }) => {
@@ -110,10 +107,8 @@ test("T118 a refusal shows in words, and a budget stop shows the raise button an
   await expect(page.getByRole("alert").filter({ hasText: "The assistant is still answering the last message." })).toBeVisible();
 });
 
-test("T119 each weekly section card on the overview has a Chat link that opens that section's conversation", async ({ page }) => {
+test("T119 the overview, opened by its address, keeps its buttons and has no Chat link", async ({ page }) => {
   await page.goto(overviewUrl());
-  await card(page, "Fixed Income").getByRole("link", { name: "Chat about Fixed Income" }).click();
-  await expect(page).toHaveURL(new RegExp(`/chat\\?section=fixed_income&period=${encodeURIComponent(PERIOD).replace(/%/g, "%")}`));
-  await expect(page.getByRole("heading", { name: "Fixed Income", level: 2 })).toBeVisible();
-  await expect(page.getByLabel("Week", { exact: true })).toHaveValue(PERIOD);
+  await expect(card(page, "Fixed Income").getByRole("button", { name: /Draft section|View review|Resume review/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /^Chat about / })).toHaveCount(0);
 });

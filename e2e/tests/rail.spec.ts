@@ -35,7 +35,7 @@ test("T59 the rail lists the five sections with their state; it is a full rail, 
   await page.goto(overviewUrl());
   const nav = rail(page);
   for (const title of TITLES) await expect(nav.getByRole("button", { name: `${title}, Not drafted` })).toBeVisible();
-  await expect(nav.getByRole("button", { name: "Overview", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(nav.getByRole("button", { name: "Overview", exact: true })).toHaveCount(0); // the old pages are hidden from the rail
   await expect(nav.getByRole("progressbar")).toHaveCount(0); // the overview shows the tally itself
   expect((await nav.boundingBox())?.width).toBe(224);
   expect((await nav.getByRole("button", { name: /^Fixed Income, / }).boundingBox())!.width).toBeGreaterThan(150); // its label shows
@@ -74,11 +74,14 @@ test("T59 the rail lists the five sections with their state; it is a full rail, 
   await expect(topbar(page).getByRole("button", { name: "Back (this is the start screen)" })).toBeVisible();
 });
 
-test("T60 a section opens from the rail, from the overview and from another section, and the rail marks the one on screen", async ({ page }) => {
+const chatHeading = (title: string) => ({ name: title, level: 2 }) as const;
+
+test("T60 a section opens its chat from the rail, from the overview and from another section, and the rail marks the one on screen", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 768 });
   await page.goto(overviewUrl());
   await rail(page).getByRole("button", { name: "Digital Payments, Not drafted" }).click();
-  await expect(page.getByRole("heading", heading("Digital Payments"))).toBeVisible();
+  await expect(page).toHaveURL(/\/chat\?.*section=digital_payments/);
+  await expect(page.getByRole("heading", chatHeading("Digital Payments"))).toBeVisible();
   await expect(rail(page).getByRole("button", { name: "Digital Payments, Not drafted, this section is on screen" })).toHaveAttribute("aria-current", "page");
   await expect(rail(page).getByText("0 of 5 sections approved")).toBeVisible();
   await expect(rail(page).getByRole("progressbar", { name: "Sections approved" })).toHaveAttribute("aria-valuenow", "0");
@@ -86,14 +89,9 @@ test("T60 a section opens from the rail, from the overview and from another sect
   await expect(rail(page).getByText("Dev mode · local model")).toBeVisible();
 
   await rail(page).getByRole("button", { name: "Real Estate, Not drafted" }).click();
-  await expect(page.getByRole("heading", heading("Real Estate"))).toBeVisible();
+  await expect(page.getByRole("heading", chatHeading("Real Estate"))).toBeVisible();
   await expect(rail(page).getByRole("button", { name: /^Real Estate, Not drafted, this section is on screen$/ })).toHaveAttribute("aria-current", "page");
   await expect(rail(page).getByRole("button", { name: "Digital Payments, Not drafted" })).not.toHaveAttribute("aria-current", "page");
-
-  await rail(page).getByRole("button", { name: "Overview", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Analyst review", level: 1 })).toBeVisible();
-  await expect(rail(page).getByRole("button", { name: "Overview", exact: true })).toHaveAttribute("aria-current", "page");
-  await expect(rail(page).getByRole("progressbar")).toHaveCount(0);
 });
 
 test("T61 the rail asks first when something typed is unsaved, as Home and Back do", async ({ page }) => {
@@ -114,22 +112,17 @@ test("T61 the rail asks first when something typed is unsaved, as Home and Back 
 
   page.once("dialog", (d) => void d.accept());
   await rail(page).getByRole("button", { name: "Equities, Not drafted" }).click();
-  await expect(page.getByRole("heading", heading("Equities"))).toBeVisible();
+  await expect(page.getByRole("heading", chatHeading("Equities"))).toBeVisible();
 });
 
-test("T62 on the run view the rail's sections do nothing and say so; its Overview item goes back to the sections", async ({ page, request }) => {
+test("T62 on the run view the rail's sections open their chat, and the rail has no Overview item", async ({ page, request }) => {
   const run = await startRun(request, "real_estate"); // stops by design in the test API and saves nothing
   await page.goto(`/runs/${run}`);
   await expect(page.getByRole("heading", { name: "Real Estate: draft run", level: 1 })).toBeVisible();
-  const item = rail(page).getByRole("button", { name: "Fixed Income, Not drafted, open the overview first" });
-  await expect(item).toHaveAttribute("aria-disabled", "true");
-  await item.click({ force: true }); // Playwright waits forever to click an aria-disabled control; the point is that nothing happens
-  await expect(page).toHaveURL(/\/runs\//);
-  await expect(page.getByRole("heading", { name: "Real Estate: draft run", level: 1 })).toBeVisible();
-
-  await rail(page).getByRole("button", { name: "Overview", exact: true }).click();
-  await expect(page).toHaveURL(/\/overview/);
-  await expect(page.getByRole("heading", { name: "Analyst review", level: 1 })).toBeVisible();
+  await expect(rail(page).getByRole("button", { name: "Overview", exact: true })).toHaveCount(0);
+  await rail(page).getByRole("button", { name: /^Fixed Income, / }).click();
+  await expect(page).toHaveURL(/\/chat\?.*section=fixed_income/);
+  await expect(page.getByRole("heading", chatHeading("Fixed Income"))).toBeVisible();
 });
 
 test("T63 a rejection changes the rail's state at once and leaves the approved count where it was", async ({ page, request }) => {
@@ -169,7 +162,7 @@ test("T65 when the sections cannot be read again, every state is the neutral mar
   await expect(page.getByText("Approved and locked")).toBeVisible(); // the decision itself went through
   // The rail does not go on saying "In review": it says it does not know.
   await expect(rail(page).getByRole("button", { name: "Digital Payments, State not known, this section is on screen" })).toBeVisible();
-  await expect(rail(page).getByRole("button", { name: "Fixed Income, State not known, open the overview first" })).toHaveCount(0); // the overview page is still here, so it is not inert
+  await expect(rail(page).getByRole("button", { name: "Fixed Income, State not known, not open here" })).toHaveCount(0); // a weekly section always opens its chat, so it is not inert
   await expect(rail(page).getByRole("button", { name: "Fixed Income, State not known" })).toBeVisible();
   await expect(rail(page).getByText("Approved count not known")).toBeVisible();
   await expect(rail(page).getByRole("progressbar")).toHaveCount(0);

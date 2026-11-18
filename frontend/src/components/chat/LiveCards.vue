@@ -89,7 +89,7 @@ const done = () => {
 
     <NeedsYouCard v-if="needs && hasNeeds(needs)" :needs="needs" :week="week" :form-to="oldPage" @changed="done" />
     <SourcesCard v-if="readiness && counted" :readiness="readiness" :old-page="oldPage" />
-    <DraftCard v-if="draft.kind !== 'none'" :section="section" :card="draft" :report="report" :config="config" @changed="done" @ended="ended" />
+    <DraftCard v-if="draft.kind !== 'none'" :section="section" :card="draft" :report="report" :config="config" :old-page="oldPage" @changed="done" @ended="ended" />
     <LiveReviewCard v-if="review" :key="review.run_id" :initial="review" @full="(id, i) => emit('full', id, i)" @decided="done" @close="emit('close')" />
     <template v-if="weekly">
       <ExportBar :period="report.period" :refresh-key="`${tick}-${section.latest?.run_id ?? 0}-${section.latest?.decision ?? ''}`" @error="(m) => (exportProblem = m)" />

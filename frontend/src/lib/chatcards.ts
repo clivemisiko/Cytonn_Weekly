@@ -134,7 +134,7 @@ export type DraftCard =
   | { kind: "failed"; why: string };
 
 /** The topic and section titles of Focus of the Week are typed on the old page; the chat does not ask for them. */
-export const FOCUS_ON_OLD_PAGE = "This section needs a topic and section titles, which are typed on the old page.";
+export const FOCUS_ON_OLD_PAGE = "This section needs a topic and section titles, which are typed on the Focus page.";
 
 export function draftCard(section: SectionSummary, mine: Drafting | null, config: AppConfig | null): DraftCard {
   if (!section.available) return { kind: "none", why: section.reason ?? "This section cannot be drafted yet." };

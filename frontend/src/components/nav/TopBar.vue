@@ -14,7 +14,7 @@ const router = useRouter();
 const route = useRoute();
 const back = useBackTarget();
 const atHome = computed(() => route.path === HOME);
-const backTo = computed(() => (back.value.kind === "go" || back.value.kind === "href" ? back.value.to : "Overview"));
+const backTo = computed(() => (back.value.kind === "go" || back.value.kind === "href" ? back.value.to : "Chat"));
 
 function goBack() {
   if (!mayLeave()) return;
@@ -63,7 +63,7 @@ function goBack() {
         <PhArrowLeft weight="bold" class="size-4" aria-hidden="true" />
         <span class="max-sm:sr-only">Back</span>
       </button>
-      <div v-if="back.kind !== 'none' && backTo !== 'Overview'" class="hidden items-center gap-1.5 px-2 text-xs font-medium text-band-muted md:flex">
+      <div v-if="back.kind !== 'none' && backTo !== 'Chat'" class="hidden items-center gap-1.5 px-2 text-xs font-medium text-band-muted md:flex">
         <span class="opacity-40">/</span>
         <span class="font-semibold text-band-foreground/90 capitalize">{{ backTo === "all sections" ? "Section workspace" : backTo }}</span>
       </div>

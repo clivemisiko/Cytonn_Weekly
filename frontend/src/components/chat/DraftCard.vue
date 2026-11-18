@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { PhCheck, PhCircleNotch, PhMinus, PhPlay, PhWarningCircle } from "@phosphor-icons/vue";
 import { computed, onUnmounted, ref, shallowRef, watch } from "vue";
+import { RouterLink } from "vue-router";
 import Notice from "@/components/review/Notice.vue";
 import RedraftDialog from "@/components/review/RedraftDialog.vue";
 import Button from "@/components/ui/Button.vue";
+import { LINK } from "@/components/ui/button";
 import * as api from "@/lib/api";
 import { type DraftCard as Card, weekOf } from "@/lib/chatcards";
 import { draftChartsNote } from "@/lib/charts";
@@ -14,7 +16,7 @@ import { missingSourcesNote, piecesNothingFoundFor, usesSources } from "@/lib/so
 import type { AppConfig, ReportChoice, RunEvent, SectionSummary } from "@/lib/types";
 
 const POLL_MS = 2_000;
-const props = defineProps<{ section: SectionSummary; card: Card; report: ReportChoice; config: AppConfig | null }>();
+const props = defineProps<{ section: SectionSummary; card: Card; report: ReportChoice; config: AppConfig | null; oldPage: string }>();
 const emit = defineEmits<{ changed: []; ended: [] }>();
 
 const starting = ref(false);
@@ -168,6 +170,7 @@ const underway = computed(() => props.card.kind === "running" || props.card.kind
       </p>
       <p v-else-if="card.kind === 'failed'" class="flex items-start gap-1.5 text-sm"><PhWarningCircle weight="bold" class="mt-0.5 size-4 shrink-0" aria-hidden="true" />The last draft stopped. {{ card.why }}</p>
       <p v-else-if="card.kind === 'blocked' || card.kind === 'none'" class="text-sm text-muted-foreground">{{ card.why }}</p>
+      <RouterLink v-if="card.kind === 'blocked' && section.needs_topic" :to="oldPage" :class="['inline-block text-sm', LINK]">Open the Focus page</RouterLink>
       <Button v-if="card.kind === 'ready' || card.kind === 'failed'" :disabled="starting" @click="start">
         <PhPlay weight="bold" data-icon="inline-start" aria-hidden="true" />
         {{ starting ? "Starting…" : card.kind === "failed" || (card.kind === "ready" && card.again) ? "Start draft again" : "Start draft" }}

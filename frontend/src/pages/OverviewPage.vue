@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, shallowRef } from "vue";
-import { type LocationQuery, useRoute, useRouter } from "vue-router";
+import { type LocationQuery, RouterLink, useRoute, useRouter } from "vue-router";
 import Masthead from "@/components/review/Masthead.vue";
 import Notice from "@/components/review/Notice.vue";
 import OverviewScreen from "@/components/review/OverviewScreen.vue";
@@ -12,7 +12,8 @@ import StartSkeleton from "@/components/review/StartSkeleton.vue";
 import Button from "@/components/ui/Button.vue";
 import * as api from "@/lib/api";
 import { draftingList } from "@/lib/drafting";
-import { BACK_NONE, type BackTarget, useBack } from "@/lib/nav";
+import { LINK } from "@/components/ui/button";
+import { BACK_NONE, type BackTarget, chatHref, useBack } from "@/lib/nav";
 import { openingReport, rememberWeek } from "@/lib/previous";
 import { shell, useShellActions, useShellHere } from "@/lib/shell";
 import { type AppConfig, type Drafting, type Overview, REPORT_TYPES, type ReportChoice, type ReportType, type Review, type SectionSummary, type WeekChoice } from "@/lib/types";
@@ -180,7 +181,16 @@ function home() {
 // The top bar's Back: from a section's start screen or an open review, to this report's list of sections.
 // From the list of sections itself, Back is disabled as overview is the top-level workspace.
 const TO_SECTIONS: BackTarget = { kind: "go", to: "all sections", go: home };
-useBack(() => (phase.value.name === "start" || phase.value.name === "review" ? TO_SECTIONS : BACK_NONE));
+// Opened from a chat button (?from=chat, read once: the page rewrites its address as it moves between screens).
+const fromChat = route.query.from === "chat";
+const chatBack = computed(() => {
+  const p = phase.value;
+  const slug = p.name === "start" ? p.section.slug : p.name === "review" ? p.review.section_slug : sectionFromUrl();
+  return chatHref(report.value.period || (one(route.query.period) ?? ""), slug);
+});
+useBack((): BackTarget =>
+  fromChat ? { kind: "href", to: "chat", href: chatBack.value } : phase.value.name === "start" || phase.value.name === "review" ? TO_SECTIONS : BACK_NONE,
+);
 
 /** Switch the overview to another report. A period the API rejects stays in the picker with the API's reason. */
 async function chooseReport(next: ReportChoice): Promise<string | null> {
@@ -249,7 +259,7 @@ async function goToSection(slug: string) {
 }
 
 // What the rail's items do while this page is on screen, and which of its screens the rail marks.
-useShellActions({ openSection: goToSection, toOverview: home });
+useShellActions({ openSection: goToSection });
 useShellHere(() => {
   const p = phase.value;
   if (p.name === "overview") return { view: "overview" };
@@ -290,6 +300,9 @@ const key = computed(() => {
 <template>
   <Transition name="phase" mode="out-in">
     <main id="main" :key="key" tabindex="-1">
+      <p v-if="fromChat" class="mx-auto w-full max-w-275 px-4 pt-4 sm:px-6">
+        <RouterLink :to="chatBack" :class="['text-sm font-semibold', LINK]">Back to chat</RouterLink>
+      </p>
       <template v-if="phase.name === 'booting'">
         <ReviewSkeleton v-if="phase.target === 'review'" />
         <StartSkeleton v-else-if="phase.target === 'start'" />

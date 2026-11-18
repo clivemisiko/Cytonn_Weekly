@@ -6,24 +6,19 @@ import {
   PhCircleDashed,
   PhCircleHalf,
   PhCircleNotch,
-  PhClockCounterClockwise,
   PhHourglass,
   PhLockSimple,
   PhSidebarSimple,
-  PhSquaresFour,
   PhWarningCircle,
 } from "@phosphor-icons/vue";
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "reka-ui";
 import { computed, nextTick, ref, useTemplateRef, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
-import { LINK } from "@/components/ui/button";
+import { useRouter } from "vue-router";
 import { reportName } from "@/lib/format";
-import { mayLeave, useBackTarget } from "@/lib/nav";
+import { chatHref, mayLeave } from "@/lib/nav";
 import { type RailSection, type RailState, shell } from "@/lib/shell";
 
 const router = useRouter();
-const route = useRoute();
-const back = useBackTarget();
 const open = ref(true); // expanded on every load; a collapse lasts for the visit only
 const menu = shell.menu; // the phone's drawer
 const groupOpen = ref(true);
@@ -54,32 +49,25 @@ const fullOnly = computed(() => (open.value ? "" : "max-[1365px]:hidden"));
 const here = shell.here;
 const atOverview = computed(() => here.value?.view === "overview");
 const hereSlug = computed(() => (here.value?.view === "section" ? here.value.slug : null));
-const canOpen = (s: RailSection) => shell.opener.value !== null && s.slug !== hereSlug.value && s.state !== "unavailable";
+// A weekly week's section opens its chat from every page; another report (only on the hidden overview) opens as before.
+const chatPeriod = computed(() => {
+  const r = shell.report.value;
+  return r?.type === "weekly" && /^Week ending \d{4}-\d{2}-\d{2}$/.test(r.period) ? r.period : null;
+});
+const canOpen = (s: RailSection) => (chatPeriod.value !== null || shell.opener.value !== null) && s.slug !== hereSlug.value && s.state !== "unavailable";
 
 function openSection(s: RailSection) {
   if (!canOpen(s) || !mayLeave()) return;
   menu.value = false;
-  shell.opener.value?.(s.slug);
-}
-
-function toPrevious() {
-  if (route.path === "/previous" || !mayLeave()) return;
-  menu.value = false;
-  void router.push("/previous");
-}
-
-function toOverview() {
-  if (atOverview.value || !mayLeave()) return;
-  menu.value = false;
-  if (shell.toOverview.value) shell.toOverview.value();
-  else void router.push(back.value.kind === "href" ? back.value.href : "/overview");
+  if (chatPeriod.value) void router.push(chatHref(chatPeriod.value, s.slug));
+  else shell.opener.value?.(s.slug);
 }
 
 /** Why a section's item does nothing, for its tooltip and screen-reader text; null when it opens the section. */
 function whyInert(s: RailSection): string | null {
   if (s.slug === hereSlug.value) return "this section is on screen";
   if (s.state === "unavailable") return "not available yet";
-  if (shell.opener.value === null) return "open the overview first";
+  if (!canOpen(s)) return "not open here";
   return null;
 }
 
@@ -128,23 +116,7 @@ const ITEM =
         <p class="eyebrow">Report</p>
         <p class="text-sm font-semibold tracking-tight text-foreground">{{ reportName(shell.report.value.title, shell.report.value.period) }}</p>
         <p v-if="mode" class="text-xs text-muted-foreground">{{ mode }}</p>
-        <button v-if="hereSlug && shell.toOverview.value" type="button" :class="['text-xs', LINK]" @click="toOverview">Change report</button>
       </div>
-
-      <ul class="space-y-1">
-        <li>
-          <button type="button" :class="ITEM" :aria-current="atOverview ? 'page' : undefined" @click="toOverview">
-            <PhSquaresFour weight="bold" class="size-5 shrink-0" aria-hidden="true" />
-            <span :class="label">Overview</span>
-          </button>
-        </li>
-        <li>
-          <button type="button" :class="ITEM" :aria-current="route.path === '/previous' ? 'page' : undefined" @click="toPrevious">
-            <PhClockCounterClockwise weight="bold" class="size-5 shrink-0" aria-hidden="true" />
-            <span :class="label">Previous reports</span>
-          </button>
-        </li>
-      </ul>
 
       <CollapsibleRoot v-model:open="groupOpen" class="space-y-1">
         <CollapsibleTrigger class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">
@@ -153,7 +125,7 @@ const ITEM =
         </CollapsibleTrigger>
         <CollapsibleContent>
           <p v-if="shell.sections.value.length === 0" class="px-2 py-1 text-xs text-muted-foreground" :class="fullOnly">
-            Open the overview to list this report’s sections.
+            Open the chat to list this report’s sections.
           </p>
           <ul v-else class="space-y-1">
             <li v-for="s in shell.sections.value" :key="s.slug">
@@ -206,7 +178,7 @@ const ITEM =
           <p v-if="shell.report.value?.type === 'weekly'" class="text-xs text-muted-foreground">
             {{
               shell.approved.value !== null && shell.approved.value === shell.total.value
-                ? "Ready to export from the overview."
+                ? "Ready to export from the chat."
                 : `Export unlocks when all ${shell.total.value ?? ""} are approved.`
             }}
           </p>
