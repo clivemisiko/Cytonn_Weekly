@@ -50,7 +50,7 @@ def make_router(d: Deps) -> APIRouter:
         """Keep what was typed.  422, with every reason (one a line), if any value is refused; nothing is stored then."""
         week, section = week_of(week_ending), form_section(section)
         try:
-            weekly_analyst.save_form(week, {"fields": body.fields, "tables": body.tables, "confirm": body.confirm}, d.root)
+            weekly_analyst.save_form(week, {"fields": body.fields, "tables": body.tables, "confirm": body.confirm}, d.root, d.db_path)
         except weekly_inputs.InputError as exc:
             raise ProblemError(422, str(exc), "analyst_refused")
         return weekly_analyst.status(week, d.root, section)
@@ -64,7 +64,7 @@ def make_router(d: Deps) -> APIRouter:
         """
         week, section = week_of(week_ending), form_section(section)
         try:
-            weekly_analyst.carry_forward(week, d.root)
+            weekly_analyst.carry_forward(week, d.root, d.db_path)
         except weekly_inputs.InputError as exc:
             raise ProblemError(409, str(exc), "analyst_nothing_to_carry")
         return weekly_analyst.status(week, d.root, section)
@@ -81,7 +81,7 @@ def make_router(d: Deps) -> APIRouter:
         if "reason" in found:
             raise ProblemError(409, found["reason"], "analyst_suggestion_unavailable")
         try:
-            weekly_analyst.suggest(week, field, found["value"], found["note"], d.root)
+            weekly_analyst.suggest(week, field, found["value"], found["note"], d.root, d.db_path)
         except weekly_inputs.InputError as exc:
             raise ProblemError(409, str(exc), "analyst_suggestion_unavailable")
         return weekly_analyst.status(week, d.root, section)
@@ -181,7 +181,7 @@ def make_router(d: Deps) -> APIRouter:
             raise ProblemError(502, f"The bulletin could not be fetched from CBK. {failure_message(exc)} You can also upload "
                                      "the PDF yourself.", "bulletin_fetch_failed")
         try:
-            weekly_inputs.store(week, weekly_inputs.CBK_BULLETIN, data, url.rsplit("/", 1)[-1], d.root, fetched_from=url)
+            weekly_inputs.store(week, weekly_inputs.CBK_BULLETIN, data, url.rsplit("/", 1)[-1], d.root, fetched_from=url, db_path=d.db_path)
         except weekly_inputs.InputError as exc:
             raise ProblemError(502, f"CBK's file was downloaded but could not be read as the Weekly Bulletin ({exc}). Upload "
                                      "the bulletin yourself.", "bulletin_fetch_failed")

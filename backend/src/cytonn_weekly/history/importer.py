@@ -11,6 +11,7 @@ from cytonn_weekly.common.formatting import round_half_up
 from cytonn_weekly.history import store
 from cytonn_weekly.weekly import equities_workbook as eq
 from cytonn_weekly.weekly import fi_workbook as fi
+from cytonn_weekly.weekly.analyst import _key
 from cytonn_weekly.weekly.workbook import Cell, Workbook, WorkbookError
 
 DECIMALS = 8   # workbook floats carry noise (1234.5600000000002): a point is kept to 8 decimals, rounded half up
@@ -29,6 +30,9 @@ CATALOG = {
     "fi.interbank.volume": ("kes_mn", "day", "fixed_income", "Interbank volume", 1),
     "fi.interbank.rate": ("pct", "day", "fixed_income", "Interbank rate", 100),
     "fi.eurobond.yield": ("pct", "day", "fixed_income", "Eurobond yield, by issue", 100),
+    "fi.placements": ("pct", "week", "fixed_income", "3-month bank placements", 1),
+    "fi.mmf.rate": ("pct", "week", "fixed_income", "Money market fund yield, by fund", 1),
+    "fi.kesonia": ("pct", "day", "fixed_income", "KESONIA", 1),
 }
 
 
@@ -108,7 +112,7 @@ def _prices(plan: Plan, book: Workbook) -> None:
         if not isinstance(name, str) or not name.strip():
             break
         for day, col in columns.items():
-            plan.add("eq.price", sheet.cell(r, col), day, subject=" ".join(name.split()))
+            plan.add("eq.price", sheet.cell(r, col), day, subject=_key(name))
 
 
 def _interbank(plan: Plan, book: Workbook) -> None:

@@ -17,6 +17,7 @@ ADDED, UNCHANGED, SUPERSEDED = "added", "unchanged", "superseded"
 
 FORM = "analyst (form)"
 IMPORT = "workbook import"
+FETCHED = "published source"
 
 _POINT = ", ".join(f"p.{c}" for c in ("point_id", "as_of", "week_ending", "value", "origin", "source_kind", "source_ref", "confirmed_by", "confirmed_at"))
 
@@ -47,18 +48,6 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def _series_id(conn: Any, key: str, subject: str, unit: str, section: str, cadence: str, label: str) -> int:
-    where = f"series {key!r} {subject!r}"
-    if not key.strip() or unit not in UNITS or cadence not in CADENCES or not section.strip() or not label.strip():
-        raise HistoryError(f"{where}: needs a key, a section, a label, a cadence in {list(CADENCES)} and a unit in {list(UNITS)}")
-    conn.execute("INSERT INTO series (key, subject, unit, section, cadence, label, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) "
-                 "ON CONFLICT (key, subject) DO NOTHING", (key, subject, unit, section, cadence, label, _now()))
-    row = conn.execute("SELECT series_id, unit FROM series WHERE key = ? AND subject = ?", (key, subject)).fetchone()
-    if row["unit"] != unit:
-        raise HistoryError(f"{where}: the series is held in {row['unit']!r}; a series' unit is fixed for good, so start a new series")
-    return row["series_id"]
-
-
 def _checked(key: str, subject: str, as_of: str, week_ending: str, value: Any, origin: str, source_kind: str, source_ref: str) -> tuple[str, str, str]:
     """(the date, the week ending, the value as decimal text), or a refusal."""
     where = f"series {key!r} {subject!r} on {as_of}"
@@ -69,67 +58,115 @@ def _checked(key: str, subject: str, as_of: str, week_ending: str, value: Any, o
     return as_of, week_ending, text
 
 
-def _record(conn: Any, *, key: str, unit: str, section: str, cadence: str, label: str, as_of: str, week_ending: str, value: Any,
-            origin: str, source_kind: str, source_ref: str, subject: str = "", confirmed_by: Optional[str] = None) -> tuple[int, str]:
-    as_of, week_ending, text = _checked(key, subject, as_of, week_ending, value, origin, source_kind, source_ref)
-    series_id = _series_id(conn, key, subject, unit, section, cadence, label)
-    old = conn.execute("SELECT point_id, value, confirmed_at FROM series_points WHERE series_id = ? AND as_of = ? AND superseded_by IS NULL",
-                       (series_id, as_of)).fetchone()
-    if old is not None:
+def _ids(conn: Any, specs: dict[tuple[str, str], tuple[str, str, str, str]]) -> dict[tuple[str, str], int]:
+    """The series_id of each (key, subject), creating what is missing.  specs: (key, subject) -> (unit, section, cadence, label)."""
+    for (key, subject), (unit, section, cadence, label) in specs.items():
+        if not key.strip() or unit not in UNITS or cadence not in CADENCES or not section.strip() or not label.strip():
+            raise HistoryError(f"series {key!r} {subject!r}: needs a key, a section, a label, a cadence in {list(CADENCES)} and a unit in {list(UNITS)}")
+    keys = sorted({k for k, _ in specs})
+    have = {(r["key"], r["subject"]): r for r in conn.execute(
+        f"SELECT series_id, key, subject, unit FROM series WHERE key IN ({', '.join('?' * len(keys))})", keys)}
+    out = {}
+    for (key, subject), (unit, section, cadence, label) in specs.items():
+        row = have.get((key, subject))
+        if row is None:
+            conn.execute("INSERT INTO series (key, subject, unit, section, cadence, label, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) "
+                         "ON CONFLICT (key, subject) DO NOTHING", (key, subject, unit, section, cadence, label, _now()))
+            row = conn.execute("SELECT series_id, unit FROM series WHERE key = ? AND subject = ?", (key, subject)).fetchone()
+        if row["unit"] != unit:
+            raise HistoryError(f"series {key!r} {subject!r}: the series is held in {row['unit']!r}; a series' unit is fixed for good, so start a new series")
+        out[(key, subject)] = row["series_id"]
+    return out
+
+
+def _prepare(conn: Any, items: list[dict[str, Any]]) -> list[tuple[int, str, str, str, dict[str, Any]]]:
+    """Check each item and resolve its series: (series_id, date, week ending, value text, the item)."""
+    checked, specs = [], {}
+    for it in items:
+        subject = it.get("subject", "")
+        as_of, week, text = _checked(it["key"], subject, it["as_of"], it["week_ending"], it["value"], it["origin"], it["source_kind"], it["source_ref"])
+        spec = (it["unit"], it["section"], it["cadence"], it["label"])
+        if specs.setdefault((it["key"], subject), spec)[0] != spec[0]:
+            raise HistoryError(f"series {it['key']!r} {subject!r}: given two different units")
+        checked.append((it["key"], subject, as_of, week, text, it))
+    ids = _ids(conn, specs)
+    return [(ids[(key, subject)], as_of, week, text, it) for key, subject, as_of, week, text, it in checked]
+
+
+_CHUNK = 500   # points a statement (10 values each) and items a lookup: well inside SQLite's and PostgreSQL's limits
+
+
+def _insert(conn: Any, rows: list[tuple]) -> dict[tuple[int, str], int]:
+    """Insert points, many to a statement (a round trip to a remote database costs 200 ms): {(series_id, date): point_id}."""
+    got = {}
+    for i in range(0, len(rows), _CHUNK):
+        chunk = rows[i:i + _CHUNK]
+        cur = conn.execute("INSERT INTO series_points (series_id, as_of, week_ending, value, origin, source_kind, source_ref, confirmed_by, "
+                           "confirmed_at, created_at) VALUES " + ", ".join(["(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"] * len(chunk))
+                           + " RETURNING point_id, series_id, as_of", [v for r in chunk for v in r])
+        got.update({(r["series_id"], r["as_of"]): r["point_id"] for r in cur.fetchall()})
+    return got
+
+
+def _row(sid: int, as_of: str, week: str, text: str, it: dict[str, Any], now: str) -> tuple:
+    by = it.get("confirmed_by")
+    return (sid, as_of, week, text, it["origin"], it["source_kind"], str(it["source_ref"]), by, now if by else None, now)
+
+
+def _record_chunk(conn: Any, items: list[dict[str, Any]], only_new: bool = False) -> list[tuple[int, str]]:
+    prepared = _prepare(conn, items)
+    last = {(sid, as_of): n for n, (sid, as_of, *_rest) in enumerate(prepared)}   # the last item for a series and date wins
+    sids, days = sorted({k[0] for k in last}), sorted({k[1] for k in last})
+    current = {(r["series_id"], r["as_of"]): r for r in conn.execute(
+        "SELECT point_id, series_id, as_of, value, confirmed_at FROM series_points WHERE superseded_by IS NULL "
+        f"AND series_id IN ({', '.join('?' * len(sids))}) AND as_of IN ({', '.join('?' * len(days))})", sids + days)}
+    now, results, fresh = _now(), [None] * len(items), []
+    for (sid, as_of), n in last.items():
+        _, _, week, text, it = prepared[n]
+        old = current.get((sid, as_of))
         # The same number is no change, unless it is now confirmed and the old point is not: that is a new point (typed over a suggestion).
-        if Decimal(old["value"]) == Decimal(text) and (old["confirmed_at"] is not None or confirmed_by is None):
-            return old["point_id"], UNCHANGED
-        # Free the unique "current" slot with a pointer to itself, add the new point, then point the old one at it.  One transaction.
-        conn.execute("UPDATE series_points SET superseded_by = point_id WHERE point_id = ?", (old["point_id"],))
-    now = _now()
-    new_id = conn.insert(
-        "INSERT INTO series_points (series_id, as_of, week_ending, value, origin, source_kind, source_ref, confirmed_by, confirmed_at, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (series_id, as_of, week_ending, text, origin, source_kind, str(source_ref), confirmed_by, now if confirmed_by else None, now), "point_id")
-    if old is None:
-        return new_id, ADDED
-    conn.execute("UPDATE series_points SET superseded_by = ? WHERE point_id = ?", (new_id, old["point_id"]))
-    return new_id, SUPERSEDED
+        if old is not None and (only_new or (Decimal(old["value"]) == Decimal(text) and (old["confirmed_at"] is not None or it.get("confirmed_by") is None))):
+            results[n] = (old["point_id"], UNCHANGED)
+        elif old is None:
+            fresh.append((n, _row(sid, as_of, week, text, it, now)))
+        else:
+            # Free the unique "current" slot with a pointer to itself, add the new point, then point the old one at it.  One transaction.
+            conn.execute("UPDATE series_points SET superseded_by = point_id WHERE point_id = ?", (old["point_id"],))
+            new_id = _insert(conn, [_row(sid, as_of, week, text, it, now)])[(sid, as_of)]
+            conn.execute("UPDATE series_points SET superseded_by = ? WHERE point_id = ?", (new_id, old["point_id"]))
+            results[n] = (new_id, SUPERSEDED)
+    added = _insert(conn, [row for _, row in fresh])
+    for n, row in fresh:
+        results[n] = (added[(row[0], row[1])], ADDED)
+    return [results[last[(prepared[n][0], prepared[n][1])]] if r is None else r for n, r in enumerate(results)]
 
 
-def record_many(db_path: Optional[Union[Path, str]], items: list[dict[str, Any]]) -> list[tuple[int, str]]:
-    """Add each point (the keyword arguments of ``_record``), all in one transaction: (point id, added | unchanged | superseded).
-
-    A confirmed point is given ``confirmed_by`` (FORM or IMPORT); without it the point waits and no reader sees it.
-    """
+def record_many(db_path: Optional[Union[Path, str]], items: list[dict[str, Any]], only_new: bool = False) -> list[tuple[int, str]]:
+    """Add each point (``key``, ``unit``, ``section``, ``cadence``, ``label``, ``as_of``, ``week_ending``, ``value``, ``origin``, ``source_kind``,
+    ``source_ref``, optional ``subject`` and ``confirmed_by``), all in one transaction and a handful of statements:
+    (point id, added | unchanged | superseded).  A confirmed point is given ``confirmed_by`` (FORM or IMPORT); without it the point waits and
+    no reader sees it.  Twice the same series and date in one call: the last wins.  ``only_new``: a date that already has a current point is
+    left as it is (a fetched figure never replaces what an analyst typed or confirmed)."""
     conn = db.open_db(db_path)
     try:
         with conn.transaction():
-            return [_record(conn, **item) for item in items]
+            out: list[tuple[int, str]] = []
+            for i in range(0, len(items), _CHUNK):
+                out += _record_chunk(conn, items[i:i + _CHUNK], only_new)
+            return out
     finally:
         conn.close()
 
 
-_CHUNK = 500   # rows a statement: 10 values each, well inside SQLite's and PostgreSQL's limits
-
-
 def add_new(db_path: Optional[Union[Path, str]], items: list[dict[str, Any]]) -> int:
-    """Insert points for dates that have no current point, many to a statement (the importer's bulk path: a round trip to a remote
-    database costs 200 ms, so a point at a time would take hours).  A date that already has one fails on the unique index and the
-    whole batch is rolled back; nothing is superseded.  Returns how many were added."""
+    """Insert points for dates that have no current point (the importer's bulk path).  A date that already has one fails on the unique
+    index and the whole batch is rolled back; nothing is superseded.  Returns how many were added."""
     conn = db.open_db(db_path)
     try:
         with conn.transaction():
-            ids: dict[tuple[str, str], int] = {}
-            rows: list[tuple] = []
             now = _now()
-            for it in items:
-                key, subject, by = it["key"], it.get("subject", ""), it.get("confirmed_by")
-                as_of, week, text = _checked(key, subject, it["as_of"], it["week_ending"], it["value"], it["origin"], it["source_kind"], it["source_ref"])
-                if (key, subject) not in ids:
-                    ids[(key, subject)] = _series_id(conn, key, subject, it["unit"], it["section"], it["cadence"], it["label"])
-                rows.append((ids[(key, subject)], as_of, week, text, it["origin"], it["source_kind"], str(it["source_ref"]), by, now if by else None, now))
-            for i in range(0, len(rows), _CHUNK):
-                chunk = rows[i:i + _CHUNK]
-                conn.execute("INSERT INTO series_points (series_id, as_of, week_ending, value, origin, source_kind, source_ref, confirmed_by, "
-                             "confirmed_at, created_at) VALUES " + ", ".join(["(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"] * len(chunk)),
-                             [v for r in chunk for v in r])
-        return len(rows)
+            _insert(conn, [_row(sid, as_of, week, text, it, now) for sid, as_of, week, text, it in _prepare(conn, items)])
+        return len(items)
     finally:
         conn.close()
 

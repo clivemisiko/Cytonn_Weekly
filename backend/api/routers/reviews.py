@@ -152,7 +152,7 @@ def make_router(d: Deps) -> APIRouter:
             raise ProblemError(500, f"The figures could not be re-checked, so nothing was changed and the file was not kept. {failure_message(exc)}", "fix_check_failed")
         with d.write_lock:
             try:
-                weekly_inputs.store(week, slot, data, filename, d.root)
+                weekly_inputs.store(week, slot, data, filename, d.root, db_path=d.db_path)
             except weekly_inputs.InputError as exc:
                 raise ProblemError(422, str(exc), "fix_file_refused")
             try:

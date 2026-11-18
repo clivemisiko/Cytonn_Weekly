@@ -54,8 +54,10 @@ A value is stored as it was typed (a percentage as 9.0, not 0.09).  A builder ge
 
 from __future__ import annotations
 
+import functools
 import json
 import re
+import threading
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -737,12 +739,37 @@ def read_form(week: Week, root: Optional[Path] = None) -> dict[str, Any]:
     return {"fields": fields, "tables": tables, "saved_at": data.get("saved_at"), "carried": carried, "unconfirmed": unconfirmed}
 
 
-def _write(week: Week, root: Optional[Path], form: dict[str, Any]) -> dict[str, Any]:
+_after_write = threading.local()
+
+
+def _synced(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """Run ``fn`` under the file lock, then (lock released) write the points of what it saved to the history store.
+    The file is the truth: the store write never raises (history/weekly.py) and nothing reads the store yet."""
+    locked = atomic.locked(fn)
+
+    @functools.wraps(fn)
+    def inner(*args: Any, **kwargs: Any) -> Any:
+        _after_write.todo = None
+        try:
+            return locked(*args, **kwargs)
+        finally:
+            todo, _after_write.todo = _after_write.todo, None
+            if todo:
+                from cytonn_weekly.history import weekly as history   # imported here: history imports this module
+
+                history.sync(*todo)
+
+    return inner
+
+
+def _write(week: Week, root: Optional[Path], form: dict[str, Any], db_path: Optional[Path] = None) -> dict[str, Any]:
+    before = read_form(week, root)
     held = {**form["fields"], **form["tables"]}
     form["carried"] = {k: v for k, v in form.get("carried", {}).items() if k in held}
     form["unconfirmed"] = sorted(k for k in form.get("unconfirmed", []) if k in held)
     form["saved_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     atomic.write_atomic(_path(week, root), json.dumps(form, indent=1, sort_keys=True))
+    _after_write.todo = (week, before, form, db_path)
     return form
 
 
@@ -753,8 +780,8 @@ def usable_form(form: dict[str, Any]) -> dict[str, Any]:
             "tables": {k: v for k, v in form["tables"].items() if k not in waiting}}
 
 
-@atomic.locked
-def save_form(week: Week, changes: dict[str, Any], root: Optional[Path] = None) -> dict[str, Any]:
+@_synced
+def save_form(week: Week, changes: dict[str, Any], root: Optional[Path] = None, db_path: Optional[Path] = None) -> dict[str, Any]:
     """Check and keep what was typed; an item given as None (or empty) is cleared, one left out is kept.
 
     ``changes`` is {"fields": {key: value}, "tables": {key: {"text": pasted} | {"rows": [...]} | None},
@@ -824,11 +851,11 @@ def save_form(week: Week, changes: dict[str, Any], root: Optional[Path] = None) 
         more = f"\n...and {len(errors) - 12} more." if len(errors) > 12 else ""
         raise InputError("\n".join(errors[:12]) + more)
     form["unconfirmed"] = [k for k in form["unconfirmed"] if k not in touched]
-    return _write(week, root, form)
+    return _write(week, root, form, db_path)
 
 
-@atomic.locked
-def carry_forward(week: Week, root: Optional[Path] = None) -> dict[str, Any]:
+@_synced
+def carry_forward(week: Week, root: Optional[Path] = None, db_path: Optional[Path] = None) -> dict[str, Any]:
     """Start this week's form from last week's: copy what last week's holds into every item still empty here.
 
     Only what was confirmed last week is copied, and only where it is still valid for this week
@@ -887,7 +914,7 @@ def carry_forward(week: Week, root: Optional[Path] = None) -> dict[str, Any]:
     if not carried:
         raise InputError(f"Nothing to carry from the week ending {day_text(last_week.ending)}: every item it holds is already typed for this week, "
                          "or is no longer valid for it. Type this week's values directly.")
-    _write(week, root, form)
+    _write(week, root, form, db_path)
     return {"form": form, "carried": carried, "unconfirmed": [k for k in carried if k in form["unconfirmed"]]}
 
 
@@ -897,8 +924,8 @@ def _row_problems(table: Table, row: dict[str, str], week: Week) -> list[str]:
     return problems
 
 
-@atomic.locked
-def suggest(week: Week, key: str, value: str, note: str, root: Optional[Path] = None) -> dict[str, Any]:
+@_synced
+def suggest(week: Week, key: str, value: str, note: str, root: Optional[Path] = None, db_path: Optional[Path] = None) -> dict[str, Any]:
     """Keep a worked-out suggestion for a running total as an unconfirmed value, with its working.
 
     It never replaces a value someone typed or confirmed: that one must be cleared first.
@@ -912,7 +939,7 @@ def suggest(week: Week, key: str, value: str, note: str, root: Optional[Path] = 
     form["fields"][key] = value
     form["carried"][key] = {"from": SUGGESTED, "value": value, "note": note}
     form["unconfirmed"] = sorted(set(form["unconfirmed"]) | {key})
-    return _write(week, root, form)
+    return _write(week, root, form, db_path)
 
 
 # ---------------------------------------------------------------------------
