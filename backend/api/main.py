@@ -65,7 +65,7 @@ from cytonn_weekly.common import sources as source_store
 from cytonn_weekly.env import key_override_warnings, load_env
 from cytonn_weekly.drafting import bedrock as bedrock_provider
 from cytonn_weekly.notable.registry import Detector
-from cytonn_weekly.weekly import cbk_bulletin, cbk_rates, fetched_items
+from cytonn_weekly.weekly import cbk_bulletin, cbk_rates, fetched_items, fund_snip
 
 from api.deps import Deps, configured_provider
 from api.draft_slot import DRAFT_STALE_AFTER_SECONDS
@@ -97,6 +97,7 @@ def create_app(
     search_sources: source_gather.Search = source_gather.exa_search,
     chat_agent: Optional[Callable[[], object]] = None,
     fetch_items: Callable[..., tuple] = fetched_items.fetch,
+    read_fund_snip: Callable[[bytes], list] = fund_snip.read_page,
 ) -> FastAPI:
     """Build the app.  ``db_path`` defaults to data/app.db; tests pass a temp file.
 
@@ -113,6 +114,7 @@ def create_app(
     common/sources.py) and ``fetch_source`` how one is fetched (tests pass a fake, so none reaches a site).
     ``search_sources`` is how the gather step searches for them (common/gather.py; Exa by default, tests pass a fake).
     ``fetch_items`` fetches one analyst-form table from CBK (weekly/fetched_items.py; tests pass a fake, so none reaches CBK).
+    ``read_fund_snip`` reads a Daily Nation page image into fund rows (weekly/fund_snip.py; OCR, so tests pass a fake).
     ``chat_agent`` builds the analyst chat's model client for one answer (Bedrock by default; tests pass a scripted one).
 
     ``notable_registry`` is where the "Notable this week" detectors come from (section slug -> detectors).  Left out it is
@@ -146,7 +148,7 @@ def create_app(
                 fetch_bulletin=fetch_bulletin, export_root=export_root, fetch_usd_rates=fetch_usd_rates,
                 notable_registry=notable_registry, charts_root=charts_root, sources_root=sources_root,
                 fetch_source=fetch_source, search_sources=search_sources, chat_agent=chat_agent,
-                fetch_items=fetch_items)
+                fetch_items=fetch_items, read_fund_snip=read_fund_snip)
     # The order is the order the routes were first registered in; where two patterns can match one path the earlier wins
     # (/api/reviews/latest before /api/reviews/{run_id}; notes, analyst and charts before the {slot} upload), and each of
     # those pairs sits inside one module in that order (tests/test_api_routes.py locks them).

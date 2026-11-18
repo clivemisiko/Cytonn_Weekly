@@ -6,10 +6,11 @@ from cytonn_weekly.history import weekly as history_weekly
 from cytonn_weekly.weekly import analyst as weekly_analyst
 from cytonn_weekly.weekly import fetched_items
 from cytonn_weekly.weekly import chart_uploads
+from cytonn_weekly.weekly import fund_snip
 from cytonn_weekly.weekly import inputs as weekly_inputs
 from api.problems import ProblemError
 from api.deps import Deps, failure_message, week_of
-from api.schemas import InputNotes, ChartLeadIn, ChartSource, AnalystInputs
+from api.schemas import InputNotes, ChartLeadIn, ChartSource, AnalystInputs, FundSnipEdits, FundSnipConfirm, FundListSettings, FundDecision
 
 
 def make_router(d: Deps) -> APIRouter:
@@ -111,6 +112,93 @@ def make_router(d: Deps) -> APIRouter:
             raise ProblemError(409, str(exc), "item_fetch_failed")
         history_weekly.record_fetch(week, key, rows, note, d.db_path)
         return weekly_analyst.status(week, d.root, section)
+
+    @router.get("/api/inputs/weekly/{week_ending}/fund-snip")
+    def get_fund_snip(week_ending: str) -> dict:
+        """The Daily Nation fund page for the week as the card shows it: its reading by group, counts, and the analyst's corrections."""
+        return fund_snip.state(week_of(week_ending), d.root)
+
+    @router.put("/api/inputs/weekly/{week_ending}/fund-snip")
+    async def upload_fund_snip(week_ending: str, request: Request) -> dict:
+        """Upload the week's Daily Nation page (PNG or JPEG, judged by its first bytes): the file is the request body.  It replaces the last one and its reading."""
+        week = week_of(week_ending)
+        too_big = f"The image is over the {fund_snip.MAX_BYTES // 1_048_576} MB limit. Save a smaller copy and upload that."
+        declared = request.headers.get("content-length")
+        if declared and declared.isdigit() and int(declared) > fund_snip.MAX_BYTES:
+            raise ProblemError(413, too_big, "upload_too_big")
+        data = await request.body()
+        if len(data) > fund_snip.MAX_BYTES:
+            raise ProblemError(413, too_big, "upload_too_big")
+        try:
+            await run_in_threadpool(fund_snip.store, week, data, d.root)
+        except weekly_inputs.InputError as exc:
+            raise ProblemError(422, str(exc), "upload_refused")
+        return fund_snip.state(week, d.root)
+
+    @router.get("/api/inputs/weekly/{week_ending}/fund-snip/image")
+    def fund_snip_image(week_ending: str) -> Response:
+        stored = fund_snip.image(week_of(week_ending), d.root)
+        if stored is None:
+            raise HTTPException(404, "no fund page has been uploaded for this week")
+        return Response(stored[0], media_type=fund_snip.MEDIA_TYPE[stored[1]], headers={"Cache-Control": "no-store"})
+
+    @router.delete("/api/inputs/weekly/{week_ending}/fund-snip")
+    def delete_fund_snip(week_ending: str) -> dict:
+        week = week_of(week_ending)
+        if not fund_snip.remove(week, d.root):
+            raise HTTPException(404, "no fund page has been uploaded for this week")
+        return fund_snip.state(week, d.root)
+
+    @router.post("/api/inputs/weekly/{week_ending}/fund-snip/read")
+    async def read_fund_snip(week_ending: str) -> dict:
+        """Read the uploaded page (OCR, about a minute).  Nothing is kept on the form: the reading is shown for the analyst to correct and confirm."""
+        week = week_of(week_ending)
+        try:
+            await run_in_threadpool(fund_snip.read, week, d.root, d.read_fund_snip)
+        except weekly_inputs.InputError as exc:
+            raise ProblemError(409, str(exc), "analyst_refused")
+        except Exception as exc:  # noqa: BLE001 - shown to the analyst, not swallowed
+            raise ProblemError(422, f"The page could not be read. {failure_message(exc)} Type the fund table under \"{weekly_analyst.FORM}\" or upload a clearer image.", "item_fetch_failed")
+        return fund_snip.state(week, d.root)
+
+    @router.put("/api/inputs/weekly/{week_ending}/fund-snip/edits")
+    def put_fund_snip_edits(week_ending: str, body: FundSnipEdits) -> dict:
+        week = week_of(week_ending)
+        try:
+            fund_snip.set_edits(week, body.fixes, body.typed, d.root)
+        except weekly_inputs.InputError as exc:
+            raise ProblemError(422, str(exc), "analyst_refused")
+        return fund_snip.state(week, d.root)
+
+    @router.post("/api/inputs/weekly/{week_ending}/fund-snip/confirm")
+    def confirm_fund_snip(week_ending: str, body: FundSnipConfirm, section: Optional[str] = Query(default=None, max_length=40)) -> dict:
+        """Keep the corrected, ranked table on the form as the analyst's own, with the image's hash as its source.  422, listing what is still open, otherwise."""
+        week, section = week_of(week_ending), form_section(section)
+        try:
+            rows, typed, note = fund_snip.confirmed_rows(week, d.root)
+            weekly_analyst.fund_snip(week, rows, body.published, note, typed, d.root, d.db_path)
+        except weekly_inputs.InputError as exc:
+            raise ProblemError(422, str(exc), "analyst_refused")
+        return weekly_analyst.status(week, d.root, section)
+
+    @router.get("/api/settings/fund-list")
+    def get_fund_list() -> dict:
+        """The funds the report's money market table uses (one list for every week), the funds left out and the page names matched to list names."""
+        return fund_snip.read_settings(d.root)
+
+    @router.put("/api/settings/fund-list")
+    def put_fund_list(body: FundListSettings) -> dict:
+        try:
+            return fund_snip.write_settings({k: getattr(body, k) for k in body.model_fields_set if getattr(body, k) is not None}, d.root)
+        except weekly_inputs.InputError as exc:
+            raise ProblemError(422, str(exc), "analyst_refused")
+
+    @router.post("/api/settings/fund-list/decide")
+    def decide_fund(body: FundDecision) -> dict:
+        try:
+            return fund_snip.decide(body.page_name, body.decision, body.name, body.to, d.root)
+        except weekly_inputs.InputError as exc:
+            raise ProblemError(422, str(exc), "analyst_refused")
 
     def chart_key(key: str) -> str:
         if key not in chart_uploads.KEYS:

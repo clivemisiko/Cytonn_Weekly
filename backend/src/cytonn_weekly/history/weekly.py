@@ -17,6 +17,7 @@ log = logging.getLogger(__name__)
 FIELD_SERIES = {"pe": "eq.pe", "dividend_yield": "eq.dividend_yield", "turnover_ytd": "eq.turnover.ytd", "foreign_ytd": "eq.foreign.ytd",
                 "placements": "fi.placements"}
 TABLE_SERIES = ("mmf", "interbank", "eurobond_yields", "foreign_history", "universe", "remittances")
+TYPED_BESIDE = {"origin": "typed", "source_kind": "form_field", "source_ref": "mmf, typed beside the Daily Nation snip", "confirmed_by": store.FORM}
 _ISSUES = tuple(spec[0] for spec in fi_workbook.EUROBOND_ISSUES)
 
 _failed = 0
@@ -72,6 +73,8 @@ def _how(form: dict[str, Any], key: str, value: Any) -> dict[str, Any]:
     """Where the item's value came from, and whether it counts yet: a carried or suggested weekly item waits for confirmation."""
     mark = form["carried"].get(key)
     came = (mark or {}).get("from")
+    if came == analyst.SNIP and mark.get("value") == value:   # confirmed by the analyst from the image: typed, with the image as the source
+        return {"origin": "typed", "source_kind": "source", "source_ref": mark["note"], "confirmed_by": store.FORM}
     if key in form["unconfirmed"]:
         if came == analyst.SUGGESTED:
             return {"origin": "worked_out", "source_kind": "working", "source_ref": mark.get("note") or key}
@@ -100,7 +103,8 @@ def sync(week: Week, before: dict[str, Any], after: dict[str, Any], db_path: Opt
             if mark.get("from") == analyst.FETCHED and mark.get("value") == value:
                 continue   # record_fetch wrote these, once, with the source
             how = _how(after, key, value)
-            items += [{**p, **how} for p in _points(week, key, value, after)]
+            typed = set(mark.get("typed") or []) if mark.get("from") == analyst.SNIP else set()   # rows typed beside a snip
+            items += [{**p, **(TYPED_BESIDE if p["subject"] in typed else how)} for p in _points(week, key, value, after)]
         if items:
             store.record_many(db_path, items)
     except Exception as exc:  # noqa: BLE001 - the store must never fail a save

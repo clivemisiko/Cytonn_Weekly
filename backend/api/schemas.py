@@ -119,6 +119,30 @@ class ChartSource(BaseModel):
     source: Optional[str] = Field(default=None, max_length=10_000)
 
 
+class FundSnipEdits(BaseModel):
+    """The analyst's corrections to the fund snip's reading: ``fixes`` by row id, and the funds typed beside the page."""
+
+    fixes: dict[str, Any] = Field(default_factory=dict)
+    typed: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class FundSnipConfirm(BaseModel):
+    published: str = Field(max_length=40)
+
+
+class FundListSettings(BaseModel):
+    include: Optional[list[str]] = None
+    exclude: Optional[list[str]] = None
+    aliases: Optional[dict[str, str]] = None
+
+
+class FundDecision(BaseModel):
+    page_name: str = Field(max_length=200)
+    decision: Literal["include", "exclude", "alias"]
+    name: Optional[str] = Field(default=None, max_length=200)
+    to: Optional[str] = Field(default=None, max_length=200)
+
+
 class AnalystInputs(BaseModel):
     """What was typed on the weekly analyst inputs form.  An item left out is kept; null or empty clears it.
 

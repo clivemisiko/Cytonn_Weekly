@@ -12,3 +12,6 @@ Manual, run-by-hand scripts against live services: diagnostics, plus the summary
 | `check_exa_ir_sourcing.py` | Queries Exa for each of the 5 highlight companies, IR domain first and general web as fallback, and prints what comes back. No LLM involved. Temporary diagnostic, not a dependency of the drafter. | Exa API only (`EXA_API_KEY`) | To see whether a company's IR site has news this week before blaming the drafter. |
 
 Keys and `CYTONN_LLM_PROVIDER` are read from the repo-root `.env`. The `PYTHONPATH=src` prefix shown in the scripts' docstrings is not needed once the package is installed with `pip install -e .`.
+
+`seed_fund_list.py <mastersheet.xlsx> <out.txt>` writes the fund names of the mastersheet's 'Money Market Performance' table, one a line and names only, to a text file that is pasted into the fund list editor on the chat's fund table card (the list is then loaded on the server the same way). Run from `backend/`; keep the file out of the repository.
+

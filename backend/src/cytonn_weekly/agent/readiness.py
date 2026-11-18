@@ -36,6 +36,8 @@ def _item(item: dict[str, Any]) -> tuple[str, str]:
         return "carried_or_suggested", ("carried from last week" if item["carried"] else "suggested") + ", not yet confirmed"
     if (item["carried"] or {}).get("from") == "fetched" and item["carried"]["whole"]:
         return "fetched", "fetched by the tool"
+    if (item["carried"] or {}).get("from") == "snip" and item["carried"]["whole"]:
+        return "in_place", "read from the Daily Nation page and confirmed"
     if filled:
         return "in_place", "typed"
     if workbook:
