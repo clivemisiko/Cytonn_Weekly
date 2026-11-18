@@ -87,7 +87,7 @@ const done = () => {
     <Notice v-if="readinessProblem" tone="warn" role="alert">{{ readinessProblem }}</Notice>
     <p v-else-if="needs && !hasNeeds(needs)" class="text-sm text-muted-foreground">Nothing is missing for this section.</p>
 
-    <NeedsYouCard v-if="needs && hasNeeds(needs)" :needs="needs" :week="week" :form-to="oldPage" @changed="done" />
+    <NeedsYouCard v-if="needs && hasNeeds(needs)" :needs="needs" :week="week" :section="section.slug" :form-to="oldPage" @changed="done" />
     <SourcesCard v-if="readiness && counted" :readiness="readiness" :old-page="oldPage" />
     <DraftCard v-if="draft.kind !== 'none'" :section="section" :card="draft" :report="report" :config="config" :old-page="oldPage" @changed="done" @ended="ended" />
     <LiveReviewCard v-if="review" :key="review.run_id" :initial="review" @full="(id, i) => emit('full', id, i)" @decided="done" @close="emit('close')" />

@@ -58,8 +58,24 @@ describe("the needs you card", () => {
     const n = needsYou(r);
     expect(n.uploads.map((u) => [u.key, u.fetchable])).toEqual([["cbk_bulletin", true], ["fi_workbook", false]]);
     expect(n.typed.map((e) => e.key)).toEqual(["bidding_range"]);
+    expect(n.fetch).toEqual([]);
     expect(n.confirm.map((e) => e.key)).toEqual(["target"]);
     expect(hasNeeds(n)).toBe(true);
+  });
+
+  it("offers a fetch button for a fetchable table, needed or optional, and not for anything else", () => {
+    const r = parseReadiness(
+      data({
+        groups: {
+          needs_analyst: [entry("remarks", { kind: "table" })],
+          optional: [entry("interbank", { kind: "table", why: "not filled" })],
+        },
+      }),
+    )!;
+    const n = needsYou(r);
+    expect(n.fetch.map((e) => e.key)).toEqual(["interbank"]);
+    expect(n.typed.map((e) => e.key)).toEqual(["remarks"]);
+    expect(hasNeeds(needsYou(parseReadiness(data({ groups: { optional: [entry("interbank", { kind: "table" })] } }))!))).toBe(true);
   });
 
   it("has nothing to offer when only in-place, fetched and optional items are left", () => {

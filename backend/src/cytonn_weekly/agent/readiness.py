@@ -34,6 +34,8 @@ def _item(item: dict[str, Any]) -> tuple[str, str]:
     workbook = item["workbook_rows"] if item["type"] == "table" else item["workbook"]
     if item["needs_confirmation"]:
         return "carried_or_suggested", ("carried from last week" if item["carried"] else "suggested") + ", not yet confirmed"
+    if (item["carried"] or {}).get("from") == "fetched" and item["carried"]["whole"]:
+        return "fetched", "fetched by the tool"
     if filled:
         return "in_place", "typed"
     if workbook:

@@ -29,6 +29,7 @@ PROBLEMS: dict[str, tuple[str, Optional[str]]] = {
     "analyst_suggestion_unavailable": ("No suggestion could be made", "analyst-form"),
     "bulletin_not_published": ("The bulletin is not published yet", "inputs-panel"),
     "bulletin_fetch_failed": ("The bulletin could not be fetched", "inputs-panel"),
+    "item_fetch_failed": ("The figures could not be fetched", "analyst-form"),
     "draft_section_unavailable": ("This section cannot be drafted yet", "start-draft"),
     "draft_topic_missing": ("Type the topic before you start the draft", "start-draft"),
     "draft_topic_invalid": ("The topic is too long", "start-draft"),

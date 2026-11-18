@@ -2,7 +2,9 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
+from cytonn_weekly.history import weekly as history_weekly
 from cytonn_weekly.weekly import analyst as weekly_analyst
+from cytonn_weekly.weekly import fetched_items
 from cytonn_weekly.weekly import chart_uploads
 from cytonn_weekly.weekly import inputs as weekly_inputs
 from api.problems import ProblemError
@@ -84,6 +86,30 @@ def make_router(d: Deps) -> APIRouter:
             weekly_analyst.suggest(week, field, found["value"], found["note"], d.root, d.db_path)
         except weekly_inputs.InputError as exc:
             raise ProblemError(409, str(exc), "analyst_suggestion_unavailable")
+        return weekly_analyst.status(week, d.root, section)
+
+    @router.post("/api/inputs/weekly/{week_ending}/analyst/fetch/{key}")
+    async def fetch_analyst_table(week_ending: str, key: str, section: Optional[str] = Query(default=None, max_length=40)) -> dict:
+        """Fetch one form table from CBK and keep it on the form, marked fetched, with its source in the history store.
+
+        404 when CBK has not published it yet, 502 when CBK cannot be reached or its page is not as expected, 409 when rows
+        someone typed are in the way.  Each answer says to type it instead; nothing is guessed or partly kept.
+        """
+        week, section = week_of(week_ending), form_section(section)
+        if key not in fetched_items.FETCHERS:
+            raise HTTPException(404, f"nothing is fetched for {key!r}")
+        label = weekly_analyst.TABLES[key].label
+        try:
+            rows, note = await run_in_threadpool(d.fetch_items, key, week)
+        except LookupError as exc:
+            raise ProblemError(404, f"{label} are not available yet: {exc}. Try again later, or type them under \"{weekly_analyst.FORM}\".", "item_fetch_failed")
+        except Exception as exc:  # noqa: BLE001 - shown to the analyst, not swallowed
+            raise ProblemError(502, f"{label} could not be fetched from CBK. {failure_message(exc)} Type them under \"{weekly_analyst.FORM}\" instead.", "item_fetch_failed")
+        try:
+            weekly_analyst.fetched(week, key, rows, note, d.root, d.db_path)
+        except weekly_inputs.InputError as exc:
+            raise ProblemError(409, str(exc), "item_fetch_failed")
+        history_weekly.record_fetch(week, key, rows, note, d.db_path)
         return weekly_analyst.status(week, d.root, section)
 
     def chart_key(key: str) -> str:

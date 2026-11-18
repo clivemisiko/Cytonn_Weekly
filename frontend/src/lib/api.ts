@@ -359,6 +359,10 @@ const analystPath = (weekEnding: string, section: string) =>
 /** The "Weekly analyst inputs" form for one section of one report week. */
 export const getAnalystInputs = (weekEnding: string, section: string) => request<AnalystForm>(analystPath(weekEnding, section));
 
+/** Have the API fetch one form table from CBK and keep it on the form, marked fetched. */
+export const fetchAnalystTable = (weekEnding: string, section: string, key: string) =>
+  request<AnalystForm>(`${inputsPath(weekEnding)}/analyst/fetch/${encodeURIComponent(key)}?section=${encodeURIComponent(section)}`, { method: "POST" }, UPLOAD_TIMEOUT_MS);
+
 export interface AnalystChanges {
   /** A field left out is kept; null clears it. */
   fields?: Record<string, string | null>;

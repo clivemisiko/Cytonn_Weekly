@@ -268,3 +268,17 @@ test("T127 the export card has This week's rows (xlsx): it saves the workbook, a
   await page.unroute("**/api/export/weekly-rows/*");
   await expect(page.getByRole("button", { name: "Export weekly report" })).toBeVisible(); // the weekly report's own button is as it was
 });
+
+test("T128 the needs-you card has a fetch button for the interbank rates, and a refusal is shown in words that say to type them", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  const sentence = "Daily interbank rates could not be fetched from CBK. E2E: CBK is down. Type them under \"Weekly analyst inputs\" instead.";
+  await page.route("**/api/inputs/weekly/*/analyst/fetch/interbank*", (route) =>
+    route.fulfill({ status: 502, headers: json, body: JSON.stringify({ detail: sentence, problems: [{ code: "item_fetch_failed", headline: "The figures could not be fetched", target: "analyst-form" }] }) }),
+  );
+  await page.goto(chatUrl("fixed_income", "Week ending 2026-08-28"));
+  const needs = page.getByRole("region", { name: "Needs you" });
+  const sections = page.waitForRequest((r) => r.url().includes("/api/sections"));
+  await needs.getByRole("button", { name: /^Fetch interbank rates from CBK/ }).click();
+  await expect(needs.getByRole("alert")).toContainText("Type them under");
+  await sections;
+});

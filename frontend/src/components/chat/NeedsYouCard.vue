@@ -6,9 +6,9 @@ import Notice from "@/components/review/Notice.vue";
 import Button from "@/components/ui/Button.vue";
 import { FIELD, LINK } from "@/components/ui/button";
 import * as api from "@/lib/api";
-import type { NeedsYou } from "@/lib/chatcards";
+import { FETCHABLE_ITEMS, type NeedsYou } from "@/lib/chatcards";
 
-const props = defineProps<{ needs: NeedsYou; week: string; formTo: string }>();
+const props = defineProps<{ needs: NeedsYou; week: string; formTo: string; section: string }>();
 const emit = defineEmits<{ changed: [] }>();
 
 const busy = ref<string | null>(null);
@@ -29,6 +29,7 @@ async function act(key: string, call: () => Promise<unknown>) {
 }
 
 const fetchBulletin = () => act("fetch", () => api.fetchBulletin(props.week));
+const fetchTable = (key: string) => act(`fetch-${key}`, () => api.fetchAnalystTable(props.week, props.section, key));
 
 async function upload(slot: string, event: Event) {
   const input = event.target as HTMLInputElement;
@@ -67,6 +68,17 @@ async function upload(slot: string, event: Event) {
             <input type="file" multiple accept=".pdf,.xlsx" :disabled="busy !== null" :aria-label="`Upload ${u.label}`" :class="[FIELD, 'h-9 max-w-full py-1 text-sm']" @change="upload(u.key, $event)" />
           </label>
         </div>
+      </li>
+    </ul>
+
+    <ul v-if="needs.fetch.length" class="space-y-3">
+      <li v-for="e in needs.fetch" :key="e.key" class="space-y-1.5">
+        <p class="text-sm font-medium">{{ e.label }}</p>
+        <p class="text-xs text-muted-foreground">{{ e.why }}</p>
+        <Button variant="outline" size="sm" :disabled="busy !== null" @click="fetchTable(e.key)">
+          <PhCloudArrowDown weight="bold" data-icon="inline-start" aria-hidden="true" />
+          {{ busy === `fetch-${e.key}` ? "Fetching…" : FETCHABLE_ITEMS[e.key] }}<span class="sr-only">: {{ e.label }}</span>
+        </Button>
       </li>
     </ul>
 
