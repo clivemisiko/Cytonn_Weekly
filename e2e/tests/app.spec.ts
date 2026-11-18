@@ -43,16 +43,16 @@ test("T01 landing page loads, Home becomes current on the overview, Back disable
   await expect(page.getByText(/this tool has no sign-in and should only be used by the\s+team/i)).toBeVisible();
   await expect(page).toHaveTitle("Cytonn Weekly review");
   const home = topbar(page).getByRole("link", { name: "Home" });
-  await expect(home).not.toHaveAttribute("aria-current", /.*/); // Home is the overview, and this page is /
+  await expect(home).not.toHaveAttribute("aria-current", /.*/); // Home is the chat, and this page is /
   await expect(topbar(page).getByRole("button", { name: "Back (this is the start screen)" })).toBeDisabled();
   await page.getByRole("link", { name: "Continue without signing in" }).click();
   await expect(page).toHaveURL(/\/chat$/); // the chat's section picker is where the welcome page leads
   await expect(page.getByRole("heading", { name: "Choose what to talk about" })).toBeVisible();
-  await expect(home).not.toHaveAttribute("aria-current", /.*/); // Home is still the overview
-  await page.getByRole("navigation", { name: "Report sections" }).getByRole("button", { name: "Overview" }).click(); // the overview stays one click away
+  await expect(home).toHaveAttribute("aria-current", "page"); // Home is the chat
+  await page.goto("/overview"); // the overview is hidden from navigation but still opens by its address
   await expect(page).toHaveURL(DEFAULT_WEEK); // a bare /overview opens on a labelled week
   await expect(page.getByRole("heading", { name: "Analyst review", level: 1 })).toBeVisible();
-  await expect(home).toHaveAttribute("aria-current", "page");
+  await expect(home).not.toHaveAttribute("aria-current", /.*/);
 });
 
 test("T02 an old bookmark of a report at / goes to the overview with its query kept", async ({ page }) => {
@@ -157,13 +157,13 @@ test("T06 top bar stays in view after scrolling; Back goes to the section list, 
   expect(new URL(page.url()).searchParams.get("period")).toBe(PERIOD);
   await expect(card(page, "Equities")).toBeVisible();
 
-  // From a deep link to a run (one the API does not know): Back names the section list, Home goes to /overview.
+  // From a deep link to a run (one the API does not know): Back names the section list, Home goes to the chat.
   await page.goto("/runs/not-a-run");
   await topbar(page).getByRole("button", { name: "Back to all sections" }).click();
   await expect(page).toHaveURL(DEFAULT_WEEK); // a bare /overview opens on a labelled week
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   await topbar(page).getByRole("link", { name: "Home" }).click();
-  await expect(page).toHaveURL(/\/overview/);
+  await expect(page).toHaveURL(/\/chat$/);
 });
 
 test("T07 inputs panel: what was received, an upload refused with its reason, a week that is not a Friday", async ({ page }) => {
@@ -238,7 +238,7 @@ test("T08 analyst inputs: refusals listed, the draft button waits for unsaved ty
   });
   await topbar(page).getByRole("link", { name: "Home" }).click();
   expect(questions).toHaveLength(2);
-  await expect(page).toHaveURL(/\/overview/);
+  await expect(page).toHaveURL(/\/overview/); // dismissed: still on the form
 
   await panel.getByRole("button", { name: "Save table" }).and(page.locator(":enabled")).click(); // only the edited table can be saved
   const refusal = panel.getByRole("alert").filter({ hasText: "Money market fund table, line 1" });
@@ -256,7 +256,7 @@ test("T08 analyst inputs: refusals listed, the draft button waits for unsaved ty
   await table.fill("1 Alpha Fund 11.0");
   page.once("dialog", (d) => void d.accept());
   await topbar(page).getByRole("link", { name: "Home" }).click();
-  await expect(page).toHaveURL(/\/overview/);
+  await expect(page).toHaveURL(/\/chat$/);
   // Nothing was stored by any of it.
   await openStart(page, "Fixed Income");
   await expect(page.locator("#analyst-mmf")).toHaveValue("");

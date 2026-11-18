@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { PhCircleNotch, PhPauseCircle } from "@phosphor-icons/vue";
 import { computed, nextTick, onUnmounted, ref, shallowRef, useTemplateRef, watch } from "vue";
-import { RouterLink, useRoute, useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import FullView from "@/components/chat/FullView.vue";
 import LiveCards from "@/components/chat/LiveCards.vue";
 import ReadinessCard from "@/components/chat/ReadinessCard.vue";
@@ -10,13 +10,13 @@ import PageGrid from "@/components/nav/PageGrid.vue";
 import Masthead from "@/components/review/Masthead.vue";
 import Notice from "@/components/review/Notice.vue";
 import Button from "@/components/ui/Button.vue";
-import { FIELD, LINK } from "@/components/ui/button";
+import { FIELD } from "@/components/ui/button";
 import * as api from "@/lib/api";
 import { type ChatCard, composerOff, createConversation, statusLine, toolLine } from "@/lib/chat";
 import { parseReadiness, parseReviewSnapshot } from "@/lib/chatcards";
 import { draftingFor, draftingList } from "@/lib/drafting";
 import { friendlyDate } from "@/lib/format";
-import { type BackTarget, useBack } from "@/lib/nav";
+import { BACK_NONE, type BackTarget, useBack } from "@/lib/nav";
 import { weekChoiceLabel } from "@/lib/previous";
 import { shell, useShellActions, useShellHere, useShellRibbon } from "@/lib/shell";
 import type { AppConfig, Overview, ReportChoice, WeekChoice } from "@/lib/types";
@@ -50,7 +50,8 @@ const weekOptions = computed(() => {
 });
 const drafting = computed(() => (overview.value && current.value ? draftingFor(draftingList(overview.value), current.value.slug, report.value) : null));
 
-const oldPage = (section: string) => ({ path: "/overview", query: { report: "weekly", period: period.value, section } });
+// The hidden page a chat button opens (the inputs form, the snips and sources, the Focus topic); there it shows "Back to chat".
+const oldPage = (section: string) => `/overview?${new URLSearchParams({ report: "weekly", period: period.value, section, from: "chat" }).toString()}`;
 const status = computed(() => statusLine(job.value));
 const off = computed(() => composerOff(job.value, config.value, sending.value));
 const used = computed(() => (job.value ? job.value.input_tokens + job.value.output_tokens : 0));
@@ -134,8 +135,8 @@ watch(
 
 useShellRibbon(() => (config.value?.dev_mode ? config.value.dev_mode_label : null));
 useShellHere(() => (slug.value ? { view: "section", slug: slug.value } : null));
-useShellActions({ openSection: choose, toOverview: () => void router.push({ path: "/overview", query: { report: "weekly", period: period.value } }) });
-useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go: () => choose(null) } : { kind: "home" }));
+useShellActions({ openSection: choose });
+useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go: () => choose(null) } : BACK_NONE));
 </script>
 
 <template>
@@ -165,7 +166,6 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
               <li v-for="s in sections" :key="s.slug" class="flex flex-wrap items-center gap-x-4 gap-y-1">
                 <Button variant="outline" :aria-current="s.slug === slug ? 'true' : undefined" :disabled="!s.available" @click="choose(s.slug)">{{ s.title }}</Button>
                 <span v-if="!s.available" class="text-sm text-muted-foreground">Not available yet.</span>
-                <RouterLink :to="oldPage(s.slug)" :class="['text-sm', LINK]" :aria-label="`Old page for ${s.title}`">Old page</RouterLink>
               </li>
             </ul>
           </section>
@@ -209,7 +209,7 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
               :report="report"
               :drafting="drafting"
               :config="config"
-              :old-page="`/overview?report=weekly&period=${encodeURIComponent(period)}&section=${current.slug}`"
+              :old-page="oldPage(current.slug)"
               :tick="tick"
               @changed="changed"
               @draft-ended="convo.refresh()"
@@ -249,8 +249,6 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
             <dt class="eyebrow">Tokens</dt>
             <dd class="font-mono">{{ used.toLocaleString("en-GB") }} of {{ job.token_budget.toLocaleString("en-GB") }}</dd>
           </template>
-          <dt class="eyebrow">Page</dt>
-          <dd><RouterLink :to="oldPage(current.slug)" :class="LINK">Old page for this section</RouterLink></dd>
         </dl>
         <p v-else class="text-sm text-muted-foreground">Choose a section to start. Each section is its own conversation.</p>
       </template>

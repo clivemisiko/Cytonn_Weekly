@@ -13,10 +13,10 @@ shell.invalidate(); // the rail knows no section's state here
     <Masthead wide title="Page not found" />
     <PageGrid>
       <div class="space-y-4 rounded-lg border bg-card p-6">
-        <p class="text-sm text-muted-foreground">We couldn't find the page you're looking for. Please check the web address or return to the overview to continue.</p>
+        <p class="text-sm text-muted-foreground">We couldn't find the page you're looking for. Please check the web address or return to the chat to continue.</p>
         <div>
-          <RouterLink to="/overview" :class="buttonVariants({ variant: 'default' })">
-            Return to overview
+          <RouterLink to="/chat" :class="buttonVariants({ variant: 'default' })">
+            Return to chat
           </RouterLink>
         </div>
       </div>
