@@ -1,10 +1,3 @@
-"""The weekly history the tool keeps itself: tables series and series_points, one current point per series and date.
-
-Nothing else is read or written here, and nothing calls this yet.  A correction never edits a value: it adds a point and points the
-old one at it (superseded_by), in one transaction.  A point is read only once it is confirmed.  No message or log line holds a
-value: the history includes confidential series (the P/E series, the fund table, placements).
-"""
-
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
@@ -66,13 +59,19 @@ def _series_id(conn: Any, key: str, subject: str, unit: str, section: str, caden
     return row["series_id"]
 
 
-def _record(conn: Any, *, key: str, unit: str, section: str, cadence: str, label: str, as_of: str, week_ending: str, value: Any,
-            origin: str, source_kind: str, source_ref: str, subject: str = "", confirmed_by: Optional[str] = None) -> tuple[int, str]:
+def _checked(key: str, subject: str, as_of: str, week_ending: str, value: Any, origin: str, source_kind: str, source_ref: str) -> tuple[str, str, str]:
+    """(the date, the week ending, the value as decimal text), or a refusal."""
     where = f"series {key!r} {subject!r} on {as_of}"
     as_of, week_ending = _day(as_of, "the date", where), _day(week_ending, "the week ending", where)
     text = _decimal(value, where)
     if origin not in ORIGINS or source_kind not in SOURCE_KINDS or not str(source_ref).strip():
         raise HistoryError(f"{where}: needs an origin in {list(ORIGINS)}, a source kind in {list(SOURCE_KINDS)} and a source")
+    return as_of, week_ending, text
+
+
+def _record(conn: Any, *, key: str, unit: str, section: str, cadence: str, label: str, as_of: str, week_ending: str, value: Any,
+            origin: str, source_kind: str, source_ref: str, subject: str = "", confirmed_by: Optional[str] = None) -> tuple[int, str]:
+    as_of, week_ending, text = _checked(key, subject, as_of, week_ending, value, origin, source_kind, source_ref)
     series_id = _series_id(conn, key, subject, unit, section, cadence, label)
     old = conn.execute("SELECT point_id, value, confirmed_at FROM series_points WHERE series_id = ? AND as_of = ? AND superseded_by IS NULL",
                        (series_id, as_of)).fetchone()
@@ -102,6 +101,35 @@ def record_many(db_path: Optional[Union[Path, str]], items: list[dict[str, Any]]
     try:
         with conn.transaction():
             return [_record(conn, **item) for item in items]
+    finally:
+        conn.close()
+
+
+_CHUNK = 500   # rows a statement: 10 values each, well inside SQLite's and PostgreSQL's limits
+
+
+def add_new(db_path: Optional[Union[Path, str]], items: list[dict[str, Any]]) -> int:
+    """Insert points for dates that have no current point, many to a statement (the importer's bulk path: a round trip to a remote
+    database costs 200 ms, so a point at a time would take hours).  A date that already has one fails on the unique index and the
+    whole batch is rolled back; nothing is superseded.  Returns how many were added."""
+    conn = db.open_db(db_path)
+    try:
+        with conn.transaction():
+            ids: dict[tuple[str, str], int] = {}
+            rows: list[tuple] = []
+            now = _now()
+            for it in items:
+                key, subject, by = it["key"], it.get("subject", ""), it.get("confirmed_by")
+                as_of, week, text = _checked(key, subject, it["as_of"], it["week_ending"], it["value"], it["origin"], it["source_kind"], it["source_ref"])
+                if (key, subject) not in ids:
+                    ids[(key, subject)] = _series_id(conn, key, subject, it["unit"], it["section"], it["cadence"], it["label"])
+                rows.append((ids[(key, subject)], as_of, week, text, it["origin"], it["source_kind"], str(it["source_ref"]), by, now if by else None, now))
+            for i in range(0, len(rows), _CHUNK):
+                chunk = rows[i:i + _CHUNK]
+                conn.execute("INSERT INTO series_points (series_id, as_of, week_ending, value, origin, source_kind, source_ref, confirmed_by, "
+                             "confirmed_at, created_at) VALUES " + ", ".join(["(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"] * len(chunk)),
+                             [v for r in chunk for v in r])
+        return len(rows)
     finally:
         conn.close()
 
