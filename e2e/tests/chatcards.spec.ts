@@ -294,3 +294,49 @@ test("T129 the needs-you card has a fetch button for the Eurobond openings, and 
   await needs.getByRole("button", { name: /^Fetch Eurobond openings from CBK/ }).click();
   await expect(needs.getByRole("alert")).toContainText("type them under");
 });
+
+test("T130 the fund snip card: upload, list, read, decide, type a cell and a fund the page lacks, then Use this table keeps a ranked table that shares ranks", async ({ page, request }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  const bare = "Week ending 2026-08-28";
+  await page.goto(chatUrl("fixed_income", bare));
+  const card = page.getByRole("region", { name: "Money market fund table" });
+  await expect(card).toBeVisible();
+  await expect(card.getByRole("button", { name: "Read the page" })).toHaveCount(0);
+
+  await card.locator('input[type="file"]').setInputFiles({ name: "page.png", mimeType: "image/png", buffer: Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from("invented")]) });
+  await expect(card.getByRole("img", { name: "The Daily Nation page uploaded for this week" })).toBeVisible();
+
+  await card.getByText(/^Fund list \(/).click();
+  await card.getByLabel(/^The funds the report's table uses/).fill(["Alpha Money Market Fund", "Beta Money Market Fund", "Gamma Money Market Fund", "Delta Money Market Fund", "Eta Money Market Fund", "Omega Money Market Fund"].join("\n"));
+  await card.getByRole("button", { name: "Save the list" }).click();
+  await expect(card.getByText("Fund list (6 funds)")).toBeVisible();
+
+  await card.getByRole("button", { name: "Read the page" }).click();
+  await expect(card.getByTestId("fund-counts")).toHaveText("8 rows read: 5 on the list, 1 to decide, 1 left out, 1 dollar fund (not in the table).");
+  const use = card.getByRole("button", { name: "Use this table" });
+  await expect(use).toBeDisabled();
+  await expect(card.getByText("1 row has a cell to type or a row to ignore.")).toBeVisible();
+  await expect(card.getByText("1 fund not on the list is still to decide.")).toBeVisible();
+
+  await card.getByLabel("Annual rate, row 8").fill("7.0");
+  await card.getByLabel("Annual rate, row 8").press("Tab");
+  await expect(card.getByText("1 row has a cell to type or a row to ignore.")).toHaveCount(0);
+  await card.getByRole("button", { name: /^Leave out\s*: Zeta Money Market Fund$/ }).click();
+  await expect(card.getByText("Left out (2)")).toBeVisible();
+  await expect(card.getByTestId("fund-counts")).toContainText("5 on the list, 0 to decide, 2 left out");
+
+  await card.getByLabel("Annual rate for Omega Money Market Fund").fill("9.5");
+  await card.getByRole("button", { name: /^Add\s*: Omega Money Market Fund$/ }).click();
+  await expect(card.getByText("Omega Money Market Fund: 9.5%")).toBeVisible();
+
+  await card.getByLabel("Fund table published on").fill("2026-08-28");
+  await expect(use).toBeEnabled();
+  await use.click();
+  await expect(card.getByRole("status")).toContainText("The table of 6 funds is kept on the form.");
+
+  const form = await (await request.get(`${API}/api/inputs/weekly/2026-08-28/analyst?section=fixed_income`)).json();
+  const table = form.groups.flatMap((g: { items: { key: string }[] }) => g.items).find((i: { key: string }) => i.key === "mmf");
+  expect(table.rows.map((r: { rank: string }) => r.rank)).toEqual(["1", "1", "3", "4", "5", "6"]); // the two 10.5 funds share a rank
+  expect(table.carried.from).toBe("snip");
+  await expect(page.getByRole("region", { name: "Needs you" }).getByText(/Money market fund table/)).toHaveCount(0);
+});

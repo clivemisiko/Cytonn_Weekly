@@ -220,10 +220,19 @@ def main() -> None:
             raise LookupError(f"E2E: no bulletin is saved for {issue_date.isoformat()}")
         return saved.read_bytes(), f"https://e2e.invalid/uploads/weekly_bulletin/{saved.name}"
 
+    def read_fund_snip(_image: bytes) -> list[dict]:
+        """Invented fund rows: the OCR is never run in the end-to-end tests."""
+        def row(n: int, name: str, currency: str = "KES", rate: str | None = "9.0") -> dict:
+            return {"id": n, "name": name, "currency": currency, "rate": rate, "once": False, "unresolved": [] if rate else ["rate"]}
+        return [row(0, "Alpha Money Market Fund", rate="10.5"), row(1, "BetaMMF", rate="10.5"), row(2, "Gamma Money Market Fund"),
+                row(3, "Delta Money Market Fund", rate="8.0"), row(4, "Zeta Fixed Income Fund", rate="12.0"), row(5, "Zeta Money Market Fund", rate="7.5"),
+                row(6, "Alpha Dollar Fund", "USD", None), row(7, "Eta Money Market Fund", rate=None)]
+
     print(f"E2E instance: data folder {paths.DATA_DIR}, port {PORT}, variant {VARIANT or 'default'}", flush=True)
     if VARIANT == "stale":
         os.environ["CYTONN_DRAFT_CONCURRENCY"] = "1"   # one seat, so the next draft has to take the stuck one's over
     app = create_app(DB_PATH, load_dotenv=False, fetch_bulletin=fetch_bulletin, notable_registry=notable_demo.REGISTRY, fetch_source=fetch_source,
+                     read_fund_snip=read_fund_snip,
                      **({"draft_stale_after": 6} if VARIANT == "stale" else {}))
     verify_isolated(DB_PATH, DATA)  # fail closed, before anything is served
     uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="warning")

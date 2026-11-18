@@ -634,7 +634,7 @@ export interface ChartUpload {
 
 /** Where a value came from while it is still what was carried from last week's form, or what was suggested. */
 export interface AnalystCarried {
-  /** The week it was carried from (ISO date), or "suggested" for a worked-out running total. */
+  /** The week it was carried from (ISO date), "suggested" for a worked-out running total, "fetched", or "snip" for a fund table read from the Daily Nation page. */
   from: string;
   /** A suggestion's working, in the API's words. */
   note: string;

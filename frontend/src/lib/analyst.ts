@@ -7,9 +7,15 @@ export type Origin = "typed" | "differs" | "workbook" | "empty" | "carried" | "u
 export const range = (min: number | null, max: number | null, unit: string) =>
   min === null || max === null ? "" : `${min.toLocaleString()} to ${max.toLocaleString()}${unit === "%" || unit === "x" ? unit : unit ? ` ${unit}` : ""}`;
 
-/** "carried from week ending 2 Oct 2026", "suggested" for a worked-out running total, or "fetched from CBK". */
+/** "carried from week ending 2 Oct 2026", "suggested" for a worked-out running total, "fetched from CBK", or "read from the Daily Nation page". */
 export const cameFrom = (carried: AnalystCarried) =>
-  carried.from === "suggested" ? "suggested" : carried.from === "fetched" ? "fetched from CBK" : `carried from week ending ${friendlyDate(carried.from)}`;
+  carried.from === "suggested"
+    ? "suggested"
+    : carried.from === "fetched"
+      ? "fetched from CBK"
+      : carried.from === "snip"
+        ? "read from the Daily Nation page and confirmed"
+        : `carried from week ending ${friendlyDate(carried.from)}`;
 
 export const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
