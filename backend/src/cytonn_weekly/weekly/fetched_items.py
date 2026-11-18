@@ -48,11 +48,12 @@ def eurobond_yields(week: Week, today: date, get: Any = http_get) -> Fetched:
             seen[url] = get(url)
         return seen[url]
 
-    picks = [("year_open", week.as_at.year, 1, 8), ("month_open", week.thursday.year, week.thursday.month, 7)]
+    new_year = frozenset({date(week.as_at.year, 1, 1)})
+    picks = [("year_open", week.as_at.year, 1, 8, new_year), ("month_open", week.thursday.year, week.thursday.month, 7, frozenset())]
     rows, urls, shas = [], [], []
-    for row, year, month, cap in picks:
+    for row, year, month, cap, skip in picks:
         try:
-            day, yields, url, sha = cbk_eurobond_opens.opening(year, month, cap, week.ending, once)
+            day, yields, url, sha = cbk_eurobond_opens.opening(year, month, cap, week.ending, once, skip)
         except LookupError as exc:
             raise LookupError(f"the {'year' if row == 'year_open' else 'month'}'s first day: {exc}") from None
         rows.append({"row": row, "date": day.isoformat(), **yields})
