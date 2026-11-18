@@ -83,12 +83,20 @@ def _numbers(text: str) -> list[float]:
 _END = re.compile(r"^(?:Source:|Table \d+:|Chart \d+:)")
 
 
-def _block(lines: list[str], start: str) -> list[str]:
-    """One table's lines: from its title (the line starting ``start``) up to, not including, where it ends."""
+# A table is found by its title: the numbers move (a GDP table printed first in the 23 Oct 2026 issue made the exchange rates Table 2),
+# and the interbank table has been titled "Money Market" in some issues.
+_TITLES = {"Table 1": "Kenya Shilling Exchange Rates", "Table 2": "Foreign Exchange Reserves", "Table 3": "(?:Interbank Deals|Money Market)",
+           "Table 4": "Performance of Treasury Bill Auctions", "Table 5": "Performance of Treasury Bond Auctions"}
+_HOLIDAY = "PUBLIC HOLIDAY"   # what a closed day's row holds in place of its figures
+
+
+def _block(lines: list[str], name: str) -> list[str]:
+    """One table's lines: from its title line up to, not including, where it ends.  ``name`` is a key of ``_TITLES``."""
+    title = re.compile(rf"^Table \d+:\s*{_TITLES[name]}", re.I)
     try:
-        a = next(n for n, line in enumerate(lines) if line.startswith(start))
+        a = next(n for n, line in enumerate(lines) if title.match(line))
     except StopIteration:
-        raise BulletinParseError(f"'{start}' not found")
+        raise BulletinParseError(f"'{name}' not found")
     b = next((n for n in range(a + 1, len(lines)) if _END.match(lines[n])), len(lines))
     return lines[a:b]
 
@@ -133,7 +141,7 @@ class Bulletin:
 
 
 def _table_1(lines: list[str], out: Bulletin) -> None:
-    rows = [(m.group(1), m.group(2).split()) for m in map(_DAY_ROW.match, _block(lines, "Table 1:")) if m]
+    rows = [(m.group(1), m.group(2).split()) for m in map(_DAY_ROW.match, _block(lines, "Table 1")) if m and m.group(2).strip().upper() != _HOLIDAY]
     if not rows:
         raise BulletinParseError("Table 1 has no dated exchange-rate rows")
     # every dated row is one rate per currency and nothing else, so a line that only starts with a date is not a row
@@ -145,7 +153,7 @@ def _table_1(lines: list[str], out: Bulletin) -> None:
 
 
 def _table_2(lines: list[str], out: Bulletin) -> None:
-    block = _block(lines, "Table 2:")
+    block = _block(lines, "Table 2")
     days = next(([_day(d) for d in re.findall(_DAY, line)] for line in block if re.match(rf"^{_DAY}\s", line)), None)
     usd = next((line for line in block if "Reserves (USD Million)" in line and line[:1].isdigit()), None)
     months = next((line for line in block if "Months of Import Cover" in line), None)
@@ -161,8 +169,11 @@ def _table_2(lines: list[str], out: Bulletin) -> None:
 
 def _table_3(lines: list[str], out: Bulletin) -> None:
     last: Optional[date] = None
-    for line in _block(lines, "Table 3:"):
+    for line in _block(lines, "Table 3"):
         m = _DAY_ROW.match(line)
+        if m and m.group(2).strip().upper() == _HOLIDAY:
+            last = _day(m.group(1))   # a closed day has no figures but is still the day the week's average row follows
+            continue
         if m:
             nums = _numbers(m.group(2))
             if len(nums) != 3:
@@ -182,7 +193,7 @@ def _table_3(lines: list[str], out: Bulletin) -> None:
 
 
 def _table_4(lines: list[str], out: Bulletin) -> None:
-    block = _block(lines, "Table 4:")
+    block = _block(lines, "Table 4")
     labels = {"offered": "Amount Offered", "bids": "Bids Received", "accepted": "Amount Accepted",
               "rate": "Average Interest Rate"}
     for tenor in TENORS:
@@ -218,7 +229,7 @@ def _table_5(lines: list[str], out: Bulletin) -> None:
     on one line in the first and cut after "(KSh" in the second.  So a row is found by the
     words of its label alone, and its figures are the ones after the label on that line or,
     when the label stands alone, the line under it if that line is figures and nothing else."""
-    block = _block(lines, "Table 5:")
+    block = _block(lines, "Table 5")
     dates = next(([_day(d) for d in re.findall(_DAY, line)] for line in block if line.startswith("Date of Auction")), [])
     # the codes wrap onto a second line when a week has many bonds (13 November 2026: five, then three)
     prefixes = [p for line in block if re.match(r"^[A-Z]{2,4}\d?/(\s|$)", line) for p in line.split()]
