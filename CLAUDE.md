@@ -123,6 +123,7 @@ The notes below were moved out of this file, word for word, into the folder each
 | Sources per section, and the blocked stubs | `backend/src/cytonn_weekly/CLAUDE.md` |
 | Report types: Markets Reviews, the Monthly, companion reports | `backend/src/cytonn_weekly/periodic/CLAUDE.md` |
 | The analyst chat agent (Phase 8): the loop, the read tools, the job limits | `backend/src/cytonn_weekly/agent/CLAUDE.md` |
+| The history store (Phase 4): series, points, corrections, confirmation | `backend/src/cytonn_weekly/history/CLAUDE.md` |
 
 ## Architecture
 
@@ -257,6 +258,7 @@ Roadmap, not this window: workbook fallback/cross-check; Focus topic suggestion 
   - **A T-bill's accepted amount:** the tool sums the three tenors; the team's log does the same for two of the three July auctions where the printed total differs by 0.01 and uses the printed total for the third (6 July: 24,730.58 against 24,730.57), so that row shows as "sources disagree" beside the workbook.
   - **Section C is an announcement, not always the figure:** the 17 August results announced 31,874.00 of redemptions for 24 August and that week's results print 31,874.15, so that row is flagged "sources disagree" in every review for the rest of the fiscal year.
   - Each draft sends one HEAD request per kept file (about 25 in October, about 80 by June). A new fiscal year, a holiday week and a tap sale have not been seen; the fetch has run live only for single files, and the full first-run download has not been run from the app.
+- **Question for the equities team (history store, 2026-11-18):** the market dividend yield and its historical average stay typed, not worked out. Which dividend yield series is the "market dividend yield" (the NASI figure or a sum over constituents), and is its source Bloomberg or the NSE? Until that is settled the tool takes it as typed.
 - **Weekly analyst inputs (decided 2026-10-12):** index levels stay off the form, so without a workbook an OCR'd NSE 10 or Banking level has one reading and is flagged, with what to check it against. Still open: the month-end price is typed again each new month (no stored week is known to end on the month's last trading day); the weekly foreign positions carry without last week's own figure, which the analyst adds before confirming; a suggested running total needs last week's total saved on the form or in that week's workbook. The form has been driven in a browser on synthetic figures only; no draft has been started from a typed form outside the tests.
 - **The weekly report, to confirm with the analysts (each is flagged or marked in the draft until then):**
   - **3-month bank placements:** a typed cell whose source is unconfirmed (named as the CBK bulletin, then the NSE price list; neither carries it). Always flagged.

@@ -342,7 +342,7 @@ def strip_new_table(schema: str) -> str:
 
 # The tables added since the two existing ones, each tested on its own: suggestion_decisions here, the run and job tables in
 # test_run_store.py and test_jobs.py.  Neither this snapshot nor the fingerprint below covers them.
-ADDED_TABLES = ("suggestion_decisions", "draft_runs", "run_events", "draft_usage", "report_jobs", "job_messages")
+ADDED_TABLES = ("suggestion_decisions", "draft_runs", "run_events", "draft_usage", "report_jobs", "job_messages", "series", "series_points")
 
 
 def snapshot(path):

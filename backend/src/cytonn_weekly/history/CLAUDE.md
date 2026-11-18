@@ -1,0 +1,8 @@
+# History store notes
+
+Phase 4 of the structural plan (started 2026-11-18). The tool keeps every weekly series itself, one current point per series and date, with where each point came from. Checkpoint 1 is the tables and `store.py`; **nothing calls the store yet**.
+
+- **Tables** (`series`, `series_points`, in `schema.sql` and `schema_postgres.sql`, `CREATE TABLE IF NOT EXISTS` like the others). A series is `(key, subject)` (subject is a fund or company, `''` for none) with one unit, fixed for good (`store.UNITS` is the notable library's units plus `kes`). A point holds its value as decimal text, `origin` (fetched, typed, worked_out, carried, workbook_import), `source_kind` and `source_ref` (a source id, a form field or table key, `<sheet>!<cell>`, or the working), `superseded_by` and `confirmed_by`/`confirmed_at`. A partial unique index allows one point with `superseded_by IS NULL` per series and date.
+- **Corrections never edit a value.** A different value adds a new point and sets the old one's `superseded_by` to it, in one transaction (the old point points at itself for a moment to free the unique slot). The same number again changes nothing, except that a confirmed write over an unconfirmed point of the same number is a new point (a typed value over a suggestion).
+- **A point is used only once confirmed** (`current()` hides the rest unless asked), the same rule as `analyst.usable_form`. `confirmed_by` is `"analyst (form)"` for form saves and `"workbook import"` for imports (`store.FORM`, `store.IMPORT`).
+- **Confidential series** (the P/E series, the fund table, placements) live in the database and data folder only: never in the repo, tests, docs, logs or reports. Tests use invented series. No message or log line holds a value.
