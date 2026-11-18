@@ -187,19 +187,25 @@ def confirm(db_path: Optional[Union[Path, str]], point_id: int, by: str) -> bool
         conn.close()
 
 
-def current(db_path: Optional[Union[Path, str]], key: str, subject: str = "", *, confirmed_only: bool = True,
-            through: Optional[str] = None) -> list[dict[str, Any]]:
-    """The series' current points, oldest first, up to ``through`` (a date) when given.  Unconfirmed points only with confirmed_only=False."""
+def current(db_path: Optional[Union[Path, str]], key: str, subject: Optional[str] = "", *, confirmed_only: bool = True,
+            through: Optional[str] = None, since: Optional[str] = None) -> list[dict[str, Any]]:
+    """The series' current points, oldest first, from ``since`` to ``through`` (dates) when given.  Unconfirmed points only with
+    confirmed_only=False.  ``subject=None`` takes every subject of the key (each point then carries its ``subject``)."""
+    where = f"series {key!r} {subject!r}"
     conn = db.open_db(db_path)
     try:
-        sql = (f"SELECT {_POINT} FROM series_points p JOIN series s ON s.series_id = p.series_id "
-               "WHERE s.key = ? AND s.subject = ? AND p.superseded_by IS NULL")
-        params: list[Any] = [key, subject]
+        sql = (f"SELECT s.subject, {_POINT} FROM series_points p JOIN series s ON s.series_id = p.series_id "
+               "WHERE s.key = ? AND p.superseded_by IS NULL")
+        params: list[Any] = [key]
+        if subject is not None:
+            sql += " AND s.subject = ?"
+            params.append(subject)
         if confirmed_only:
             sql += " AND p.confirmed_at IS NOT NULL"
-        if through is not None:
-            sql += " AND p.as_of <= ?"
-            params.append(_day(through, "through", f"series {key!r} {subject!r}"))
-        return [dict(r) for r in conn.execute(sql + " ORDER BY p.as_of", params)]
+        for bound, op in ((since, ">="), (through, "<=")):
+            if bound is not None:
+                sql += f" AND p.as_of {op} ?"
+                params.append(_day(bound, "the date bound", where))
+        return [dict(r) for r in conn.execute(sql + " ORDER BY p.as_of, s.subject", params)]
     finally:
         conn.close()

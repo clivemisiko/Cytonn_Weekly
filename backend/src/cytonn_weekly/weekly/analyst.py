@@ -369,6 +369,10 @@ class Reading:
     def ref(self) -> str:
         return self.source
 
+    @property
+    def a1(self) -> str:
+        return self.source
+
 
 def is_typed(cell: Any) -> bool:
     return isinstance(cell, Typed)
@@ -1133,7 +1137,15 @@ class Analyst:
                 return [Typed(n, spec.label.lower(), spec.source) for n in raw]
             return self._typed(key, spec.section, raw, spec.kind, spec.scale, spec.unit, spec.label, spec.source, wb)
 
-        return self._once(f"field:{key}", load)
+        return self._once(f"field:{key}", lambda: self._from_history(key, load()))
+
+    def _from_history(self, key: str, value: Any) -> Any:
+        """CYTONN_HISTORY_READS: the two fields worked out from the stored series (history/reads.py); off leaves the value as it is."""
+        if key not in ("pe_average", "foreign_prior_year"):
+            return value
+        from cytonn_weekly.history import reads   # imported here: history imports this module
+
+        return (reads.pe_average if key == "pe_average" else reads.foreign_prior_year)(self.week, value)
 
     def _cell(self, table: Table, col: Column, row: dict[str, str], what: str, wb: Any) -> Any:
         """One cell of a typed row: typed, else BLANK."""
@@ -1192,6 +1204,12 @@ class Analyst:
                     "origin": f"analyst input typed on the weekly form (money market fund table; source: {table.source})"}
 
         return self._once("mmf", load)
+
+    def previous_mmf(self, previous: Optional[WeeklyInputs]) -> Optional[dict[str, Any]]:
+        """The previous week's fund table, from that week's inputs, or from the stored series when CYTONN_HISTORY_READS says so."""
+        from cytonn_weekly.history import reads   # imported here: history imports this module
+
+        return reads.previous_fund_table(self.week, previous.analyst.mmf() if previous is not None else None)
 
     def mmf_source(self) -> str:
         """The name printed on the fund table's source line."""
@@ -1324,7 +1342,12 @@ class Analyst:
                 out.append((day, cell.number, cell))
             return out
 
-        return self._once("foreign_history", load)
+        def stored() -> list[tuple[date, float, Any]]:
+            from cytonn_weekly.history import reads   # imported here: history imports this module
+
+            return reads.foreign_history(self.week, load())
+
+        return self._once("foreign_history", stored)
 
     def kcb_price(self, company: Any) -> Optional[Reading]:
         """The company's price in KCB IB's weekly report for this Friday, or None (no report, or a name with no ticker)."""
@@ -1363,7 +1386,7 @@ class Analyst:
         week's for last Friday (else the uploaded workbook's); a typed price that differs from
         KCB IB's is used, and the difference recorded.
         """
-        def load() -> Optional[dict[str, Any]]:
+        def build() -> Optional[dict[str, Any]]:
             table, rows, wb = TABLES["universe"], self.typed_rows("universe"), self.wb_universe()
             if not rows:
                 return None if wb is None else {**wb, "typed": False}
@@ -1393,6 +1416,16 @@ class Analyst:
             typed_names = {_key(r["company"]) for r in rows}
             companies += [c for k, c in theirs.items() if k not in typed_names]
             return {"companies": companies, "month_end": month_end.day if month_end is not None else None, "typed": True}
+
+        def load() -> Optional[dict[str, Any]]:
+            data = build()
+            from cytonn_weekly.history import reads   # imported here: history imports this module
+
+            if data is None or reads.mode() == reads.OFF:
+                return data
+            prices = lambda: self._once("store_prices", lambda: reads.last_prices(self.week))   # noqa: E731 - one read for every company
+            return {**data, "companies": [{**c, "last_price": reads.last_price(self.week, c["company"].value, c["last_price"], prices)}
+                                          if "last_price" in c else c for c in data["companies"]]}
 
         return self._once("universe", load)
 

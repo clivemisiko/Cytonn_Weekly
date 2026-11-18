@@ -58,7 +58,7 @@ def typed(cell: Any, workbook: str, *, scale: float = 1.0, second: Optional[dict
     is then the input's second reading, so the difference is a "sources disagree" flag.
     """
     value = cell.number * scale if cell.number is not None else cell.value
-    if getattr(cell, "source", None) is not None:
+    if getattr(cell, "source", None) is not None and hasattr(cell, "other"):   # a Typed; a Reading keeps the second reading it is given
         second, decimals = typed_second(getattr(cell, "other", None), workbook, scale), None
     return an_input(value, ANALYST, typed_source(cell, workbook), second=second, decimals=decimals)
 

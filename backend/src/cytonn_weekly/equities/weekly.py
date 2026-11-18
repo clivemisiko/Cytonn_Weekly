@@ -57,6 +57,7 @@ from cytonn_weekly.review.model import CoordinatorReview
 from cytonn_weekly.equities import companies
 from cytonn_weekly.equities import fetcher as afx
 from cytonn_weekly.equities.review_run import BRIEFS
+from cytonn_weekly.history import reads as history_reads
 from cytonn_weekly.fixed_income.weekly import _carried
 from cytonn_weekly.drafting.base import NarrativeProvider
 from cytonn_weekly.drafting.drafter import draft_pieces
@@ -931,7 +932,7 @@ def running_total_suggestions(inputs: WeeklyInputs, usd_rates: Callable[[], dict
             out[key] = {"reason": f"{label}: the running total restarts with the year, so last week's is not carried into it. "
                                   "Type this week's total, the year so far, yourself."}
             continue
-        before = last_week.analyst.field(key)
+        before = history_reads.running_before(week, key, last_week.analyst.field(key))
         if before is None or before.number is None:
             held = key in analyst.read_form(week.previous, inputs.root)["fields"]   # there, but carried or suggested and never confirmed
             out[key] = {"reason": f"{label}: no total is saved for the week ending {stamp} to add this week's figure to. " + (
