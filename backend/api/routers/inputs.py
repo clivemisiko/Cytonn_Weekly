@@ -77,7 +77,7 @@ def make_router(d: Deps) -> APIRouter:
             raise HTTPException(404, f"no suggestion is worked out for {field!r}")
         from cytonn_weekly.equities.weekly import running_total_suggestions   # imported here: it pulls in the OCR reader
 
-        found = running_total_suggestions(weekly_inputs.WeeklyInputs(week, d.root), d.fetch_usd_rates)[field]
+        found = running_total_suggestions(weekly_inputs.WeeklyInputs(week, d.root), d.fetch_usd_rates, d.db_path)[field]
         if "reason" in found:
             raise ProblemError(409, found["reason"], "analyst_suggestion_unavailable")
         try:

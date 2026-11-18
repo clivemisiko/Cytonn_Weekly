@@ -3,12 +3,17 @@ from datetime import date
 
 import pytest
 
+from fastapi.testclient import TestClient
+
+from api.main import create_app
 from cytonn_weekly.history import importer, reads, store
 from cytonn_weekly.history.importer import CATALOG
 from cytonn_weekly.weekly import analyst, inputs
 from cytonn_weekly.weekly.week import Week
 from cytonn_weekly.weekly.workbook import Workbook
 from tests import weekly_helpers as wh
+from tests import test_weekly_equities as eqt
+from tests.test_weekly_analyst import save_week, stores
 from tests.test_weekly_equities import blocks, build, figures, root  # noqa: F401 - root is a fixture
 from tests.weekly_helpers import text_pdfs  # noqa: F401 - a fixture
 
@@ -198,3 +203,39 @@ def test_a_section_drafted_from_the_imported_store_gives_the_same_figures_as_one
     rows = lambda review: [{k: v for k, v in r.items() if k != "_note"} for r in blocks(review)["universe_of_coverage"]["source_rows"]]   # noqa: E731
     assert rows(on) == rows(off)
     assert "history store" in str(blocks(on)["universe_of_coverage"]["source_rows"]) and "history store" not in str(blocks(off)["universe_of_coverage"])
+
+
+def suggest_client(tmp_path):
+    root = tmp_path / "weekly"
+    stores(root)
+    db = tmp_path / "app.db"
+    client = TestClient(create_app(db_path=db, load_dotenv=False, inputs_root=root, fetch_usd_rates=lambda: eqt.RATES))
+    return root, db, lambda field: client.post(f"/api/inputs/weekly/{THIS}/analyst/suggest/{field}?section=equities")
+
+
+def note_of(response, key):
+    return next(i for g in response.json()["groups"] for i in g["items"] if i["key"] == key)["carried"]["note"]
+
+
+def test_the_suggest_route_starts_from_the_stores_total_in_on(tmp_path, text_pdfs, mode):
+    root, db, suggest = suggest_client(tmp_path)
+    assert suggest("turnover_ytd").status_code == 409   # off: last week's form holds nothing to add to
+    store.record_many(db, [put("eq.turnover.ytd", LAST, "3035.6", origin="workbook_import", by=store.IMPORT), put("eq.foreign.ytd", LAST, "-167.2")])
+    assert suggest("turnover_ytd").status_code == 409   # still off
+    mode("on")
+    for field, before in (("turnover_ytd", "3,035.6000"), ("foreign_ytd", "-167.2000")):
+        r = suggest(field)
+        assert r.status_code == 200 and note_of(r, field).startswith(f"Suggested: {before} saved for the week ending {LAST} + ")
+    assert analyst.read_form(Week(date(2026, 10, 2)), root)["unconfirmed"] == ["foreign_ytd", "turnover_ytd"]   # a suggestion is still only a prefill
+
+
+def test_the_suggest_route_in_compare_returns_the_forms_total_and_logs_the_difference_without_a_value(tmp_path, text_pdfs, mode, caplog):
+    root, db, suggest = suggest_client(tmp_path)
+    save_week(root, Week(date(2026, 9, 25)), fields={"turnover_ytd": "3035.6"})
+    store.record_many(db, [put("eq.turnover.ytd", LAST, "3099.9")])
+    mode("compare")
+    with caplog.at_level(logging.WARNING, logger=LOG):
+        r = suggest("turnover_ytd")
+    assert r.status_code == 200 and note_of(r, "turnover_ytd").startswith(f"Suggested: 3,035.6000 saved for the week ending {LAST} + ")   # the form's
+    assert "history compare: eq.turnover.ytd 2026-09-25: the form and the store differ" in caplog.text
+    assert not any(v in caplog.text for v in ("3035", "3099"))

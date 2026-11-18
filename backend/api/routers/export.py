@@ -2,9 +2,12 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 from cytonn_weekly.report_types import WEEKLY, PeriodError, normalize_period
+from cytonn_weekly.history import rows_export
 from cytonn_weekly.weekly import export as weekly_export
+from cytonn_weekly.weekly import inputs as weekly_inputs
+from cytonn_weekly.weekly.workbook import WorkbookError
 from api.problems import ProblemError
-from api.deps import Deps
+from api.deps import Deps, week_of
 
 
 def make_router(d: Deps) -> APIRouter:
@@ -42,5 +45,20 @@ def make_router(d: Deps) -> APIRouter:
             raise ProblemError(409, str(exc), "export_not_ready")
         return FileResponse(path, filename=path.name,
                             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+    @router.post("/api/export/weekly-rows/{week_ending}")
+    def export_weekly_rows(week_ending: str) -> FileResponse:
+        """Write this week's rows from the history store as a small .xlsx for the analyst to paste into the master workbooks, and return it.
+
+        Only confirmed points; a missing one is an empty cell with a note.  The uploaded workbooks are read, never changed.
+        """
+        week = week_of(week_ending)
+        inputs = weekly_inputs.WeeklyInputs(week, d.root)
+        try:
+            equities, fixed_income = inputs.equities_book, inputs.fi_book
+        except WorkbookError as exc:
+            raise HTTPException(409, f"An uploaded workbook cannot be read, so the layout cannot be taken from it: {exc}")
+        path = rows_export.write(week, d.db_path, d.export_root, equities, fixed_income)
+        return FileResponse(path, filename=path.name, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
     return router

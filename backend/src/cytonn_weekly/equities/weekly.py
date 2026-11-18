@@ -58,6 +58,7 @@ from cytonn_weekly.equities import companies
 from cytonn_weekly.equities import fetcher as afx
 from cytonn_weekly.equities.review_run import BRIEFS
 from cytonn_weekly.history import reads as history_reads
+from cytonn_weekly.history import weekly as history_weekly
 from cytonn_weekly.fixed_income.weekly import _carried
 from cytonn_weekly.drafting.base import NarrativeProvider
 from cytonn_weekly.drafting.drafter import draft_pieces
@@ -908,7 +909,7 @@ def universe_block(m: Market, warnings: list[str]) -> dict[str, Any]:
 # Suggested running totals (a prefill for the weekly analyst inputs form; never used unconfirmed)
 # ---------------------------------------------------------------------------
 
-def running_total_suggestions(inputs: WeeklyInputs, usd_rates: Callable[[], dict[date, float]]) -> dict[str, dict[str, str]]:
+def running_total_suggestions(inputs: WeeklyInputs, usd_rates: Callable[[], dict[date, float]], db_path: Optional[Any] = None) -> dict[str, dict[str, str]]:
     """For the year-to-date turnover and foreign net position: last week's saved total plus this week's figure.
 
     This week's figure is the one the section itself works out (each day's KES figure from KCB
@@ -932,7 +933,7 @@ def running_total_suggestions(inputs: WeeklyInputs, usd_rates: Callable[[], dict
             out[key] = {"reason": f"{label}: the running total restarts with the year, so last week's is not carried into it. "
                                   "Type this week's total, the year so far, yourself."}
             continue
-        before = history_reads.running_before(week, key, last_week.analyst.field(key))
+        before = history_reads.running_before(week, history_weekly.FIELD_SERIES[key], last_week.analyst.field(key), db_path)
         if before is None or before.number is None:
             held = key in analyst.read_form(week.previous, inputs.root)["fields"]   # there, but carried or suggested and never confirmed
             out[key] = {"reason": f"{label}: no total is saved for the week ending {stamp} to add this week's figure to. " + (
