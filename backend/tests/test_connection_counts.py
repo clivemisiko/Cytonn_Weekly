@@ -107,3 +107,12 @@ def test_zz_print_the_table(capsys):
         print("\n  connections opened per call (SQLite, per-call connect)")
         for label, n in TABLE:
             print(f"  {n:>3}  {label}")
+
+
+def test_the_weekly_rows_export_reads_each_series_once(tmp_path, monkeypatch):
+    client = TestClient(create_app(db_path=tmp_path / "app.db", load_dotenv=False, inputs_root=tmp_path / "weekly", export_root=tmp_path / "exports"))
+    real, opened = database.connect, []
+    # only this app's database: a draft thread another test left running opens connections on its own file
+    monkeypatch.setattr(database, "connect", lambda p=None: (opened.append(1) if str(p) == str(tmp_path / "app.db") else None, real(p))[1])
+    assert client.post(f"/api/export/weekly-rows/{WEEK}").status_code == 200
+    assert len(opened) == 13     # 3 for each of the two flow sheets, 2 for the valuation, 1 prices, 2 interbank, 1 Eurobond, 1 funds; nothing is written

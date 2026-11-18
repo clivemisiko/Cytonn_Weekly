@@ -546,7 +546,7 @@ def money_market_blocks(inputs: WeeklyInputs, tbill_inputs: Optional[dict[str, d
                         f"The yield on the Cytonn Money Market Fund {direction(change, 'increased', 'decreased')} by {bps} to "
                         f"{now} from {was} recorded the previous week.")
     top = _top_five(table, figs, "top5", "Average yield of the Top 5 Money Market Funds")
-    prev_table = previous.analyst.mmf() if previous is not None else None
+    prev_table = form.previous_mmf(previous)
     if prev_table is None:
         text.append(f"The average yield on the Top 5 Money Market Funds stood at {top}.")
         warnings.append("Money Market Performance: the Top 5 average is not compared with the previous week, because the "

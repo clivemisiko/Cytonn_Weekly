@@ -12,6 +12,8 @@ log = logging.getLogger(__name__)
 
 MAX_TEXT = 120     # the longest string a tool result may hold: a title or a host, never a paragraph
 MAX_ITEMS = 50     # the longest list
+MAX_WORKING = 400  # the longest string of a field whose shape is LONG: a working our own code wrote
+LONG = "long"
 MAX_RESULT_CHARS = 8000
 TOO_LARGE = "The result was too large to show, so none of it was kept. Ask for one section or one item."
 UNKNOWN_TOOL = "There is no such tool."
@@ -68,7 +70,7 @@ def trim(value: Any, shape: Any) -> Any:
         keep = shape if isinstance(shape, dict) else {k: None for k in (shape or ())}
         return {k: trim(value[k], keep[k]) for k in keep if k in value}
     if isinstance(value, str):
-        return value[:MAX_TEXT]
+        return value[:MAX_WORKING if shape == LONG else MAX_TEXT]
     if value is None or isinstance(value, (bool, int, float)):
         return value
     return str(value)[:MAX_TEXT]   # a date or another plain object, as text

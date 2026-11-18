@@ -54,8 +54,10 @@ A value is stored as it was typed (a percentage as 9.0, not 0.09).  A builder ge
 
 from __future__ import annotations
 
+import functools
 import json
 import re
+import threading
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -365,6 +367,10 @@ class Reading:
 
     @property
     def ref(self) -> str:
+        return self.source
+
+    @property
+    def a1(self) -> str:
         return self.source
 
 
@@ -737,12 +743,37 @@ def read_form(week: Week, root: Optional[Path] = None) -> dict[str, Any]:
     return {"fields": fields, "tables": tables, "saved_at": data.get("saved_at"), "carried": carried, "unconfirmed": unconfirmed}
 
 
-def _write(week: Week, root: Optional[Path], form: dict[str, Any]) -> dict[str, Any]:
+_after_write = threading.local()
+
+
+def _synced(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """Run ``fn`` under the file lock, then (lock released) write the points of what it saved to the history store.
+    The file is the truth: the store write never raises (history/weekly.py) and nothing reads the store yet."""
+    locked = atomic.locked(fn)
+
+    @functools.wraps(fn)
+    def inner(*args: Any, **kwargs: Any) -> Any:
+        _after_write.todo = None
+        try:
+            return locked(*args, **kwargs)
+        finally:
+            todo, _after_write.todo = _after_write.todo, None
+            if todo:
+                from cytonn_weekly.history import weekly as history   # imported here: history imports this module
+
+                history.sync(*todo)
+
+    return inner
+
+
+def _write(week: Week, root: Optional[Path], form: dict[str, Any], db_path: Optional[Path] = None) -> dict[str, Any]:
+    before = read_form(week, root)
     held = {**form["fields"], **form["tables"]}
     form["carried"] = {k: v for k, v in form.get("carried", {}).items() if k in held}
     form["unconfirmed"] = sorted(k for k in form.get("unconfirmed", []) if k in held)
     form["saved_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     atomic.write_atomic(_path(week, root), json.dumps(form, indent=1, sort_keys=True))
+    _after_write.todo = (week, before, form, db_path)
     return form
 
 
@@ -753,8 +784,8 @@ def usable_form(form: dict[str, Any]) -> dict[str, Any]:
             "tables": {k: v for k, v in form["tables"].items() if k not in waiting}}
 
 
-@atomic.locked
-def save_form(week: Week, changes: dict[str, Any], root: Optional[Path] = None) -> dict[str, Any]:
+@_synced
+def save_form(week: Week, changes: dict[str, Any], root: Optional[Path] = None, db_path: Optional[Path] = None) -> dict[str, Any]:
     """Check and keep what was typed; an item given as None (or empty) is cleared, one left out is kept.
 
     ``changes`` is {"fields": {key: value}, "tables": {key: {"text": pasted} | {"rows": [...]} | None},
@@ -824,11 +855,11 @@ def save_form(week: Week, changes: dict[str, Any], root: Optional[Path] = None) 
         more = f"\n...and {len(errors) - 12} more." if len(errors) > 12 else ""
         raise InputError("\n".join(errors[:12]) + more)
     form["unconfirmed"] = [k for k in form["unconfirmed"] if k not in touched]
-    return _write(week, root, form)
+    return _write(week, root, form, db_path)
 
 
-@atomic.locked
-def carry_forward(week: Week, root: Optional[Path] = None) -> dict[str, Any]:
+@_synced
+def carry_forward(week: Week, root: Optional[Path] = None, db_path: Optional[Path] = None) -> dict[str, Any]:
     """Start this week's form from last week's: copy what last week's holds into every item still empty here.
 
     Only what was confirmed last week is copied, and only where it is still valid for this week
@@ -887,7 +918,7 @@ def carry_forward(week: Week, root: Optional[Path] = None) -> dict[str, Any]:
     if not carried:
         raise InputError(f"Nothing to carry from the week ending {day_text(last_week.ending)}: every item it holds is already typed for this week, "
                          "or is no longer valid for it. Type this week's values directly.")
-    _write(week, root, form)
+    _write(week, root, form, db_path)
     return {"form": form, "carried": carried, "unconfirmed": [k for k in carried if k in form["unconfirmed"]]}
 
 
@@ -897,8 +928,8 @@ def _row_problems(table: Table, row: dict[str, str], week: Week) -> list[str]:
     return problems
 
 
-@atomic.locked
-def suggest(week: Week, key: str, value: str, note: str, root: Optional[Path] = None) -> dict[str, Any]:
+@_synced
+def suggest(week: Week, key: str, value: str, note: str, root: Optional[Path] = None, db_path: Optional[Path] = None) -> dict[str, Any]:
     """Keep a worked-out suggestion for a running total as an unconfirmed value, with its working.
 
     It never replaces a value someone typed or confirmed: that one must be cleared first.
@@ -912,7 +943,7 @@ def suggest(week: Week, key: str, value: str, note: str, root: Optional[Path] = 
     form["fields"][key] = value
     form["carried"][key] = {"from": SUGGESTED, "value": value, "note": note}
     form["unconfirmed"] = sorted(set(form["unconfirmed"]) | {key})
-    return _write(week, root, form)
+    return _write(week, root, form, db_path)
 
 
 # ---------------------------------------------------------------------------
@@ -1106,7 +1137,15 @@ class Analyst:
                 return [Typed(n, spec.label.lower(), spec.source) for n in raw]
             return self._typed(key, spec.section, raw, spec.kind, spec.scale, spec.unit, spec.label, spec.source, wb)
 
-        return self._once(f"field:{key}", load)
+        return self._once(f"field:{key}", lambda: self._from_history(key, load()))
+
+    def _from_history(self, key: str, value: Any) -> Any:
+        """CYTONN_HISTORY_READS: the two fields worked out from the stored series (history/reads.py); off leaves the value as it is."""
+        if key not in ("pe_average", "foreign_prior_year"):
+            return value
+        from cytonn_weekly.history import reads   # imported here: history imports this module
+
+        return (reads.pe_average if key == "pe_average" else reads.foreign_prior_year)(self.week, value)
 
     def _cell(self, table: Table, col: Column, row: dict[str, str], what: str, wb: Any) -> Any:
         """One cell of a typed row: typed, else BLANK."""
@@ -1165,6 +1204,12 @@ class Analyst:
                     "origin": f"analyst input typed on the weekly form (money market fund table; source: {table.source})"}
 
         return self._once("mmf", load)
+
+    def previous_mmf(self, previous: Optional[WeeklyInputs]) -> Optional[dict[str, Any]]:
+        """The previous week's fund table, from that week's inputs, or from the stored series when CYTONN_HISTORY_READS says so."""
+        from cytonn_weekly.history import reads   # imported here: history imports this module
+
+        return reads.previous_fund_table(self.week, previous.analyst.mmf() if previous is not None else None)
 
     def mmf_source(self) -> str:
         """The name printed on the fund table's source line."""
@@ -1297,7 +1342,12 @@ class Analyst:
                 out.append((day, cell.number, cell))
             return out
 
-        return self._once("foreign_history", load)
+        def stored() -> list[tuple[date, float, Any]]:
+            from cytonn_weekly.history import reads   # imported here: history imports this module
+
+            return reads.foreign_history(self.week, load())
+
+        return self._once("foreign_history", stored)
 
     def kcb_price(self, company: Any) -> Optional[Reading]:
         """The company's price in KCB IB's weekly report for this Friday, or None (no report, or a name with no ticker)."""
@@ -1336,7 +1386,7 @@ class Analyst:
         week's for last Friday (else the uploaded workbook's); a typed price that differs from
         KCB IB's is used, and the difference recorded.
         """
-        def load() -> Optional[dict[str, Any]]:
+        def build() -> Optional[dict[str, Any]]:
             table, rows, wb = TABLES["universe"], self.typed_rows("universe"), self.wb_universe()
             if not rows:
                 return None if wb is None else {**wb, "typed": False}
@@ -1366,6 +1416,16 @@ class Analyst:
             typed_names = {_key(r["company"]) for r in rows}
             companies += [c for k, c in theirs.items() if k not in typed_names]
             return {"companies": companies, "month_end": month_end.day if month_end is not None else None, "typed": True}
+
+        def load() -> Optional[dict[str, Any]]:
+            data = build()
+            from cytonn_weekly.history import reads   # imported here: history imports this module
+
+            if data is None or reads.mode() == reads.OFF:
+                return data
+            prices = lambda: self._once("store_prices", lambda: reads.last_prices(self.week))   # noqa: E731 - one read for every company
+            return {**data, "companies": [{**c, "last_price": reads.last_price(self.week, c["company"].value, c["last_price"], prices)}
+                                          if "last_price" in c else c for c in data["companies"]]}
 
         return self._once("universe", load)
 

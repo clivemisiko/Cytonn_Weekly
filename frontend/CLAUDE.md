@@ -65,3 +65,5 @@ The identity (restyled 2026-10-22 to Cytonn's own look, green, white and black; 
 
 `backend/src/cytonn_weekly/ui/` is the retired Streamlit screen's package. Its `__init__.py` says so; its unreferenced CSS (and the `ui/*.css` package-data glob) were removed.
 
+
+**This week's rows button** (2026-11-18, Phase 4 checkpoint 6; `lib/rows.ts`, `ExportBar.vue` with its `rows` prop, set only by the chat's `LiveCards.vue`): "This week's rows (xlsx)" calls `POST /api/export/weekly-rows/{week_ending}` (`api.exportWeeklyRows`, which shares `postForFile` with the Word export) and saves the file through the same anchor click. It is off for a period that is not "Week ending YYYY-MM-DD" (`rowsWeek`). A 422 and a 409 read in plain words (`rowsMessage`) in the export card's notice in the feed. `fileNameOf` reads both the plain `filename="..."` and the `filename*=utf-8''...` form Starlette sends for a name with spaces or commas (the first run of T127 saved the file as the fallback name without it). Tests: `src/lib/rows.test.ts` and `e2e/tests/chatcards.spec.ts` T127 (run with `playwright test chat`).

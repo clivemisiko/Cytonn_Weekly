@@ -191,12 +191,12 @@ def identify(slot: Slot, data: bytes, week: Week) -> dict[str, Any]:
                                      "report belongs to.")
                 return _found(report.report_date, True, f"kcb_daily_{report.report_date.isoformat()}.pdf",
                               "; ".join(report.problems))
-            return _found(report.report_date, report.report_date in week.report_dates, "kcb_weekly.pdf",
-                          "; ".join(report.problems))
+            return {**_found(report.report_date, report.report_date in week.report_dates, "kcb_weekly.pdf", "; ".join(report.problems)),
+                    "parsed": report}
         if slot.slug == CBK_BULLETIN:
             bulletin = cbk_bulletin.parse_bulletin(data)
-            return _found(bulletin.issue_date, bulletin.issue_date in week.report_dates, "cbk_bulletin.pdf",
-                          "; ".join(bulletin.problems), bulletin.notices)
+            return {**_found(bulletin.issue_date, bulletin.issue_date in week.report_dates, "cbk_bulletin.pdf",
+                             "; ".join(bulletin.problems), bulletin.notices), "parsed": bulletin}
         if slot.slug == NSE_YIELD_CURVE:
             curve = nse_yield_curve.parse_yield_curve(data)
             return _found(curve.curve_date, week.monday <= curve.curve_date <= week.ending, "nse_yield_curve.pdf", "")
@@ -225,7 +225,7 @@ _SAFE_NAME = re.compile(r"[^A-Za-z0-9 ._()'&,-]")
 
 
 def store(week: Week, slug: str, data: bytes, filename: str = "", root: Optional[Path] = None,
-          fetched_from: Optional[str] = None) -> dict[str, Any]:
+          fetched_from: Optional[str] = None, db_path: Optional[Path] = None, record: bool = True) -> dict[str, Any]:
     """Check and keep one upload; returns its manifest entry.  InputError (nothing stored) if it is refused."""
     slot = BY_SLUG.get(slug)
     if slot is None:
@@ -243,6 +243,10 @@ def store(week: Week, slug: str, data: bytes, filename: str = "", root: Optional
         manifest = read_manifest(week, root)
         manifest[found["stored_name"]] = entry
         _write_manifest(week, root, manifest)
+    if record and found.get("parsed") is not None:
+        from cytonn_weekly.history import weekly as history   # imported here: history imports the analyst form, which imports this module
+
+        history.record_upload(week, slug, found["parsed"], entry, db_path)   # published figures, once per series and date; never raises
     return entry
 
 

@@ -210,7 +210,7 @@ def recheck(old: CoordinatorReview, slot: str, data: bytes, filename: str, root:
         for w in (week, week.previous):
             if (base / w.ending.isoformat()).is_dir():
                 shutil.copytree(base / w.ending.isoformat(), sandbox / w.ending.isoformat())
-        wi.store(week, slot, data, filename, sandbox)
+        wi.store(week, slot, data, filename, sandbox, record=False)   # a trial copy: nothing of it goes to the history store
         rebuilt = _rebuild(section, week, sandbox)
     blocks = _merge(section, slot, old.section["blocks"], rebuilt.section["blocks"])
     content = {**old.section, "blocks": numbered(blocks)}
