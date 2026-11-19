@@ -22,6 +22,7 @@ test("T120 the readiness card shows every group, and the needs-you card works: f
   // A week with its inputs in: four groups, with a count each, in words; a group with nothing in it is left out.
   await page.goto(chatUrl("fixed_income"));
   const card = page.getByRole("region", { name: /What Fixed Income needs for the week ending 2026-10-09/ });
+  await card.getByRole("button", { name: "Show the list" }).click(); // the list starts folded
   await expect(card.getByText(/Needs you \(1\)/)).toBeVisible();
   await expect(card.getByText(/Fetched \(1\)/)).toBeVisible();
   await expect(card.getByText(/In place \(\d+\)/)).toBeVisible();
@@ -55,6 +56,7 @@ test("T121 Real Estate shows its snip counts and Focus its source counts as they
   const NOT_JUDGED = "The snip and source counts are as they are: this check does not say whether they are enough.";
   await page.goto(chatUrl("real_estate"));
   const readiness = page.getByRole("region", { name: /What Real Estate needs/ });
+  await readiness.getByRole("button", { name: "Show the list" }).click(); // the list starts folded
   await expect(readiness.getByText("Land: 0 uploaded, 0 read, 0 confirmed")).toBeVisible();
   await expect(readiness.getByText("0 saved, 0 dated inside the week, 0 outside it")).toBeVisible();
   await expect(readiness.getByText(NOT_JUDGED)).toBeVisible();
@@ -339,4 +341,88 @@ test("T130 the fund snip card: upload, list, read, decide, type a cell and a fun
   expect(table.rows.map((r: { rank: string }) => r.rank)).toEqual(["1", "1", "3", "4", "5", "6"]); // the two 10.5 funds share a rank
   expect(table.carried.from).toBe("snip");
   await expect(page.getByRole("region", { name: "Needs you" }).getByText(/Money market fund table/)).toHaveCount(0);
+});
+
+// A bare Fixed Income week has four inline steps: 1 placements (a field), 2 Eurobond issues (the grid), 3 the borrowing target
+// (a field), 4 other bond redemptions (the paste table).  Each test takes its own Friday, so a save in one never shows in another.
+const typedCard = (page: Page) => page.getByRole("region", { name: "Type these here" });
+
+test("T131 a typed value is saved from the chat: a refusal keeps the text under the API's words, Enter saves and moves on", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(chatUrl("fixed_income", "Week ending 2026-08-14"));
+  const card = typedCard(page);
+  const box = card.getByLabel("3-month bank placements");
+  await expect(card.getByText("Step 1 of 4", { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Needs you" }).getByText(/3-month bank placements/)).toHaveCount(0);
+
+  const save = card.getByRole("button", { name: /^Save\s*: 3-month bank placements$/ });
+  await save.click();
+  await expect(card.getByText("Type a value before saving.")).toBeVisible();
+  await box.fill("not a figure");
+  await save.click();
+  await expect(card.getByText(/is not a number/)).toBeVisible();
+  await expect(box).toHaveValue("not a figure");
+  await expect(card.getByText("Step 1 of 4", { exact: true })).toBeVisible();
+
+  await box.fill("5.55");
+  await box.press("Enter");
+  await expect(card.getByText("Step 2 of 4", { exact: true })).toBeVisible();
+  await expect(card.locator("[aria-live]").first()).toHaveText("Step 2 of 4, Eurobond issues"); // the polite announcement
+  await card.getByRole("button", { name: "Previous" }).click();
+  await expect(card.getByText("Saved: 5.55")).toBeVisible(); // the step stays in place, marked
+  await expect(card.getByText("Step 1 of 4", { exact: true })).toBeVisible();
+});
+
+test("T132 Next and Previous move between steps, typed text survives going back, a skipped line is still to type", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto(chatUrl("fixed_income", "Week ending 2026-07-31"));
+  const card = typedCard(page);
+  const previous = card.getByRole("button", { name: "Previous" });
+  const next = card.getByRole("button", { name: "Next" });
+  await expect(previous).toBeDisabled();
+  await card.getByLabel("3-month bank placements").fill("7.77");
+  await next.click();
+  await expect(card.getByText("Step 2 of 4", { exact: true })).toBeVisible();
+  await expect(card.getByLabel("3-month bank placements")).toBeHidden();
+  await next.click();
+  await expect(card.getByLabel("Net domestic borrowing target for the fiscal year")).toBeFocused();
+  await previous.click();
+  await previous.click();
+  await expect(card.getByLabel("3-month bank placements")).toHaveValue("7.77");
+  await expect(card.getByLabel("3-month bank placements")).toBeFocused();
+
+  for (let i = 0; i < 3; i++) await next.click();
+  await card.getByRole("button", { name: "Done" }).click();
+  await expect(card.getByText("4 still to type", { exact: true })).toBeVisible();
+  await card.getByRole("button", { name: "Go to the first one" }).click();
+  await expect(card.getByText("Step 1 of 4", { exact: true })).toBeVisible();
+  await expect(card.getByLabel("3-month bank placements")).toHaveValue("7.77");
+  // Skipped, so nothing was saved: the readiness check still lists it as needing the analyst.
+  const job = page.waitForResponse((r) => /\/api\/jobs\/\d+\/readiness/.test(r.url()));
+  await page.reload();
+  const groups = (await (await job).json()).readiness.groups;
+  expect(groups.needs_analyst.map((e: { key: string }) => e.key)).toContain("placements");
+});
+
+test("T133 every step saved, the grid and the paste table included: the confirmation shows and focus is on the heading", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(chatUrl("fixed_income", "Week ending 2026-07-24"));
+  const card = typedCard(page);
+  await card.getByLabel("3-month bank placements").fill("5.55");
+  await card.getByLabel("3-month bank placements").press("Enter");
+
+  await expect(card.getByText("Step 2 of 4", { exact: true })).toBeVisible();
+  await card.locator('[data-step="1"] input').first().fill("1000");
+  await card.locator('[data-step="1"]').getByRole("button", { name: "Save", exact: true }).click();
+
+  await expect(card.getByText("Step 3 of 4", { exact: true })).toBeVisible();
+  await card.getByLabel("Net domestic borrowing target for the fiscal year").fill("100");
+  await card.getByLabel("Net domestic borrowing target for the fiscal year").press("Enter");
+
+  await expect(card.getByText("Step 4 of 4", { exact: true })).toBeVisible();
+  await card.getByLabel("Other bond redemptions: paste the rows").fill("2026-07-20  FAKE/0000/01  123.45");
+  await card.getByRole("button", { name: "Save table" }).click();
+
+  await expect(card.getByText("All typed values are saved.")).toBeVisible();
+  expect(await page.evaluate(() => document.activeElement?.id)).toBe("live-title");
 });

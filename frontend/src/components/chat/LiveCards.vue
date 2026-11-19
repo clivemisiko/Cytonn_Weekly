@@ -4,13 +4,14 @@ import ExportBar from "@/components/review/ExportBar.vue";
 import Notice from "@/components/review/Notice.vue";
 import * as api from "@/lib/api";
 import type { Job } from "@/lib/chat";
-import { draftCard, hasNeeds, needsYou, parseReadiness, type Readiness } from "@/lib/chatcards";
+import { captureSteps, draftCard, hasNeeds, needsYou, parseReadiness, type Readiness, type ReadinessEntry } from "@/lib/chatcards";
 import type { AppConfig, Drafting, ReportChoice, Review, SectionSummary } from "@/lib/types";
 import DraftCard from "./DraftCard.vue";
 import FundSnipCard from "./FundSnipCard.vue";
 import LiveReviewCard from "./LiveReviewCard.vue";
 import NeedsYouCard from "./NeedsYouCard.vue";
 import SourcesCard from "./SourcesCard.vue";
+import TypedInputsCard from "./TypedInputsCard.vue";
 
 const props = defineProps<{
   job: Job;
@@ -67,6 +68,11 @@ watch(() => [props.tick, props.job.job_id, props.section.latest?.run_id, props.s
 onUnmounted(() => generation++);
 
 const needs = computed(() => (readiness.value ? needsYou(readiness.value) : null));
+const typedSteps = shallowRef<ReadinessEntry[] | null>(null);
+const liveTitle = ref<HTMLElement | null>(null);
+watch(() => `${props.job.job_id} ${props.section.slug} ${props.report.period}`, () => (typedSteps.value = null));
+watch(needs, (n) => (typedSteps.value = captureSteps(typedSteps.value, n?.inline ?? [])));
+const formNeeds = computed(() => !!needs.value && hasNeeds({ ...needs.value, inline: [] }));
 const draft = computed(() => draftCard(props.section, props.drafting, props.config));
 const counted = computed(() => readiness.value !== null && (readiness.value.snips !== null || readiness.value.sources !== null));
 const weekly = computed(() => props.report.type === "weekly" && !!props.report.period);
@@ -83,12 +89,13 @@ const done = () => {
 
 <template>
   <section aria-labelledby="live-title" class="space-y-3" data-card="live">
-    <h2 id="live-title" class="eyebrow">What you can do now</h2>
+    <h2 id="live-title" ref="liveTitle" tabindex="-1" class="eyebrow outline-none">What you can do now</h2>
 
     <Notice v-if="readinessProblem" tone="warn" role="alert">{{ readinessProblem }}</Notice>
     <p v-else-if="needs && !hasNeeds(needs)" class="text-sm text-muted-foreground">Nothing is missing for this section.</p>
 
-    <NeedsYouCard v-if="needs && hasNeeds(needs)" :needs="needs" :week="week" :section="section.slug" :form-to="oldPage" @changed="done" />
+    <NeedsYouCard v-if="needs && formNeeds" :needs="needs" :week="week" :section="section.slug" :form-to="oldPage" @changed="done" />
+    <TypedInputsCard v-if="weekly && typedSteps" :key="job.job_id" :steps="typedSteps" @empty="liveTitle?.focus()" :week="week" :section="section.slug" @changed="done" />
     <FundSnipCard v-if="weekly && section.slug === 'fixed_income'" :week="week" :section="section.slug" @changed="done" />
     <SourcesCard v-if="readiness && counted" :readiness="readiness" :old-page="oldPage" />
     <DraftCard v-if="draft.kind !== 'none'" :section="section" :card="draft" :report="report" :config="config" :old-page="oldPage" @changed="done" @ended="ended" />
