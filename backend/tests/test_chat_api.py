@@ -116,6 +116,39 @@ def test_opening_refuses_what_a_draft_refuses(env):
     assert env.client.get("/api/jobs/999").status_code == 404 and env.client.get("/api/jobs/999/messages").status_code == 404
 
 
+# --- the prepare page's readiness, with no conversation ---------------------------------------------------
+
+def _jobs(env):
+    return [jobs.find_job(env.db, "weekly", PERIOD, s) for s in ("equities", "fixed_income")]
+
+
+def test_the_section_readiness_is_the_job_readiness_and_opens_no_job(env):
+    got = env.client.get("/api/sections/equities/readiness", params={"period": PERIOD})
+    assert got.status_code == 200, got.text
+    assert _jobs(env) == [None, None]   # nothing was created by reading it
+    assert got.json()["conversation"] is False
+    job_id = env.open()
+    assert got.json()["readiness"] == env.client.get(f"/api/jobs/{job_id}/readiness").json()["readiness"]
+    assert env.client_calls.calls == []
+
+
+def test_the_section_readiness_says_when_a_conversation_holds_more_than_its_snapshot(env):
+    job_id = env.open()
+    assert env.client.get("/api/sections/equities/readiness", params={"period": PERIOD}).json()["conversation"] is False
+    jobs.add_message(env.db, job_id, "user", "a fake question")
+    assert env.client.get("/api/sections/equities/readiness", params={"period": PERIOD}).json()["conversation"] is True
+
+
+def test_the_section_readiness_refuses_what_opening_refuses(env):
+    assert env.client.get("/api/sections/nope/readiness", params={"period": PERIOD}).status_code == 404
+    assert env.client.get("/api/sections/equities/readiness", params={"period": "Week ending 2026-10-03"}).status_code == 422
+    stub = report_sections.sections_for("companion", "ssa_eurobonds")[0]
+    params = {"report_type": "companion", "kind": "ssa_eurobonds", "period": "Weekly #37.2026"}
+    assert env.client.get(f"/api/sections/{stub.slug}/readiness", params=params).status_code == 409
+    assert env.client.get("/api/sections/equities/readiness", params={"report_type": "quarterly", "period": "Q3'2026"}).status_code == 409
+    assert _jobs(env) == [None, None]
+
+
 # --- messages: 202, 409, 429 -------------------------------------------------------------------------
 
 def test_a_message_is_202_and_the_answer_arrives_through_polling(env):

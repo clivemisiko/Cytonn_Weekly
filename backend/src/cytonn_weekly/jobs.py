@@ -96,6 +96,17 @@ def open_job(db_path: Optional[Union[Path, str]], report_type: str, period: str,
     return open_or_create(db_path, report_type, period, section)[0]
 
 
+def find_job(db_path: Optional[Union[Path, str]], report_type: str, period: str, section: str) -> Optional[dict[str, Any]]:
+    """The job for this report, period and section if one was ever opened, else None.  Reads only: never creates one."""
+    conn = db.open_db(db_path)
+    try:
+        row = conn.execute("SELECT * FROM report_jobs WHERE report_type = ? AND period = ? AND section = ?",
+                           (report_type, period, section)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
 def interrupt_working(db_path: Optional[Union[Path, str]]) -> int:
     """At startup: a job still working belongs to a process that is gone.  Each becomes idle, with RESTART_NOTE saved in its
     conversation.  Returns how many."""

@@ -95,6 +95,26 @@ def make_router(d: Deps) -> APIRouter:
             raise HTTPException(409, got["error"])
         return {"readiness": got}
 
+    @router.get("/api/sections/{slug}/readiness")
+    def section_readiness(slug: str, period: str = Query(...), report_type: str = Query(default="weekly"),
+                          kind: str | None = Query(default=None)) -> dict:
+        """The readiness check of one section and week without opening a conversation: the prepare page reads it.  The same checks as
+        POST /api/jobs, the same week_status tool on a job-shaped key with no id; it writes nothing and calls no model.
+        ``conversation`` says whether a conversation for this section and week holds anything beyond the recorded snapshot."""
+        period, kind = chosen_report(report_type, period, kind)
+        spec = report_sections.spec_for(report_type, slug, kind)
+        if spec is None:
+            raise HTTPException(404, f"There is no section {slug!r} in that report.")
+        if not spec.available:
+            raise HTTPException(409, f"{spec.title} cannot be drafted yet, so there is nothing to prepare. {spec.reason}")
+        key = {"report_type": report_type, "period": period, "section": slug}
+        got = execute(BY_NAME, "week_status", {}, d.chat.context(key))
+        if "error" in got:
+            raise HTTPException(409, got["error"])
+        job = job_store.find_job(d.db_path, report_type, period, slug)
+        talked = bool(job) and len(job_store.messages(d.db_path, job["job_id"])) > 1
+        return {"readiness": got, "conversation": talked}
+
     @router.post("/api/jobs/{job_id}/raise-budget")
     def raise_budget(job_id: int) -> dict:
         """Add a fixed amount to this one job's call and token budgets.  409 unless the job stopped at a budget."""
