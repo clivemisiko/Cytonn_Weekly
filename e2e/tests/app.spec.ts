@@ -10,6 +10,19 @@ import { draftAnyway } from "./helpers";
 const WEEK = "2026-10-09";
 const PERIOD = `Week ending ${WEEK}`;
 const OVERVIEW = `/overview?report=weekly&period=${encodeURIComponent(PERIOD)}`;
+// A bare /overview opens on the default week (defaultWeek). The choices are pinned so the week does not depend on what
+// earlier specs left drafted: the newest choice is midway, and no live draft can beat the newest midway week.
+const DEFAULT_WEEK = new RegExp(`/overview\\?report=weekly&period=Week(%20|\\+)ending(%20|\\+)${WEEK}$`);
+async function pinWeeks(page: Page) {
+  await page.route("**/api/previous/weekly", (route) =>
+    route.fulfill({
+      json: {
+        weeks: [], next_week_ending: null, default_week_ending: "2000-01-07",
+        choices: [{ week_ending: WEEK, period: PERIOD, status: "in_progress", approved: 0, total: 5 }],
+      },
+    }),
+  );
+}
 const DRAFT = `Draft the ${PERIOD} section`;
 const RUN_TIMEOUT = 8 * 60_000;
 
@@ -18,65 +31,71 @@ const topbar = (page: Page) => page.getByRole("navigation", { name: "App" });
 
 async function openOverview(page: Page) {
   await page.goto(OVERVIEW);
-  await expect(page.getByRole("heading", { name: "Coordinator review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Analyst review", level: 1 })).toBeVisible();
 }
 
 /** A section's start screen, from the overview card's own button. */
-async function openStart(page: Page, title: string, button: RegExp = /Draft section|Add your text/) {
+async function openStart(page: Page, title: string, button: RegExp = /Draft section/) {
   await openOverview(page);
   await card(page, title).getByRole("button", { name: button }).click();
-  await expect(page.getByRole("heading", { name: `${title}: coordinator review`, level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: `${title}: analyst review`, level: 1 })).toBeVisible();
 }
 
 test.skip(!!process.env.E2E_VARIANT, "runs on the default test backend");
 test.describe.configure({ mode: "serial" });
 
-test("T01 landing page loads, with Home current and Back disabled", async ({ page }) => {
+test("T01 landing page loads, Home becomes current on the overview, Back disabled", async ({ page }) => {
+  await pinWeeks(page);
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /Welcome to Cytonn Weekly\./ })).toBeVisible();
   await expect(page.getByRole("heading", { name: /^Good (morning|afternoon|evening)\. Welcome to Cytonn Weekly\.$/ })).toBeVisible();
-  await expect(page.getByText("Ready. Nothing is drafted until you ask.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign in with Cytonn SSO" })).toBeDisabled();
   await expect(page.getByText("Not connected yet.", { exact: true })).toBeVisible();
-  await expect(page.getByText(/this tool has no sign-in and should only be used by the\s+team/)).toBeVisible();
+  await expect(page.getByText(/this tool has no sign-in and should only be used by the\s+team/i)).toBeVisible();
   await expect(page).toHaveTitle("Cytonn Weekly review");
-  await expect(topbar(page).getByRole("link", { name: "Home" })).toHaveAttribute("aria-current", "page");
+  const home = topbar(page).getByRole("link", { name: "Home" });
+  await expect(home).not.toHaveAttribute("aria-current", /.*/); // Home is the chat, and this page is /
   await expect(topbar(page).getByRole("button", { name: "Back (this is the start screen)" })).toBeDisabled();
   await page.getByRole("link", { name: "Continue without signing in" }).click();
-  await expect(page).toHaveURL(/\/overview$/);
-  await expect(page.getByRole("heading", { name: "Coordinator review", level: 1 })).toBeVisible();
+  await expect(page).toHaveURL(/\/chat$/); // the chat's section picker is where the welcome page leads
+  await expect(page.getByRole("heading", { name: "Choose what to talk about" })).toBeVisible();
+  await expect(home).toHaveAttribute("aria-current", "page"); // Home is the chat
+  await page.goto("/overview"); // the overview is hidden from navigation but still opens by its address
+  await expect(page).toHaveURL(DEFAULT_WEEK); // a bare /overview opens on a labelled week
+  await expect(page.getByRole("heading", { name: "Analyst review", level: 1 })).toBeVisible();
+  await expect(home).not.toHaveAttribute("aria-current", /.*/);
 });
 
 test("T02 an old bookmark of a report at / goes to the overview with its query kept", async ({ page }) => {
   await page.goto(`/?report=weekly&period=${encodeURIComponent(PERIOD)}`);
-  await expect(page.getByRole("heading", { name: "Coordinator review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Analyst review", level: 1 })).toBeVisible();
   const url = new URL(page.url());
   expect(url.pathname).toBe("/overview");
   expect(url.searchParams.get("report")).toBe("weekly");
   expect(url.searchParams.get("period")).toBe(PERIOD);
 });
 
-test("T03 overview lists the six weekly sections, the dev mark and the export gate", async ({ page }) => {
+test("T03 overview lists the five weekly sections, the dev mark and the export gate", async ({ page }) => {
   await openOverview(page);
-  for (const title of ["Company Updates", "Fixed Income", "Equities", "Real Estate", "Digital Payments", "Focus of the Week"]) {
+  for (const title of ["Fixed Income", "Equities", "Real Estate", "Digital Payments", "Focus of the Week"]) {
     await expect(card(page, title)).toBeVisible();
   }
-  await expect(page.getByText(`Weekly, ${PERIOD}: 6 report sections.`, { exact: false })).toBeVisible();
+  await expect(page.getByText(`Weekly, ${PERIOD}: 5 report sections.`, { exact: false })).toBeVisible();
   await expect(card(page, "Fixed Income").getByText("Not drafted for w/e 9 Oct 2026")).toBeVisible();
-  await expect(page.getByRole("group", { name: "Sections by state" })).toContainText("Not drafted6 / 6");
+  await expect(page.getByRole("group", { name: "Sections by state" })).toContainText("Not drafted5 / 5");
   // Dev mode: the ribbon under the top bar and the notice in the page.
   await expect(page.getByRole("status").filter({ hasText: "DEV MODE DRAFT (local model): NOT FOR PUBLICATION OR CIRCULATION" })).toBeVisible();
-  await expect(page.getByRole("alert").filter({ hasText: "CYTONN_LLM_PROVIDER=local: DEV MODE." })).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "Development Mode Active (Local Model)" })).toBeVisible();
   // Export: there, and off until every section is approved.
   await expect(page.getByRole("heading", { name: "Export weekly report" })).toBeVisible();
-  await expect(page.getByText("Available once every section is approved: 6 of 6 still to go.")).toBeVisible();
+  await expect(page.getByText("Available once every section is approved: 5 of 5 still to go.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Export weekly report" })).toBeDisabled();
   await expect(page.getByText("Fixed Income: Not drafted")).toBeVisible();
 });
 
-test("T04 report picker shows the API's refusal, switches report, keeps it on reload; Back from the overview goes Home", async ({ page }) => {
+test("T04 report picker shows the API's refusal, switches report, keeps it on reload; Back is disabled on overview", async ({ page }) => {
   await page.goto("/overview");
-  await expect(page.getByRole("heading", { name: "Coordinator review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Analyst review", level: 1 })).toBeVisible();
   await page.getByLabel("Report type").selectOption("quarterly");
   await expect(page.getByLabel("Period", { exact: true })).toHaveValue("Q3'2026");
   await page.getByLabel("Period", { exact: true }).fill("Q2'2026");
@@ -85,14 +104,12 @@ test("T04 report picker shows the API's refusal, switches report, keeps it on re
   await expect(page.getByLabel("Period", { exact: true })).toHaveAttribute("aria-invalid", "true");
   await page.getByLabel("Period", { exact: true }).fill("q3 2026");
   await page.getByRole("button", { name: "Show sections" }).click();
-  await expect(page.getByText("Quarterly Markets Review, Q3'2026: 9 report sections.", { exact: false })).toBeVisible();
+  await expect(page.getByText("Quarterly Markets Review, Q3'2026: 8 report sections.", { exact: false })).toBeVisible();
   expect(new URL(page.url()).searchParams.get("period")).toBe("Q3'2026");
   await page.reload();
-  await expect(page.getByText("Quarterly Markets Review, Q3'2026: 9 report sections.", { exact: false })).toBeVisible();
+  await expect(page.getByText("Quarterly Markets Review, Q3'2026: 8 report sections.", { exact: false })).toBeVisible();
   await expect(card(page, "Fixed Income").getByText("Not drafted for Q3'2026")).toBeVisible();
-  await topbar(page).getByRole("button", { name: "Back to Home" }).click();
-  await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("heading", { name: /Welcome to Cytonn Weekly\./ })).toBeVisible();
+  await expect(topbar(page).getByRole("button", { name: "Back (this is the start screen)" })).toBeDisabled();
 });
 
 test("T05 theme toggle: Light, Dark, System, kept after a reload and applied before the first paint", async ({ page }) => {
@@ -116,7 +133,7 @@ test("T05 theme toggle: Light, Dark, System, kept after a reload and applied bef
   await expect(group).toHaveAccessibleName("Theme: Dark");
   await expect(page.getByRole("radio", { name: "Dark theme" })).toBeChecked();
   expect(await stored()).toBe("dark");
-  expect(await paper()).toBe("rgb(14, 14, 14)");
+  expect(await paper()).toBe("rgb(11, 13, 16)");
   await page.reload();
   expect(await firstFrame()).toBe("dark");
   await expect(page.getByRole("radio", { name: "Dark theme" })).toBeChecked();
@@ -133,13 +150,14 @@ test("T05 theme toggle: Light, Dark, System, kept after a reload and applied bef
   await page.getByRole("radio", { name: "System theme" }).click();
   await expect(page.locator("html")).not.toHaveAttribute("data-theme", /.*/);
   expect(await stored()).toBeNull();
-  expect(await paper()).toBe("rgb(14, 14, 14)"); // follows the (dark) device
+  expect(await paper()).toBe("rgb(11, 13, 16)"); // follows the (dark) device
   await page.reload();
   expect(await firstFrame()).toBe("system");
   await expect(group).toHaveAccessibleName("Theme: System");
 });
 
 test("T06 top bar stays in view after scrolling; Back goes to the section list, Home to /", async ({ page }) => {
+  await pinWeeks(page);
   await openStart(page, "Fixed Income");
   await expect(page.getByRole("heading", { name: "Weekly analyst inputs" })).toBeVisible();
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
@@ -147,18 +165,17 @@ test("T06 top bar stays in view after scrolling; Back goes to the section list, 
   await expect.poll(async () => (await page.locator("header").first().boundingBox())?.y).toBe(0);
   expect((await page.locator("header").first().boundingBox())?.height).toBe(44);
   await topbar(page).getByRole("button", { name: "Back to all sections" }).click();
-  await expect(page.getByRole("heading", { name: "Coordinator review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Analyst review", level: 1 })).toBeVisible();
   expect(new URL(page.url()).searchParams.get("period")).toBe(PERIOD);
   await expect(card(page, "Equities")).toBeVisible();
 
-  // From a deep link to a run (one the API does not know): Back names the section list, Home goes to /.
+  // From a deep link to a run (one the API does not know): Back names the section list, Home goes to the chat.
   await page.goto("/runs/not-a-run");
   await topbar(page).getByRole("button", { name: "Back to all sections" }).click();
-  await expect(page).toHaveURL(/\/overview$/);
+  await expect(page).toHaveURL(DEFAULT_WEEK); // a bare /overview opens on a labelled week
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   await topbar(page).getByRole("link", { name: "Home" }).click();
-  await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("heading", { name: /Welcome to Cytonn Weekly\./ })).toBeVisible();
+  await expect(page).toHaveURL(/\/chat$/);
 });
 
 test("T07 inputs panel: what was received, an upload refused with its reason, a week that is not a Friday", async ({ page }) => {
@@ -166,19 +183,19 @@ test("T07 inputs panel: what was received, an upload refused with its reason, a 
   const panel = page.locator("section", { has: page.getByRole("heading", { name: "This week’s inputs" }) }).first();
   await expect(panel.getByText("Week ending 9 Oct 2026: Monday 5 Oct 2026 to Friday.")).toBeVisible();
   await expect(panel.locator("li", { hasText: "Fixed income workbook" }).first()).toContainText("Received, this week’s");
-  await expect(panel.getByText("5 of 5 received")).toBeVisible();
+  await expect(panel.getByText("KCB IB daily trading reports")).toHaveCount(0); // Equities' input, not Fixed Income's
   await expect(panel.getByText("Not received (optional)")).toBeVisible();
 
   // The NSE yield curve slot is empty; a file that is not a PDF is refused in the API's own words and nothing is kept.
-  await panel.locator('input[type="file"]').nth(5).setInputFiles({ name: "not-a-pdf.pdf", mimeType: "application/pdf", buffer: Buffer.from("hello") });
+  await panel.locator('input[type="file"]').nth(2).setInputFiles({ name: "not-a-pdf.pdf", mimeType: "application/pdf", buffer: Buffer.from("hello") });
   await expect(panel.getByRole("alert").filter({ hasText: "not-a-pdf.pdf: NSE yield curve: this is not a PDF file" })).toBeVisible();
   await expect(panel.getByText("Not received (optional)")).toBeVisible();
   // The same file can be chosen again after a refusal.
-  await panel.locator('input[type="file"]').nth(5).setInputFiles({ name: "not-a-pdf.pdf", mimeType: "application/pdf", buffer: Buffer.from("hello") });
+  await panel.locator('input[type="file"]').nth(2).setInputFiles({ name: "not-a-pdf.pdf", mimeType: "application/pdf", buffer: Buffer.from("hello") });
   await expect(panel.getByRole("alert").filter({ hasText: "not-a-pdf.pdf: NSE yield curve: this is not a PDF file" })).toBeVisible();
 
   await panel.getByLabel("Week ending (a Friday)").fill("2026-10-08");
-  await expect(panel.getByRole("alert").filter({ hasText: "8 Oct 2026 is a Thursday. A weekly report's week ends on a Friday, so choose a Friday." })).toBeVisible();
+  await expect(panel.getByRole("alert").filter({ hasText: "8 Oct 2026 is a Thursday. Cytonn Weekly reports are published for weeks ending on a Friday. Please select a valid Friday date." })).toBeVisible();
   await expect(panel.getByRole("button", { name: "Show this week" })).toBeDisabled();
 });
 
@@ -186,7 +203,7 @@ test("T08 analyst inputs: refusals listed, the draft button waits for unsaved ty
   await openStart(page, "Fixed Income");
   const panel = page.locator("section", { has: page.getByRole("heading", { name: "Weekly analyst inputs" }) }).first();
   const draft = page.getByRole("button", { name: DRAFT });
-  const waiting = page.getByText("Something under “Weekly analyst inputs” is not saved yet", { exact: false });
+  const waiting = page.getByText("You have unsaved changes or unconfirmed suggestions in Weekly Analyst Inputs", { exact: false });
   const placements = panel.locator("#analyst-placements");
   await expect(placements).toHaveAttribute("placeholder", "9.75 (workbook)");
   await expect(panel.getByText("From the workbook", { exact: true }).first()).toBeVisible();
@@ -225,7 +242,7 @@ test("T08 analyst inputs: refusals listed, the draft button waits for unsaved ty
     void d.dismiss();
   });
   await topbar(page).getByRole("button", { name: "Back to all sections" }).click();
-  expect(questions).toEqual(['Something typed under "Weekly analyst inputs" is not saved yet. Leave this page and lose it?']);
+  expect(questions).toEqual(['You have unsaved changes in Weekly Analyst Inputs. Are you sure you want to leave without saving?']);
   await expect(table).toHaveValue("1 Alpha Fund 0.11\n3 Beta Fund 250");
   page.once("dialog", (d) => {
     questions.push(d.message());
@@ -233,7 +250,7 @@ test("T08 analyst inputs: refusals listed, the draft button waits for unsaved ty
   });
   await topbar(page).getByRole("link", { name: "Home" }).click();
   expect(questions).toHaveLength(2);
-  await expect(page).toHaveURL(/\/overview/);
+  await expect(page).toHaveURL(/\/overview/); // dismissed: still on the form
 
   await panel.getByRole("button", { name: "Save table" }).and(page.locator(":enabled")).click(); // only the edited table can be saved
   const refusal = panel.getByRole("alert").filter({ hasText: "Money market fund table, line 1" });
@@ -251,91 +268,74 @@ test("T08 analyst inputs: refusals listed, the draft button waits for unsaved ty
   await table.fill("1 Alpha Fund 11.0");
   page.once("dialog", (d) => void d.accept());
   await topbar(page).getByRole("link", { name: "Home" }).click();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/chat$/);
   // Nothing was stored by any of it.
   await openStart(page, "Fixed Income");
   await expect(page.locator("#analyst-mmf")).toHaveValue("");
   await expect(page.locator("#analyst-placements")).toHaveValue("");
 });
 
-let companyReview = "";
+let paymentsReview = "";
 
-test("T09 Company Updates: run to done, open the review, Approve is gated, the decision is final", async ({ page }) => {
-  await openStart(page, "Company Updates");
-  const save = page.getByRole("button", { name: "Save your text as the section" });
-  await expect(save).toBeDisabled();
-  await expect(page.getByText("Nothing is searched or drafted: your text is carried as written and listed once for you to accept.")).toBeVisible();
-  await page.getByLabel("Your Company Updates text").fill("Investment Updates:\nSYNTHETIC e2e text, not real.");
-  await save.click();
+test("T09 Digital Payments: run to done, open the review, one decision for the whole section (nothing is flagged, so Approve records at once), the decision is final", async ({ page }) => {
+  await openStart(page, "Digital Payments");
+  await page.getByRole("button", { name: DRAFT }).click();
 
   // The run view: it reaches done and waits; it never opens the review by itself.
   await expect(page).toHaveURL(/\/runs\/[^/]+$/);
-  await expect(page.getByRole("heading", { name: "Company Updates: draft run", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Digital Payments: draft run", level: 1 })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Draft ready for review", level: 2 })).toBeVisible();
   await expect(page.getByText(/^Finished .* EAT\.$/)).toBeVisible();
-  const steps = page.getByRole("log", { name: "Steps of this draft" });
-  await expect(steps.getByRole("listitem")).toHaveText(["Done: Starting the draft.", "Done: Draft ready for review."]);
-  await expect(page.getByRole("group", { name: "Review items by status" })).toContainText("Not auto-verified1");
   await expect(page).toHaveURL(/\/runs\//);
   await page.getByRole("link", { name: "Open review" }).click();
 
-  await expect(page.getByRole("heading", { name: "Company Updates: coordinator review", level: 1 })).toBeVisible();
-  companyReview = new URL(page.url()).searchParams.get("review") ?? "";
-  expect(companyReview).toMatch(/^\d+$/);
+  await expect(page.getByRole("heading", { name: "Digital Payments: analyst review", level: 1 })).toBeVisible();
+  paymentsReview = new URL(page.url()).searchParams.get("review") ?? "";
+  expect(paymentsReview).toMatch(/^\d+$/);
+  // One decision for the whole section, available on a drafted section with nothing to resolve first.
   const approve = page.getByRole("button", { name: "Approve", exact: true });
-  await expect(approve).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Reject", exact: true })).toBeEnabled();
-  await expect(page.getByText("Approve unlocks once every item is resolved and none needs a fix.").first()).toBeVisible();
-  await expect(page.getByText("1 unresolved · 0 of 1 resolved")).toBeVisible();
-  await expect(page.locator('li[data-status="not_auto_verified"]')).toHaveCount(1);
-
-  // Fix needed blocks approval and says why; Accept unlocks it.
-  await page.getByRole("radio", { name: "Fix needed" }).click();
-  await expect(page.getByText("Not approvable yet: 1 marked fix needed.").first()).toBeVisible();
-  await expect(approve).toBeDisabled();
-  await page.getByRole("radio", { name: "Accept", exact: true }).click();
-  await expect(page.getByText("Approvable: every item is resolved and none needs a fix.")).toBeVisible();
-  await expect(page.getByText("0 unresolved · 1 of 1 resolved")).toBeVisible();
-  await expect(page.getByText(`Saved as run ${companyReview}`)).toBeVisible();
+  const reject = page.getByRole("button", { name: "Reject", exact: true });
   await expect(approve).toBeEnabled();
+  await expect(reject).toBeEnabled();
+  await expect(page.getByText("Ready for a decision: nothing is flagged.")).toBeVisible();
+  await expect(page.getByText(`Saved as run ${paymentsReview}`)).toBeVisible();
 
-  // The confirm dialog: Cancel and Escape close it without deciding.
-  await approve.click();
-  const dialog = page.getByRole("dialog", { name: "Approve this section?" });
-  await expect(dialog).toContainText("Every value is accepted as drafted. This is recorded once and cannot be changed.");
+  // Rejecting always asks first; Cancel and Escape close its dialog without deciding.
+  await reject.click();
+  const dialog = page.getByRole("dialog", { name: "Reject this section?" });
+  await expect(dialog).toContainText("locks the current draft as rejected");
   await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(dialog).toBeHidden();
-  await approve.click();
+  await reject.click();
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
   await expect(approve).toBeEnabled();
-  await approve.click();
-  await dialog.getByRole("button", { name: "Approve", exact: true }).click();
-  await expect(dialog).toBeHidden();
+  await expect(reject).toBeEnabled();
 
+  // Nothing is flagged, so Approve records the decision at once: there is no confirmation to answer.
+  await approve.click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByText("Approved and locked")).toBeVisible();
   await expect(page.getByText("Decision recorded: approved.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Approve", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("radio", { name: "Accept", exact: true })).toBeDisabled();
-  await expect(page.getByLabel(/^Note for /)).toHaveAttribute("readonly", "");
+  await expect(page.getByRole("button", { name: "Reject", exact: true })).toHaveCount(0);
 
   // The review's own address opens it again; Back goes to its report's sections, where it now reads Approved.
-  await page.goto(`/overview?report=weekly&period=${encodeURIComponent(PERIOD)}&review=${companyReview}`);
+  await page.goto(`/overview?report=weekly&period=${encodeURIComponent(PERIOD)}&review=${paymentsReview}`);
   await expect(page.getByText("Approved and locked")).toBeVisible();
   await topbar(page).getByRole("button", { name: "Back to all sections" }).click();
-  await expect(card(page, "Company Updates")).toContainText("Approved");
-  await expect(card(page, "Company Updates").getByRole("button", { name: "View review" })).toBeVisible();
-  await expect(page.getByText("Available once every section is approved: 5 of 6 still to go.")).toBeVisible();
-  await expect(page.getByText("Company Updates: Approved")).toBeVisible();
+  await expect(card(page, "Digital Payments")).toContainText("Approved");
+  await expect(card(page, "Digital Payments").getByRole("button", { name: "View review" })).toBeVisible();
+  await expect(page.getByText("Available once every section is approved: 4 of 5 still to go.")).toBeVisible();
 });
 
 test("T10 the sticky status bar stays under the top bar while a review scrolls", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 500 });
-  await page.goto(`/overview?review=${companyReview}`);
+  await page.goto(`/overview?review=${paymentsReview}`);
   await expect(page.getByText("Decision recorded: approved.")).toBeVisible();
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(100);
-  const bar = page.locator("div.sticky", { has: page.getByRole("progressbar", { name: "Items resolved" }) });
+  const bar = page.locator('[data-attention="review-status-bar"]');
   // 44px top bar, then the dev ribbon's 28px when the review is a dev draft (this one is not).
   await expect.poll(async () => Math.round((await bar.boundingBox())?.y ?? -1)).toBe(44); // once the screen has settled into place
   await expect(page.getByRole("button", { name: "Back to all sections" }).last()).toBeInViewport();
@@ -346,18 +346,18 @@ test("T11 a stopped run shows the error text and the way back", async ({ page })
   await page.getByRole("button", { name: DRAFT }).click();
   await expect(page).toHaveURL(/\/runs\/[^/]+$/);
   await expect(page.getByRole("heading", { name: "Real Estate: draft run", level: 1 })).toBeVisible();
-  const alert = page.getByRole("alert").filter({ hasText: "The draft stopped." });
+  const alert = page.getByRole("alert").filter({ hasText: "Drafting could not be completed." });
   await expect(alert).toContainText("the Ibuka summary could not be fetched (a deliberate failure for the tests)");
   await expect(page.getByText(/^Stopped .* EAT\.$/)).toBeVisible();
   await expect(page.getByRole("log", { name: "Steps of this draft" }).getByRole("listitem").last()).toContainText("Failed: The draft stopped.");
   await expect(page.getByRole("heading", { name: "Draft ready for review" })).toHaveCount(0);
   await page.getByRole("link", { name: "Back to overview" }).click();
-  await expect(page.getByRole("heading", { name: "Coordinator review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Analyst review", level: 1 })).toBeVisible();
   expect(new URL(page.url()).searchParams.get("period")).toBe(PERIOD);
   await expect(card(page, "Real Estate").getByText("Not drafted for w/e 9 Oct 2026")).toBeVisible();
 });
 
-test("T12 Fixed Income: run view steps to done, review lists the three statuses, accepting, notes, the leave prompt", async ({ page }) => {
+test("T12 Fixed Income: run view steps to done, review lists the three statuses, the section-level decision is open and asks first (reads CBK and cytonnreport.com; not run in the offline pass)", async ({ page }) => {
   test.setTimeout(RUN_TIMEOUT + 120_000);
   await openStart(page, "Fixed Income");
   await draftAnyway(page, DRAFT);
@@ -380,7 +380,7 @@ test("T12 Fixed Income: run view steps to done, review lists the three statuses,
   await expect(tiles).toContainText("Clean");
   await page.getByRole("link", { name: "Open review" }).click();
 
-  await expect(page.getByRole("heading", { name: "Fixed Income: coordinator review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Fixed Income: analyst review", level: 1 })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Review items", level: 2 })).toBeVisible();
   const flaggedHead = page.getByRole("button", { name: /^! Flagged by the checker \(\d+\)$|^Flagged by the checker \(\d+\)$/ });
   const unverifiedHead = page.getByRole("button", { name: /Not automatically verified \(\d+\)$/ });
@@ -400,44 +400,24 @@ test("T12 Fixed Income: run view steps to done, review lists the three statuses,
   await expect(flagged.first()).toContainText("Flagged");
   await expect(unverified.first()).toContainText("Not auto-verified");
   await expect(clean.first()).toContainText("Clean");
-  // The scorecard's totals are the lists' lengths.
-  const total = (await flagged.count()) + (await unverified.count()) + (await clean.count());
-  await expect(page.getByText(new RegExp(`${total} unresolved · 0 of ${total} resolved`))).toBeVisible();
-  await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeDisabled();
+  // The status bar's totals are the lists' lengths.
+  const flaggedCount = await flagged.count();
+  const total = flaggedCount + (await unverified.count()) + (await clean.count());
+  expect(total).toBeGreaterThan(flaggedCount);
+  await expect(page.locator('[data-attention="review-status-bar"]')).toContainText(`${flaggedCount} flagged · ${await unverified.count()} not auto-verified · ${await clean.count()} clean`);
   // A dev draft carries its mark on the review too.
   await expect(page.getByRole("heading", { name: /^Drafted section: / })).toBeVisible();
 
-  // Accept one item: its chip changes at once and the count follows the server.
-  const first = unverified.first();
-  await expect(first.getByText("Unresolved", { exact: true }).first()).toBeVisible();
-  await first.getByRole("radio", { name: "Accept", exact: true }).click();
-  await expect(first.getByText("Accepted", { exact: true })).toBeVisible();
-  await expect(first.getByRole("radio", { name: "Accept", exact: true })).toBeChecked();
-  await expect(page.getByText(new RegExp(`${total - 1} unresolved · 1 of ${total} resolved`))).toBeVisible();
-
-  // Every clean item at once.
-  const cleanCount = await clean.count();
-  await page.getByRole("button", { name: `Mark all clean as accepted (${cleanCount} unresolved)` }).click();
-  await expect(page.getByRole("button", { name: "Mark all clean as accepted (0 unresolved)" })).toBeDisabled();
-  await expect(page.getByText(new RegExp(`${total - 1 - cleanCount} unresolved · ${1 + cleanCount} of ${total} resolved`))).toBeVisible();
-  await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeDisabled(); // flagged items are still open
-
-  // A note is saved when the box is left; until then the browser asks before the page is left.
-  const note = first.getByLabel(/^Note for /);
-  await note.fill("checked against the bulletin");
-  let asked = "";
-  page.once("dialog", (d) => {
-    asked = d.type();
-    void d.dismiss();
-  });
-  await page.evaluate(() => window.location.reload());
-  await expect.poll(() => asked).toBe("beforeunload");
-  await expect(note).toHaveValue("checked against the bulletin");
-  await note.press("Enter");
+  // Flagged items exist, so Approve is open but asks first, naming the count; Cancel records nothing.
+  const approve = page.getByRole("button", { name: "Approve", exact: true });
+  await expect(approve).toBeEnabled();
+  await approve.click();
+  const dialog = page.getByRole("dialog", { name: "Approve with flagged items?" });
+  await expect(dialog).toContainText(`This section has ${flaggedCount} flagged item${flaggedCount === 1 ? "" : "s"}:`);
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByText("Decision recorded")).toHaveCount(0);
   await expect(page.getByText(/^Saved as run \d+$/)).toBeVisible();
-  await page.reload(); // saved now: no prompt, and the note is the server's
-  await expect(page.locator('li[data-status="not_auto_verified"]').first().getByLabel(/^Note for /)).toHaveValue("checked against the bulletin");
-  await expect(page.locator('li[data-status="not_auto_verified"]').first().getByRole("radio", { name: "Accept", exact: true })).toBeChecked();
 
   // The overview now offers it for resuming.
   await topbar(page).getByRole("button", { name: "Back to all sections" }).click();
@@ -452,22 +432,22 @@ test("T13 Equities: run to done and its review opens with items", async ({ page 
   await expect(page.getByRole("heading", { name: "Equities: draft run", level: 1 })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Draft ready for review", level: 2 })).toBeVisible({ timeout: RUN_TIMEOUT });
   await page.getByRole("link", { name: "Open review" }).click();
-  await expect(page.getByRole("heading", { name: "Equities: coordinator review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Equities: analyst review", level: 1 })).toBeVisible();
   expect(await page.locator("li[data-status]").count()).toBeGreaterThan(0);
   await expect(page.getByRole("button", { name: /Flagged by the checker \(\d+\)$/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeEnabled(); // one decision for the whole section, asked for once it is read
   await expect(page.getByRole("button", { name: "Reject", exact: true })).toBeEnabled();
 });
 
 test("T14 Word export: off until every section is approved; when the API says ready, the file downloads under its name", async ({ page }) => {
   await openOverview(page);
   await expect(page.getByRole("button", { name: "Export weekly report" })).toBeDisabled();
-  await expect(page.getByText("Available once every section is approved: 5 of 6 still to go.")).toBeVisible();
+  await expect(page.getByText("Available once every section is approved: 4 of 5 still to go.")).toBeVisible();
 
-  // Approving all six sections needs live sources the test instance does not have, so the API's two export answers
+  // Approving all five sections needs live sources the test instance does not have, so the API's two export answers
   // are stood in for here; what is under test is what the page does with them.
   const cors = { "access-control-allow-origin": "*", "access-control-expose-headers": "Content-Disposition" };
-  const sections = ["Company Updates", "Fixed Income", "Equities", "Real Estate", "Digital Payments", "Focus of the Week"];
+  const sections = ["Fixed Income", "Equities", "Real Estate", "Digital Payments", "Focus of the Week"];
   await page.route(/\/api\/export\/weekly/, async (route) => {
     if (route.request().method() === "GET") {
       await route.fulfill({
@@ -492,11 +472,12 @@ test("T14 Word export: off until every section is approved; when the API says re
 });
 
 test("T15 a run the API no longer has says so and links to the overview", async ({ page }) => {
+  await pinWeeks(page);
   await page.goto("/runs/not-a-run");
   await expect(page.getByRole("heading", { name: "Draft run", level: 1 })).toBeVisible();
-  await expect(page.getByText("This run is no longer available. If the draft finished, open the section from the overview.")).toBeVisible();
+  await expect(page.getByText(/This run is no longer available\. The tool was restarted, which stops a draft/)).toBeVisible();
   await page.getByRole("link", { name: "Go to the overview" }).click();
-  await expect(page).toHaveURL(/\/overview$/);
+  await expect(page).toHaveURL(DEFAULT_WEEK); // a bare /overview opens on a labelled week
 });
 
 test("T16 keyboard: the skip link comes first, the theme group is one tab stop moved by arrow keys", async ({ page }) => {
@@ -526,4 +507,32 @@ test("T16 keyboard: the skip link comes first, the theme group is one tab stop m
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   await page.keyboard.press("Tab"); // one tab stop: the next Tab leaves the group
   await expect(page.getByRole("radio", { name: /theme$/ }).and(page.locator(":focus"))).toHaveCount(0);
+});
+
+test("T107 the Monthly: four stub sections, each with its reason; a month a Markets Review covers is refused", async ({ page }) => {
+  await page.goto("/overview");
+  await page.getByLabel("Report type").selectOption("monthly");
+  const periodBox = page.getByLabel("Period", { exact: true });
+  await periodBox.fill("Sep'2026");
+  await page.getByRole("button", { name: "Show sections" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "September 2026 has no Cytonn Monthly: it is covered by the Q3 Markets Review." })).toBeVisible();
+  await expect(periodBox).toHaveAttribute("aria-invalid", "true");
+  await periodBox.fill("Oct'2026");
+  await page.getByRole("button", { name: "Show sections" }).click();
+  await expect(page.getByText("Monthly, Oct'2026: 4 report sections.", { exact: false })).toBeVisible();
+  expect(new URL(page.url()).searchParams.get("report")).toBe("monthly");
+  expect(new URL(page.url()).searchParams.get("period")).toBe("Oct'2026");
+  const reasons: [string, string][] = [
+    ["Fixed Income", "The monthly T-bill and T-bond averages, the two-month Bond Issuances table"],
+    ["Equities", "The month's index moves and the month-start levels are not built."],
+    ["Real Estate", "The month round-up, the industry report table and the REIT results tables have no verified source."],
+    ["Digital Payments", "The financial results table and the previous month-end price column have no confirmed source or metrics."],
+  ];
+  for (const [title, reason] of reasons) {
+    const row = card(page, title);
+    await expect(row.getByText("Not available yet").first()).toBeVisible();
+    await expect(row.getByText(reason, { exact: false })).toBeVisible();
+    await expect(row.getByText("Unblocked by:")).toBeVisible();
+  }
+  await expect(card(page, "Focus of the Week")).toHaveCount(0);
 });

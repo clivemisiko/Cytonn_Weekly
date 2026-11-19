@@ -1,21 +1,31 @@
+import { type ChatApi, parseJob, parseListing } from "./chat";
+import { fileNameOf } from "./rows";
 import type {
+  AddedSource,
   AnalystForm,
   AnalystRow,
   AppConfig,
   ChartSeriesFile,
+  EquitiesCompanies,
   Decision,
   DismissReason,
+  Drafting,
   ExportStatus,
   FixResult,
   Notable,
   Overview,
+  PreviousWeeks,
   RejectedDraftNotes,
   ReportChoice,
-  Resolution,
   Review,
   Run,
   SentenceResult,
+  SourceInput,
+  SourceMeta,
+  SnipsListing,
+  SourcesListing,
   WeeklyInputs,
+  Gathered,
 } from "./types";
 
 /** Empty by default: the page calls its own origin, and Vite proxies /api to the backend (vite.config.ts). */
@@ -146,25 +156,102 @@ const reportQuery = (report: ReportChoice) => {
 /** One report's sections at a glance, with its review for this period (if any). A period that does not fit is a 422. */
 export const getOverview = async (report: ReportChoice = WEEKLY_REPORT): Promise<Overview> => {
   const overview = await request<Overview>(`/api/sections?${reportQuery(report)}`);
-  // An API from before `drafting` existed omits it; absent means nothing is drafting, never undefined.
-  return { ...overview, drafting: overview.drafting ?? null };
+  // An API from before `drafting` existed omits it; absent means nothing is drafting, never undefined. The list names
+  // the section `section`; the screens read it as `slug`, as they always have.
+  const list = (overview.drafting_list as unknown as (Drafting & { section: string })[] | undefined) ?? undefined;
+  return { ...overview, drafting: overview.drafting ?? null, drafting_list: list?.map((e) => ({ ...e, slug: e.section })) };
 };
 
 /**
  * Start a draft of one section of one report with the real pipeline, and get its run id back at once; the run view
- * then shows the draft as it happens. Focus of the Week needs the coordinator's topic, Company Updates their text.
- * `provider` is the provider this screen told the coordinator a draft would use: the API refuses the run if it is
+ * then shows the draft as it happens. Focus of the Week needs the analyst's topic.
+ * `provider` is the provider this screen told the analyst a draft would use: the API refuses the run if it is
  * configured for another, and never takes it as a choice.
  */
 export const startRun = (
   slug: string,
   report: ReportChoice,
-  input: { topic?: string; text?: string; provider?: string } = {},
+  input: { topic?: string; sections?: string; provider?: string } = {},
 ) =>
-  request<{ run_id: string }>("/api/runs", {
+  request<{ run_id: string; state: "running" | "queued"; position: number | null }>("/api/runs", {
     method: "POST",
     body: JSON.stringify({ ...input, section: slug, report_type: report.type, period: report.period || null, kind: report.kind }),
   });
+
+/** Take a queued run out of the queue. A running draft cannot be stopped (409). */
+export const cancelRun = (runId: string) => request<{ run_id: string; status: string }>(`/api/runs/${runId}/cancel`, { method: "POST" });
+
+const sourcesQuery = (slug: string, report: ReportChoice, sections?: string) => {
+  const q = new URLSearchParams(reportQuery(report));
+  q.set("section", slug);
+  if (sections?.trim()) q.set("sections", sections);
+  return q;
+};
+
+/** The weekly Equities part's listed banks and insurers, and whether each one's website is set. */
+export const getEquitiesCompanies = () => request<EquitiesCompanies>("/api/equities/companies");
+
+/** A section's pieces with the sources supplied for each (Bedrock drafts are written only from these). `sections` is a Focus's typed titles. */
+export const getSources = (slug: string, report: ReportChoice, sections?: string) =>
+  request<SourcesListing>(`/api/sources?${sourcesQuery(slug, report, sections)}`);
+
+/** Supply one source for one piece: a url alone is fetched (approved sites only), a url with a date and text is kept as pasted. A refusal is a plain sentence. */
+export const addSource = (slug: string, report: ReportChoice, subject: string, input: SourceInput, sections?: string) =>
+  request<AddedSource>("/api/sources", {
+    method: "POST",
+    body: JSON.stringify({
+      section: slug,
+      subject,
+      report_type: report.type,
+      period: report.period || null,
+      sections: sections?.trim() ? sections : null,
+      url: input.url,
+      date: input.date || null,
+      text: input.text || null,
+      title: input.title || null,
+    }),
+  });
+
+/** Look again for one piece's sources (the gather step a draft runs). Refused while a draft is running; once an hour per piece. */
+export const gatherSources = (slug: string, report: ReportChoice, subject: string, sections?: string) =>
+  request<Gathered>("/api/sources/gather", {
+    method: "POST",
+    body: JSON.stringify({ section: slug, subject, report_type: report.type, period: report.period || null, sections: sections?.trim() ? sections : null }),
+  }, UPLOAD_TIMEOUT_MS);
+
+const snipsPath = (week: string) => `/api/snips/${encodeURIComponent(week)}`;
+export const getSnips = (week: string) => request<SnipsListing>(snipsPath(week));
+/** Upload one image for one sector: the file is the request body. The API checks its first bytes, size and the sector's count. */
+export const uploadSnip = (week: string, sector: string, file: File) =>
+  request<SnipsListing>(`${snipsPath(week)}/${encodeURIComponent(sector)}?filename=${encodeURIComponent(file.name.slice(0, 200))}`,
+    { method: "PUT", body: file, headers: { "Content-Type": "application/octet-stream" } }, UPLOAD_TIMEOUT_MS);
+/** One vision call (unless the image was read before). It waits for a drafting seat, so it can take a while. */
+export const readSnip = (week: string, hash: string) => request<SnipsListing>(`${snipsPath(week)}/${hash}/read`, { method: "POST" }, UPLOAD_TIMEOUT_MS);
+export const changeSnip = (week: string, hash: string, change: { text?: string; sector?: string; date?: string }) =>
+  request<SnipsListing>(`${snipsPath(week)}/${hash}`, { method: "PATCH", body: JSON.stringify(change) });
+export const confirmSnip = (week: string, hash: string) => request<SnipsListing>(`${snipsPath(week)}/${hash}/confirm`, { method: "POST" });
+export const removeSnip = (week: string, hash: string) => request<SnipsListing>(`${snipsPath(week)}/${hash}`, { method: "DELETE" });
+export const snipImageUrl = (week: string, hash: string) => `${API_BASE}${snipsPath(week)}/${hash}/image`;
+
+export const removeSource =(id: string) => request<{ removed: string }>(`/api/sources/${encodeURIComponent(id)}`, { method: "DELETE" });
+
+/** One saved source's facts (the list route's entry for it, without the text). 404 for an id the API does not have. */
+export const getSource = (id: string) => request<SourceMeta>(`/api/sources/${encodeURIComponent(id)}`);
+
+/** One saved source's text exactly as saved: the raw route, read by the source page (never shown as the route's own page). */
+export async function getSourceText(id: string): Promise<string> {
+  let res: Response;
+  try {
+    res = await fetch(sourceTextUrl(id), { cache: "no-store" });
+  } catch {
+    throw new ApiError(`Could not reach the review API at ${API_NAME}.`, null);
+  }
+  if (!res.ok) throw new ApiError(res.status === 404 ? "The saved text of this source could not be found." : "The saved text could not be read.", res.status);
+  return res.text();
+}
+
+/** Where one source's saved text is served as plain text (a link, never fetched by the app). */
+export const sourceTextUrl = (id: string) => `${API_BASE}/api/sources/${encodeURIComponent(id)}/text`;
 
 /** A run's status, events so far, and (once finished) its saved review. 404 once the API has restarted. */
 export const getRun = (runId: string) => request<Run>(`/api/runs/${encodeURIComponent(runId)}`);
@@ -178,15 +265,6 @@ export const getReview = (runId: number) => request<Review>(`/api/reviews/${runI
 export const getRejectedDraftNotes = (runId: number) => request<RejectedDraftNotes | null>(`/api/reviews/${runId}/rejected-draft-notes`);
 
 /** `note` omitted keeps the item's existing note; a string replaces it (blank clears it). */
-export const resolveItem = (runId: number, index: number, resolution: Resolution, note?: string) =>
-  request<Review>(`/api/reviews/${runId}/items/${index}`, {
-    method: "PATCH",
-    body: JSON.stringify(note === undefined ? { resolution } : { resolution, note }),
-  });
-
-export const acceptClean = (runId: number) =>
-  request<Review>(`/api/reviews/${runId}/accept-clean`, { method: "POST" });
-
 /** The picture of a drawn chart, served only while it is the file the review recorded (a changed or missing file is an error). */
 export const chartImageUrl = (runId: number, chartId: string) => `${API_BASE}/api/reviews/${runId}/charts/${encodeURIComponent(chartId)}.png`;
 
@@ -219,8 +297,15 @@ export const changeSentence = (runId: number, index: number, action: "edit" | "r
     body: JSON.stringify(action === "remove" ? { action } : { action, text }),
   });
 
-export const decide = (runId: number, decision: Decision) =>
-  request<Review>(`/api/reviews/${runId}/decide`, { method: "POST", body: JSON.stringify({ decision }) });
+export const removeFinding = (runId: number, index: number) =>
+  request<{ review: Review; result: SentenceResult }>(`/api/reviews/${runId}/items/${index}/remove-finding`, { method: "POST" });
+
+/** `acknowledgedFlagged` is how many flagged items the person was shown; the server refuses an approval whose count differs. */
+export const decide = (runId: number, decision: Decision, acknowledgedFlagged?: number) =>
+  request<Review>(`/api/reviews/${runId}/decide`, {
+    method: "POST",
+    body: JSON.stringify({ decision, ...(acknowledgedFlagged === undefined ? {} : { acknowledged_flagged: acknowledgedFlagged }) }),
+  });
 
 /** "Week ending 2026-10-02": the weekly report period that names its week. */
 export const weekPeriod = (weekEnding: string) => `Week ending ${weekEnding}`;
@@ -245,7 +330,7 @@ export const removeInput = (weekEnding: string, storedName: string) =>
 export const fetchBulletin = (weekEnding: string) =>
   request<WeeklyInputs>(`${inputsPath(weekEnding)}/cbk_bulletin/fetch`, { method: "POST" }, UPLOAD_TIMEOUT_MS);
 
-export const saveInputNotes = (weekEnding: string, notes: { bidding_range?: string; previous_issue?: string }) =>
+export const saveInputNotes = (weekEnding: string, notes: { bidding_range?: string; previous_issue?: string; as_at?: string }) =>
   request<WeeklyInputs>(`${inputsPath(weekEnding)}/notes`, { method: "PUT", body: JSON.stringify(notes) });
 
 const chartPath = (weekEnding: string, key: string) => `${inputsPath(weekEnding)}/charts/${encodeURIComponent(key)}`;
@@ -262,6 +347,9 @@ export const removeChart = (weekEnding: string, key: string) =>
 export const saveChartLeadIn = (weekEnding: string, key: string, leadIn: string) =>
   request<WeeklyInputs>(`${chartPath(weekEnding, key)}/lead-in`, { method: "PUT", body: JSON.stringify({ lead_in: leadIn }) });
 
+export const saveChartSource = (weekEnding: string, key: string, source: string) =>
+  request<WeeklyInputs>(`${chartPath(weekEnding, key)}/source`, { method: "PUT", body: JSON.stringify({ source }) });
+
 export const chartUploadUrl = (weekEnding: string, key: string, version: string) =>
   `${API_BASE}${chartPath(weekEnding, key)}/image?v=${encodeURIComponent(version)}`;
 
@@ -270,6 +358,39 @@ const analystPath = (weekEnding: string, section: string) =>
 
 /** The "Weekly analyst inputs" form for one section of one report week. */
 export const getAnalystInputs = (weekEnding: string, section: string) => request<AnalystForm>(analystPath(weekEnding, section));
+
+/** Have the API fetch one form table from CBK and keep it on the form, marked fetched. */
+export const fetchAnalystTable = (weekEnding: string, section: string, key: string) =>
+  request<AnalystForm>(`${inputsPath(weekEnding)}/analyst/fetch/${encodeURIComponent(key)}?section=${encodeURIComponent(section)}`, { method: "POST" }, UPLOAD_TIMEOUT_MS);
+
+const fundSnipPath = (weekEnding: string) => `${inputsPath(weekEnding)}/fund-snip`;
+const json = (body: unknown) => ({ method: "PUT", body: JSON.stringify(body) });
+
+/** The week's Daily Nation fund page as the card shows it. Answers are checked whole by lib/fundsnip.ts. */
+export const getFundSnip = (weekEnding: string) => request<unknown>(fundSnipPath(weekEnding));
+
+export const uploadFundSnip = (weekEnding: string, file: File) =>
+  request<unknown>(fundSnipPath(weekEnding), { method: "PUT", body: file, headers: { "Content-Type": "application/octet-stream" } }, UPLOAD_TIMEOUT_MS);
+
+export const deleteFundSnip = (weekEnding: string) => request<unknown>(fundSnipPath(weekEnding), { method: "DELETE" });
+
+/** Read the page (OCR: about a minute). Nothing reaches the form until the analyst confirms. */
+export const readFundSnip = (weekEnding: string) => request<unknown>(`${fundSnipPath(weekEnding)}/read`, { method: "POST" }, 600_000);
+
+export const saveFundSnipEdits = (weekEnding: string, edits: { fixes: Record<string, unknown>; typed: { fund: string; rate: string }[] }) =>
+  request<unknown>(`${fundSnipPath(weekEnding)}/edits`, json(edits));
+
+/** Keep the corrected table on the form as the analyst's own; the answer is the form, as after any save. */
+export const confirmFundSnip = (weekEnding: string, section: string, published: string) =>
+  request<AnalystForm>(`${fundSnipPath(weekEnding)}/confirm?section=${encodeURIComponent(section)}`, { method: "POST", body: JSON.stringify({ published }) });
+
+export const fundSnipImageUrl = (weekEnding: string, version: string) => `${API_BASE}${fundSnipPath(weekEnding)}/image?v=${encodeURIComponent(version)}`;
+
+export const saveFundList = (include: string[]) => request<unknown>("/api/settings/fund-list", json({ include }));
+
+/** One page fund: put it on the list (include), leave it out (exclude), or say it is a list fund under another name (alias, `to`). */
+export const decideFund = (pageName: string, decision: "include" | "exclude" | "alias", to?: string) =>
+  request<unknown>("/api/settings/fund-list/decide", { method: "POST", body: JSON.stringify({ page_name: pageName, decision, ...(to ? { to } : {}) }) });
 
 export interface AnalystChanges {
   /** A field left out is kept; null clears it. */
@@ -301,11 +422,58 @@ const exportPath = (period: string) => `/api/export/weekly${period ? `?period=${
 /** Whether the week's report can be exported: every weekly section's state. */
 export const getExportStatus = (period: string) => request<ExportStatus>(exportPath(period));
 
+/** Every fully approved weekly week, newest first, and the week the overview opens on. */
+export const getPreviousWeeks = () => request<PreviousWeeks>("/api/previous/weekly");
+
+// ---- The analyst chat (one conversation per report, period and section) ----
+
+const unexpected = () => new ApiError("The server's answer about the conversation was not in the shape this page expects. Reload the page, and tell the team if it happens again.", null);
+const jobBody = (body: unknown) => (body as { job?: unknown } | null)?.job;
+
+/** What the section needs for the week, worked out now (not the saved card). The page checks the shape (parseReadiness in chatcards.ts). */
+export const getReadiness = (jobId: number) => request<{ readiness: unknown }>(`/api/jobs/${jobId}/readiness`);
+
+/** The same check for a section and week with no conversation (the prepare page): it opens no job and calls no model.
+ *  `conversation` says whether a conversation for them already holds more than its recorded snapshot. */
+export const getSectionReadiness = (section: string, period: string) =>
+  request<{ readiness: unknown; conversation: boolean }>(`/api/sections/${encodeURIComponent(section)}/readiness?${new URLSearchParams({ period }).toString()}`);
+
+/** The four calls the chat page makes. Each answer is checked whole; one that is not as expected is an error, never half used. */
+export const chatApi: ChatApi = {
+  async open(section, period) {
+    const body = await request<{ job: unknown; created?: boolean }>("/api/jobs", { method: "POST", body: JSON.stringify({ section, report_type: "weekly", period }) });
+    const job = parseJob(body.job);
+    if (!job) throw unexpected();
+    return { job, created: body.created === true };
+  },
+  async list(jobId, after) {
+    const got = parseListing(await request<unknown>(`/api/jobs/${jobId}/messages?after=${after}`));
+    if (!got) throw unexpected();
+    return got;
+  },
+  async send(jobId, content) {
+    const body = await request<{ seq?: unknown; job?: unknown }>(`/api/jobs/${jobId}/messages`, { method: "POST", body: JSON.stringify({ content }) });
+    const job = parseJob(body.job);
+    if (!job || typeof body.seq !== "number") throw unexpected();
+    return { seq: body.seq, job };
+  },
+  async raise(jobId) {
+    const job = parseJob(jobBody(await request<unknown>(`/api/jobs/${jobId}/raise-budget`, { method: "POST" })));
+    if (!job) throw unexpected();
+    return { job };
+  },
+};
+
 /** The approved weekly report as a Word file. The API refuses (409, naming each section) unless all are approved. */
-export const exportWeekly = async (period: string): Promise<{ blob: Blob; name: string }> => {
+export const exportWeekly = (period: string) => postForFile(exportPath(period), "cytonn-weekly.docx");
+
+/** This week's rows from the history store as an .xlsx. 422 for a day that is not a Friday, 409 when an uploaded workbook cannot be read. */
+export const exportWeeklyRows = (weekEnding: string) => postForFile(`/api/export/weekly-rows/${encodeURIComponent(weekEnding)}`, "weekly-rows.xlsx");
+
+async function postForFile(path: string, fallbackName: string): Promise<{ blob: Blob; name: string }> {
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}${exportPath(period)}`, { method: "POST", cache: "no-store" });
+    res = await fetch(`${API_BASE}${path}`, { method: "POST", cache: "no-store" });
   } catch {
     throw new ApiError(`Could not reach the report tool's server (${API_NAME}). Check that it is running, then try again.`, null);
   }
@@ -318,9 +486,8 @@ export const exportWeekly = async (period: string): Promise<{ blob: Blob; name: 
     }
     throw failed(detailText(body, `${res.status} ${res.statusText}`), res.status, parseProblems(body), true);
   }
-  const named = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "");
-  return { blob: await res.blob(), name: named ? named[1] : "cytonn-weekly.docx" };
-};
+  return { blob: await res.blob(), name: fileNameOf(res.headers.get("content-disposition"), fallbackName) };
+}
 
 const notablePath = (section: string) => `/api/notable/${encodeURIComponent(section)}`;
 const weekQuery = (weekEnding: string) => `week_ending=${encodeURIComponent(weekEnding)}`;

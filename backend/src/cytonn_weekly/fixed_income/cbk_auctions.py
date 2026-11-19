@@ -303,6 +303,8 @@ def parse_tbond_results(tables: list, text: str = "") -> dict[str, Any]:
     }
 
 
+SKIPPED_NEWEST = 10      # how many of the listing's newest files are named when their file name carries no value date
+SKIPPED_NEAR_DAYS = 7    # a file whose value date is this close to the window is named when it is left out
 _LINK_DATE = re.compile(r"DATED\s+(\d{2})-(\d{2})-(\d{4})", re.I)
 
 
@@ -337,9 +339,15 @@ def fetch_period_tbonds(start: date, end: date, get: Getter = http_get) -> dict[
     """
     links = latest_pdf_links(get(TBOND_LISTING).decode("utf-8", errors="replace"), "historical_treasury_bond_results")
     auctions: list[dict[str, Any]] = []
-    for url in links:
+    skipped: list[dict[str, str]] = []   # newest files left out for their name or a value date just outside the window; never changes what is included
+    for n, url in enumerate(links):
         when, kind = link_value_date(url), link_kind(url)
         if when is None or not start <= when <= end or kind == "buyback":
+            name = url.rsplit("/", 1)[-1]
+            if when is None and n < SKIPPED_NEWEST:
+                skipped.append({"file": name, "why": "its name has no \"DATED dd-mm-yyyy\", so no value date could be read"})
+            elif when is not None and kind != "buyback" and abs((when - (start if when < start else end)).days) <= SKIPPED_NEAR_DAYS:
+                skipped.append({"file": name, "why": f"its value date {when.isoformat()} is outside {start.isoformat()} to {end.isoformat()}"})
             continue
         auction: dict[str, Any] = {"url": url, "kind": kind, "value_date": when.isoformat()}
         try:
@@ -351,7 +359,8 @@ def fetch_period_tbonds(start: date, end: date, get: Getter = http_get) -> dict[
             auction.update(rows=[], total_offered_kes_bn=None, error=f"{type(exc).__name__}: {exc}")
         auctions.append(auction)
     auctions.sort(key=lambda a: a["value_date"], reverse=True)
-    return {"listing_url": TBOND_LISTING, "start": start.isoformat(), "end": end.isoformat(), "auctions": auctions}
+    return {"listing_url": TBOND_LISTING, "start": start.isoformat(), "end": end.isoformat(), "auctions": auctions,
+            "skipped_files": skipped}
 
 
 def fetch_period_tbills(start: date, end: date, get: Getter = http_get) -> dict[str, Any]:

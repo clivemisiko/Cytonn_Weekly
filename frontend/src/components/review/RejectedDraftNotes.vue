@@ -45,7 +45,7 @@ const title = (n: RejectedDraftNotes) => `Notes from the rejected draft (run ${n
       <li v-for="(e, n) in notes.entries" :key="n" class="space-y-1 px-3 py-2">
         <p class="flex flex-wrap items-center gap-2 text-sm font-medium">
           <span class="[overflow-wrap:anywhere]">{{ e.ref }}</span>
-          <span class="rounded-sm border px-1.5 py-0.5 text-xs font-semibold" :class="CHIP[resolutionKey(e.resolution)]">
+          <span v-if="e.resolution" class="rounded-sm border px-1.5 py-0.5 text-xs font-semibold" :class="CHIP[resolutionKey(e.resolution)]">
             {{ RESOLUTION_LABELS[resolutionKey(e.resolution)] }}
           </span>
         </p>

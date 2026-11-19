@@ -5,7 +5,7 @@ import { DRAFT, VARIANT, openStart, overviewUrl, release } from "./helpers";
 
 /**
  * T87 to T98: what the page does when an action fails with a named problem (frontend/src/lib/attention.ts). A whole
- * action that failed opens one alert dialog (the headline, "The details are shown on the page.", Show me and Close)
+ * action that failed opens one alert dialog (the headline, a pointer to the highlighted section, Show me and Close)
  * and the full sentence stays on the page once; an inline problem opens no dialog and the page goes to it. Failures
  * the test instance cannot produce are stood in for with page.route, in the API's own shape (detail and problems).
  * With E2E_SHOTS=<folder>, T93 also writes screenshots there.
@@ -30,7 +30,7 @@ test("T87 a whole action that failed: one alert dialog with the headline, the se
   await failingDraft(page, modeChanged);
   const open = dialog(page, "The drafting mode changed");
   await expect(open).toBeVisible();
-  await expect(open.getByText("The details are shown on the page.", { exact: true })).toBeVisible();
+  await expect(open.getByText("Please review the highlighted section on the screen to resolve this issue.", { exact: true })).toBeVisible();
   await expect(open.getByRole("button")).toHaveText(["Close", "Show me"]);
   await expect(page.getByText(MODE, { exact: true })).toHaveCount(1); // the full sentence is on the page, not in the dialog
   await expect(open.getByText(MODE)).toHaveCount(0);
@@ -63,7 +63,7 @@ test("T88 Escape and Close shut the dialog; focus goes back where it was, or to 
 test("T89 an inline problem opens no dialog: the page goes to the refusal and focuses it", async ({ page }) => {
   await openStart(page, "Fixed Income");
   const panel = page.locator('[data-attention="inputs-panel"]');
-  await panel.locator('input[type="file"]').nth(5).setInputFiles({ name: "not-a-pdf.pdf", mimeType: "application/pdf", buffer: Buffer.from("hello") });
+  await panel.locator('input[type="file"]').nth(2).setInputFiles({ name: "not-a-pdf.pdf", mimeType: "application/pdf", buffer: Buffer.from("hello") });
   const refusal = panel.getByRole("alert").filter({ hasText: "not-a-pdf.pdf: NSE yield curve: this is not a PDF file" });
   await expect(refusal).toBeVisible();
   await expect(refusal).toBeFocused();
@@ -83,19 +83,19 @@ test("T90 a refused value saved from a field: no dialog; the form disables its f
   await expect(page.getByRole("alertdialog")).toHaveCount(0);
 });
 
-test("T91 a review change the API refuses as already decided: the dialog, then Show me goes to the status bar's notice", async ({ page }) => {
-  await openStart(page, "Company Updates");
-  await page.getByLabel("Your Company Updates text").fill("The firm opened a new office in Nairobi.");
-  await page.getByRole("button", { name: "Save your text as the section" }).click();
+test("T91 a decision the API refuses as already made: the dialog, then Show me goes to the status bar's notice", async ({ page }) => {
+  await openStart(page, "Digital Payments");
+  await page.getByRole("button", { name: DRAFT }).click();
   await expect(page.getByRole("heading", { name: "Draft ready for review", level: 2 })).toBeVisible();
   await page.getByRole("link", { name: "Open review" }).click();
-  await expect(page.getByRole("heading", { name: "Company Updates: coordinator review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Digital Payments: analyst review", level: 1 })).toBeVisible();
 
   const decided = "This section was already approved (review 1), so it cannot be changed. Reload the page to see the decision.";
-  await page.route("**/api/reviews/*/items/*", (route) =>
+  await page.route("**/api/reviews/*/decide", (route) =>
     route.fulfill({ status: 409, json: { detail: decided, problems: [{ code: "review_already_decided", headline: "This section was already decided", target: "review-status-bar" }] } }),
   );
-  await page.getByRole("radio", { name: "Accept", exact: true }).click();
+  await page.getByRole("button", { name: "Reject", exact: true }).click();
+  await page.getByRole("dialog", { name: "Reject this section?" }).getByRole("button", { name: "Reject", exact: true }).click();
   const open = dialog(page, "This section was already decided");
   await expect(open).toBeVisible();
   await open.getByRole("button", { name: "Show me" }).click();
@@ -134,7 +134,7 @@ test("T93 screenshots of the dialog (light, dark, 390px) and of an inline proble
   await page.emulateMedia({ colorScheme: "light" });
   await openStart(page, "Fixed Income");
   const panel = page.locator('[data-attention="inputs-panel"]');
-  await panel.locator('input[type="file"]').nth(5).setInputFiles({ name: "not-a-pdf.pdf", mimeType: "application/pdf", buffer: Buffer.from("hello") });
+  await panel.locator('input[type="file"]').nth(2).setInputFiles({ name: "not-a-pdf.pdf", mimeType: "application/pdf", buffer: Buffer.from("hello") });
   const refusal = panel.getByRole("alert").filter({ hasText: "not-a-pdf.pdf" });
   await expect(refusal).toBeFocused();
   await expect(refusal).toBeInViewport({ ratio: 1 });
@@ -149,7 +149,7 @@ const outline = (loc: ReturnType<Page["locator"]>) =>
 async function refuseUpload(page: Page) {
   await openStart(page, "Fixed Income");
   const panel = page.locator('[data-attention="inputs-panel"]');
-  await panel.locator('input[type="file"]').nth(5).setInputFiles({ name: "not-a-pdf.pdf", mimeType: "application/pdf", buffer: Buffer.from("hello") });
+  await panel.locator('input[type="file"]').nth(2).setInputFiles({ name: "not-a-pdf.pdf", mimeType: "application/pdf", buffer: Buffer.from("hello") });
   return panel.locator("[data-problem]").filter({ hasText: "not-a-pdf.pdf" });
 }
 
@@ -196,7 +196,7 @@ test("T97 under reduced motion the highlight is the outline alone, with no pulse
 test("T98 an export the API refuses: the error is in the feed, Show me goes to it, and it stays in view with the panel folded", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 768 });
   const NOT_READY = "The weekly report cannot be exported yet: Fixed Income (still in review).";
-  const sections = ["Company Updates", "Fixed Income", "Equities", "Real Estate", "Digital Payments", "Focus of the Week"];
+  const sections = ["Fixed Income", "Equities", "Real Estate", "Digital Payments", "Focus of the Week"];
   // The export is stood in for as T14 does: the status says ready, so the button can be pressed, and the file is refused.
   await page.route(/\/api\/export\/weekly/, (route) =>
     route.request().method() === "GET"

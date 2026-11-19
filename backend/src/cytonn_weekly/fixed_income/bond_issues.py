@@ -38,6 +38,8 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Optional
 
+from cytonn_weekly.common import atomic
+
 HEADING = "Issues of Treasury Bonds"
 SOURCE_NAME = "CBK, Issues of Treasury Bonds"
 CACHE_FILE = "bond_issues.json"
@@ -159,8 +161,7 @@ def read_maturities(page: Optional[bytes], folder: Path) -> dict[str, Any]:
             digest = hashlib.sha256(table_html(text).encode("utf-8")).hexdigest()
             rows = parse_issues(text)
             kept = {"sha256": digest, "fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "rows": rows}
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(kept, indent=1, sort_keys=True), encoding="utf-8")
+            atomic.write_atomic(path, json.dumps(kept, indent=1, sort_keys=True))
             return {"maturities": maturities(rows), "sha256": digest, "fetched_at": kept["fetched_at"], "warnings": []}
         except IssuesTableError as exc:
             problem = str(exc)

@@ -132,13 +132,13 @@ def test_a_typed_start_moves_the_log_and_the_pro_rating_and_is_said_on_the_figur
 # Carrying forward, and the API
 # ---------------------------------------------------------------------------
 
-def test_the_start_carries_forward_and_is_used_at_once_and_the_target_waits_to_be_confirmed(root):
+def test_the_start_and_the_target_carry_forward_and_are_used_at_once(root):
     save(root, {"fiscal_year_start": "2026-07-01", "borrowing_target": "919.36"})
     out = analyst.carry_forward(NEXT, root)
     assert set(out["carried"]) == {"fiscal_year_start", "borrowing_target"}
-    assert out["unconfirmed"] == ["borrowing_target"]                  # the target is confirmed each week; the start is used
+    assert out["unconfirmed"] == []      # the target changes only when the Treasury revises it (the team, 2026-11-03)
     data = analyst.Analyst(inputs.WeeklyInputs(NEXT, root)).borrowing()
-    assert data["fy_start_typed"] is True and data["fy_start"].day == date(2026, 7, 1) and data["target_bn"] is None
+    assert data["fy_start_typed"] is True and data["fy_start"].day == date(2026, 7, 1) and data["target_bn"].number == 919.36
     assert item("fiscal_year_start", root, NEXT)["carried"]["from"] == "2026-10-02"
     # a new fiscal year starts with its own 1 July
     june, july = Week(date(2027, 6, 25)), Week(date(2027, 7, 2))        # the last week of one fiscal year, the first of the next

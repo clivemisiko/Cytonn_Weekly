@@ -10,6 +10,7 @@ skipped. The 12-id walk limit applies to the look-ahead too.
 The cases use previous_issue_fixture: metadata of the real issues (id, date, slugs, image counts) and a fake site with tiny bodies.
 """
 
+import json
 from datetime import date, timedelta
 
 import pytest
@@ -40,12 +41,15 @@ def test_the_two_constants_are_named_and_hold_the_documented_numbers():
 
 
 def test_the_fixture_matches_what_the_rule_rests_on():
-    """The real numbers behind 4 and 6: full weeklies have at least 8 images in the two sections, stripped copies fewer than 4."""
+    """The real numbers behind 4 and 6: full weeklies and Monthlies have at least 8 images in the two sections, stripped copies
+    fewer than 4."""
     stripped = {841, 850, 860, 875, 876, 889, 890}
     images = {i: row[3] + row[4] for i, row in ISSUES.items() if row is not None}
     assert all(images[i] < previous_issue.STRIPPED_BELOW_IMAGES for i in stripped)
     full_weeklies = [i for i, row in ISSUES.items() if row is not None and row[1] == "weekly" and i not in stripped]
-    assert len(full_weeklies) == 35 and all(ISSUES[i][3] >= 6 and ISSUES[i][4] >= 2 for i in full_weeklies)
+    monthlies = [i for i, row in ISSUES.items() if row is not None and row[1] == "monthly"]
+    assert len(full_weeklies) == 29 and monthlies == [845, 851, 864, 868, 881, 886]
+    assert all(ISSUES[i][3] >= 6 and ISSUES[i][4] >= 2 for i in full_weeklies + monthlies)   # 35 full issues together
     for later, earlier in ((850, 849), (889, 888), (841, 840)):  # each stripped twin was published 5, 1 and 1 days after its full copy
         gap = (date.fromisoformat(ISSUES[later][0]) - date.fromisoformat(ISSUES[earlier][0])).days
         assert 0 <= gap <= previous_issue.TWIN_WINDOW_DAYS
@@ -192,3 +196,68 @@ def test_an_issue_says_whether_it_is_a_weekly_or_a_review():
     assert lookup(date(2026, 2, 27)).kind == "weekly"   # 849
     assert lookup(date(2026, 1, 9)).kind == "review"    # 840, the FY'2025 review
     assert lookup(date(2026, 7, 10)).kind == "review"   # 877, the H1 review
+
+
+def test_a_cytonn_monthly_is_tagged_monthly():
+    assert lookup(date(2026, 2, 6)).kind == "monthly"   # 845, the January Monthly
+    assert lookup(date(2026, 9, 11)).kind == "monthly"  # 886, the August Monthly
+
+
+@pytest.mark.parametrize("friday, expected", fx.WEEKS)
+def test_every_replayed_week_has_the_kind_its_issue_has(friday, expected):
+    assert lookup(date.fromisoformat(friday)).kind == ISSUES[expected][1]
+
+
+def test_tagging_a_monthly_does_not_change_which_issue_is_chosen():
+    """The kind is read after the walk: the same ids come back when every Monthly is served as a weekly."""
+    as_weeklies = {i: (row if row is None or row[1] != "monthly" else (row[0], "weekly", *row[2:])) for i, row in ISSUES.items()}
+    for friday, expected in fx.WEEKS:
+        day = date.fromisoformat(friday)
+        assert lookup(day, as_weeklies).issue_id == lookup(day).issue_id == expected
+
+
+def _issue(fi_body, slugs=("company-updates", "fixed-income", "equities"), title=None):
+    issue = previous_issue.Issue(1, date(2026, 11, 1), title=title)
+    for slug in slugs:
+        issue.sections[slug] = {"name": slug, "body": fi_body if slug == "fixed-income" else "<p>x</p>", "summary": ""}
+    return issue
+
+
+@pytest.mark.parametrize("body, kind", [
+    ("<p><strong>Notable Monthly Highlights:</strong></p>", "monthly"),
+    ("<p>Bond Issuances for September 2026-October 2026</p>", "monthly"),
+    ("<p>Bond Issuances for December 2025–January 2026</p>", "monthly"),    # 845 has the table and no highlights heading
+    ("<p>Bond Issuances for&nbsp;December 2025 - January&nbsp;2026</p>", "monthly"),
+    ("<p>Bond Issuances in Q3’ 2026</p>", "weekly"),                       # a Markets Review's table, not a Monthly's
+    ("<p>Notable Highlights in Q3'2026</p>", "weekly"),
+    ("<p>During the week, T-bills were oversubscribed.</p>", "weekly"),
+])
+def test_a_monthly_is_known_by_what_it_prints(body, kind):
+    assert _issue(body).kind == kind
+
+
+def test_a_review_is_a_review_even_when_it_prints_a_monthly_heading():
+    slugs = ("company-updates", "global-markets-review", "fixed-income")
+    assert _issue("<p>Notable Monthly Highlights:</p>", slugs).kind == "review"
+    assert _issue("<p>x</p>", slugs, title="Cytonn Monthly - October 2026").kind == "review"
+
+
+def test_a_search_title_tags_a_monthly_whatever_it_prints():
+    assert _issue("<p>x</p>", title="Cytonn Monthly - October 2026").kind == "monthly"
+    assert _issue("<p>x</p>", title="Cytonn Weekly #40.2026").kind == "weekly"
+
+
+def test_a_pasted_page_address_keeps_the_search_title():
+    issues = {897: ("2026-11-01", "weekly", fx.WEEKLY_SLUGS, 9, 2)}   # its body prints no marker: only the title can tell
+    plain = fx.site(issues, 897)
+
+    def get(url):
+        if "/api/global/search/" in url:
+            return json.dumps({"data": [{"id": 897, "title": "Cytonn Monthly - October 2026",
+                                         "url": "/research/cytonn-monthly-october-2026"}]}).encode()
+        return plain(url)
+
+    issue = previous_issue.find_previous_issue(date(2026, 11, 6), get,
+                                               reference="https://cytonnreport.com/research/cytonn-monthly-october-2026")
+    assert issue.issue_id == 897 and issue.title == "Cytonn Monthly - October 2026" and issue.kind == "monthly"
+    assert previous_issue.find_previous_issue(date(2026, 11, 6), get, reference="897").kind == "weekly"   # no search, no title

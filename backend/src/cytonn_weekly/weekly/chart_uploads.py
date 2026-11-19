@@ -5,11 +5,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+from cytonn_weekly.common import atomic
 from cytonn_weekly.weekly.inputs import InputError, week_dir
 from cytonn_weekly.weekly.week import Week
 
 MAX_BYTES = 5 * 1024 * 1024
 MAX_LEAD_IN = 600
+MAX_SOURCE = 120
 # The type is judged by the first bytes alone; the image is never decoded here.
 MAGIC = {"png": b"\x89PNG\r\n\x1a\n", "jpeg": b"\xff\xd8\xff"}
 EXTENSION = {"png": "png", "jpeg": "jpg"}
@@ -67,9 +69,7 @@ def _read(week: Week, root: Optional[Path]) -> dict[str, dict[str, Any]]:
 
 
 def _write(week: Week, root: Optional[Path], data: dict[str, dict[str, Any]]) -> None:
-    folder = _folder(week, root)
-    folder.mkdir(parents=True, exist_ok=True)
-    (folder / "charts.json").write_text(json.dumps(data, indent=2), encoding="utf-8")
+    atomic.write_atomic(_folder(week, root) / "charts.json", json.dumps(data, indent=2))
 
 
 def _known(key: str) -> None:
@@ -88,6 +88,7 @@ def image_type(data: bytes) -> str:
     raise InputError("This is not a PNG or JPEG image. Save the chart as a PNG or JPEG and upload that.")
 
 
+@atomic.locked
 def store(week: Week, key: str, data: bytes, root: Optional[Path] = None) -> None:
     """Keep the image as ``<key>.png`` or ``<key>.jpg``, replacing the slot's earlier image."""
     _known(key)
@@ -96,7 +97,7 @@ def store(week: Week, key: str, data: bytes, root: Optional[Path] = None) -> Non
     folder.mkdir(parents=True, exist_ok=True)
     for ext in EXTENSION.values():
         (folder / f"{key}.{ext}").unlink(missing_ok=True)
-    (folder / f"{key}.{EXTENSION[kind]}").write_bytes(data)
+    atomic.write_atomic(folder / f"{key}.{EXTENSION[kind]}", data)
     meta = _read(week, root)
     meta[key] = {**meta.get(key, {}), "type": kind, "size": len(data),
                  "uploaded_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
@@ -116,6 +117,7 @@ def image(week: Week, key: str, root: Optional[Path] = None) -> Optional[tuple[b
     return (found[0].read_bytes(), found[1]) if found else None
 
 
+@atomic.locked
 def remove(week: Week, key: str, root: Optional[Path] = None) -> bool:
     _known(key)
     meta = _read(week, root)
@@ -131,6 +133,7 @@ def remove(week: Week, key: str, root: Optional[Path] = None) -> bool:
     return had
 
 
+@atomic.locked
 def set_lead_in(week: Week, key: str, text: Optional[str], root: Optional[Path] = None) -> None:
     _known(key)
     clean = " ".join((text or "").split())
@@ -152,13 +155,40 @@ def lead_in(week: Week, key: str, root: Optional[Path] = None) -> str:
     return _read(week, root).get(key, {}).get("lead_in", "")
 
 
+@atomic.locked
+def set_source(week: Week, key: str, text: Optional[str], root: Optional[Path] = None) -> None:
+    """The line printed as "Source: <text>" under the image, stored as typed but trimmed.  Blank clears it."""
+    _known(key)
+    raw = text or ""
+    clean = raw.strip()
+    if "".join(raw.splitlines()) != raw:
+        raise InputError("The source line must be one line. Remove the line break.")
+    if len(clean) > MAX_SOURCE:
+        raise InputError(f"The source line is {len(clean)} characters and the limit is {MAX_SOURCE}. "
+                         f"Shorten it by {len(clean) - MAX_SOURCE}.")
+    meta = _read(week, root)
+    entry = {k: v for k, v in meta.get(key, {}).items() if k != "source"}
+    if clean:
+        entry["source"] = clean
+    if entry:
+        meta[key] = entry
+    else:
+        meta.pop(key, None)
+    _write(week, root, meta)
+
+
+def source(week: Week, key: str, root: Optional[Path] = None) -> str:
+    return _read(week, root).get(key, {}).get("source", "")
+
+
 def status(week: Week, root: Optional[Path] = None) -> list[dict[str, Any]]:
     meta = _read(week, root)
     out = []
     for s in slots():
         stored = _stored(week, s["key"], meta, root)
         out.append({"key": s["key"], "section": s["section"], "title": s["title"], "default_lead_in": DEFAULT_LEAD_INS[s["key"]],
-                    "lead_in": meta.get(s["key"], {}).get("lead_in", ""), "has_image": stored is not None,
+                    "lead_in": meta.get(s["key"], {}).get("lead_in", ""), "source": meta.get(s["key"], {}).get("source", ""),
+                    "has_image": stored is not None,
                     "type": stored[1] if stored else None, "size": stored[0].stat().st_size if stored else None})
     return out
 

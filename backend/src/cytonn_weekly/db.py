@@ -1,6 +1,6 @@
 """The one place a database is opened.
 
-Every runtime SQL call goes through here (sections.py, digital_payments/review_store.py, notable/store.py and
+Every runtime SQL call goes through here (sections.py, review/store.py, notable/store.py and
 report_sections.py); no other file imports sqlite3 or psycopg or opens a connection.  This module owns the connection,
 rows by column name, the transaction, the schema run, the placeholder style and the id of an inserted row.
 
@@ -50,9 +50,9 @@ REQUIRE_POSTGRES = ("CYTONN_REQUIRE_POSTGRES=1 is set (the Docker app), but CYTO
 DEFAULT_SCHEMA = "cytonn"
 MIN_SQLITE = (3, 39, 0)  # IS NOT DISTINCT FROM; RETURNING needs 3.35 and ON CONFLICT 3.24
 
-# What a coordinator is told when PostgreSQL cannot be used, whatever the driver said.
+# What an analyst is told when PostgreSQL cannot be used, whatever the driver said.
 UNREACHABLE = "Could not reach the database. Check CYTONN_DATABASE_URL and the network."
-# What a coordinator is told when the server was reached and refused the request; no detail, the driver's words can name the host.
+# What an analyst is told when the server was reached and refused the request; no detail, the driver's words can name the host.
 REJECTED = "The database rejected the request. See the server log."
 # SQLSTATEs that mean the connection, not the request: class 08 (connection exception), 57P01 to 57P03 (shutdown, crash,
 # cannot connect now) and 53300 (too many connections).  Any other state on an OperationalError (deadlock, cancelled, disk full) is a rejection.
@@ -361,7 +361,7 @@ def _held_connection(url: str, schema: str):
 
 def _connect_postgres(url: str) -> Db:
     # ponytail: one connection per process, one caller at a time (all database work is serialised); a pool
-    # (psycopg_pool) is the upgrade if more than one coordinator ever works at once.
+    # (psycopg_pool) is the upgrade if more than one analyst ever works at once.
     schema = schema_name()
     url = _postgres_url(url)  # refused here, before the lock, if it is not usable
     if not _held_lock.acquire(timeout=LOCK_TIMEOUT_SECONDS):
@@ -422,6 +422,7 @@ def _apply_postgres_schema(conn: Db) -> None:
         with conn.transaction():
             conn.execute(f"SELECT pg_advisory_xact_lock({_SCHEMA_LOCK})")
             conn.run_script(_POSTGRES_SCHEMA_SQL.read_text(encoding="utf-8").replace("{schema}", f'"{conn.schema}"'))
+            _allow_monthly_postgres(conn)
         _schema_applied.add(key)
 
 
@@ -453,11 +454,24 @@ def init_db(db_path: Optional[Path | str] = None) -> None:
 # each with the exact ADD COLUMN clause.  SQLite's ADD COLUMN fills existing rows with the
 # default, so every review saved before report types existed reads back as a weekly review
 # with no period: exactly what it was.
+REPORT_TYPES_SQL = "('weekly', 'monthly', 'quarterly', 'half_year', 'annual', 'companion')"   # report_types.REPORT_TYPES
+REPORT_TYPE_CHECK = f"CHECK (report_type IN {REPORT_TYPES_SQL})"
+
 _ADDED_REVIEW_COLUMNS = (
-    ("report_type", "report_type TEXT NOT NULL DEFAULT 'weekly' "
-                    "CHECK (report_type IN ('weekly', 'quarterly', 'half_year', 'annual', 'companion'))"),
+    ("report_type", f"report_type TEXT NOT NULL DEFAULT 'weekly' {REPORT_TYPE_CHECK}"),
     ("period", "period TEXT NOT NULL DEFAULT ''"),
 )
+
+
+# Chat columns report_jobs and job_messages gained after their first release (the same clauses as schema.sql).
+_ADDED_JOB_COLUMNS = {
+    "report_jobs": (("status", "status TEXT NOT NULL DEFAULT 'idle'"), ("paused_reason", "paused_reason TEXT"),
+                    ("calls_used", "calls_used INTEGER NOT NULL DEFAULT 0"), ("input_tokens", "input_tokens INTEGER NOT NULL DEFAULT 0"),
+                    ("output_tokens", "output_tokens INTEGER NOT NULL DEFAULT 0"),
+                    ("budget_raises", "budget_raises INTEGER NOT NULL DEFAULT 0")),
+    "job_messages": (("tool_use_id", "tool_use_id TEXT"), ("tool_input", "tool_input TEXT"), ("usage", "usage TEXT"),
+                     ("cards", "cards TEXT")),
+}
 
 
 def _migrate(conn: Db) -> None:
@@ -471,7 +485,76 @@ def _migrate(conn: Db) -> None:
     for name, clause in _ADDED_REVIEW_COLUMNS:
         if name not in have:
             conn.execute(f"ALTER TABLE coordinator_reviews ADD COLUMN {clause}")
+    for table, columns in _ADDED_JOB_COLUMNS.items():
+        have = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+        for name, clause in columns:
+            if name not in have:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {clause}")
+    _allow_monthly_sqlite(conn)
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_coordinator_reviews_report "
         "ON coordinator_reviews (report_type, period, section, run_id)"
     )
+
+
+# report_type's CHECK, which gained 'monthly' on 2026-11-03.  Both migrations change nothing when it is already allowed, and
+# raise (rolling back, so the app does not start) when the table is not what they expect, rather than guess.
+_REPORT_TYPE_LIST = re.compile(r"report_type\s+IN\s*\([^)]*\)", re.I)
+_TABLE_NAME = re.compile(r'^CREATE TABLE\s+(?:IF NOT EXISTS\s+)?"?coordinator_reviews"?', re.I)   # SQLite keeps IF NOT EXISTS in the stored text
+
+PG_FIND_REPORT_TYPE_CHECK = (
+    "SELECT c.conname, pg_get_constraintdef(c.oid) AS definition FROM pg_constraint c "
+    "JOIN pg_class t ON t.oid = c.conrelid JOIN pg_namespace n ON n.oid = t.relnamespace "
+    "WHERE n.nspname = ? AND t.relname = 'coordinator_reviews' AND c.contype = 'c' "
+    "AND pg_get_constraintdef(c.oid) LIKE '%report_type%'"
+)
+
+
+def pg_widen_report_type_check(conname: str) -> str:
+    """The one statement that swaps the found CHECK for the six-type one: atomic, no table rewrite, existing rows validated."""
+    name = conname.replace('"', '""')
+    return (f'ALTER TABLE coordinator_reviews DROP CONSTRAINT IF EXISTS "{name}", '
+            f"ADD CONSTRAINT coordinator_reviews_report_type_check {REPORT_TYPE_CHECK}")
+
+
+def _allow_monthly_postgres(conn: Db) -> None:
+    """The CHECK is unnamed in schema_postgres.sql, so it is found in pg_constraint by what it checks, in this schema only.
+    No such check: nothing to widen, since nothing can refuse a monthly row.  More than one: raise rather than guess."""
+    rows = conn.execute(PG_FIND_REPORT_TYPE_CHECK, (conn.schema,)).fetchall()
+    if not rows:
+        return
+    if len(rows) > 1:
+        raise RuntimeError(f"coordinator_reviews has {len(rows)} CHECK constraints on report_type, expected one; "
+                           "widen it by hand")
+    if "'monthly'" in rows[0]["definition"]:
+        return
+    conn.execute(pg_widen_report_type_check(rows[0]["conname"]))
+
+
+def _allow_monthly_sqlite(conn: Db) -> None:
+    """SQLite cannot change a CHECK in place, so a table that does not allow 'monthly' is rebuilt from its own stored SQL with
+    the list widened: every column, row, index and run id kept, inside one savepoint.  The schema has no foreign keys,
+    triggers or views, and the existing migrations never touch the foreign_keys pragma, so neither does this."""
+    table = conn.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'coordinator_reviews'").fetchone()
+    if "'monthly'" in table["sql"]:
+        return
+    sql, found = _REPORT_TYPE_LIST.subn(f"report_type IN {REPORT_TYPES_SQL}", table["sql"])
+    sql, named = _TABLE_NAME.subn("CREATE TABLE coordinator_reviews_rebuild", sql, count=1)
+    if found != 1 or named != 1:
+        raise RuntimeError("coordinator_reviews: its report_type CHECK could not be found to widen; widen it by hand")
+    indexes = [r["sql"] for r in conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'coordinator_reviews' AND sql IS NOT NULL")]
+    columns = ", ".join(f'"{r["name"]}"' for r in conn.execute("PRAGMA table_info(coordinator_reviews)"))
+    seq = conn.execute("SELECT MAX(COALESCE((SELECT seq FROM sqlite_sequence WHERE name = 'coordinator_reviews'), 0), "
+                       "COALESCE((SELECT MAX(run_id) FROM coordinator_reviews), 0)) AS seq").fetchone()["seq"]
+    conn.execute("SAVEPOINT allow_monthly")
+    conn.execute(sql)
+    conn.execute(f"INSERT INTO coordinator_reviews_rebuild ({columns}) SELECT {columns} FROM coordinator_reviews")
+    conn.execute("DROP TABLE coordinator_reviews")
+    conn.execute("ALTER TABLE coordinator_reviews_rebuild RENAME TO coordinator_reviews")
+    for index in indexes:
+        conn.execute(index)
+    conn.execute("DELETE FROM sqlite_sequence WHERE name = 'coordinator_reviews'")
+    if seq:
+        conn.execute("INSERT INTO sqlite_sequence (name, seq) VALUES ('coordinator_reviews', ?)", (seq,))
+    conn.execute("RELEASE allow_monthly")

@@ -1,6 +1,6 @@
 """The approved weekly report as one Word file: only when every section is approved, in the real order.
 
-The sections here are real reviews: Company Updates and Fixed Income from the weekly
+The sections here are real reviews: Fixed Income and Equities from the weekly
 builders (synthetic inputs, the public bulletin), the others from the section helpers.
 The .docx is checked by opening it again with python-docx.
 """
@@ -15,11 +15,11 @@ from fastapi.testclient import TestClient
 
 from api.main import create_app
 from cytonn_weekly.charts import store as chart_store
-from cytonn_weekly.digital_payments import review_store
+from cytonn_weekly.review import store as review_store
 from cytonn_weekly.digital_payments.delivery import DevModeDeliveryBlocked
 from cytonn_weekly.equities import weekly as eq_weekly
 from cytonn_weekly.fixed_income import weekly as fi_weekly
-from cytonn_weekly.weekly import company_updates, export, inputs
+from cytonn_weekly.weekly import export, inputs
 from tests import section_helpers as sh
 from tests import weekly_helpers as wh
 from tests.review_helpers import LocalFakeProvider, make_review
@@ -31,13 +31,13 @@ from tests.weekly_helpers import text_pdfs  # noqa: F401 - a fixture
 
 WEEK = wh.WEEK
 PERIOD = "Week ending 2026-10-02"
-ORDER = ["Company Updates", "Fixed Income", "Equities", "Real Estate", "Digital Payments Weekly Highlights", "Focus of the Week"]
+ORDER = ["Fixed Income", "Equities", "Real Estate", "Digital Payments Weekly Highlights", "Focus of the Week"]
 
 
 def _approve(review):
     for item in review.review_items:
         item.resolve("accept")
-    review.decide("approved")
+    review.decide("approved", review.flagged_count)
     return review
 
 
@@ -83,10 +83,9 @@ def _copy(review):
 
 @pytest.fixture
 def week(tmp_path, built):
-    """A database holding the week's six sections, every one approved."""
+    """A database holding the week's five sections, every one approved."""
     db = tmp_path / "app.db"
     fi, eq = built
-    _save(db, "company_updates", company_updates.build_company_updates_weekly_review("Investment Updates:\n\nRates held.", WEEK.ending))
     _save(db, "fixed_income", _copy(fi))
     _save(db, "equities", _copy(eq))
     _save(db, "real_estate", sh.real_estate_review())
@@ -103,11 +102,10 @@ def _text(path_or_bytes):
 def test_the_export_is_refused_until_every_section_is_approved(tmp_path, built):
     db = tmp_path / "app.db"
     status = export.export_status(db, PERIOD)
-    assert status["ready"] is False and [s["state"] for s in status["sections"]] == ["not_drafted"] * 6
+    assert status["ready"] is False and [s["state"] for s in status["sections"]] == ["not_drafted"] * 5
     assert [s["title"] for s in status["sections"]] == ORDER and status["file_name"] == "cytonn-weekly-2026-10-02.docx"
     fi, _ = built
     _save(db, "fixed_income", _copy(fi), approve=False)
-    _save(db, "company_updates", company_updates.build_company_updates_weekly_review("Text.", WEEK.ending))
     rejected = sh.real_estate_review()
     rejected.report_type, rejected.period = "weekly", PERIOD
     rejected.decide("rejected")
@@ -121,18 +119,38 @@ def test_the_export_is_refused_until_every_section_is_approved(tmp_path, built):
     assert not (tmp_path / "out").exists()   # nothing is written
 
 
+def test_the_export_status_counts_flagged_items_accepted_by_approving(tmp_path):
+    db = tmp_path / "app.db"
+    tampered = make_review(tamper=True)
+    flagged = tampered.flagged_count
+    assert flagged >= 2
+    tampered.report_type, tampered.period = "weekly", PERIOD
+    tampered.decide("approved", flagged)                       # none resolved one by one: approving accepts them
+    review_store.save_review(tampered, section="digital_payments", db_path=db)
+    quiet = sh.real_estate_review()
+    quiet.report_type, quiet.period = "weekly", PERIOD
+    quiet.decide("approved", quiet.flagged_count)
+    review_store.save_review(quiet, section="real_estate", db_path=db)
+    undecided = make_review(tamper=True)
+    undecided.report_type, undecided.period = "weekly", PERIOD
+    review_store.save_review(undecided, section="focus", db_path=db)
+    counts = {s["slug"]: s["flagged_accepted_on_approval"] for s in export.export_status(db, PERIOD)["sections"]}
+    assert counts == {"fixed_income": 0, "equities": 0, "real_estate": quiet.flagged_count, "digital_payments": flagged, "focus": 0}
+
+
 def test_the_report_has_the_real_order_and_headings_with_a_summary_per_section(week, tmp_path):
     assert export.export_status(week, PERIOD)["ready"] is True
     path = export.write_weekly_report(week, PERIOD, tmp_path / "out")
-    assert path.name == "ssa-eurobonds-cytonn-weekly.docx"   # the Focus topic the coordinator typed
+    assert path.name == "ssa-eurobonds-cytonn-weekly.docx"   # the Focus topic the analyst typed
     doc, text = _text(path)
     headings = [p.text for p in doc.paragraphs if p.style.name == "Heading 1"]
     assert headings == ["Executive Summary:"] + ORDER
     assert text[0] == "Cytonn Weekly: week ending 2nd October 2026"
-    assert doc.core_properties.title == "SSA Eurobonds: a development, Cytonn Weekly"
-    # page 1: one summary paragraph per section, led by its name in bold; Company Updates has none, as published
-    summary = text[text.index("Executive Summary:") + 1:text.index("Company Updates")]
-    assert [t.split(":")[0] for t in summary] == ORDER[1:]
+    assert doc.core_properties.title == "SSA Eurobonds, Cytonn Weekly"
+    # page 1: one summary paragraph per section, led by its name in bold, and no Company Updates part anywhere
+    summary = text[text.index("Executive Summary:") + 1:text.index("Fixed Income")]
+    assert [t.split(":")[0] for t in summary] == ORDER[:-1]   # the Focus is the analyst's to write: it has no summary line
+    assert not any("Company Updates" in t for t in text)
     assert summary[0].startswith("Fixed Income: This week, T-bills were oversubscribed, with the overall subscription rate "
                                  "coming in at 170.4%")
     assert "Section summaries for the CMS" not in text and "No summary: the published issue's section has none." not in text
@@ -152,22 +170,25 @@ def test_computed_paragraphs_tables_charts_and_marked_text_are_all_in_the_file(w
     charts = [t for t in text if t.startswith("[Chart to add: ")]
     assert len(charts) == 6 and text[tbills + 3].startswith("[Chart to add: The chart below shows the yield growth rate")
     assert len(doc.inline_shapes) == 2 and not [t for t in text if t.startswith("[Chart not drawn")]
-    assert sum(t == "[Carried forward from the previous issue: edit before publishing]" for t in text) == 3
+    assert sum(t == "[Carried forward from the previous issue: edit before publishing]" for t in text) == 4   # three carried paragraphs and the REITs standing text; a findings Focus prints no disclaimer
     assert any(t.startswith("[Not included: T-Bonds: recommended bidding range") for t in text)
-    assert "Source: Business Daily" in text and "Source: Central Bank of Kenya (CBK) Weekly Highlights" in text
+    assert "Source: Daily Nation" in text and "Source: Central Bank of Kenya (CBK) Weekly Highlights" in text
     assert "*Target Price as per Cytonn Analyst estimates" in text
     # tables are Word tables
-    tables = {t.rows[0].cells[0].text + "|" + t.rows[0].cells[1].text: t for t in doc.tables}
+    # a block's table opens on its title, one merged row; the Digital Payments table has its numbered title line instead
+    titled = [t for t in doc.tables if len({c._tc for c in t.rows[0].cells}) == 1]
+    tables = {t.rows[1].cells[0].text + "|" + t.rows[1].cells[1].text: t for t in titled}
     funds = tables["Rank|Fund Manager"]
-    assert len(funds.rows) == 1 + len(wh.FUNDS) and funds.rows[1].cells[2].text == "11.0%"
+    assert len(funds.rows) == 2 + len(wh.FUNDS) and funds.rows[2].cells[2].text == "11.0%"
     universe = tables["Company|Price as at 25/09/2026"]
-    assert [c.text for c in universe.rows[1].cells][:4] == ["Alpha Bank", "40.0", "42.0", "5.0%"]
+    assert [c.text for c in universe.rows[2].cells][:4] == ["Alpha Bank", "40.0", "42.0", "5.0%"]
     # the Eurobond table as the issue prints it: issues across, the fixed rows on top
-    euro = next(t for t in doc.tables if t.rows[1].cells[0].text == "Tenor")
-    assert [c.text for c in euro.rows[0].cells] == ["", "2018", "2018", "2019", "2021", "2024"]
-    assert [r.cells[0].text for r in euro.rows][2:6] == ["Amount Issued (USD)", "Years to Maturity", "Yields at Issue", "02-Jan-26"]
-    assert [c.text for c in euro.rows[2].cells][1:] == ["1.0 bn", "1.0 bn", "1.2 bn", "1.0 bn", "1.5 bn"]
-    assert not any(t.rows[0].cells[0].text == "Issue" for t in doc.tables)   # the review-only table is not repeated
+    euro = next(t for t in titled if t.rows[2].cells[0].text == "Tenor")
+    assert euro.rows[0].cells[0].text == "Cytonn Report: Kenya Eurobonds Performance"
+    assert [c.text for c in euro.rows[1].cells] == ["", "2018", "2018", "2019", "2021", "2024"]
+    assert [r.cells[0].text for r in euro.rows][3:7] == ["Amount Issued (USD)", "Years to Maturity", "Yields at Issue", "02-Jan-26"]
+    assert [c.text for c in euro.rows[3].cells][1:] == ["1.0 bn", "1.0 bn", "1.2 bn", "1.0 bn", "1.5 bn"]
+    assert not any(t.rows[1].cells[0].text == "Issue" for t in titled)   # the review-only table is not repeated
     # Digital Payments keeps its own shape: the stock table with its Average row
     stocks = next(t for t in doc.tables if t.rows[0].cells[0].text == "Company" and t.rows[0].cells[1].text == "Ticker")
     assert stocks.rows[-1].cells[0].text == "Average"
@@ -205,20 +226,14 @@ def test_the_pictures_are_read_from_the_charts_folder_the_app_was_given(week, tm
     assert len(doc.inline_shapes) == 0 and [p.text for p in doc.paragraphs].count(export.PICTURE_UNVERIFIED) == 2
 
 
-def test_a_chart_item_marked_fix_needed_stops_the_approval_and_so_the_export(tmp_path, built):
+def test_an_equities_section_in_review_or_rejected_stops_the_export(tmp_path, built):
     db = tmp_path / "app.db"
     fi, eq = built
-    _save(db, "company_updates", company_updates.build_company_updates_weekly_review("Investment Updates:\n\nRates held.", WEEK.ending))
     _save(db, "fixed_income", _copy(fi))
     _save(db, "real_estate", sh.real_estate_review())
     _save(db, "digital_payments", make_review())
     _save(db, "focus", sh.focus_review(topic="SSA Eurobonds"))
     equities = _copy(eq)
-    chart_item = next(i for i in equities.review_items if i.kind == "chart")
-    for item in equities.review_items:
-        item.resolve("fix_needed" if item is chart_item else "accept")
-    with pytest.raises(ValueError, match="cannot approve: 0 item.s. unresolved, 1 marked fix_needed"):
-        equities.decide("approved")                      # one chart item needing a fix is enough to hold the section
     equities.report_type, equities.period = "weekly", PERIOD
     equities.section.setdefault("section", "equities")
     review_store.save_review(equities, section="equities", db_path=db)          # undecided: still in review
@@ -239,7 +254,7 @@ def test_a_normal_week_may_be_sent(week):
 
 def test_each_week_exports_only_its_own_sections(week, tmp_path):
     other = "Week ending 2026-09-25"
-    assert [s["state"] for s in export.export_status(week, other)["sections"]] == ["not_drafted"] * 6
+    assert [s["state"] for s in export.export_status(week, other)["sections"]] == ["not_drafted"] * 5
     with pytest.raises(export.ExportNotAllowed):
         export.write_weekly_report(week, other, tmp_path / "out")
     assert export.file_name("") == "cytonn-weekly.docx" and export.file_name("Weekly #38.2026") == "cytonn-weekly-weekly-38-2026.docx"
@@ -249,7 +264,7 @@ def test_each_week_exports_only_its_own_sections(week, tmp_path):
 def test_the_api_reports_readiness_and_returns_the_file(week, tmp_path):
     client = TestClient(create_app(db_path=week, load_dotenv=False, export_root=tmp_path / "exports"))
     status = client.get("/api/export/weekly", params={"period": "2026-10-02"}).json()
-    assert status["ready"] is True and status["period"] == PERIOD and len(status["sections"]) == 6
+    assert status["ready"] is True and status["period"] == PERIOD and len(status["sections"]) == 5
     r = client.post("/api/export/weekly", params={"period": "2026-10-02"})
     assert r.status_code == 200
     assert r.headers["content-type"] == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -264,7 +279,7 @@ def test_the_api_reports_readiness_and_returns_the_file(week, tmp_path):
 
 
 def test_nothing_in_the_app_sends_or_publishes_the_export():
-    """The export hands a file to the coordinator; the CMS publish step is still the untouched stub."""
+    """The export hands a file to the analyst; the CMS publish step is still the untouched stub."""
     import inspect
 
     from api import cms_publish
@@ -292,22 +307,36 @@ def _rewrite_outlook(db, text):
 
 def test_an_unedited_carried_paragraph_keeps_its_red_line(week, tmp_path):
     _, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
-    assert text.count(NOTE) == 3
+    assert text.count(NOTE) == 4
 
 
 def test_a_rewritten_carried_paragraph_is_exported_as_plain_text_with_no_red_line(week, tmp_path):
     _rewrite_outlook(week, REWRITTEN)
     _, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
-    assert text.count(NOTE) == 2 and text.count(REWRITTEN) == 1
-    heading = text.index("Rates and outlook (closing paragraph)")
-    assert text[heading + 1] == REWRITTEN
+    assert text.count(NOTE) == 3
+    [paragraph] = [t for t in text if t.startswith(REWRITTEN)]
+    assert "Rates and outlook (closing paragraph)" not in text                              # the issue prints no label
+    assert text[text.index(paragraph) - 1] != NOTE                                          # no red line before it
+    assert "is at 58.3% of its pro-rated net domestic borrowing target" in paragraph[len(REWRITTEN):]   # the borrowing sentence follows, in the same paragraph
+
+
+def test_the_borrowing_sentence_is_printed_in_the_outlooks_paragraph_under_one_heading(week, tmp_path):
+    _, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
+    assert "Rates and outlook (closing paragraph)" not in text and "Equities outlook (closing paragraph)" not in text
+    assert "Kenya Shilling: what pressures the shilling" not in text   # the issue prints these paragraphs with no label
+    paragraph = next(t for t in text if "is at 58.3% of its pro-rated" in t)
+    assert text[text.index(paragraph) - 1] == NOTE        # the red line stays until the analyst edits the paragraph
+    assert "is at 58.3% of its pro-rated net domestic borrowing target" in paragraph
+    assert sum("is at 58.3% of its pro-rated" in t for t in text) == 1      # printed once, and under no heading of its own
 
 
 def test_a_re_edited_paragraph_exports_the_same_way(week, tmp_path):
     _rewrite_outlook(week, REWRITTEN)
     _rewrite_outlook(week, "Rates eased again.")
     _, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
-    assert text.count(NOTE) == 2 and "Rates eased again." in text and REWRITTEN not in text
+    assert text.count(NOTE) == 3 and not any(REWRITTEN in t for t in text)
+    [paragraph] = [t for t in text if t.startswith("Rates eased again.")]
+    assert "is at 58.3% of its pro-rated net domestic borrowing target" in paragraph[len("Rates eased again."):]
 
 
 # --- the published look (common/word_layout.py) --------------------------------------------------
@@ -315,17 +344,16 @@ def test_a_re_edited_paragraph_exports_the_same_way(week, tmp_path):
 def test_the_executive_summary_comes_before_the_first_section(week, tmp_path):
     doc, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
     first = next(n for n, p in enumerate(doc.paragraphs) if p.style.name == "Heading 1")
-    assert doc.paragraphs[first].text == "Executive Summary:" and text.index("Executive Summary:") < text.index("Company Updates")
+    assert doc.paragraphs[first].text == "Executive Summary:" and text.index("Executive Summary:") < text.index("Fixed Income")
     lead = doc.paragraphs[first + 1]
-    assert lead.runs[0].text == "Fixed Income:" and lead.runs[0].bold   # Company Updates has no summary, so it is not listed
-    assert not any(t.startswith("Company Updates:") for t in text)
+    assert lead.runs[0].text == "Fixed Income:" and lead.runs[0].bold
 
 
 def test_the_review_copy_keeps_every_mark_with_a_dev_draft(week, tmp_path):
     _save(week, "digital_payments", make_review(provider=LocalFakeProvider()))
     doc, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
     assert text[0] == export.DEV_LABEL and 'string="DEV MODE DRAFT"' in doc.sections[0].header._element.xml
-    assert text.count(NOTE) == 3 and any(t.startswith("[Not included: ") for t in text)
+    assert text.count(NOTE) == 4 and any(t.startswith("[Not included: ") for t in text)
     note = next(p for p in doc.paragraphs if p.text == NOTE).runs[0]
     assert note.bold and str(note.font.color.rgb) == "C00000"
     assert doc.paragraphs[0].alignment == WD_ALIGN_PARAGRAPH.LEFT   # the dev banner
@@ -370,5 +398,64 @@ def test_the_approval_line_writes_its_date_as_the_app_does(week, tmp_path):
     line = text[1]
     reviews = export.require_all_approved(export.weekly_reviews(week, PERIOD))
     last = max(review.decided_at for _, review in reviews)
-    assert line.startswith(f"Every section checked and approved by the coordinator (last on {day_text(date.fromisoformat(last[:10]))}). ")
+    assert line.startswith(f"Every section checked and approved by the analyst (last on {day_text(date.fromisoformat(last[:10]))}). ")
     assert re.search(r"\(last on \d{1,2} [A-Z][a-z]{2} \d{4}\)", line) and not re.search(r"\d{4}-\d{2}-\d{2}", line)
+
+
+# --- the Focus is the analyst's: the export prints one line and never the findings ---------------------------------
+
+FOCUS_TITLES = "Overview\nYields\nRecommendations and Conclusion"
+
+
+def test_a_focus_of_findings_is_exported_as_one_line_for_the_analyst_to_write(week, tmp_path):
+    _save(week, "focus", sh.focus_review(topic="SSA Eurobonds", sections=FOCUS_TITLES))
+    path = export.write_weekly_report(week, PERIOD, tmp_path / "out")
+    doc, text = _text(path)
+    assert path.name == "ssa-eurobonds-cytonn-weekly.docx" and doc.core_properties.title == "SSA Eurobonds, Cytonn Weekly"
+    start = max(n for n, p in enumerate(doc.paragraphs) if p.text == "Focus of the Week" and p.style.name == "Heading 1")
+    after = [p for p in doc.paragraphs[start + 1:] if p.text.strip()]   # the Focus is the last section: everything after its heading
+    assert [p.text for p in after] == ["Focus of the Week: analyst to write"] and after[0].runs[0].bold
+    # the other sections' fixtures also say "grew 8.75%" and "Lending rose", so only this Focus's own words are looked for, anywhere in the file
+    own = ("Overview grew 8.75%", "Yields grew 8.75%", "Section I: Overview", "Section II: Yields", "Recommendations and Conclusion")   # "Disclaimer:" is checked in the Focus section above
+    assert not [t for t in text if any(w in t for w in own)] and text.count(NOTE) == 4
+
+
+def test_a_prose_focus_saved_before_findings_still_exports_its_disclaimer_with_the_carried_note(week, tmp_path):
+    from cytonn_weekly.common.computed import carried_block
+    from cytonn_weekly.review.blocks import build_review, check_section, narrative_block
+
+    lead = narrative_block("focus_lead", {"brief_id": "focus_lead", "topic": "SSA Eurobonds", "headline": "Lead paragraph",
+                                           "body": "The lead.", "body_md": "The lead.", "links": [], "claims": [], "warnings": [],
+                                           "search_scope": None, "preferred_domains": [], "drafted_by": "fake:test",
+                                           "role": "lead", "numeral": ""})
+    disclaimer = {**carried_block("focus_disclaimer", "Disclaimer", "Disclaimer: Past performance is not a guide.",
+                                  {"issue_id": 894, "url": "u", "published": "2026-10-25"}), "role": "disclaimer", "numeral": ""}
+    content = {"section": "focus", "title": "Focus of the Week", "topic": "SSA Eurobonds", "week_start": "2026-10-03",
+               "week_end": "2026-10-09", "blocks": [lead, disclaimer], "pieces_found": 1, "pieces_expected": 1, "shortfall": 0, "warnings": []}
+    _save(week, "focus", build_review(content, check_section(content)))
+    _, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
+    at = text.index("Disclaimer: Past performance is not a guide.")
+    assert text[at - 1] == NOTE and text.count(NOTE) == 5 and "The lead." in text
+
+
+def test_the_executive_summary_has_no_focus_line_when_the_focus_is_findings(week, tmp_path):
+    _save(week, "focus", sh.focus_review(topic="SSA Eurobonds", sections=FOCUS_TITLES))
+    doc, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
+    summary = text[text.index("Executive Summary:") + 1:text.index("Fixed Income")]
+    assert not any(t.startswith("Focus of the Week:") for t in summary)
+
+
+def test_a_focus_saved_before_the_structure_still_opens_and_exports_as_before(week, tmp_path):
+    from api.serialize import serialize_review
+
+    old = _save(week, "focus", sh.old_focus_review(topic="SSA Eurobonds"))
+    shown = serialize_review(old)
+    assert [b["kind"] for b in shown["section"]["blocks"]] == ["narrative"] and shown["review_items"]
+    path = export.write_weekly_report(week, PERIOD, tmp_path / "out")
+    doc, text = _text(path)
+    assert path.name == "ssa-eurobonds-cytonn-weekly.docx" and doc.core_properties.title == "SSA Eurobonds: a development, Cytonn Weekly"
+    focus = [p for p in doc.paragraphs][max(n for n, p in enumerate(doc.paragraphs) if p.text == "Focus of the Week") + 1:]
+    assert (focus[0].style.name, focus[0].text) == ("Heading 2", "SSA Eurobonds: a development")
+    assert focus[1].text == "During the week, SSA Eurobonds grew 8.75% in 2026. Lending rose to Sh30.1 billion."
+    assert text[text.index("Executive Summary:") + 1:text.index("Fixed Income")][-1] == (
+        "Focus of the Week: During the week, SSA Eurobonds grew 8.75% in 2026. Lending rose to Sh30.1 billion.")

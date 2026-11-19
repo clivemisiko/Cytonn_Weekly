@@ -58,7 +58,7 @@ const commit = () => {
         :inputmode="item.kind === 'number' ? 'decimal' : undefined"
         autocomplete="off"
         :placeholder="fromBook ? `${fromBook} (workbook)` : undefined"
-        :class="[FIELD, 'w-44 tabular-nums']"
+        :class="[FIELD, item.kind === 'text' ? 'w-full max-w-md' : 'w-44 tabular-nums']"
         @blur="commit"
         @keydown.enter="($event.currentTarget as HTMLInputElement).blur()"
       />
@@ -71,6 +71,9 @@ const commit = () => {
       </span>
       <span v-if="item.kind === 'date' && !value && !fromBook && item.default" class="text-xs text-muted-foreground">
         Used when empty: <span class="font-mono">{{ friendlyDate(item.default) }}</span>
+      </span>
+      <span v-if="item.kind === 'text' && !value && item.default" class="text-xs text-muted-foreground">
+        Used when empty: {{ item.default }}
       </span>
     </div>
     <p v-if="error" :id="`${id}-error`" role="alert" data-problem class="max-w-[72ch] text-xs font-medium whitespace-pre-line text-flag-fg">{{ error }}</p>

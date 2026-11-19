@@ -9,13 +9,16 @@ export type ItemKind =
   | "supplied_text"
   | "computed_figure"
   | "carried_text"
-  | "chart";
+  | "piece_check"
+  | "chart"
+  | "workbook_quarter";
 
 // ---- Report types (report_types.py): which report a review belongs to ----
 
-export type ReportType = "weekly" | "quarterly" | "half_year" | "annual" | "companion";
+export const REPORT_TYPES = ["weekly", "monthly", "quarterly", "half_year", "annual", "companion"] as const;
+export type ReportType = (typeof REPORT_TYPES)[number];
 
-/** What the coordinator picked: a report type, its period label, and (companion reports only) which report. */
+/** What the analyst picked: a report type, its period label, and (companion reports only) which report. */
 export interface ReportChoice {
   type: ReportType;
   period: string;
@@ -75,6 +78,124 @@ export interface ClaimContext {
   was?: string;
   /** A sentence the reviewer took out: when. */
   removed_at?: string;
+  /** A claim quoted from a supplied source (Bedrock): which saved source, its fingerprint, and where and when it is from. */
+  source_id?: string;
+  sha256?: string;
+  fetched_at?: string;
+  host?: string;
+  published_date?: string;
+  origin?: "fetched" | "pasted" | "found";
+  source_flags?: string[];
+}
+
+// ---- Supplied sources (GET/POST/DELETE /api/sources) ----
+
+export interface SourceMeta {
+  id: string;
+  subject: string;
+  /** The Friday the source is filed under. */
+  week_end: string;
+  url: string;
+  host: string;
+  title: string;
+  /** YYYY-MM-DD, or "" when the page does not say and nobody typed it. */
+  published_date: string;
+  /** UTC with an offset; shown in East Africa Time. */
+  fetched_at: string;
+  origin: "fetched" | "pasted" | "found" | "snip";
+  sha256: string;
+  chars: number;
+  flags: string[];
+}
+
+/** The last time the gather step looked for a piece's sources: counts and a time only. Null (or absent) when it never has. */
+export interface GatherLook {
+  looked_at: string | null;
+  found: number;
+  /** False when the search service is not set up, so nothing was searched. */
+  searched: boolean;
+}
+
+export interface SourcePiece {
+  subject: string;
+  end: string;
+  week_end: string;
+  sources: SourceMeta[];
+  gather?: GatherLook | null;
+}
+export interface EquitiesCompanies {
+  companies: { name: string; type: "bank" | "insurer"; domain: string; ir: string; set: boolean }[];
+  searches: number;
+  pages: number;
+}
+/** One uploaded Real Estate snip. `text` is null until the model has read it; only a confirmed snip is used as a source. */
+export interface SnipMeta {
+  hash: string;
+  filename: string;
+  sector: string;
+  text: string | null;
+  /** YYYY-MM-DD the analyst gave, or "" for the report week. */
+  date: string;
+  confirmed: boolean;
+  /** Set for an uploaded PDF; absent for an image. */
+  kind?: "pdf";
+  file_sha?: string;
+  size?: number;
+  pages?: number;
+  uploaded_at?: string;
+  /** Quotes checked word for word against their page; only these are used. */
+  passages?: { page: number; quote: string }[];
+  /** Quotes the model returned that were not word for word on their page, so were dropped. */
+  dropped?: number;
+  ocr_pages?: number[];
+}
+
+export interface SnipsListing {
+  week_ending: string;
+  sectors: { id: string; label: string }[];
+  max_per_sector: number;
+  max_bytes: number;
+  pdf_max_bytes: number;
+  pdf_max_pages: number;
+  snips: SnipMeta[];
+  warnings?: string[];
+}
+
+export interface SourcesListing {
+  section: string;
+  title: string;
+  /** False for a section that is not written from sources (the Executive Summary). */
+  uses_sources: boolean;
+  pieces: SourcePiece[];
+  approved_sites: string[];
+}
+
+export interface AddedSource {
+  source: SourceMeta;
+  subject: string;
+  end: string;
+  week_end: string;
+  sources: SourceMeta[];
+}
+
+/** POST /api/sources/gather: the pages the gather step saved, why it looked at nothing (or null), and the piece's sources. */
+export interface Gathered {
+  found: number;
+  reason: string | null;
+  added: SourceMeta[];
+  subject: string;
+  end: string;
+  week_end: string;
+  sources: SourceMeta[];
+  gather?: GatherLook | null;
+}
+
+/** What one source is added with: a url alone is fetched, a url with a date and text is kept as pasted. */
+export interface SourceInput {
+  url: string;
+  date?: string;
+  text?: string;
+  title?: string;
 }
 
 export interface ReviewItem {
@@ -91,7 +212,15 @@ export interface ReviewItem {
   /** True for a flagged sentence of a drafted piece that the reviewer can rewrite or remove by hand. */
   edit_sentence?: boolean;
   edit_paragraph?: boolean;
+  /** True for a claim of a model-drafted piece that the reviewer can take out of the draft whole. */
+  remove_finding?: boolean;
   context: ClaimContext;
+}
+
+/** A whole drafted piece the reviewer took out of the draft (weekly/sentence_edit.remove_finding). */
+export interface RemovedFinding {
+  headline: string;
+  at: string;
 }
 
 export interface Claim {
@@ -150,6 +279,7 @@ export interface Section {
   highlights_expected: number;
   shortfall: number;
   warnings: string[];
+  removed_findings?: RemovedFinding[];
   items: (HighlightItem | StockTableItem)[];
   outlook: Outlook;
 }
@@ -164,6 +294,7 @@ export interface TableColumn {
 
 export interface TableBlock {
   numeral: string;
+  role?: string;
   /** Real Estate (weekly) only: the group it is printed under, and on the group's first block its heading ("I. Residential Sector"). */
   group?: string;
   group_heading?: string;
@@ -195,6 +326,9 @@ export interface ComputedBlock {
   id: string;
   title: string;
   body_md: string;
+  /** Focus of the Week only: "contents" for the list the tool builds from the section titles. */
+  role?: string;
+  group_heading?: string;
   figures: ComputedFigure[];
   sources: { name: string; url?: string | null }[];
   notes: string[];
@@ -207,7 +341,9 @@ export interface CarriedBlock {
   id: string;
   title: string;
   body_md: string;
-  carried_from: { issue_id: number | null; url: string | null; published: string | null };
+  carried_from: { issue_id?: number | null; url?: string | null; published?: string | null; note?: string };
+  /** Focus of the Week: "disclaimer". Real Estate (weekly): "standing", the REITs text carried from the last saved review, one line a list item. */
+  role?: string;
   /** Set once the reviewer retyped the paragraph by hand (weekly/sentence_edit.py). */
   edits?: BlockEdit[] | null;
 }
@@ -217,6 +353,12 @@ export interface NarrativeBlock {
   /** Real Estate (weekly) only: the group it is printed under, and on the group's first block its heading ("I. Residential Sector"). */
   group?: string;
   group_heading?: string;
+  /** Focus of the Week only: which part of the report this is. "findings" is a section's research notes (claims with their quotes), not report text. A saved older Focus may hold a lead, section or conclusion written by the model. */
+  role?: "lead" | "section" | "conclusion" | "findings";
+  /** Focus of the Week only: a plain note for the analyst under a section, not a claim or a flag. */
+  analyst_note?: string;
+  /** Real Estate (weekly): the closing outlook, printed bold italic; every sentence must rest on a cited claim. */
+  outlook?: boolean;
   kind: "narrative";
   id: string;
   topic: string;
@@ -241,15 +383,20 @@ export interface BlockEdit {
 export interface UnavailableBlock {
   numeral: string;
   kind: "unavailable";
+  role?: string;
+  /** Real Estate (weekly): the sector this part stands for (a sector with no confirmed snip is not included). */
+  sector?: string;
+  group_heading?: string;
   id: string;
   title: string;
   reason: string;
   unblock: string;
 }
 
-/** Text the coordinator supplied (Company Updates): carried verbatim, never drafted or checked. */
+/** Text the analyst supplied (the T-bond bidding range): carried verbatim, never drafted or checked. */
 export interface SuppliedBlock {
   numeral: string;
+  role?: string;
   kind: "supplied";
   id: string;
   title: string;
@@ -270,7 +417,7 @@ export interface ChartDefect {
 /**
  * A chart the tool draws from the analyst workbook (charts/block.py). Metadata only: the picture and the series come from their
  * own routes. `no_workbook` means no workbook was uploaded, so nothing was read: information, with no review item.
- * `use_team_chart` is true while the coordinator has set the tool's chart aside for the team's own.
+ * `use_team_chart` is true while the analyst has set the tool's chart aside for the team's own.
  */
 export interface ChartBlock {
   numeral: string;
@@ -344,6 +491,10 @@ export interface BlocksSection {
   period_start?: string | null;
   period_end?: string | null;
   topic: string | null;
+  /** Focus of the Week only: the section titles and whether they were typed or proposed, and the model calls the draft made. */
+  outline?: { titles: string[]; source: "typed" | "proposed" };
+  model_calls?: number;
+  api_requests?: number | null;
   pieces_found: number;
   pieces_expected: number;
   shortfall: number;
@@ -356,6 +507,7 @@ export interface BlocksSection {
   /** Executive Summary only: how it is composed, and per included section what the summary leaves out. */
   summary_note?: string | null;
   not_covered?: NotCovered[];
+  removed_findings?: RemovedFinding[];
   blocks: Block[];
 }
 
@@ -405,6 +557,35 @@ export interface ExportStatus {
   charts_missing: number;
 }
 
+/** One fully approved weekly week (GET /api/previous/weekly). */
+export interface PreviousWeek {
+  period: string;
+  week_ending: string;
+  approved_at: string;
+  is_dev_draft: boolean;
+  can_export: boolean;
+  sections: { slug: string; title: string; run_id: number }[];
+}
+
+/** One week the analyst can choose to draft: the coming Friday or one of the last eight. */
+export interface WeekChoice {
+  week_ending: string;
+  period: string;
+  status: "not_started" | "in_progress" | "approved";
+  approved: number;
+  total: number;
+}
+
+export interface PreviousWeeks {
+  weeks: PreviousWeek[];
+  /** The week after the latest fully approved one. Null when none is approved. */
+  next_week_ending: string | null;
+  /** The latest Friday: where the overview opens when nothing was chosen. Approvals never move it. Never null. */
+  default_week_ending: string;
+  /** The coming Friday and the last eight, newest first, with how far each has got. */
+  choices: WeekChoice[];
+}
+
 /** What a re-check from an uploaded file did: each changed figure old then new, and what was left as it was. */
 export interface FixResult {
   changes: { block: string; label: string; old: string; new: string }[];
@@ -416,7 +597,7 @@ export interface FixResult {
 }
 
 export interface SentenceResult {
-  action: "edit" | "remove" | "paragraph";
+  action: "edit" | "remove" | "paragraph" | "finding";
   changed_items: number;
   earlier_run_id: number;
   was_approved: boolean;
@@ -427,8 +608,13 @@ export interface WeeklyInputs {
   week_ending: string;
   monday: string;
   previous_friday: string;
+  /** The day the week's figures are as at: the Friday, the last trading day when it was closed, or the day set by hand. */
+  as_at: string;
+  previous_as_at: string;
+  /** Set when the Friday was a market holiday or the as-at day was chosen by hand. */
+  holiday_note: string | null;
   slots: InputSlot[];
-  notes: { bidding_range?: string; previous_issue?: string };
+  notes: { bidding_range?: string; previous_issue?: string; as_at?: string };
   max_bytes: number;
   charts: ChartUpload[];
   chart_max_bytes: number;
@@ -440,6 +626,7 @@ export interface ChartUpload {
   title: string;
   default_lead_in: string;
   lead_in: string;
+  source: string;
   has_image: boolean;
   type: "png" | "jpeg" | null;
   size: number | null;
@@ -447,7 +634,7 @@ export interface ChartUpload {
 
 /** Where a value came from while it is still what was carried from last week's form, or what was suggested. */
 export interface AnalystCarried {
-  /** The week it was carried from (ISO date), or "suggested" for a worked-out running total. */
+  /** The week it was carried from (ISO date), "suggested" for a worked-out running total, "fetched", or "snip" for a fund table read from the Daily Nation page. */
   from: string;
   /** A suggestion's working, in the API's words. */
   note: string;
@@ -462,11 +649,11 @@ export interface AnalystField {
   type: "field";
   key: string;
   label: string;
-  kind: "number" | "date" | "names";
+  kind: "number" | "date" | "names" | "text";
   unit: string;
   min: number | null;
   max: number | null;
-  /** Where the analysts read it ("Business Daily", "Bloomberg NASI P/E"). */
+  /** Where the analysts read it ("Daily Nation e-paper", "Bloomberg NASI P/E"). */
   source: string;
   help: string;
   /** The part of the section that prints it. */
@@ -483,7 +670,7 @@ export interface AnalystField {
   needs_confirmation: boolean;
   /** A running total the API can work a suggestion out for. */
   suggestable: boolean;
-  /** What is used when nothing is typed and no workbook holds it (the fiscal year's start: 1 July). */
+  /** What is used when nothing is typed and no workbook holds it (the fiscal year's start: 1 July; the fund table's source label). */
   default: string | null;
 }
 
@@ -604,7 +791,12 @@ export type RunEventKind =
   | "check_started"
   | "check_finished"
   | "run_finished"
-  | "run_failed";
+  | "run_failed"
+  | "sources_looking"
+  | "sources_found"
+  | "sources_search_unavailable"
+  | "retrying"
+  | "source_left_out";
 
 /** One real step of a draft, as the pipeline reported it (common/run_events.py). */
 export interface RunEvent {
@@ -627,13 +819,18 @@ export interface Run {
   period: string;
   section: string;
   section_title: string;
-  status: "running" | "finished" | "failed";
+  status: "queued" | "running" | "finished" | "failed";
+  /** Only while queued: 1 is next in line. */
+  position?: number | null;
   /** The saved review, once the run has finished. */
   review_id: number | null;
   /** As the review serializer computes it; null until the review exists. */
   is_dev_draft: boolean | null;
   dev_mode_label: string | null;
   events: RunEvent[];
+  /** Only while running: the server's count of seconds since it started, and whether that is past the stuck limit. */
+  elapsed_seconds?: number;
+  stale?: boolean;
 }
 
 // ---- The overview (GET /api/sections) ----
@@ -659,8 +856,6 @@ export interface SectionSummary {
   title: string;
   available: boolean;
   needs_topic: boolean;
-  /** Company Updates: the coordinator pastes the text; nothing is drafted. */
-  needs_text: boolean;
   /** Executive Summary: composed only once every other section of this report and period is approved. */
   requires_approved: boolean;
   /** False when drafting calls no LLM (no API budget, no API key needed, no draft slot). */
@@ -677,9 +872,17 @@ export interface SectionSummary {
   latest: LatestRun | null;
 }
 
-/** The draft running right now. One runs at a time across every section, and it is not saved until it finishes. */
+/** A draft holding a drafting seat (running) or waiting for one (queued). It is not saved until it finishes. */
 export interface Drafting {
   slug: string;
+  /** `running` (holds a seat) or `queued`; absent on the older single `drafting` key, which is always running. */
+  state?: "running" | "queued" | "failed";
+  /** Only when `failed`: the run's one-line failure. A failed entry holds no seat and is not polled for. */
+  reason?: string | null;
+  /** 1 is next in the queue; null unless queued. */
+  position?: number | null;
+  /** The latest event a running draft reported, worded by `eventText` in lib/run.ts. */
+  step?: { kind: RunEventKind; label: string; detail: string | null } | null;
   title: string;
   /** Which report the running draft is for; the same slug drafts in several report types. */
   report_type?: ReportType;
@@ -689,11 +892,16 @@ export interface Drafting {
   /** Ran past `stale_after_seconds`: treated as stuck, and the next draft replaces it. */
   stale: boolean;
   stale_after_seconds: number;
+  /** The running draft's run, whose page shows its steps; null for a draft the synchronous route runs. */
+  run_id?: string | null;
 }
 
 export interface Overview {
   today: string;
+  /** The longest-held seat alone: the older single key, kept for one release. Read `drafting_list`. */
   drafting: Drafting | null;
+  /** Every draft running or queued, across every section and report (the API's `section` is `slug` here). */
+  drafting_list?: Drafting[];
   /** The report these sections belong to, as the API normalized it. */
   report: {
     type: ReportType;

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { PhArrowSquareOut, PhCaretDown, PhCaretUp, PhChartLineUp } from "@phosphor-icons/vue";
-import { computed, ref, useId } from "vue";
+import { computed, inject, ref, useId } from "vue";
 import Button from "@/components/ui/Button.vue";
 import { ApiError, chartImageUrl, getChartSeries } from "@/lib/api";
 import { chartFacts, chartState, pictureProblem, plottedPoints, provenanceLine, teamChartAction } from "@/lib/chart";
 import { friendlyDate } from "@/lib/format";
+import { READ_ONLY } from "@/lib/previous";
 import type { ChartBlock, ChartSeriesFile, Review } from "@/lib/types";
 import Notice from "./Notice.vue";
 import Numeral from "./Numeral.vue";
@@ -12,6 +13,7 @@ import Numeral from "./Numeral.vue";
 const props = defineProps<{ review: Review; block: ChartBlock; onTeamChart: (chartId: string, use: boolean) => Promise<boolean> }>();
 
 const uid = useId();
+const readOnly = inject(READ_ONLY, false);
 const state = computed(() => chartState(props.block));
 const facts = computed(() => chartFacts(props.block));
 const action = computed(() => teamChartAction(props.block));
@@ -151,6 +153,7 @@ async function chooseTeamChart() {
           <component :is="showPoints ? PhCaretUp : PhCaretDown" weight="bold" aria-hidden="true" />{{ showPoints ? "Hide points" : "Show points" }}
         </Button>
         <Button
+          v-if="!readOnly"
           variant="outline"
           size="sm"
           :disabled="review.locked || busy"
@@ -160,7 +163,7 @@ async function chooseTeamChart() {
           {{ action.label }}
         </Button>
       </div>
-      <p :id="`${uid}-own`" class="max-w-[68ch] text-xs text-muted-foreground">
+      <p v-if="!readOnly" :id="`${uid}-own`" class="max-w-[68ch] text-xs text-muted-foreground">
         {{ review.locked ? "This review is decided, so the choice is frozen." : action.help }}
       </p>
     </div>

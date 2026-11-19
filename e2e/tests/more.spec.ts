@@ -17,7 +17,7 @@ const inputsPanel = (page: import("@playwright/test").Page) => page.locator("sec
 const analystPanel = (page: import("@playwright/test").Page) => page.locator("section", { has: page.getByRole("heading", { name: "Weekly analyst inputs" }) }).first();
 
 test("T17 inputs: remove a report and upload it again, Fetch from CBK (from a saved file), the two notes boxes", async ({ page, request }) => {
-  await openStart(page, "Fixed Income");
+  await openStart(page, "Equities"); // the KCB daily reports are Equities' input
   const panel = inputsPanel(page);
   await expect(panel.getByText("5 of 5 received")).toBeVisible();
 
@@ -25,7 +25,7 @@ test("T17 inputs: remove a report and upload it again, Fetch from CBK (from a sa
   await panel.getByRole("button", { name: "Remove Monday’s report" }).click();
   await expect(panel.getByText("4 of 5 received")).toBeVisible();
   await expect(panel.getByText("Missing", { exact: true })).toBeVisible();
-  await panel.locator('input[type="file"]').nth(2).setInputFiles(join(REPO, "backend", "data", "demo", "inputs", "SYNTHETIC_KCB_daily_2026-10-05.pdf"));
+  await panel.locator('input[type="file"]').nth(1).setInputFiles(join(REPO, "backend", "data", "demo", "inputs", "SYNTHETIC_KCB_daily_2026-10-05.pdf"));
   await expect(panel.getByText("5 of 5 received")).toBeVisible();
   await expect(panel.getByRole("alert")).toHaveCount(0);
 
@@ -94,8 +94,8 @@ test("T19 analyst inputs: start from last week’s form; a weekly figure waits t
     await openStart(page, "Fixed Income", `Week ending ${NEXT_WEEK}`);
     const panel = analystPanel(page);
     const draft = page.getByRole("button", { name: `Draft the Week ending ${NEXT_WEEK} section` });
-    await expect(panel.getByText("No workbook is uploaded for this week: the draft uses only what is typed here.", { exact: false })).toBeVisible();
-    await expect(panel.getByText(/^Copies what was saved for the week ending 9 Oct 2026 into every item still empty here/)).toBeVisible();
+    await expect(panel.getByText("No workbook is uploaded for this week: the draft relies solely on the figures entered below.", { exact: false })).toBeVisible();
+    await expect(panel.getByText(/^Populates empty fields with confirmed values from the week ending 9 Oct 2026\./)).toBeVisible();
     await expect(draft).toBeEnabled();
     await panel.getByRole("button", { name: "Start from last week’s form" }).click();
 
@@ -103,9 +103,9 @@ test("T19 analyst inputs: start from last week’s form; a weekly figure waits t
     await expect(panel.getByRole("status").filter({ hasText: "1 value needs confirming before a draft:" })).toContainText("3-month bank placements.");
     await expect(panel.getByText("Carried from week ending 9 Oct 2026, not confirmed", { exact: true })).toBeVisible();
     await expect(panel.locator("#analyst-placements")).toHaveValue("9.5");
-    await expect(panel.getByText("This changes every week. Last week’s value is not used in a draft until you confirm it for this week or type this week’s.")).toBeVisible();
+    await expect(panel.getByText("This value updates weekly. Please confirm last week’s figure or enter the updated value for this week.")).toBeVisible();
     await expect(draft).toBeDisabled();
-    await expect(page.getByText("Something under “Weekly analyst inputs” is not saved yet", { exact: false })).toBeVisible();
+    await expect(page.getByText("You have unsaved changes or unconfirmed suggestions in Weekly Analyst Inputs", { exact: false })).toBeVisible();
     // A slow-changing table is carried and used at once, marked as carried.
     await expect(panel.getByText("Carried from week ending 9 Oct 2026, 5 rows", { exact: true })).toBeVisible();
     await expect(panel.getByText("Shaded cells with a dashed edge are carried from week ending 9 Oct 2026. Type over any that changed.")).toBeVisible();
@@ -157,12 +157,12 @@ test("T21 Focus of the Week: the topic is counted as the API counts it and block
   await expect(draft).toBeEnabled();
   await topic.fill("x".repeat(501));
   await expect(page.getByText("501 of 500 characters.", { exact: false })).toBeVisible();
-  await expect(page.getByRole("status").filter({ hasText: "Over the limit by 1 character. Shorten it to submit." })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Please shorten the topic by 1 character to proceed." })).toBeVisible();
   await expect(topic).toHaveAttribute("aria-invalid", "true");
   await expect(topic).toHaveValue("x".repeat(501)); // never cut
   await expect(draft).toBeDisabled();
   await topic.fill("x".repeat(502));
-  await expect(page.getByRole("status").filter({ hasText: "Over the limit by 2 characters. Shorten it to submit." })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Please shorten the topic by 2 characters to proceed." })).toBeVisible();
   await topic.fill("x".repeat(500));
   await expect(page.getByText("500 of 500 characters.")).toBeVisible();
   await expect(topic).not.toHaveAttribute("aria-invalid", "true");
@@ -175,7 +175,7 @@ test("T22 weekly Digital Payments: its own review shape (highlights, the stock t
   await expect(page.getByRole("heading", { name: "Digital Payments: draft run", level: 1 })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Draft ready for review", level: 2 })).toBeVisible({ timeout: 60_000 });
   await page.getByRole("link", { name: "Open review" }).click();
-  await expect(page.getByRole("heading", { name: "Digital Payments: coordinator review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Digital Payments: analyst review", level: 1 })).toBeVisible();
   const draft = page.locator("section", { has: page.getByRole("heading", { name: /^Drafted section: / }) }).first();
   // The highlights under the report's own numerals, each with where it came from.
   const highlights = draft.locator("article");
@@ -203,23 +203,23 @@ test("T22 weekly Digital Payments: its own review shape (highlights, the stock t
   await expect(items.filter({ hasText: "Table row" }).first()).toBeVisible();
   await expect(items.filter({ hasText: "Outlook stat" }).first()).toBeVisible();
   await expect(items.filter({ hasText: "Highlight claim" }).first()).toBeVisible();
-  await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeEnabled();
 });
 
 test("T23 rejecting a section is final: the dialog, the locked review, the overview afterwards", async ({ page }) => {
-  await openStart(page, "Company Updates");
-  await page.getByLabel("Your Company Updates text").fill("Investment Updates:\nSYNTHETIC e2e text to be rejected.");
-  await page.getByRole("button", { name: "Save your text as the section" }).click();
+  const period = "Week ending 2026-10-16";
+  await openStart(page, "Digital Payments", period);
+  await page.getByRole("button", { name: `Draft the ${period} section` }).click();
   await expect(page.getByRole("heading", { name: "Draft ready for review", level: 2 })).toBeVisible();
   await page.getByRole("link", { name: "Open review" }).click();
-  await expect(page.getByRole("heading", { name: "Company Updates: coordinator review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Digital Payments: analyst review", level: 1 })).toBeVisible();
   const review = new URL(page.url()).searchParams.get("review");
 
   // Reject needs nothing resolved; it asks first.
-  await expect(page.getByText("1 unresolved · 0 of 1 resolved")).toBeVisible();
+  await expect(page.getByText(`Saved as run ${review}`)).toBeVisible();
   await page.getByRole("button", { name: "Reject", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Reject this section?" });
-  await expect(dialog).toContainText("The draft is sent back and frozen as it is. This is recorded once and cannot be changed; a new draft would have to be run.");
+  await expect(dialog).toContainText("Rejecting this section locks the current draft as rejected. To revise this section later, a new draft run will need to be started.");
   await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(dialog).toBeHidden();
   await expect(page.getByRole("button", { name: "Reject", exact: true })).toBeEnabled();
@@ -229,54 +229,58 @@ test("T23 rejecting a section is final: the dialog, the locked review, the overv
 
   await expect(page.getByText("Rejected and locked")).toBeVisible();
   await expect(page.getByText("Decision recorded: rejected.")).toBeVisible();
-  await expect(page.getByText(/Decision recorded on .* EAT\. Every value below is frozen as drafted; nothing on\s+this screen can be changed\./)).toBeVisible();
+  await expect(page.getByText(/Decision recorded on .* EAT\. This section is finalized and locked for editing\./)).toBeVisible();
   await expect(page.getByRole("button", { name: "Approve", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Reject", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("radio", { name: "Accept", exact: true })).toBeDisabled();
-  await expect(page.getByLabel(/^Note for /)).toHaveAttribute("readonly", "");
   // Still rejected when opened again by its address.
-  await page.goto(`${overviewUrl()}&review=${review}`);
+  await page.goto(`${overviewUrl(period)}&review=${review}`);
   await expect(page.getByText("Rejected and locked")).toBeVisible();
   await page.getByRole("button", { name: "Back to all sections" }).last().click();
-  await expect(card(page, "Company Updates")).toContainText("Rejected");
-  await expect(card(page, "Company Updates").getByRole("button", { name: "View review" })).toBeVisible();
-  await expect(page.getByText("Company Updates: Rejected")).toBeVisible();
+  await expect(card(page, "Digital Payments")).toContainText("Rejected");
+  await expect(card(page, "Digital Payments").getByRole("button", { name: "View review" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Export weekly report" })).toBeDisabled();
   // "Draft again" opens the start screen, which says what happened and offers a new draft (T42 to T44 go through it).
-  await card(page, "Company Updates").getByRole("button", { name: "Draft again" }).click();
-  await expect(page.getByRole("heading", { name: "Company Updates: coordinator review", level: 1 })).toBeVisible();
+  await card(page, "Digital Payments").getByRole("button", { name: "Draft again" }).click();
+  await expect(page.getByRole("heading", { name: "Digital Payments: analyst review", level: 1 })).toBeVisible();
   await expect(page.getByText(new RegExp(`review \\(run ${review}\\) was rejected`))).toBeVisible();
   await expect(page.getByRole("button", { name: "View it" })).toBeVisible();
-  await expect(page.getByText("Or start over with a new draft.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Save your text as the section" })).toBeVisible();
+  await expect(page.getByText("Or create a new draft. The existing review will remain safely saved in your archive.")).toBeVisible();
+  await expect(page.getByRole("button", { name: `Draft the ${period} section` })).toBeVisible();
 });
 
-test("T24 a draft holding the one draft slot: the overview and the other sections say so, and unlock when it ends", async ({ page, request }) => {
+test("T24 a section that is drafting says so on its own card and run page; another section's draft button stays on", async ({ page, request }) => {
   hold();
   const run = await startRun(request, "real_estate");
   await page.goto(overviewUrl());
-  await expect(page.getByRole("status").filter({ hasText: "Drafting Real Estate" })).toContainText("One draft runs at a time, across every section; it is saved and shows");
-  await expect(card(page, "Real Estate")).toContainText("Drafting now");
+  await expect(page.getByRole("status").filter({ hasText: "Being drafted now" })).toContainText("It is saved and shows below when it finishes.");
+  await expect(card(page, "Real Estate")).toContainText("Being drafted now");
   await expect(card(page, "Real Estate")).toContainText("Drafting now; the review shows here when it finishes.");
-  await expect(card(page, "Fixed Income")).not.toContainText("Drafting now");
+  await expect(card(page, "Fixed Income")).not.toContainText("Being drafted now");
 
-  // Another drafting section: told which draft is running, and its own draft is off.
+  // Another section is not held up by it: its draft button is on and no notice about Real Estate is shown.
   await openStart(page, "Focus of the Week");
   await page.getByLabel("This week’s topic").fill("Eurobonds");
-  const notice = page.getByRole("status").filter({ hasText: /^Real Estate \(Week ending 2026-10-09\) is drafting now \(/ });
-  await expect(notice).toContainText("Only one draft runs at a time, across every section; drafting here unlocks when it finishes.");
-  await expect(page.getByRole("button", { name: DRAFT })).toBeDisabled();
-  // The API refuses a second draft in the same words, whatever the screen does.
-  const second = await request.post(`${API}/api/runs`, { headers: { "Content-Type": "application/json" }, data: { section: "focus", report_type: "weekly", period: PERIOD, topic: "Eurobonds" } });
+  await expect(page.getByRole("button", { name: DRAFT })).toBeEnabled();
+  await expect(page.getByText("Only one draft runs at a time", { exact: false })).toHaveCount(0);
+  // The API refuses a second draft of the same section, and says why.
+  const second = await request.post(`${API}/api/runs`, { headers: { "Content-Type": "application/json" }, data: { section: "real_estate", report_type: "weekly", period: PERIOD } });
   expect(second.status()).toBe(409);
-  expect((await second.json()).detail).toContain("Real Estate");
+  expect((await second.json()).detail).toContain("already being drafted or is queued");
 
-  // The section that is drafting says it is its own.
-  await openStart(page, "Real Estate");
-  await expect(page.getByRole("status").filter({ hasText: "This section is drafting now (" })).toContainText("It is saved when it finishes, and this screen then offers it for review.");
-  await expect(page.getByRole("button", { name: DRAFT })).toBeDisabled();
-  // A section that calls no provider takes no slot: no notice, and it can be saved.
-  await openStart(page, "Company Updates");
+  // The section that is drafting leads to its run page, not to a draft button: from its card, and from the overview's link.
+  await page.goto(overviewUrl());
+  await card(page, "Real Estate").getByRole("button", { name: /Draft section|View review|Resume review/ }).click();
+  await expect(page).toHaveURL(`/runs/${run}`);
+  await expect(page.getByRole("button", { name: DRAFT })).toHaveCount(0);
+  await page.goto(overviewUrl());
+  await page.getByRole("link", { name: "View progress" }).click();
+  await expect(page).toHaveURL(`/runs/${run}`);
+  // The counter is the server's elapsed time counted on locally, so it is there at once after a reload too.
+  await expect(page.getByText(/^Drafting for \d+:\d\d$/)).toBeVisible();
+  await page.reload();
+  await expect(page.getByText(/^Drafting for \d+:\d\d$/)).toBeVisible();
+  // A section that calls no provider (the Executive Summary) takes no seat: no notice.
+  await openStart(page, "Executive Summary", "Q3'2026", "quarterly");
   await expect(page.getByText("drafting now", { exact: false })).toHaveCount(0);
 
   // The run view of the held draft: running, nothing invented.
@@ -284,15 +288,16 @@ test("T24 a draft holding the one draft slot: the overview and the other section
   await expect(page.getByText(/^Running\. Started .* EAT\.$/)).toBeVisible();
   await expect(page.getByRole("log", { name: "Steps of this draft" }).getByRole("listitem")).toHaveText(["Done: Starting the draft."]);
 
-  // Let it end: the waiting screen unlocks by itself on its next poll.
-  await openStart(page, "Focus of the Week");
-  await page.getByLabel("This week’s topic").fill("Eurobonds");
-  await expect(page.getByRole("button", { name: DRAFT })).toBeDisabled();
+  // Let it end: it failed while the reader was away, and its page says so with the counter gone.
   release();
-  await expect(page.getByRole("button", { name: DRAFT })).toBeEnabled({ timeout: 20_000 });
-  await expect(page.getByText("is drafting now", { exact: false })).toHaveCount(0);
-  await topbar(page).getByRole("button", { name: "Back to all sections" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Drafting Real Estate" })).toHaveCount(0);
+  await expect.poll(async () => (await (await request.get(`${API}/api/runs/${run}`)).json()).status).toBe("failed");
+  await page.goto(`/runs/${run}`);
+  await expect(page.getByRole("alert").getByText("Drafting could not be completed.", { exact: false })).toBeVisible();
+  await expect(page.getByText(/^Drafting for/)).toHaveCount(0);
+  // The overview then shows the failure on the section's card, and no banner for a draft that is no longer running.
+  await page.goto(overviewUrl());
+  await expect(card(page, "Real Estate")).toContainText("Draft failed");
+  await expect(page.getByRole("status").filter({ hasText: "Being drafted now" })).toHaveCount(0);
 });
 
 test("T25 Executive Summary: refused until every section is approved, then composed, with what it leaves out", async ({ page, request }) => {
@@ -300,26 +305,25 @@ test("T25 Executive Summary: refused until every section is approved, then compo
   const Q3 = "Q3'2026";
   await openStart(page, "Executive Summary", Q3, "quarterly");
   await expect(page.getByText(`Not composed for ${Q3} yet. It is built only from sections you have approved.`)).toBeVisible();
-  await expect(page.getByText("Nothing is searched or drafted: each approved section’s lead piece is carried with its sources and checked again.")).toBeVisible();
+  await expect(page.getByText("Executive Summary synthesis: Content is compiled from your approved sections along with their verified sources and checked for consistency.")).toBeVisible();
   await page.getByRole("button", { name: `Compose the ${Q3} summary` }).click();
   // Nothing is approved yet: the run stops and names each section.
-  const stopped = page.getByRole("alert").filter({ hasText: "The draft stopped." });
+  const stopped = page.getByRole("alert").filter({ hasText: "Drafting could not be completed." });
   await expect(stopped).toContainText("The Executive Summary is composed from approved sections only. Still to approve:");
   await expect(stopped).toContainText("Fixed Income");
 
-  // Draft and approve the other eight sections through the API (on the test suite's captured sources).
-  await draftAndApprove(request, "company_updates", Q3, "quarterly", "Investment Updates: SYNTHETIC e2e text. Hospitality Updates: SYNTHETIC e2e text.");
+  // Draft and approve the other seven sections through the API (on the test suite's captured sources).
   for (const slug of ["global_markets", "ssa", "kenya_macro", "fixed_income", "equities", "real_estate", "digital_payments"]) {
     await draftAndApprove(request, slug, Q3, "quarterly");
   }
   await page.goto(overviewUrl(Q3, "quarterly"));
-  await expect(page.getByRole("group", { name: "Sections by state" })).toContainText("Approved8 / 9");
+  await expect(page.getByRole("group", { name: "Sections by state" })).toContainText("Approved7 / 8");
 
   await openStart(page, "Executive Summary", Q3, "quarterly");
   await page.getByRole("button", { name: `Compose the ${Q3} summary` }).click();
   await expect(page.getByRole("heading", { name: "Draft ready for review", level: 2 })).toBeVisible({ timeout: 60_000 });
   await page.getByRole("link", { name: "Open review" }).click();
-  await expect(page.getByRole("heading", { name: "Executive Summary: coordinator review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Executive Summary: analyst review", level: 1 })).toBeVisible();
   await expect(page.getByText(`Quarterly Markets Review, ${Q3}, run`, { exact: false })).toBeVisible();
   await expect(page.getByRole("status").filter({ hasText: "Composed from the lead piece of each section. It does not summarize tables, parts not yet drafted, or Cytonn's own outlook." })).toBeVisible();
   // The panel: per included section, what its approved review holds that the summary does not carry.

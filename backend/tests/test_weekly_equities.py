@@ -14,7 +14,7 @@ from datetime import date
 import pytest
 
 from cytonn_weekly.charts import store as chart_store
-from cytonn_weekly.checkers.digital_payments import SOURCES_DISAGREE
+from cytonn_weekly.review.figures import SOURCES_DISAGREE
 from cytonn_weekly.equities import weekly as eqw
 from cytonn_weekly.weekly import inputs, nse_price_list, previous_issue
 from cytonn_weekly.weekly.week import Week
@@ -92,9 +92,10 @@ def items(review, prefix):
 def test_the_section_is_in_the_real_issues_order_with_no_afx_tables(root):
     review = build(root)
     assert [b["id"] for b in review.section["blocks"]] == ["indices", "large_caps", "banking", "turnover", "foreign", "valuation",
-                                                          "chart_nasi_pe", "chart_nasi_yield", "universe_of_coverage", "outlook"]
+                                                          "chart_nasi_pe", "chart_nasi_yield", "universe_of_coverage", "company_notes",
+                                                          "outlook"]
     kinds = [b["kind"] for b in review.section["blocks"]]
-    assert kinds == ["computed"] * 6 + ["chart", "chart", "table", "carried"]   # no index table, no gainers or losers table
+    assert kinds == ["computed"] * 6 + ["chart", "chart", "table", "computed", "carried"]   # no index table, no gainers or losers table
     assert [b["status"] for b in review.section["blocks"] if b["kind"] == "chart"] == ["drawn", "drawn"]
     files = getattr(review, chart_store._FILES)          # rendered and kept on the review until its first save
     assert {b["png_sha256"] for b in review.section["blocks"] if b["kind"] == "chart"} == {
@@ -140,8 +141,10 @@ def test_table_6_levels_meet_the_workbook_and_ocr_levels_confirmed_only_by_the_w
     assert "read by OCR from NSE daily price list of 2026-10-02" in nse10.detail and "no published second source" in nse10.detail
     banking = items(review, "Market Performance: Banking Sector index:")
     assert {i.status for i in banking} == {"not_auto_verified"}
-    assert blocks(review)["banking"]["body_md"] == ("During the week, the banking sector index decreased by 1.0% to 300.0 from "
-                                                    "303.0 recorded the previous week.")
+    assert blocks(review)["banking"]["body_md"] == (
+        "During the week, the banking sector index decreased by 1.0% to 300.0 from 303.0 recorded the previous week. This is "
+        "attributable to losses recorded by large cap stocks such as NCBA, Standard Chartered Bank and Equity of 2.2%, 1.5% "
+        "and 1.4% respectively.")
 
 
 def test_an_ocr_level_with_nothing_to_compare_or_that_disagrees_is_flagged(tmp_path, text_pdfs):
@@ -178,18 +181,6 @@ def test_afx_confirms_the_ocr_indices_only_while_its_page_is_the_fridays(root, m
     monkeypatch.setattr(eqw.afx, "parse_as_of", lambda html: "2026-10-05T16:00:00+03:00")
     assert items(build(root, today=date(2026, 10, 3), fetchers=with_afx),
                  "Market Performance: NSE 10 week-on-week change")[0].status == "not_auto_verified"   # the page is not the Friday's
-
-
-def test_the_large_cap_sentence_follows_the_teams_rule_and_is_always_flagged(root):
-    review = build(root)
-    b = blocks(review)["large_caps"]
-    assert b["body_md"] == (
-        "The equities market performance was mainly driven by losses recorded by large-cap stocks such as I&M Holdings, NCBA "
-        "and HFCB Group of 2.9%, 2.2% and 1.6% respectively. However, the performance was supported by gains recorded by "
-        "large-cap stocks such as Safaricom of 0.3%.")
-    assert "EABL" not in b["body_md"]   # EABL moved, but it is not on the workbook's large-cap list
-    flagged = [i for i in items(review, "Market Performance: large-cap movers:") if i.status == "flagged"]
-    assert len(flagged) == 1 and flagged[0].detail[0].message.startswith("I&M Holdings week-on-week change: check the names")
 
 
 def test_turnover_is_each_days_kes_over_that_days_cbk_rate(root):
@@ -303,15 +294,15 @@ def test_missing_inputs_leave_named_unavailable_parts(tmp_path):
                                                    previous_issue=down))
     by = blocks(review)
     assert list(by) == ["indices", "large_caps", "banking", "turnover", "foreign", "valuation", "chart_nasi_pe", "chart_nasi_yield",
-                        "universe_of_coverage", "outlook"]
-    assert {b["kind"] for b in by.values() if not b["id"].startswith("chart_")} == {"unavailable"}
+                        "universe_of_coverage", "company_notes", "outlook"]
+    assert {b["kind"] for b in by.values() if not b["id"].startswith("chart_") and b["id"] != "company_notes"} == {"unavailable"}
     assert by["large_caps"]["reason"] == "KCB IB's weekly trading report for this week is not among this week's inputs."
     assert by["valuation"]["reason"] == (
         "The market P/E, the historical average P/E, the market dividend yield and the historical average dividend yield have "
         "not been typed under \"Weekly analyst inputs\", and the equities workbook for this week is not among this week's inputs.")
     assert by["universe_of_coverage"]["reason"].startswith("The Universe of Coverage inputs have not been typed")
     assert by["foreign"]["reason"].startswith("No foreign net flow was found for Monday 28 September")
-    # No workbook: no chart, said as information in the section and asking nothing of the coordinator (no review item).
+    # No workbook: no chart, said as information in the section and asking nothing of the analyst (no review item).
     assert [(by[c]["kind"], by[c]["status"]) for c in ("chart_nasi_pe", "chart_nasi_yield")] == [("chart", "no_workbook")] * 2
     assert by["chart_nasi_pe"]["reason"] == by["chart_nasi_yield"]["reason"] == eqw.NEED_WORKBOOK_FOR_CHARTS[0]
     assert {i.status for i in review.review_items} == {"flagged"} and len(review.review_items) == 8
@@ -364,8 +355,10 @@ def test_the_real_inputs_reproduce_the_published_week(real_root):
         "During the week, the equities market was on a downward trajectory, with NSE 20, NSE 25, NSE 10 and NASI losing by "
         "0.9%, 0.9%, 0.7% and 0.5%, respectively, taking the YTD performance to gains of 39.2%, 37.7%, 36.8% and 32.0% for "
         "NSE 10, NSE 20, NSE 25 and NASI respectively.")
-    assert by["banking"]["body_md"] == ("During the week, the banking sector index decreased by 1.3% to 289.6 from 293.5 recorded "
-                                        "the previous week.")
+    assert by["banking"]["body_md"] == (
+        "During the week, the banking sector index decreased by 1.3% to 289.6 from 293.5 recorded the previous week. This is "
+        "attributable to losses recorded by large cap stocks such as NCBA, Standard Chartered Bank and Equity of 2.2%, 1.5% "
+        "and 1.4% respectively.")
     assert by["turnover"]["body_md"] == ("During the week, equities turnover decreased by 51.0% to USD 17.5 mn from USD 35.8 mn "
                                          "recorded the previous week, taking the YTD total turnover to USD 3,053.1 mn.")
     # The issue printed the previous week's net buying as USD 0.5 mn; the workbook's 0.570927 rounds to 0.6.
@@ -384,13 +377,12 @@ def test_the_real_inputs_reproduce_the_published_week(real_root):
 
 
 def test_the_large_cap_rule_against_the_two_printed_sentences(real_root):
-    """The team's rule (the biggest movers on the workbook's list) does not reproduce either printed sentence."""
+    """The team's rule ('Gainers & Losers') names the stocks the Q3'2026 review printed: NCBA, Standard Chartered Bank
+    and Equity (2.2%, 1.5%, 1.4%), and EABL among the gainers."""
     text = blocks(build(real_root, boxes=PUBLISHED_BOXES))["large_caps"]["body_md"]
-    assert text == ("The equities market performance was mainly driven by losses recorded by large-cap stocks such as I&M Holdings, "
-                    "NCBA and HFCB Group of 2.9%, 2.2% and 1.6% respectively. However, the performance was supported by gains "
-                    "recorded by large-cap stocks such as Safaricom of 0.3%.")
-    # The Q3'2026 review printed NCBA, Standard Chartered Bank and Equity (2.2%, 1.5%, 1.4%), passing over I&M (2.9%) and HF
-    # (1.6%), and named EABL among the gainers, which is not on the workbook's list.  Hence the standing "check the names" flag.
+    assert text == ("The equities market performance was mainly driven by losses recorded by large-cap stocks such as NCBA, "
+                    "Standard Chartered Bank and Equity of 2.2%, 1.5% and 1.4% respectively. However, the performance was "
+                    "supported by gains recorded by large-cap stocks such as EABL and Safaricom of 0.8% and 0.3% respectively.")
 
 
 # #38.2026's Universe of Coverage table (week ending 25 September 2026), as published on cytonnreport.com (issue 891).
@@ -433,8 +425,89 @@ def test_the_universe_of_coverage_reproduces_issue_38(tmp_path):
         assert rows[company]["target"] != dict(zip(COLUMNS, PRINTED_38[company]))["target"], company
 
 
-def universe_block_for(week, root):
+# The 30 October 2026 workbook's table, as published (previous price is the 23 Oct close, price the 30 Oct close).
+PRINTED_30_OCT = [
+    ("Co-op Bank", "36.8", "35.5", "(3.5%)", "(4.3%)", "48.5%", "23.9", "46.1", "7.0%", "36.9%", "1.3x", "Buy"),
+    ("NCBA", "88.0", "88.0", "0.0%", "(1.1%)", "3.5%", "85.0", "108.9", "8.1%", "31.9%", "1.2x", "Buy"),
+    ("ABSA Bank", "31.2", "30.0", "(4.0%)", "(9.7%)", "20.5%", "24.9", "36.8", "6.8%", "29.9%", "1.6x", "Buy"),
+    ("KCB Group", "85.3", "86.0", "0.9%", "(5.8%)", "30.8%", "65.8", "104.4", "8.1%", "29.5%", "0.9x", "Buy"),
+    ("Equity Group", "97.5", "95.0", "(2.6%)", "(9.3%)", "41.8%", "67.0", "113.5", "6.1%", "25.5%", "1.2x", "Buy"),
+    ("Stanbic Holdings", "272.0", "259.5", "(4.6%)", "(8.0%)", "31.2%", "197.8", "300.3", "8.6%", "24.3%", "1.5x", "Buy"),
+    ("Family Bank", "25.8", "27.2", "5.2%", "(6.2%)", "50.8%", "18.0", "32.5", "4.4%", "24.1%", "1.4x", "Buy"),
+    ("Standard Chartered Bank", "314.8", "304.8", "(3.2%)", "(3.9%)", "1.7%", "299.8", "345.8", "10.2%", "23.6%", "1.9x", "Buy"),
+    ("Diamond Trust Bank", "186.3", "179.3", "(3.8%)", "(5.2%)", "56.2%", "114.8", "199.5", "5.0%", "16.3%", "0.5x", "Accumulate"),
+    ("I&M Group", "81.3", "81.3", "0.0%", "(1.5%)", "89.8%", "42.8", "90.4", "4.6%", "15.9%", "1.3x", "Accumulate"),
+    ("Jubilee Holdings", "393.0", "396.8", "1.0%", "(0.8%)", "23.0%", "322.5", "420.5", "3.8%", "9.8%", "0.5x", "Hold"),
+    ("CIC Group", "5.1", "4.7", "(7.8%)", "(4.2%)", "4.4%", "4.5", "5.0", "2.7%", "7.4%", "1.2x", "Hold"),
+    ("Britam", "18.5", "18.1", "(2.2%)", "(4.0%)", "99.2%", "9.1", "18.5", "0.0%", "2.2%", "1.3x", "Lighten"),
+]
+
+
+def test_the_universe_of_coverage_reads_the_30_october_workbook_despite_its_shifted_columns_and_header_typos(tmp_path):
+    """New price columns moved every label (Year Open PE to PI, ...), and OV2/OW2 print 2027 and 2028 for 2026."""
+    week = Week(date(2026, 10, 30))
+    inputs.store(week, "equities_workbook", wh.sample("Equities Workbook 30.10.2026.vf (1).xlsx"), "Equities.xlsx", tmp_path)
+    warnings: list[str] = []
+    block = universe_block_for(week, tmp_path, warnings)
+    assert block["kind"] == "table"
+    assert [c["label"] for c in block["columns"][1:3]] == ["Price as at 23/10/2026", "Price as at 30/10/2026"]
+    assert [tuple(r[k] for k in ("company", *COLUMNS)) for r in block["rows"]] == PRINTED_30_OCT   # workbook order kept
+    assert "workbook's header OV2 reads 'Price as at 23/10/2027'" in " ".join(warnings)
+    assert "workbook's header OW2 reads 'Price as at 30/10/2028'" in " ".join(warnings)
+    assert "row 3 (prices OV3 and OW3, month-end OR3, Year Open PI3, target PK3, DPS PV3" in block["source_rows"][0]["_note"]
+
+
+def test_the_2_october_workbook_takes_last_friday_from_the_w_w_formula_not_the_month_end_column_beside_it(tmp_path):
+    """OR (30/09, the m/m base) sits between the two Fridays: w/w is OS/OQ, m/m is OS/OR."""
+    week = Week(date(2026, 10, 2))
+    inputs.store(week, "equities_workbook", wh.sample("Equities Workbook 02.10.2026.v6 (1).xlsx"), "Equities.xlsx", tmp_path)
+    warnings: list[str] = []
+    block = universe_block_for(week, tmp_path, warnings)
+    ncba = next(r for r in block["rows"] if r["company"] == "NCBA")
+    assert "prices OQ3 and OS3, month-end OR3, Year Open PE3" in next(r for r in block["source_rows"] if r["company"] == "NCBA")["_note"]
+    assert (ncba["last_price"], ncba["price"], ncba["wow"], ncba["mom"]) == ("89.8", "87.8", "(2.2%)", "(1.4%)")
+    assert not [w for w in warnings if "header" in w] and len(block["rows"]) == 13
+
+
+def _edited_universe(edit) -> bytes:
+    """The synthetic equities workbook with its 'Universe of Coverage' sheet changed by ``edit(ws, col_of)``."""
+    import io
+
+    from openpyxl import load_workbook
+    wb = load_workbook(io.BytesIO(wh.equities_workbook_bytes()))
+    ws = wb["Universe of Coverage"]
+    edit(ws, lambda label: next(c.column_letter for c in ws[2] if c.value == label))
+    out = io.BytesIO()
+    wb.save(out)
+    return out.getvalue()
+
+
+def test_a_mistyped_price_header_is_a_warning_naming_the_cell_and_the_table_is_still_drafted(tmp_path):
+    def mistype(ws, col_of):
+        ws[f"{col_of('Price as at 02/10/2026')}2"] = "Price as at 02/10/2028"
+    inputs.store(WEEK, "equities_workbook", _edited_universe(mistype), "Equities.xlsx", tmp_path)
+    warnings: list[str] = []
+    block = universe_block_for(WEEK, tmp_path, warnings)
+    assert block["kind"] == "table" and block["columns"][2]["label"] == "Price as at 02/10/2026"
+    assert warnings == ["Universe of Coverage: the workbook's header G2 reads 'Price as at 02/10/2028'; the column is this "
+                        "Friday's price, located by the workbook's own formulas, and the table prints 'Price as at "
+                        "02/10/2026'. Check the header in the workbook."]
+
+
+@pytest.mark.parametrize("edit, refusal", [
+    (lambda ws, col_of: ws.__setitem__(f"{col_of('DPS')}2", "Dividend"), "has no 'DPS' column to the right of its last price column"),
+    (lambda ws, col_of: ws.__setitem__("AD2", "DPS"), "has 'DPS' more than once to the right of its last price column: "),
+    (lambda ws, col_of: ws.__setitem__("H5", "=G5/D5-1"), "H5 (w/w change, Gamma Insurance, row 5) divides G by D, but row 3 divides G by E"),
+    (lambda ws, col_of: ws.__setitem__("I4", 0.01), "I4 (m/m change, Beta Bank) holds 0.01, not a formula"),
+])
+def test_a_missing_or_doubled_label_or_an_unreadable_formula_is_refused_by_name(tmp_path, edit, refusal):
+    inputs.store(WEEK, "equities_workbook", _edited_universe(edit), "Equities.xlsx", tmp_path)
+    block = universe_block_for(WEEK, tmp_path)
+    assert block["kind"] == "unavailable" and refusal in block["reason"], block["reason"]
+
+
+def universe_block_for(week, root, warnings=None):
     """The Universe of Coverage table alone, from the inputs stored under ``root``."""
     market = eqw.Market(week=week, inputs=inputs.WeeklyInputs(week, root), bulletin=None, rates={}, boxes={}, year_open_day=None,
                         afx=None, typed_indices=None)
-    return eqw.universe_block(market, [])
+    return eqw.universe_block(market, [] if warnings is None else warnings)

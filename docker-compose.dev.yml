@@ -1,5 +1,5 @@
 # Development override: source folders are mounted into the containers and both servers
-# reload on change. Updated 2026-10-23 for the nginx web image; not yet run.
+# reload on change. Updated 2026-10-23; not yet run. The web image runs `vite preview`; the dev stage runs Vite's dev server.
 #
 #   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 #

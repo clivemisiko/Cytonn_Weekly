@@ -13,11 +13,12 @@ dependencies = [
     "openpyxl==3.1.5",
     "pandas==2.2.3",
     "pdfplumber==0.11.4",
-    "anthropic==1.9.0",
+    "anthropic[bedrock]==1.9.0",  # the extra adds boto3 and botocore, which sign Bedrock requests made with access keys
     "apscheduler==3.11.0",
     "yfinance==1.7.0",
     "python-dotenv==1.2.3",
     "fastapi==0.142.2",
+    "pydantic==2.13.5",  # fastapi already needs it; listed because the model-reply classes (drafting/replies.py) import it directly
     "uvicorn==0.54.0",
     "httpx==0.28.1",
     # OCR for the NSE daily price list, which is a scanned image (weekly/nse_price_list.py).  Its
@@ -37,7 +38,7 @@ test = ["pytest==9.1.1", "pytest-xdist==3.8.0"]  # installed in the Docker image
 where = ["src"]
 
 [tool.setuptools.package-data]
-cytonn_weekly = ["schema.sql", "schema_postgres.sql"]  # the database schemas, read by db.open_db()
+cytonn_weekly = ["schema.sql", "schema_postgres.sql", "weekly/market_closures.json", "equities/companies.json", "equities/source_policy.json"]  # the database schemas, read by db.open_db()
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -6,7 +6,6 @@ import pytest
 
 from cytonn_weekly import report_sections as rs
 from cytonn_weekly.periodic import (
-    company_updates,
     companion,
     digital_payments,
     equities,
@@ -58,7 +57,7 @@ def test_periods_are_stored_normalized(report_type, typed, stored):
     ("weekly", "next week", "issue number"),
     ("weekly", "#60.2026", "issue number"),
     ("quarterly", "Q3", "not a quarter"),
-    ("monthly", "x", "unknown report type"),
+    ("fortnightly", "x", "unknown report type"),
 ])
 def test_periods_that_do_not_fit_are_refused_with_a_reason(report_type, typed, says):
     with pytest.raises(PeriodError, match=says):
@@ -88,13 +87,13 @@ def test_suggested_period_is_the_one_just_ended():
 # Registry per type
 # ---------------------------------------------------------------------------
 
-MARKETS_REVIEW = ["executive_summary", "company_updates", "global_markets", "ssa", "kenya_macro", "fixed_income",
+MARKETS_REVIEW = ["executive_summary", "global_markets", "ssa", "kenya_macro", "fixed_income",
                   "equities", "real_estate"]
 
 
 def test_each_type_has_its_own_section_list_in_report_order():
-    assert [s.slug for s in rs.sections_for("weekly")] == ["company_updates", "fixed_income", "equities", "real_estate",
-                                                         "digital_payments", "focus"]   # #38.2026's order
+    assert [s.slug for s in rs.sections_for("weekly")] == ["fixed_income", "equities", "real_estate",
+                                                         "digital_payments", "focus"]   # #38.2026's order, less Company Updates
     assert rs.sections_for("weekly") is rs.SECTIONS
     assert [s.slug for s in rs.sections_for("quarterly")] == MARKETS_REVIEW + ["digital_payments"]
     assert [s.slug for s in rs.sections_for("half_year")] == MARKETS_REVIEW + ["digital_payments"]
@@ -102,7 +101,7 @@ def test_each_type_has_its_own_section_list_in_report_order():
     assert [s.slug for s in rs.sections_for("annual")] == MARKETS_REVIEW
     assert rs.sections_for("companion") == ()  # a companion report lists its sections once a kind is chosen
     with pytest.raises(KeyError):
-        rs.sections_for("monthly")
+        rs.sections_for("fortnightly")
 
 
 def test_the_same_slug_is_a_different_spec_per_type():
@@ -123,13 +122,13 @@ def test_markets_review_specs_carry_the_real_issue(report_type):
         assert spec.subsections, spec.slug
         assert spec.steps[-1][0] == "Your review", spec.slug
     by = {s.slug: s for s in rs.sections_for(report_type)}
-    assert by["company_updates"].needs_text and by["company_updates"].subsections == ("Investment Updates:", "Hospitality Updates:")
+    assert "company_updates" not in by
     assert by["executive_summary"].requires_approved
     assert by["fixed_income"].charts and by["kenya_macro"].charts  # chart titles recorded, not drawn
 
 
 def test_q3_chart_checklist_matches_the_issue():
-    """Q3'2026 has 23 chart images (cytonnreport.com, read 2026-10-05); every one is listed for the coordinator."""
+    """Q3'2026 has 23 chart images (cytonnreport.com, read 2026-10-05); every one is listed for the analyst."""
     total = sum(len(s.charts) for s in rs.sections_for("quarterly"))
     assert total == 23
     assert "Bond Issuances" not in " ".join(rs.spec_for("quarterly", "fixed_income").charts)  # tables are not charts
@@ -155,7 +154,7 @@ def test_companion_kinds_are_registered_and_every_section_is_a_stub():
 # Stubs: NotImplementedError with a named reason and what unblocks it
 # ---------------------------------------------------------------------------
 
-MODULES = [global_markets, ssa, kenya_macro, fixed_income, equities, real_estate, digital_payments, company_updates,
+MODULES = [global_markets, ssa, kenya_macro, fixed_income, equities, real_estate, digital_payments,
            executive_summary]
 
 

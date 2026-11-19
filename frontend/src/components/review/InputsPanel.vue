@@ -41,8 +41,9 @@ const refusedFiles = ref<string[]>([]);
 const picked = ref(props.week);
 const bidding = ref("");
 const previous = ref("");
+const asAt = ref("");
 const notFriday = computed(() =>
-  picked.value && weekdayOf(picked.value) !== "Friday" ? `${friendlyDate(picked.value)} is a ${weekdayOf(picked.value)}. A weekly report's week ends on a Friday, so choose a Friday.` : null,
+  picked.value && weekdayOf(picked.value) !== "Friday" ? `${friendlyDate(picked.value)} is a ${weekdayOf(picked.value)}. Cytonn Weekly reports are published for weeks ending on a Friday. Please select a valid Friday date.` : null,
 );
 const locked = computed(() => busy.value || !!props.disabled);
 let live = true;
@@ -52,6 +53,7 @@ function show(next: WeeklyInputs) {
   status.value = next;
   bidding.value = next.notes.bidding_range ?? "";
   previous.value = next.notes.previous_issue ?? "";
+  asAt.value = next.notes.as_at ?? "";
 }
 
 onMounted(() => {
@@ -93,6 +95,18 @@ const upload = (slot: string, files: File[]) =>
   });
 
 const remove = (name: string) => act(() => api.removeInput(props.week, name));
+// Each section shows only the slots its builder reads; the bulletin is read by both Fixed Income and Equities.
+// Any other section sees every slot. The notes below belong to Fixed Income and Equities.
+const SLOTS_READ: Record<string, string[]> = {
+  fixed_income: ["fi_workbook", "cbk_bulletin", "nse_yield_curve"],
+  equities: ["equities_workbook", "kcb_daily", "kcb_weekly", "cbk_bulletin"],
+  digital_payments: ["dp_workbook"],
+};
+const dpOnly = computed(() => props.section === "digital_payments");
+const slots = computed(() => {
+  const read = props.section ? SLOTS_READ[props.section] : undefined;
+  return (status.value?.slots ?? []).filter((s) => !read || read.includes(s.slug));
+});
 const charts = computed(() => (status.value?.charts ?? []).filter((c) => c.section === props.section));
 // Bumped on each image change, so a replaced image's thumbnail is read again.
 const chartVersion = ref(0);
@@ -104,9 +118,10 @@ const uploadChart = (key: string, file: File) =>
   });
 const removeChart = (key: string) => act(() => api.removeChart(props.week, key));
 const saveLeadIn = (key: string, text: string) => act(() => api.saveChartLeadIn(props.week, key, text));
+const saveChartSource = (key: string, text: string) => act(() => api.saveChartSource(props.week, key, text));
 const fetchBulletin = () => act(() => api.fetchBulletin(props.week));
 
-function saveNote(key: "bidding_range" | "previous_issue", value: string) {
+function saveNote(key: "bidding_range" | "previous_issue" | "as_at", value: string) {
   if ((status.value?.notes[key] ?? "") === value.trim()) return;
   void act(() => api.saveInputNotes(props.week, { [key]: value }));
 }
@@ -118,8 +133,7 @@ function saveNote(key: "bidding_range" | "previous_issue", value: string) {
       <div class="space-y-1">
         <h2 id="inputs-title" class="text-lg font-semibold">This week’s inputs</h2>
         <p class="max-w-[62ch] text-sm text-muted-foreground">
-          The workbooks and reports the analysts send each Friday. A part of the section whose input is missing is marked
-          unavailable in the draft; no figure is ever filled in.
+          The workbooks and reports the analysts send each Friday. Any section missing its required input file will be marked as unavailable in the draft to ensure data accuracy.
         </p>
       </div>
       <div data-attention="week-picker" class="space-y-1">
@@ -156,9 +170,33 @@ function saveNote(key: "bidding_range" | "previous_issue", value: string) {
         Week ending <span class="font-mono font-semibold">{{ friendlyDate(status.week_ending) }}</span>: Monday
         <span class="font-mono">{{ friendlyDate(status.monday) }}</span> to Friday.
       </p>
+      <Notice v-if="status.holiday_note" tone="warn" role="status" data-testid="holiday-note">{{ status.holiday_note }}</Notice>
+      <details :open="!!status.holiday_note || undefined" class="text-sm">
+        <summary class="cursor-pointer font-semibold">Figures as at a different day (optional)</summary>
+        <div class="mt-2 space-y-1">
+          <label for="as-at" class="eyebrow block">As-at date</label>
+          <input
+            id="as-at"
+            v-model="asAt"
+            type="date"
+            :min="status.monday"
+            :max="status.week_ending"
+            :disabled="locked"
+            :class="[FIELD, 'font-mono']"
+            aria-describedby="as-at-hint"
+            @change="saveNote('as_at', asAt)"
+          />
+          <p id="as-at-hint" class="text-xs text-muted-foreground">
+            Prices, rates and the week-on-week moves are taken as at this day. Left empty, it is the last trading day of
+            the week: the Friday, or the day before when the market was closed (currently
+            <span class="font-mono">{{ friendlyDate(status.as_at) }}</span>, against
+            <span class="font-mono">{{ friendlyDate(status.previous_as_at) }}</span> the week before).
+          </p>
+        </div>
+      </details>
       <ul>
         <InputSlot
-          v-for="slot in status.slots"
+          v-for="slot in slots"
           :key="slot.slug"
           :entry="slot"
           :week="status.week_ending"
@@ -186,11 +224,12 @@ function saveNote(key: "bidding_range" | "previous_issue", value: string) {
             @upload="uploadChart"
             @remove="removeChart"
             @lead-in="saveLeadIn"
+            @source="saveChartSource"
           />
         </ul>
       </section>
 
-      <div class="space-y-4 border-t pt-4">
+      <div v-if="!dpOnly" class="space-y-4 border-t pt-4">
         <div class="space-y-1">
           <label for="bidding-range" class="text-sm font-semibold">T-bond bidding range (the analysts’ recommendation)</label>
           <Textarea
@@ -205,8 +244,7 @@ function saveNote(key: "bidding_range" | "previous_issue", value: string) {
             @blur="saveNote('bidding_range', bidding)"
           />
           <p id="bidding-range-hint" class="text-xs text-muted-foreground">
-            The analysts’ own call, carried as you type it. The tool never proposes a range; left empty, the draft marks
-            the range as missing.
+            Enter the analysts’ recommended bidding range. If left blank, the range will be flagged as pending in the draft.
           </p>
         </div>
         <div class="space-y-1">
@@ -223,8 +261,7 @@ function saveNote(key: "bidding_range" | "previous_issue", value: string) {
             @blur="saveNote('previous_issue', previous)"
           />
           <p id="previous-issue-hint" class="text-xs text-muted-foreground">
-            Where the carried-forward paragraphs come from. Left empty, the newest issue published by this Friday is
-            used. Carried text is always flagged for you to edit.
+            Reference link for carried-forward content. If left blank, the most recent published report is used automatically. Carried text is flagged for your review.
           </p>
         </div>
       </div>

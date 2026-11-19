@@ -83,12 +83,20 @@ def _numbers(text: str) -> list[float]:
 _END = re.compile(r"^(?:Source:|Table \d+:|Chart \d+:)")
 
 
-def _block(lines: list[str], start: str) -> list[str]:
-    """One table's lines: from its title (the line starting ``start``) up to, not including, where it ends."""
+# A table is found by its title: the numbers move (a GDP table printed first in the 23 Oct 2026 issue made the exchange rates Table 2),
+# and the interbank table has been titled "Money Market" in some issues.
+_TITLES = {"Table 1": "Kenya Shilling Exchange Rates", "Table 2": "Foreign Exchange Reserves", "Table 3": "(?:Interbank Deals|Money Market)",
+           "Table 4": "Performance of Treasury Bill Auctions", "Table 5": "Performance of Treasury Bond Auctions"}
+_HOLIDAY = "PUBLIC HOLIDAY"   # what a closed day's row holds in place of its figures
+
+
+def _block(lines: list[str], name: str) -> list[str]:
+    """One table's lines: from its title line up to, not including, where it ends.  ``name`` is a key of ``_TITLES``."""
+    title = re.compile(rf"^Table \d+:\s*{_TITLES[name]}", re.I)
     try:
-        a = next(n for n, line in enumerate(lines) if line.startswith(start))
+        a = next(n for n, line in enumerate(lines) if title.match(line))
     except StopIteration:
-        raise BulletinParseError(f"'{start}' not found")
+        raise BulletinParseError(f"'{name}' not found")
     b = next((n for n in range(a + 1, len(lines)) if _END.match(lines[n])), len(lines))
     return lines[a:b]
 
@@ -133,7 +141,7 @@ class Bulletin:
 
 
 def _table_1(lines: list[str], out: Bulletin) -> None:
-    rows = [(m.group(1), m.group(2).split()) for m in map(_DAY_ROW.match, _block(lines, "Table 1:")) if m]
+    rows = [(m.group(1), m.group(2).split()) for m in map(_DAY_ROW.match, _block(lines, "Table 1")) if m and m.group(2).strip().upper() != _HOLIDAY]
     if not rows:
         raise BulletinParseError("Table 1 has no dated exchange-rate rows")
     # every dated row is one rate per currency and nothing else, so a line that only starts with a date is not a row
@@ -145,7 +153,7 @@ def _table_1(lines: list[str], out: Bulletin) -> None:
 
 
 def _table_2(lines: list[str], out: Bulletin) -> None:
-    block = _block(lines, "Table 2:")
+    block = _block(lines, "Table 2")
     days = next(([_day(d) for d in re.findall(_DAY, line)] for line in block if re.match(rf"^{_DAY}\s", line)), None)
     usd = next((line for line in block if "Reserves (USD Million)" in line and line[:1].isdigit()), None)
     months = next((line for line in block if "Months of Import Cover" in line), None)
@@ -161,8 +169,11 @@ def _table_2(lines: list[str], out: Bulletin) -> None:
 
 def _table_3(lines: list[str], out: Bulletin) -> None:
     last: Optional[date] = None
-    for line in _block(lines, "Table 3:"):
+    for line in _block(lines, "Table 3"):
         m = _DAY_ROW.match(line)
+        if m and m.group(2).strip().upper() == _HOLIDAY:
+            last = _day(m.group(1))   # a closed day has no figures but is still the day the week's average row follows
+            continue
         if m:
             nums = _numbers(m.group(2))
             if len(nums) != 3:
@@ -182,7 +193,7 @@ def _table_3(lines: list[str], out: Bulletin) -> None:
 
 
 def _table_4(lines: list[str], out: Bulletin) -> None:
-    block = _block(lines, "Table 4:")
+    block = _block(lines, "Table 4")
     labels = {"offered": "Amount Offered", "bids": "Bids Received", "accepted": "Amount Accepted",
               "rate": "Average Interest Rate"}
     for tenor in TENORS:
@@ -218,11 +229,11 @@ def _table_5(lines: list[str], out: Bulletin) -> None:
     on one line in the first and cut after "(KSh" in the second.  So a row is found by the
     words of its label alone, and its figures are the ones after the label on that line or,
     when the label stands alone, the line under it if that line is figures and nothing else."""
-    block = _block(lines, "Table 5:")
+    block = _block(lines, "Table 5")
     dates = next(([_day(d) for d in re.findall(_DAY, line)] for line in block if line.startswith("Date of Auction")), [])
-    prefixes = next((line.split() for line in block if re.match(r"^[A-Z]{2,4}\d?/(\s|$)", line)), [])
-    suffix_line = next((line for line in block if re.match(r"^(Tenor\s+)?\d{4}/\d{2,3}", line)), "")
-    suffixes = re.findall(r"\d{4}/\d{2,3}(?:\.\d)?", suffix_line)
+    # the codes wrap onto a second line when a week has many bonds (13 November 2026: five, then three)
+    prefixes = [p for line in block if re.match(r"^[A-Z]{2,4}\d?/(\s|$)", line) for p in line.split()]
+    suffixes = [x for line in block if re.match(r"^(Tenor\s+)?\d{4}/\d{2,3}", line) for x in re.findall(r"\d{4}/\d{2,3}(?:\.\d)?", line)]
     codes = [p + s for p, s in zip(prefixes, suffixes)] if len(prefixes) == len(suffixes) else []
 
     def row(label: str) -> list[float]:
@@ -253,51 +264,69 @@ def _table_5(lines: list[str], out: Bulletin) -> None:
 _MARKET_KEYS = ("nasi", "nse_25", "nse_20", "deals", "shares_mn", "equity_turnover_mn", "market_cap_bn", "bond_turnover_mn")
 
 
-def _table_6(page, out: Bulletin) -> None:
-    """Daily rows of Table 6, with each Eurobond yield column matched to the year printed above it.
+_TABLE_6_TITLE = re.compile(r"^Table \d+:\s*Performance of Key Market Indicators")   # the number moves between issues, the title does not
+_YIELD_COLUMNS = (5, 8, 9)   # the Eurobond yield columns seen: 13, 16 and 17 figures a row with the eight market columns
+_INDEX_BASE = "2008"   # the NASI's base year ("100=2008"): one issue's text layer sets it as a word of its own over the NASI column
+Table6Row = tuple[date, bool, list[str], dict[int, str]]   # day, a "Public Holiday" row, the market figures, the yields by maturity year
 
-    Only the part of the page from the "Table 6:" title down to where the table ends is read.
+
+def table_6_rows(page) -> list[Table6Row]:
+    """The rows of Table 6 as printed, each Eurobond yield matched to the maturity year printed over its column.
+
+    Known layouts only, else BulletinParseError and nothing is returned: a day is the eight market figures and one yield
+    per column (a "Public Holiday" row has the yields alone); the years over the columns are each printed once, and
+    the only year read and ignored is the index base left of the first column.
     """
-    rows: dict[float, list[dict[str, Any]]] = {}
-    for w in page.extract_words(keep_blank_chars=False, use_text_flow=False):
-        rows.setdefault(round(w["top"]), []).append(w)
-    lines = sorted(rows.items())
-    for _, ws in lines:
-        ws.sort(key=lambda w: w["x0"])
-    texts = [" ".join(w["text"] for w in ws) for _, ws in lines]
-    start = next((n for n, text in enumerate(texts) if text.startswith("Table 6:")), None)
-    if start is None:
-        raise BulletinParseError("'Table 6:' is not at the start of a line on its page")
-    stop = next((n for n in range(start + 1, len(texts)) if _END.match(texts[n])), len(texts))
-    lines = lines[start + 1:stop]
-    words = [w for _, ws in lines for w in ws]
-    data: list[tuple[date, list[dict[str, Any]]]] = []
-    for _, ws in lines:
-        if not re.fullmatch(_DAY, ws[0]["text"]):
-            continue
-        data.append((_day(ws[0]["text"]), ws[1:]))
-    if not data:
+    words = page.extract_words()
+    lines: dict[int, str] = {}
+    for w in sorted(words, key=lambda w: (round(w["top"]), w["x0"])):
+        lines[round(w["top"])] = f"{lines.get(round(w['top']), '')} {w['text']}".strip()
+    top = next((t for t, text in sorted(lines.items()) if _TABLE_6_TITLE.match(text)), None)
+    if top is None:
+        raise BulletinParseError("Table 6's title is not at the start of a line on its page")
+    stop = next((t for t, text in sorted(lines.items()) if t > top and _END.match(text)), 10**6)
+    band = [w for w in words if top + 2 < w["top"] < stop - 2]
+    dates = sorted((w for w in band if re.fullmatch(_DAY, w["text"])), key=lambda w: w["top"])
+    if not dates:
         raise BulletinParseError("Table 6 has no dated rows")
-    first_top = min(ws[0]["top"] for _, ws in data)
-    years = [w for w in words if w["top"] < first_top and re.fullmatch(r"20\d{2}", w["text"])]
-    for day, ws in data:
-        if len(ws) != 16:
-            raise BulletinParseError(f"Table 6 row for {day.isoformat()} has {len(ws)} figures, expected 16")
-        row: dict[str, Any] = {"date": day}
-        for key, w in zip(_MARKET_KEYS, ws[:8]):
-            row[key] = clean_pdf_number(w["text"])
-        yields: dict[int, float] = {}
-        for w in ws[8:]:
+    rows = []
+    for d in dates:   # the date sits a little above its figures, so a row is the words within 6 points of it
+        row = sorted((w for w in band if abs(w["top"] - d["top"]) <= 6 and w["x0"] > d["x1"]), key=lambda w: w["x0"])
+        figures = [w for w in row if w["text"].lower() not in ("public", "holiday")]
+        if not all(_NUM.fullmatch(w["text"]) for w in figures):
+            raise BulletinParseError(f"Table 6 row for {_day(d['text']).isoformat()} holds a cell that is not a number")
+        rows.append((_day(d["text"]), len(figures) != len(row), figures))
+    first = next((f for _, holiday, f in rows if not holiday), None)
+    if first is None or len(first) - 8 not in _YIELD_COLUMNS:
+        raise BulletinParseError(f"Table 6 has {'no trading day' if first is None else f'{len(first)} figures a day'}: a layout this tool does not know")
+    k = len(first) - 8
+    edge = first[-k]["x0"] - 25
+    heads = sorted((w for w in band if w["top"] < dates[0]["top"] and re.fullmatch(r"20\d{2}", w["text"]) and (w["x0"] + w["x1"]) / 2 >= edge),
+                   key=lambda w: w["x0"])
+    outside = [w["text"] for w in band if w["top"] < dates[0]["top"] and re.fullmatch(r"20\d{2}", w["text"]) and (w["x0"] + w["x1"]) / 2 < edge]
+    if len(heads) != k or len({w["text"] for w in heads}) != k or outside not in ([], [_INDEX_BASE]):
+        raise BulletinParseError(f"Table 6 prints {len(heads)} maturity years over {k} yield columns, and {outside or 'no other year'} outside them")
+    out: list[Table6Row] = []
+    for (day, holiday, figures), seen in zip(rows, dates):
+        if day in {r[0] for r in out} or len(figures) != k + (0 if holiday else 8):
+            raise BulletinParseError(f"Table 6 row for {day.isoformat()} has {len(figures)} figures, expected {k + (0 if holiday else 8)}")
+        yields: dict[int, str] = {}
+        for w in figures[-k:]:
             centre = (w["x0"] + w["x1"]) / 2
-            near = min(years, key=lambda y: abs((y["x0"] + y["x1"]) / 2 - centre), default=None)
-            if near is None or abs((near["x0"] + near["x1"]) / 2 - centre) > 25:
-                raise BulletinParseError(f"Table 6: no maturity year is printed above the yield {w['text']}")
-            year = int(near["text"])
-            if year in yields:
-                raise BulletinParseError(f"Table 6: two yields fall under {year} on {day.isoformat()}")
-            yields[year] = clean_pdf_number(w["text"])
-        row["eurobond_yields"] = yields
-        out.market.append(row)
+            head = min(heads, key=lambda h: abs((h["x0"] + h["x1"]) / 2 - centre))
+            if abs((head["x0"] + head["x1"]) / 2 - centre) > 25 or int(head["text"]) in yields:
+                raise BulletinParseError(f"Table 6: the yield {w['text']} of {day.isoformat()} is under no single maturity year")
+            yields[int(head["text"])] = w["text"].replace(",", "")
+        out.append((day, holiday, [w["text"] for w in figures[:-k]], yields))
+    return out
+
+
+def _table_6(page, out: Bulletin) -> None:
+    """Daily rows of Table 6; a holiday row is left out (no market figures: it is not a trading day)."""
+    for day, holiday, market, yields in table_6_rows(page):
+        if not holiday:
+            out.market.append({"date": day, **{k: clean_pdf_number(t) for k, t in zip(_MARKET_KEYS, market)},
+                               "eurobond_yields": {y: clean_pdf_number(t) for y, t in yields.items()}})
 
 
 _DEBT_TITLE = re.compile(r"^Table \d+:\s*Government Domestic Debt\b", re.I)
@@ -351,9 +380,9 @@ def parse_bulletin(pdf_bytes: bytes) -> Bulletin:
         out = Bulletin(issue_date=issue, sha256=sha)
 
         def table_6() -> None:
-            page = next((p for p, t in zip(pages, texts) if "Table 6:" in t), None)
+            page = next((p for p, t in zip(pages, texts) if re.search(_TABLE_6_TITLE.pattern, t, re.M)), None)
             if page is None:
-                raise BulletinParseError("'Table 6:' not found")
+                raise BulletinParseError("'Performance of Key Market Indicators' not found")
             _table_6(page, out)
 
         readers: tuple[tuple[str, tuple[str, ...], Callable[[], None]], ...] = (

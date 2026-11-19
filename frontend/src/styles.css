@@ -96,13 +96,14 @@
   --text-2xl: 2rem;
   --text-2xl--line-height: 2.5rem;
 
-  /* Shape rule: chips and small boxes 4px, controls 8px, containers 12px, badges and pills round. */
+  /* Shape rule (2026-11-13, the dense workspace): chips and small boxes 4px, controls 6px, containers 8px, badges and
+     pills round. */
   --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 12px;
-  --radius-2xl: 12px;
-  --radius-3xl: 12px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 8px;
+  --radius-2xl: 8px;
+  --radius-3xl: 8px;
   --radius-4xl: 999px;
 }
 
@@ -126,31 +127,31 @@
      white on teal 6.5; dark: ink on card 15.0, muted text on card 7.9, brand green on card 6.7. A control's edge is at
      least 3:1 against every surface it sits on: light 4.5 on a card, 4.1 on the page, 3.9 on the muted fill; dark
      5.2 on a card. The hairline (--border) is decorative only. */
-  --background: light-dark(#f3f3f3, #0e0e0e);
+  --background: light-dark(#f3f3f3, #0b0d10);
   --foreground: light-dark(#000000, #eaeaea);
-  --card: light-dark(#fefefe, #161616);
+  --card: light-dark(#fefefe, #13161b);
   --card-foreground: light-dark(#000000, #eaeaea);
-  --popover: light-dark(#fefefe, #161616);
+  --popover: light-dark(#fefefe, #13161b);
   --popover-foreground: light-dark(#000000, #eaeaea);
   --primary: #49b315; /* a fill, with black text; never text or an edge on a light surface */
   --primary-hover: #5cc72a;
   --primary-foreground: #000000;
-  --secondary: light-dark(#ededed, #2a2a2a);
+  --secondary: light-dark(#ededed, #1c2027);
   --secondary-foreground: light-dark(#000000, #eaeaea);
-  --muted: light-dark(#ededed, #2a2a2a);
-  --muted-foreground: light-dark(#44474e, #a8abb3);
-  --accent: light-dark(#e8f4e0, #12240a); /* the selected state: a pale green tint */
+  --muted: light-dark(#ededed, #1c2027);
+  --muted-foreground: light-dark(#44474e, #9aa1ab);
+  --accent: light-dark(#e8f4e0, #13240d); /* the selected state: a pale green tint */
   --accent-foreground: light-dark(#2c7409, #49b315);
   --destructive: light-dark(#b42318, #f27f73);
-  --border: light-dark(#e6e6e6, #2a2a2a);
-  --input: light-dark(#767676, #8a8a8a); /* 3:1 against every surface a control sits on: its edge must be findable */
+  --border: light-dark(#e6e6e6, #242932);
+  --input: light-dark(#767676, #7d8590); /* 3:1 against every surface a control sits on: its edge must be findable */
   --ring: light-dark(#2c7409, #49b315);
   --link: light-dark(#2c7409, #49b315);
 
-  --band: light-dark(#ffffff, #000000);
+  --band: light-dark(#ffffff, #0b0d10);
   --band-foreground: light-dark(#000000, #eaeaea);
-  --band-muted: light-dark(#44474e, #a8abb3);
-  --band-rule: light-dark(#e6e6e6, #2a2a2a);
+  --band-muted: light-dark(#44474e, #9aa1ab);
+  --band-rule: light-dark(#e6e6e6, #242932);
   --scrim: #000000; /* the dialog overlay, used at 70% */
 
   --flag: light-dark(#b42318, #f27f73);
@@ -185,6 +186,100 @@
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
+}
+
+/* The landing and chat skin (2026-11-19, from the Weekly-Landing and Weekly-Chat artboards). Defined only on .cw-skin, which
+   only LandingPage and ChatPage carry, so the bg-cw-* utilities resolve to nothing anywhere else. AA pairs in contrast.test.ts. */
+.cw-skin {
+  --cw-page: light-dark(#ffffff, #0b0d10); /* the design's white page; dark keeps the app's page */
+  --cw-hairline: light-dark(#ececec, #1c2027); /* the quieter card edge: decorative, like --border */
+  --cw-accent: light-dark(#17757b, #5fc4c9); /* headings: 5.4 on card, 4.9 on page */
+  --cw-button: light-dark(#13707a, #5fc4c9);
+  --cw-button-fg: light-dark(#ffffff, #000000);
+  --cw-button-hover: light-dark(#0e5a62, #8fdade);
+  --cw-brand: light-dark(#0b6b4f, #4fc79a); /* the wordmark */
+  --cw-bubble: light-dark(#eef8f6, #12292a); /* the user's messages, the selected section, the landing notice */
+  --cw-assistant: light-dark(#f6f7f7, #171a20); /* the assistant's messages and the typing indicator */
+  --cw-selected-fg: light-dark(#0e5a62, #8fdade);
+  --cw-chip: light-dark(#f1f1f1, #1c2027);
+  --cw-dots: light-dark(#5c9a1f, #8fd14f); /* decorative only: always beside text that says the same */
+  /* The placeholder logo's arcs (CytonnMark.vue): replace with Cytonn's official file. */
+  --cw-logo-red: #e8432b;
+  --cw-logo-green: #8cc63f;
+  --cw-logo-purple: #8e44ad;
+  --cw-logo-blue: #29a8e0;
+}
+/* Quieter chat cards: the saved cards, the live cards and the export bar inside them. Unlayered, so it beats the utilities. */
+.cw-skin [data-card]:not([data-card="live"]),
+.cw-skin [data-card="live"] > .border {
+  border-color: var(--cw-hairline);
+  background: var(--cw-page);
+  box-shadow: none;
+}
+/* The chat page in one colour family: the shared button, link and ring tokens take the skin's teal inside ChatPage only
+   (.cw-chat). The shared classes and the overview pages are unchanged. AA pairs in contrast.test.ts. */
+.cw-chat {
+  --primary: var(--cw-button);
+  --primary-hover: var(--cw-button-hover);
+  --primary-foreground: var(--cw-button-fg);
+  --link: var(--cw-accent);
+  --ring: var(--cw-button);
+  --cw-dots: var(--cw-button);
+}
+/* One look for every live card, the shared export bar included. */
+.cw-skin [data-card="live"] > .border {
+  border-radius: var(--radius-md);
+  padding: 0.625rem 0.75rem;
+}
+.cw-skin [data-card="live"] > .border .panel-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+}
+/* On the prepare page the export bar is a quiet row under the draft card, not a card of its own. */
+.cw-skin [data-card="prepare"] > [aria-labelledby="export-title"] {
+  border: 0;
+  border-top: 1px solid var(--cw-hairline);
+  border-radius: 0;
+  box-shadow: none;
+  padding: 1rem 0 0;
+  background: none;
+}
+.cw-skin [data-card="prepare"] > [aria-labelledby="export-title"] button {
+  min-height: 2.75rem;
+}
+/* A step that holds the old start screen's sources panel: the step is the card, so the panel loses its own frame. */
+.cw-skin [data-card="prepare"] section[aria-labelledby="sources-title"] {
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: none;
+}
+/* The snip controls are small on the old page; on the prepare page every control is at least 44px tall. */
+.cw-skin [data-card="prepare"] :is([data-snip], [data-card="fund_snip"]) :is(button, select, input[type="date"]) {
+  min-height: 2.75rem;
+}
+.typing-dot {
+  animation: typing-dot 1s ease-in-out infinite;
+}
+@keyframes typing-dot {
+  50% { transform: translateY(-4px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .typing-dot { animation: none; }
+}
+@theme inline {
+  --color-cw-page: var(--cw-page);
+  --color-cw-accent: var(--cw-accent);
+  --color-cw-button: var(--cw-button);
+  --color-cw-button-fg: var(--cw-button-fg);
+  --color-cw-brand: var(--cw-brand);
+  --color-cw-bubble: var(--cw-bubble);
+  --color-cw-assistant: var(--cw-assistant);
+  --color-cw-selected-fg: var(--cw-selected-fg);
+  --color-cw-chip: var(--cw-chip);
+  --color-cw-dots: var(--cw-dots);
 }
 
 @layer base {
@@ -248,11 +343,41 @@
   .bg-card {
     box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.04), 0 1px 2px -1px rgb(0 0 0 / 0.04);
   }
-  :where([data-theme="dark"], [data-theme="dark"] *) .bg-card,
+  /* Dark surfaces are flat: the hairline and the step in fill do the work. A selector list cannot hold an @media, so
+     it is written twice: the chosen theme, then System. */
+  :root[data-theme="dark"] .bg-card {
+    box-shadow: none;
+  }
   @media (prefers-color-scheme: dark) {
-    :where(:root:not([data-theme="light"]), :root:not([data-theme="light"]) *) .bg-card {
-      box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.35), inset 0 1px 0 0 rgb(255 255 255 / 0.04);
+    :root:not([data-theme="light"]) .bg-card {
+      box-shadow: none;
     }
+  }
+
+  /* A panel's own heading: small, upper case and spaced, in ink (the eyebrow's muted grey is for labels inside it). */
+  .panel-title {
+    font-size: var(--text-xs);
+    line-height: var(--text-xs--line-height);
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--foreground);
+  }
+
+  /* A count beside a label (a filter, a heading): the type floor holds, so it is 14px, never smaller. */
+  .count-badge {
+    display: inline-grid;
+    place-items: center;
+    min-width: 1.5rem;
+    padding: 0 0.375rem;
+    border-radius: 999px;
+    font: 700 var(--text-xs) / var(--text-xs--line-height) var(--font-mono);
+    background: var(--muted);
+    color: var(--foreground);
+  }
+  .count-badge.state-flagged {
+    background: color-mix(in srgb, var(--flag) 14%, var(--card));
+    color: var(--flag-fg);
   }
 
   /* Interactive card hover lift */
@@ -262,8 +387,6 @@
   @media (hover: hover) and (prefers-reduced-motion: no-preference) {
     .card-interactive:hover {
       border-color: color-mix(in srgb, var(--foreground) 20%, var(--border));
-      box-shadow: 0 6px 16px -4px rgb(0 0 0 / 0.08), 0 2px 6px -2px rgb(0 0 0 / 0.04);
-      transform: translateY(-1px);
     }
   }
 
@@ -355,9 +478,23 @@
   }
 }
 
+/* A side column (the rail beside the feed): whatever is placed in it lies flat on the rail, one part under the other
+   with a hairline between, instead of floating cards. Unlayered on purpose, so it wins over the parts' own utilities. */
+.rail-stack > * {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  padding: 0;
+}
+.rail-stack > * + * {
+  border-top: 1px solid var(--border);
+  padding-top: 1.25rem;
+}
+
 /* Press feedback on every pressable thing, quiet when motion is reduced. */
 @media (prefers-reduced-motion: no-preference) {
-  button:not(:disabled):active,
+  button:not(:disabled, [aria-disabled="true"]):active,
   [role="radio"]:not(:disabled):active {
     transform: scale(0.97);
   }

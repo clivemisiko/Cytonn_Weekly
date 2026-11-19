@@ -1,7 +1,9 @@
 # End-to-end tests
 
-One Playwright suite (Chromium, T01 to T86) for the web app in `frontend/`. `frontend/PARITY.md` says which test
-covers which behaviour.
+One Playwright suite (Chromium, T01 to T114) for the web app in `frontend/`. `frontend/PARITY.md` says which test
+covers which behaviour. Two ids are used twice: T107 by `tests/app.spec.ts` (the Monthly) and `tests/sources.spec.ts`
+(a Bedrock start screen), and T108 by `tests/overview.spec.ts` (the export's notices on the Monthly) and
+`tests/sources.spec.ts` (a pasted source). Name the file as well as the id when you refer to either.
 
 ## The backend the tests use
 
@@ -42,23 +44,23 @@ Playwright starts the API and the app itself, and stops them afterwards. From `e
 npm test                       # frontend/ on Vite's dev server (127.0.0.1:5183), /api proxied to the test API
 ```
 
-`npm test` runs `tests/app.spec.ts` (T01 to T16), then `tests/more.spec.ts` (T17 to T25) and then
+`npm test` runs `tests/app.spec.ts` (T01 to T16 and T107, the Monthly), then `tests/more.spec.ts` (T17 to T25) and then
 `tests/buttons.spec.ts` (T28 to T36: every button of the two input panels with the week before present and absent) and
-`tests/notes.spec.ts` (T37 to T39: the notes of a rejected draft shown on the next one) and `tests/links.spec.ts`
-(T40 and T41: web links in Company Updates) and `tests/draftagain.spec.ts` (T42 to T46: "Draft again" on a section that
-already has a review) and `tests/notable.spec.ts` (T47 to T58: the "Notable this week" panel on invented demo items, and the working chart at 390px and on a desktop) and `tests/rail.spec.ts` (T59 to T65 and T69: the side rail and the shell's dev ribbon) and `tests/overview.spec.ts` (T66 to T68 and T70: the report-status panel, the section cards and the export's dev-mode notice) and `tests/startscreen.spec.ts` (T71: the start screen's panel) and `tests/reviewscreen.spec.ts` (T72: the review screen's layout) and `tests/runview.spec.ts` (T73 to T75: the run view's facts panel, a stopped run's failure and way back, a run the API no longer has) and `tests/startpages.spec.ts` (T76 and T77: the start page as one centred card, the not-found card) and `tests/chartcard.spec.ts` (T78 to T86: the chart card on the Equities review, on four demo Fridays that hold invented equities workbooks; T85 writes screenshots only when `E2E_SHOTS` names a folder, for example `E2E_SHOTS=../screenshots/charts npx playwright test chartcard`, and is skipped otherwise), each with its own start of the API and so on freshly restored data: a section that has a review
+`tests/draftagain.spec.ts` (T42 to T46: "Draft again" on a section that
+already has a review) and `tests/notable.spec.ts` (T47 to T58: the "Notable this week" panel on invented demo items, and the working chart at 390px and on a desktop) and `tests/rail.spec.ts` (T59 to T65 and T69: the side rail and the shell's dev ribbon) and `tests/overview.spec.ts` (T66 to T68, T70 and T108: the report-status panel, the section cards, the export's dev-mode notice and its notices on the Monthly) and `tests/startscreen.spec.ts` (T71: the start screen's panel) and `tests/reviewscreen.spec.ts` (T72: the review screen's layout) and `tests/runview.spec.ts` (T73 to T75: the run view's facts panel, a stopped run's failure and way back, a run the API no longer has) and `tests/startpages.spec.ts` (T76 and T77: the start page as one centred card, the not-found card) and `tests/chartcard.spec.ts` (T78 to T86: the chart card on the Equities review, on four demo Fridays that hold invented equities workbooks; T85 writes screenshots only when `E2E_SHOTS` names a folder, for example `E2E_SHOTS=../screenshots/charts npx playwright test chartcard`, and is skipped otherwise) and `tests/attention.spec.ts` (T87 to T98: the dialog for a failed action that names a problem) and `tests/editsentence.spec.ts` (T99 to T104: editing or removing a flagged sentence) and `tests/previous.spec.ts` (T106: Previous reports), each with its own start of the API and so on freshly restored data: a section that has a review
 offers its start screen only through its card's "Draft again" button, and the first file leaves several in review. Run one file with `npx playwright test app` or
-`npx playwright test more` (not both in one command). Two tests
+`npx playwright test more` (not both in one command). Some tests
 need the API started in another state, so they have their own runs, one start of the API each:
 
 ```sh
-npm run test:variants          # T26 with E2E_VARIANT=no-key, then T27 with E2E_VARIANT=stale
+npm run test:variants          # T26 with E2E_VARIANT=no-key, T27 with E2E_VARIANT=stale, then T107 to T114 (tests/sources.spec.ts) with E2E_VARIANT=bedrock
 ```
 
 What the test API does so that these tests need no outside service (all in `serve_e2e.py`, nothing in `backend/`):
 
 - while the file `backend/data/demo-e2e/data/e2e-hold` exists, the weekly Real Estate draft waits before it fails, so a
   test can keep the one draft slot held (T24, T27);
+- the weekly Equities start screen lists the 15 banks and insurers with their website status (all "to confirm" in `companies.json`), so no company is searched and the Equities review always holds the "Listed banks and insurers" notes block; no test covers the list;
 - the weekly Digital Payments draft runs the real pipeline on the unit tests' fixed price rows and fake provider (T22),
   and every Markets Review section runs on the unit tests' captured sources (T25);
 - "Fetch from CBK" is answered from the bulletin saved in `backend/tests/fixtures/sources` (T17);
@@ -69,7 +71,7 @@ What the test API does so that these tests need no outside service (all in `serv
   library, each item marked "invented demo item"), passed to
   `create_app()` as `notable_registry`; the real app passes none, so it shows nothing (T47 to T58). Each of those tests uses its own Friday,
   because a decision belongs to its week;
-- `no-key` sets the provider to `anthropic` with an empty key (a provider problem, T26); `stale` counts a draft as
+- `no-key` sets the provider to `bedrock` with empty AWS settings (a provider problem, T26); `stale` counts a draft as
   stuck after six seconds (T27).
 
 `E2E_BASE_URL` with `E2E_NO_WEB=1` runs the suite against an app you started yourself; the API must then allow that

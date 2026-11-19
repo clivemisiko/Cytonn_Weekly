@@ -94,7 +94,7 @@ def test_main_gives_create_app_the_demo_sqlite_file_and_no_dotenv(hostile, monke
     from cytonn_weekly import paths
     from cytonn_weekly.digital_payments import review_run as digital_payments
     from cytonn_weekly.equities import weekly as equities
-    from cytonn_weekly.narrative import drafter
+    from cytonn_weekly.drafting import drafter
     from cytonn_weekly.real_estate import review_run as real_estate
     from tests import periodic_helpers
 

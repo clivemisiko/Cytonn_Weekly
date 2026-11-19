@@ -7,8 +7,7 @@ Macro, Fixed Income, Equities, Real Estate, Digital Payments), and the PDFs prin
 nothing new is written for it.
 
 So this section drafts nothing and searches nothing.  It can only be built once every
-other drafted section of the same report and period has been approved (Company Updates
-is not summarised and not required); it then carries each approved section's lead
+other drafted section of the same report and period has been approved; it then carries each approved section's lead
 narrative piece verbatim, with that piece's claims and ``drafted_by`` (a dev-mode piece
 keeps its ``local:`` mark), and the claims are checked again exactly as they were.
 """
@@ -17,15 +16,15 @@ from __future__ import annotations
 
 from typing import Any, Callable, Optional
 
-from cytonn_weekly.common.review import build_review, check_section, narrative_block, unavailable_block
+from cytonn_weekly.review.blocks import build_review, check_section, narrative_block, unavailable_block
 from cytonn_weekly.common.run_events import Observer
-from cytonn_weekly.digital_payments import review_store
-from cytonn_weekly.digital_payments.coordinator_review import APPROVED, CoordinatorReview
+from cytonn_weekly.review import store as review_store
+from cytonn_weekly.review.model import APPROVED, CoordinatorReview
 from cytonn_weekly.periodic.common import PeriodContext, compose
 
 SECTION = "executive_summary"
 TITLE = "Executive Summary"
-NOT_SUMMARISED = (SECTION, "company_updates")
+NOT_SUMMARISED = (SECTION,)
 STUBS = ()
 
 SUMMARY_NOTE = ("Composed from the lead piece of each section. It does not summarize tables, parts not yet drafted, "

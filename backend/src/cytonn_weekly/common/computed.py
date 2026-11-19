@@ -15,7 +15,7 @@ figure is recorded beside the paragraph with what it was made from::
                     "offered": {...}}}]}
 
 The checking policy, applied to every such figure (and to table rows that say where they
-came from; see common/review.py):
+came from; see review/blocks.py):
 
 * **Computed figures carry their source rows and are exact-matched.**  The checker works
   the figure out again from ``inputs`` with ``expr``, rounds it half up to the display
@@ -36,7 +36,7 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from typing import Any, Optional, Union
 
-from cytonn_weekly.checkers.digital_payments import (
+from cytonn_weekly.review.figures import (
     MISMATCH,
     MISSING,
     SOURCES_DISAGREE,
@@ -46,7 +46,7 @@ from cytonn_weekly.checkers.digital_payments import (
     normalize,
     parse_number,
 )
-from cytonn_weekly.common.formatting import fmt_value, round_half_up
+from cytonn_weekly.common.formatting import PCT, fmt_value, round_half_up
 
 COMPUTED_SCOPE = "computed"
 CARRIED_SCOPE = "carried"
@@ -184,6 +184,8 @@ def a_figure(key: str, label: str, fmt: str, decimals: int, inputs: dict[str, di
             raise ValueError(f"figure {key!r} has {len(inputs)} inputs and no expression")
         expr = next(iter(inputs))
     value = evaluate(expr, inputs)
+    if fmt in (PLAIN_PCT, PCT, POINTS) and value != 0 and round_half_up(value, decimals) == 0:
+        decimals = 3   # a real change that rounds to 0.0% is shown to three decimals; the checker reads this same figure["decimals"]
     return {"key": key, "label": label, "fmt": fmt, "decimals": decimals, "value": float(value),
             "display": show(value, fmt, decimals), "expr": expr, "inputs": inputs, "in_text": in_text, "note": note}
 
@@ -197,9 +199,9 @@ def computed_block(block_id: str, title: str, body_md: str, figures: list[dict[s
 def carried_block(block_id: str, title: str, body_md: str, carried_from: dict[str, Any]) -> dict[str, Any]:
     """Text taken verbatim from the previous issue: ``carried_from`` is {issue_id, url, published} and, when the text
     came from another section than the usual one, ``section`` and a ``note`` the flag repeats.  When the lookup skipped a
-    stripped copy of the issue it also holds ``kind`` ("weekly" or "review") and ``skipped`` (the ids passed over), which the
-    flag says.  ``kind`` is also held when the text came from a Markets Review (the flag then says so, unless a skipped twin or
-    the section ``note`` already has)."""
+    stripped copy of the issue it also holds ``kind`` ("weekly", "review" or "monthly") and ``skipped`` (the ids passed over),
+    which the flag says.  ``kind`` is also held when the text came from a Markets Review or a Cytonn Monthly (the flag then says
+    so, unless a skipped twin or the section ``note`` already has)."""
     return {"kind": "carried", "id": block_id, "title": title, "body_md": body_md, "carried_from": carried_from}
 
 
@@ -316,6 +318,9 @@ def check_computed_block(block: dict[str, Any]) -> CheckReport:
 
 def carried_flag(block: dict[str, Any]) -> Flag:
     src = block.get("carried_from") or {}
+    if block.get("role") == "analyst":   # a part only the analyst can write: nothing was carried, so say that
+        return Flag(kind=CARRIED_FORWARD, scope=CARRIED_SCOPE, subject=block["id"], field=None,
+                    message=f"Analyst to write: {block['title']}. The tool writes no text here; write it by editing this paragraph before approving")
     where = f"issue {src.get('issue_id')} on cytonnreport.com" if src.get("issue_id") else "the previous issue"
     when = f", published {src['published']}" if src.get("published") else ""
     return Flag(kind=CARRIED_FORWARD, scope=CARRIED_SCOPE, subject=block["id"], field=None,
@@ -324,10 +329,14 @@ def carried_flag(block: dict[str, Any]) -> Flag:
 
 
 def _review(src: dict[str, Any]) -> str:
-    """What the flag adds when a Markets Review supplied the text, unless the flag already says it: a skipped twin's sentence names
-    the kind, and so does the note on text taken from a review's Kenya Macro section (it has a ``section``)."""
-    if src.get("kind") != "review" or src.get("skipped") or src.get("section"):
+    """What the flag adds when a Markets Review or a Cytonn Monthly supplied the text, unless the flag already says it: a skipped
+    twin's sentence names the kind, and so does the note on text taken from a review's Kenya Macro section (it has a ``section``)."""
+    if src.get("kind") not in ("review", "monthly") or src.get("skipped") or src.get("section"):
         return ""
+    if src["kind"] == "monthly":
+        of = f" of {src['published']}" if src.get("published") else ""
+        return (f"; the text is from issue {src.get('issue_id')}, the Cytonn Monthly{of}, not a weekly; check that it speaks "
+                "of this week and not only of the month")
     return (f"; the text is from issue {src.get('issue_id')}, a Markets Review (a quarterly, half-year or annual review), "
             "not a weekly; check that it speaks of this week's period and not only of the review's")
 
@@ -339,7 +348,7 @@ def _skipped_twins(src: dict[str, Any]) -> str:
         return ""
     many = len(ids) > 1
     named = " and ".join([", ".join(ids[:-1]), ids[-1]]) if many else ids[0]
-    kind = "Markets Review" if src.get("kind") == "review" else "weekly"
+    kind = {"review": "Markets Review", "monthly": "Cytonn Monthly"}.get(src.get("kind"), "weekly")
     return (f"; the lookup skipped issue{'s' if many else ''} {named} on cytonnreport.com, "
             f"{'copies' if many else 'a copy'} of this issue with {'their' if many else 'its'} charts stripped; "
             f"the text is from issue {src.get('issue_id')}, a {kind}")

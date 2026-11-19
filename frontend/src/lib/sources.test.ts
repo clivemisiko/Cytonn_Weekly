@@ -1,0 +1,164 @@
+import { describe, expect, it } from "vitest";
+import { friendlyDate } from "./format";
+import {
+  ADDRESS_PLACEHOLDER,
+  ADDRESS_EMPTY,
+  ADDRESS_SPACES,
+  NOT_ON_LIST,
+  charsLabel,
+  claimSource,
+  dateLabel,
+  hashPrefix,
+  isPaste,
+  normalizeAddress,
+  missingSourcesNote,
+  pieceState,
+  piecesNothingFoundFor,
+  piecesWithoutSources,
+  sourceFacts,
+  usesSources,
+} from "./sources";
+import type { SourceMeta, SourcePiece } from "./types";
+
+const source = (over: Partial<SourceMeta> = {}): SourceMeta => ({
+  id: "a1b2c3d4",
+  subject: "Visa",
+  week_end: "2026-11-06",
+  url: "https://investor.visa.com/news/1",
+  host: "investor.visa.com",
+  title: "Visa results",
+  published_date: "2026-11-04",
+  fetched_at: "2026-11-06T09:00:00+00:00",
+  origin: "pasted",
+  sha256: "0123456789abcdef".repeat(4),
+  chars: 12345,
+  flags: [],
+  ...over,
+});
+const piece = (subject: string, sources: SourceMeta[] = [], gather: SourcePiece["gather"] = null): SourcePiece => ({ subject, end: "2026-11-06", week_end: "2026-11-06", sources, gather });
+const look = (found: number, searched: boolean) => ({ looked_at: "2026-11-06T08:00:00+00:00", found, searched });
+
+describe("usesSources", () => {
+  it("is on only for Bedrock and a section that calls a provider", () => {
+    expect(usesSources({ provider: "bedrock" }, { uses_provider: true })).toBe(true);
+    expect(usesSources({ provider: " Bedrock " }, { uses_provider: true })).toBe(true);
+    expect(usesSources({ provider: "bedrock" }, { uses_provider: false })).toBe(false);
+    expect(usesSources({ provider: "not configured" }, { uses_provider: true })).toBe(false);
+    expect(usesSources({ provider: "local" }, { uses_provider: true })).toBe(false);
+  });
+});
+
+describe("pieces with no source", () => {
+  const pieces = [piece("Visa", [source()]), piece("Mastercard"), piece("Circle", [], look(0, true)), piece("PayPal", [], look(0, false))];
+  it("lists those with none in order", () => expect(piecesWithoutSources(pieces)).toEqual(["Mastercard", "Circle", "PayPal"]));
+  it("names only a piece a search found nothing for", () => expect(piecesNothingFoundFor(pieces)).toEqual(["Circle"]));
+  it("a source added after a search that found nothing ends the notice", () =>
+    expect(piecesNothingFoundFor([piece("Circle", [source()], look(0, true))])).toEqual([]));
+  it("names one", () =>
+    expect(missingSourcesNote(["Circle"])).toBe("“Circle”: the last search found nothing and no source was added, so it will come back unavailable."));
+  it("names several with a count", () =>
+    expect(missingSourcesNote(["Mastercard", "Circle"])).toBe(
+      "2 pieces: the last search found nothing and no source was added, so each will come back unavailable: “Mastercard”, “Circle”.",
+    ));
+  it("says nothing when no search has found nothing", () => {
+    expect(missingSourcesNote(piecesNothingFoundFor([piece("Visa", [source()]), piece("Mastercard")]))).toBeNull();
+    expect(missingSourcesNote([])).toBeNull();
+  });
+});
+
+describe("what a piece says", () => {
+  it("is calm until a search has run", () => {
+    expect(pieceState(piece("A"))).toBe("never_looked");
+    expect(pieceState({ ...piece("A"), gather: undefined })).toBe("never_looked");
+  });
+  it("warns only after a real search found nothing and nothing was added", () => {
+    expect(pieceState(piece("A", [], look(0, true)))).toBe("nothing_found");
+    expect(pieceState(piece("A", [source()], look(0, true)))).toBe("has_sources");
+  });
+  it("is neutral when the search service is not set up", () => expect(pieceState(piece("A", [], look(0, false)))).toBe("not_set_up"));
+});
+
+describe("a source's facts", () => {
+  it("shows the date, size, when it was saved in East Africa Time, and the fingerprint's first eight characters", () => {
+    expect(sourceFacts(source())).toEqual(["4 Nov 2026", "12,345 characters", "pasted 6 Nov 2026, 12:00 EAT", "fingerprint 01234567"]);
+  });
+  it("says fetched for a fetched page and says so when it has no date", () => {
+    const facts = sourceFacts(source({ origin: "fetched", published_date: "" }));
+    expect(facts[0]).toBe("no date given");
+    expect(facts[2]).toBe("fetched 6 Nov 2026, 12:00 EAT");
+  });
+  it("has small helpers that agree", () => {
+    expect(hashPrefix("abcdef0123456789")).toBe("abcdef01");
+    expect(dateLabel("")).toBe("no date given");
+    expect(charsLabel(2)).toBe("2 characters");
+  });
+});
+
+describe("isPaste", () => {
+  it("is a fetch for an address alone and a paste once text or a date is typed", () => {
+    expect(isPaste({ url: "https://www.imf.org/x" })).toBe(false);
+    expect(isPaste({ url: "https://www.imf.org/x", text: "  ", date: " " })).toBe(false);
+    expect(isPaste({ url: "https://www.imf.org/x", text: "a" })).toBe(true);
+    expect(isPaste({ url: "https://www.imf.org/x", date: "2026-11-05" })).toBe(true);
+  });
+});
+
+describe("claimSource", () => {
+  it("is null for a claim that is not quoted from a supplied source", () => {
+    expect(claimSource({ text: "t", url: "u", cited_text: "c" })).toBeNull();
+  });
+  it("reads the host, date, quote, origin, time and fingerprint, and the off-list flag", () => {
+    const got = claimSource({
+      source_id: "a1b2c3d4",
+      host: "blog.example.com",
+      published_date: "2026-09-30",
+      cited_text: "paid $5 million",
+      origin: "pasted",
+      fetched_at: "2026-11-06T09:00:00+00:00",
+      sha256: "f".repeat(64),
+      source_flags: [NOT_ON_LIST],
+    });
+    expect(got).toEqual({
+      id: "a1b2c3d4",
+      host: "blog.example.com",
+      date: friendlyDate("2026-09-30"),
+      quote: "paid $5 million",
+      origin: "pasted",
+      savedAt: "6 Nov 2026, 12:00 EAT",
+      fingerprint: "ffffffff",
+      textFromSearch: false,
+      flags: [NOT_ON_LIST],
+      offList: true,
+      newsSite: false,
+      addedByAnalyst: false,
+    });
+  });
+  it("has no off-list mark when the flags are empty or absent", () => {
+    expect(claimSource({ source_id: "x", source_flags: [] })?.offList).toBe(false);
+    expect(claimSource({ source_id: "x" })?.offList).toBe(false);
+  });
+});
+
+describe("normalizeAddress", () => {
+  it.each([
+    ["knightfrank.com", "https://knightfrank.com"],
+    ["www.knightfrank.com/research/x", "https://www.knightfrank.com/research/x"],
+    ["https://www.imf.org/en/news", "https://www.imf.org/en/news"],
+    ["http://www.centralbank.go.ke/p", "http://www.centralbank.go.ke/p"],
+    ["  knightfrank.com/a  ", "https://knightfrank.com/a"],
+    ["ftp://example.com/f", "ftp://example.com/f"],
+  ])("%j gives %s", (raw, url) => expect(normalizeAddress(raw)).toEqual({ url }));
+
+  it("refuses an empty value and one with spaces inside", () => {
+    expect(normalizeAddress("")).toEqual({ error: ADDRESS_EMPTY });
+    expect(normalizeAddress("   ")).toEqual({ error: ADDRESS_EMPTY });
+    expect(normalizeAddress("knight frank.com")).toEqual({ error: ADDRESS_SPACES });
+  });
+});
+
+describe("the address box hint", () => {
+  it("names no real site, because the same box serves every section", () => {
+    expect(ADDRESS_PLACEHOLDER).toMatch(/example\./);
+    expect(normalizeAddress(ADDRESS_PLACEHOLDER)).toEqual({ url: `https://${ADDRESS_PLACEHOLDER}` });
+  });
+});

@@ -1,38 +1,25 @@
 <script setup lang="ts">
-import {
-  PhCaretDown,
-  PhCheckCircle,
-  PhCircle,
-  PhCircleDashed,
-  PhCircleHalf,
-  PhCircleNotch,
-  PhLockSimple,
-  PhSidebarSimple,
-  PhSquaresFour,
-  PhWarningCircle,
-} from "@phosphor-icons/vue";
+import { PhCaretDown, PhChatCircle, PhHouse, PhSidebarSimple } from "@phosphor-icons/vue";
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "reka-ui";
-import { computed, ref } from "vue";
-import { useRouter } from "vue-router";
-import { LINK } from "@/components/ui/button";
+import { computed, nextTick, ref, useTemplateRef, watch } from "vue";
+import { RouterLink, useRouter } from "vue-router";
 import { reportName } from "@/lib/format";
-import { mayLeave, useBackTarget } from "@/lib/nav";
-import { type RailSection, type RailState, shell } from "@/lib/shell";
+import { chatHref, mayLeave } from "@/lib/nav";
+import { MARKS } from "@/lib/railmarks";
+import { type RailSection, shell } from "@/lib/shell";
 
 const router = useRouter();
-const back = useBackTarget();
-const open = ref(false); // the narrow strip expanded over the page
+const open = ref(true); // expanded on every load; a collapse lasts for the visit only
+const menu = shell.menu; // the phone's drawer
 const groupOpen = ref(true);
+// The phone's drawer takes focus when it opens (so Escape and Tab work in it) and gives it back to Menu when it closes.
+const navEl = useTemplateRef<HTMLElement>("navEl");
+watch(menu, async (on) => {
+  await nextTick();
+  if (on) [...(navEl.value?.querySelectorAll<HTMLElement>("a[href], button:not([disabled])") ?? [])].find((el) => el.offsetParent !== null)?.focus();
+  else if (navEl.value?.contains(document.activeElement)) document.querySelector<HTMLElement>("[aria-label='Menu']")?.focus();
+});
 
-const MARKS: Record<RailState | "unknown", { label: string; icon: typeof PhCircle; tone: string }> = {
-  approved: { label: "Approved", icon: PhCheckCircle, tone: "text-ok-fg" },
-  rejected: { label: "Rejected", icon: PhWarningCircle, tone: "text-flag-fg" },
-  in_review: { label: "In review", icon: PhCircleHalf, tone: "text-foreground" },
-  not_drafted: { label: "Not drafted", icon: PhCircle, tone: "text-muted-foreground" },
-  unavailable: { label: "Not available yet", icon: PhLockSimple, tone: "text-muted-foreground" },
-  drafting: { label: "Being drafted", icon: PhCircleNotch, tone: "text-foreground" },
-  unknown: { label: "State not known", icon: PhCircleDashed, tone: "text-muted-foreground" },
-};
 const markOf = (s: RailSection) => MARKS[s.state ?? "unknown"];
 
 // Labels show from 1366px, or while the narrow strip is expanded; otherwise they are read by a screen reader only.
@@ -42,26 +29,25 @@ const fullOnly = computed(() => (open.value ? "" : "max-[1365px]:hidden"));
 const here = shell.here;
 const atOverview = computed(() => here.value?.view === "overview");
 const hereSlug = computed(() => (here.value?.view === "section" ? here.value.slug : null));
-const canOpen = (s: RailSection) => shell.opener.value !== null && s.slug !== hereSlug.value && s.state !== "unavailable";
+// A weekly week's section opens its chat from every page; another report (only on the hidden overview) opens as before.
+const chatPeriod = computed(() => {
+  const r = shell.report.value;
+  return r?.type === "weekly" && /^Week ending \d{4}-\d{2}-\d{2}$/.test(r.period) ? r.period : null;
+});
+const canOpen = (s: RailSection) => (chatPeriod.value !== null || shell.opener.value !== null) && s.slug !== hereSlug.value && s.state !== "unavailable";
 
 function openSection(s: RailSection) {
   if (!canOpen(s) || !mayLeave()) return;
-  open.value = false;
-  shell.opener.value?.(s.slug);
-}
-
-function toOverview() {
-  if (atOverview.value || !mayLeave()) return;
-  open.value = false;
-  if (shell.toOverview.value) shell.toOverview.value();
-  else void router.push(back.value.kind === "href" ? back.value.href : "/overview");
+  menu.value = false;
+  if (chatPeriod.value) void router.push(chatHref(chatPeriod.value, s.slug));
+  else shell.opener.value?.(s.slug);
 }
 
 /** Why a section's item does nothing, for its tooltip and screen-reader text; null when it opens the section. */
 function whyInert(s: RailSection): string | null {
   if (s.slug === hereSlug.value) return "this section is on screen";
   if (s.state === "unavailable") return "not available yet";
-  if (shell.opener.value === null) return "open the overview first";
+  if (!canOpen(s)) return "not open here";
   return null;
 }
 
@@ -75,27 +61,34 @@ const mode = computed(() => {
 });
 const showProgress = computed(() => shell.held.value !== null && !atOverview.value);
 
-// The current item is a pale blue pill (and bold, and aria-current); an item that does nothing is dimmed and has no hover.
+// The current item is a green-tinted pill with an accent bar (and bold, and aria-current); an item that does nothing is dimmed and has no hover.
+// Only pages that exist; the chat's own sections stay in the list below.
+const PAGES = [
+  { to: "/", name: "Home", icon: PhHouse },
+  { to: "/chat", name: "Chat", icon: PhChatCircle },
+];
 const ITEM =
-  "flex w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm outline-none transition-colors duration-150 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring aria-disabled:cursor-default aria-disabled:opacity-60 aria-disabled:hover:bg-transparent aria-[current=page]:bg-accent aria-[current=page]:font-semibold aria-[current=page]:text-accent-foreground aria-[current=page]:hover:bg-accent";
+  "flex w-full items-center gap-3 rounded-md px-2 py-1.5 text-left text-sm outline-none transition-colors duration-150 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring aria-disabled:cursor-default aria-disabled:opacity-60 aria-disabled:hover:bg-transparent aria-[current=page]:bg-accent aria-[current=page]:font-semibold aria-[current=page]:text-accent-foreground aria-[current=page]:hover:bg-accent aria-[current=page]:shadow-[inset_3px_0_0_var(--primary)]";
 </script>
 
 <template>
-  <!-- The wrapper is what sticks (under the top bar and the ribbon) and what holds the strip's 56px in the layout; the nav
-       fills it, and when the strip is expanded it is wider than the wrapper and lies over the page. -->
+  <!-- The wrapper is what sticks (under the top bar and the ribbon) and what holds the rail's width in the layout: 224px
+       expanded (the default), 56px when collapsed for the visit, always 224px from 1366px. Under 768px it is a drawer the
+       top bar's Menu button opens, over the page. -->
   <div
-    class="sticky top-[calc(var(--topbar-h)+var(--ribbon-h,0rem))] h-[calc(100dvh-var(--topbar-h)-var(--ribbon-h,0rem))] w-14 shrink-0 max-md:hidden min-[1366px]:w-56"
-    :class="open && 'z-40'"
+    class="sticky top-[calc(var(--topbar-h)+var(--ribbon-h,0rem))] h-[calc(100dvh-var(--topbar-h)-var(--ribbon-h,0rem))] shrink-0 min-[1366px]:w-56"
+    :class="[open ? 'min-[768px]:w-56' : 'min-[768px]:w-14', menu ? 'max-md:fixed max-md:left-0 max-md:z-30 max-md:w-56' : 'max-md:hidden']"
   >
     <nav
+      ref="navEl"
       aria-label="Report sections"
-      class="flex h-full w-14 flex-col gap-4 overflow-x-hidden overflow-y-auto border-r bg-card p-1.5 min-[1366px]:w-56 min-[1366px]:p-3"
+      class="flex h-full w-14 flex-col gap-4 overflow-x-hidden overflow-y-auto border-r bg-card p-1.5 max-md:w-56 min-[1366px]:w-56 min-[1366px]:p-3"
       :class="open && 'max-[1365px]:w-56'"
-      @keydown.esc="open = false"
+      @keydown.esc="menu ? (menu = false) : (open = false)"
     >
       <button
         type="button"
-        class="grid size-10 place-items-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring min-[1366px]:hidden"
+        class="grid size-10 place-items-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring max-md:hidden min-[1366px]:hidden"
         :aria-expanded="open"
         :aria-label="open ? 'Collapse the rail' : 'Expand the rail'"
         :title="open ? 'Collapse the rail' : 'Expand the rail'"
@@ -104,19 +97,26 @@ const ITEM =
         <PhSidebarSimple weight="bold" class="size-5" aria-hidden="true" />
       </button>
 
-      <div v-if="shell.report.value" class="space-y-1 rounded-xl border border-border/80 bg-background/80 p-3 shadow-2xs" :class="!open && 'hidden min-[1366px]:block'">
+      <div v-if="shell.report.value" class="space-y-1 border-b px-2 pt-1 pb-3" :class="!open && 'hidden min-[1366px]:block'">
         <p class="eyebrow">Report</p>
         <p class="text-sm font-semibold tracking-tight text-foreground">{{ reportName(shell.report.value.title, shell.report.value.period) }}</p>
         <p v-if="mode" class="text-xs text-muted-foreground">{{ mode }}</p>
-        <button v-if="hereSlug && shell.toOverview.value" type="button" :class="['text-xs', LINK]" @click="toOverview">Change report</button>
       </div>
 
-      <ul class="space-y-1">
-        <li>
-          <button type="button" :class="ITEM" :aria-current="atOverview ? 'page' : undefined" @click="toOverview">
-            <PhSquaresFour weight="bold" class="size-5 shrink-0" aria-hidden="true" />
-            <span :class="label">Overview</span>
-          </button>
+      <ul class="space-y-1 border-b pb-3">
+        <li v-for="p in PAGES" :key="p.to">
+          <RouterLink v-slot="{ href, navigate, isExactActive }" :to="p.to" custom>
+            <a
+              :href="href"
+              :class="ITEM"
+              :aria-current="isExactActive ? 'page' : undefined"
+              :title="p.name"
+              @click="(event) => (mayLeave() ? ((menu = false), navigate(event)) : event.preventDefault())"
+            >
+              <component :is="p.icon" weight="bold" class="size-5 shrink-0" aria-hidden="true" />
+              <span :class="[label, 'min-w-0 truncate']">{{ p.name }}</span>
+            </a>
+          </RouterLink>
         </li>
       </ul>
 
@@ -127,7 +127,7 @@ const ITEM =
         </CollapsibleTrigger>
         <CollapsibleContent>
           <p v-if="shell.sections.value.length === 0" class="px-2 py-1 text-xs text-muted-foreground" :class="fullOnly">
-            Open the overview to list this report’s sections.
+            Open the chat to list this report’s sections.
           </p>
           <ul v-else class="space-y-1">
             <li v-for="s in shell.sections.value" :key="s.slug">
@@ -154,7 +154,7 @@ const ITEM =
         </CollapsibleContent>
       </CollapsibleRoot>
 
-      <div v-if="showProgress" class="mt-auto space-y-2 rounded-xl border border-border/80 bg-muted/40 p-2.5 shadow-2xs min-[1366px]:p-3">
+      <div v-if="showProgress" class="mt-auto space-y-2 border-t px-1 pt-3 min-[1366px]:px-2">
         <p class="text-center font-mono text-xs font-semibold" :class="open ? 'hidden' : 'min-[1366px]:hidden'" aria-hidden="true">
           {{ shell.approved.value === null ? "?" : shell.approved.value }}/{{ shell.total.value }}
         </p>
@@ -180,7 +180,7 @@ const ITEM =
           <p v-if="shell.report.value?.type === 'weekly'" class="text-xs text-muted-foreground">
             {{
               shell.approved.value !== null && shell.approved.value === shell.total.value
-                ? "Ready to export from the overview."
+                ? "Ready to export from the chat."
                 : `Export unlocks when all ${shell.total.value ?? ""} are approved.`
             }}
           </p>
@@ -188,4 +188,5 @@ const ITEM =
       </div>
     </nav>
   </div>
+  <div v-if="menu" class="fixed inset-0 z-20 bg-black/30 min-[768px]:hidden" aria-hidden="true" @click="menu = false" />
 </template>

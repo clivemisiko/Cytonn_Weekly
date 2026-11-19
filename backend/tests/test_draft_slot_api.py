@@ -1,6 +1,6 @@
-"""The one-draft-at-a-time slot (api/draft_slot.py): visible while held, never wedged forever.
+"""The drafting seats (api/draft_slot.py), here with one seat: visible while held, never wedged forever.
 
-The slot is global across every section.  These pin that a draft which crashes, or a server
+The seats are global across every section.  These pin that a draft which crashes, or a server
 restart, frees it; that a draft which hangs is shown on the overview and, once it has run
 past the stale limit, is replaced rather than blocking drafting forever; and that the hung
 run's late result is discarded rather than saved over its replacement.  Time is a fake
@@ -13,7 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.main import create_app
-from cytonn_weekly.digital_payments import review_store
+from cytonn_weekly.review import store as review_store
 from cytonn_weekly.equities import review_run as eq_run
 from cytonn_weekly.equities import weekly as eq_weekly
 from cytonn_weekly.real_estate import review_run as re_run
@@ -43,7 +43,8 @@ def clock():
 @pytest.fixture
 def app(db, clock, monkeypatch):
     monkeypatch.setattr(eq_weekly, "build_equities_weekly_review", lambda: sh.equities_review())
-    monkeypatch.setattr(re_run, "build_real_estate_review", lambda: sh.real_estate_review())
+    monkeypatch.setattr(re_run, "build_real_estate_review", lambda **_: sh.real_estate_review())
+    monkeypatch.setenv("CYTONN_DRAFT_CONCURRENCY", "1")   # one seat, so these tests pin the seat rules (the default is 3)
     return create_app(db_path=db, load_dotenv=False, draft_stale_after=STALE_AFTER, clock=clock)
 
 
@@ -57,10 +58,10 @@ def hang(monkeypatch, module, name):
     entered, release = threading.Event(), threading.Event()
     real = getattr(module, name)
 
-    def stuck():
+    def stuck(*a, **k):
         entered.set()
         assert release.wait(timeout=10)
-        return real()
+        return real(*a, **k)
 
     monkeypatch.setattr(module, name, stuck)
     return entered, release
@@ -94,7 +95,7 @@ def test_a_draft_killed_by_a_non_exception_error_still_frees_the_slot(app, monke
     class Killed(BaseException):
         pass
 
-    def killed():
+    def killed(**_):
         raise Killed()
 
     monkeypatch.setattr(re_run, "build_real_estate_review", killed)
@@ -102,7 +103,7 @@ def test_a_draft_killed_by_a_non_exception_error_still_frees_the_slot(app, monke
         TestClient(app).post("/api/sections/real_estate/draft")
     client = TestClient(app)
     assert client.get("/api/sections").json()["drafting"] is None
-    monkeypatch.setattr(re_run, "build_real_estate_review", lambda: sh.real_estate_review())
+    monkeypatch.setattr(re_run, "build_real_estate_review", lambda **_: sh.real_estate_review())
     assert client.post("/api/sections/real_estate/draft").status_code == 200
 
 
@@ -113,7 +114,7 @@ def test_a_server_restart_mid_draft_leaves_no_slot_behind(app, db, clock, monkey
         assert entered.wait(timeout=10)
         restarted = TestClient(create_app(db_path=db, load_dotenv=False, clock=clock))
         assert restarted.get("/api/sections").json()["drafting"] is None
-        monkeypatch.setattr(re_run, "build_real_estate_review", lambda: sh.real_estate_review())
+        monkeypatch.setattr(re_run, "build_real_estate_review", lambda **_: sh.real_estate_review())
         assert restarted.post("/api/sections/real_estate/draft").status_code == 200
     finally:
         release.set()
@@ -130,10 +131,11 @@ def test_a_running_draft_is_shown_on_the_overview_and_named_in_the_refusal(app, 
         assert drafting["slug"] == "equities" and drafting["title"] == "Equities"
         assert drafting["elapsed_seconds"] == 185 and drafting["stale"] is False
         assert drafting["stale_after_seconds"] == STALE_AFTER and drafting["started_at"].endswith("+00:00")
-        # the slot is global: another section is refused too, and told which draft holds it
+        # with every seat taken (one here) another section is refused too, and told which draft holds the longest seat
         r = client.post("/api/sections/real_estate/draft")
         assert r.status_code == 409
-        assert "Another draft is running: Equities (3 min so far)" in r.json()["detail"]
+        assert "All 1 drafting seat is taken; the longest is Equities (3 min so far)" in r.json()["detail"]
+        assert client.get("/api/sections").json()["drafting_list"][0]["section"] == "equities"
     finally:
         release.set()
         t.join(timeout=10)
@@ -187,21 +189,21 @@ def test_a_late_stuck_run_cannot_release_its_replacements_claim(app, client, clo
     assert rb["r"].status_code == 200
 
 
-def test_a_draft_without_an_anthropic_key_is_refused_before_it_starts(client, monkeypatch):
+def test_a_draft_without_aws_settings_is_refused_before_it_starts(client, monkeypatch):
     """Seen live: with no key, a draft fetched its sources first and then failed inside the SDK."""
-    monkeypatch.delenv("ANTHROPIC_API_KEY")
-    monkeypatch.delenv("CYTONN_LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("AWS_REGION")
     called = []
     monkeypatch.setattr(eq_weekly, "build_equities_weekly_review", lambda: called.append(1))
     r = client.post("/api/sections/equities/draft")
-    assert r.status_code == 409 and "ANTHROPIC_API_KEY" in r.json()["detail"]
+    assert r.status_code == 409 and "AWS region" in r.json()["detail"]
     assert called == [] and client.get("/api/sections").json()["drafting"] is None  # nothing fetched, slot never taken
-    assert "ANTHROPIC_API_KEY" in client.get("/api/config").json()["provider_problem"]
+    assert "AWS region" in client.get("/api/config").json()["provider_problem"]
     assert client.post("/api/reviews/draft").status_code == 409  # the original Digital Payments route too
 
 
-def test_local_mode_needs_no_anthropic_key(client, monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY")
+def test_local_mode_needs_no_aws_settings(client, monkeypatch):
+    monkeypatch.delenv("AWS_REGION")
+    monkeypatch.delenv("AWS_BEARER_TOKEN_BEDROCK")
     monkeypatch.setenv("CYTONN_LLM_PROVIDER", "local")
     monkeypatch.setenv("EXA_API_KEY", "test-placeholder-not-a-real-key")   # local mode's own key check (below)
     assert client.get("/api/config").json()["provider_problem"] is None
@@ -224,15 +226,72 @@ def test_a_local_draft_without_a_search_key_is_refused_before_it_starts(client, 
         assert client.get("/api/config").json()["provider_problem"] == missing
     assert called == [] and client.get("/api/sections").json()["drafting"] is None  # nothing fetched, slot never taken
     assert client.post("/api/reviews/draft").status_code == 409  # the original Digital Payments route too
-    # a section that calls no provider needs no search key
-    assert client.post("/api/sections/company_updates/draft", json={"text": "Demo."}).status_code == 200
     # with a key set, a faked pipeline drafts as before: the check is only that a key is there
     monkeypatch.setenv("EXA_API_KEY", "test-placeholder-not-a-real-key")
     assert client.post("/api/sections/equities/draft").status_code == 200 and called == [1]
 
 
 def test_the_search_key_check_is_local_modes_alone(client, monkeypatch):
-    # production mode never searches with Exa, so no Exa key is asked for (conftest leaves none set)
-    monkeypatch.delenv("CYTONN_LLM_PROVIDER", raising=False)
+    # bedrock never searches with Exa from the model's side, so no Exa key is asked for (conftest leaves none set)
     assert client.get("/api/config").json()["provider_problem"] is None
     assert client.post("/api/sections/equities/draft").status_code == 200
+    from cytonn_weekly.drafting.factory import ANTHROPIC_REMOVED
+
+    monkeypatch.setenv("CYTONN_LLM_PROVIDER", "anthropic")   # not a mode any more: the removal sentence, not an Exa key message
+    assert client.get("/api/config").json()["provider_problem"] == ANTHROPIC_REMOVED
+    assert client.post("/api/sections/equities/draft").json()["detail"] == ANTHROPIC_REMOVED
+
+
+@pytest.mark.parametrize("value", [None, "", "   "])
+def test_an_unset_or_blank_provider_refuses_every_draft_before_anything_starts(app, db, clock, monkeypatch, value):
+    """With no provider chosen no draft may start: the refusal comes before a seat is taken, before any source is
+    fetched and before the gather step searches."""
+    if value is None:
+        monkeypatch.delenv("CYTONN_LLM_PROVIDER", raising=False)
+    else:
+        monkeypatch.setenv("CYTONN_LLM_PROVIDER", value)
+    called, searched = [], []
+    monkeypatch.setattr(eq_weekly, "build_equities_weekly_review", lambda *a, **k: called.append(1))
+    client = TestClient(create_app(db_path=db, load_dotenv=False, draft_stale_after=STALE_AFTER, clock=clock,
+                                   search_sources=lambda *a, **k: searched.append(1) or []))
+    from cytonn_weekly.drafting.factory import NOT_CONFIGURED
+
+    for r in (client.post("/api/sections/equities/draft"),
+              client.post("/api/runs", json={"section": "equities"}),
+              client.post("/api/reviews/draft")):
+        assert r.status_code == 409 and r.json()["detail"] == NOT_CONFIGURED
+    assert client.get("/api/config").json()["provider_problem"] == NOT_CONFIGURED
+    overview = client.get("/api/sections").json()
+    assert overview["drafting"] is None and overview["drafting_list"] == []   # no seat taken, no run registered
+    assert called == [] and searched == []
+    assert client.post("/api/runs", json={"section": "equities", "provider": "not configured"}).json()["detail"] == NOT_CONFIGURED
+
+
+@pytest.mark.parametrize("provider", ["local", "bedrock"])
+def test_each_explicit_provider_still_gets_past_the_provider_check(client, monkeypatch, provider):
+    from api.deps import provider_problem
+
+    monkeypatch.setenv("CYTONN_LLM_PROVIDER", provider)
+    monkeypatch.setenv("EXA_API_KEY", "test-placeholder-not-a-real-key")
+    monkeypatch.setenv("AWS_REGION", "us-east-1")
+    monkeypatch.setenv("AWS_BEARER_TOKEN_BEDROCK", "test-placeholder-not-a-real-token")   # no boto3 needed to sign
+    assert provider_problem() is None
+    assert client.get("/api/config").json()["provider"] == provider
+
+
+def test_the_seat_count_comes_from_the_environment_and_a_bad_value_uses_the_default(monkeypatch, caplog):
+    from api.draft_slot import DraftBusy, DraftSlot, draft_concurrency, draft_queue_max
+
+    monkeypatch.delenv("CYTONN_DRAFT_CONCURRENCY", raising=False)
+    assert draft_concurrency() == 3 and draft_queue_max() == 20
+    monkeypatch.setenv("CYTONN_DRAFT_CONCURRENCY", "5")
+    assert draft_concurrency() == 5
+    for bad in ("0", "7", "two", "-1"):
+        monkeypatch.setenv("CYTONN_DRAFT_CONCURRENCY", bad)
+        assert draft_concurrency() == 3
+    assert "CYTONN_DRAFT_CONCURRENCY must be a whole number from 1 to 6" in caplog.text
+    slot = DraftSlot(capacity=2, stale_after=STALE_AFTER, clock=Clock())
+    slot.claim("a", "A")
+    slot.claim("b", "B")
+    with pytest.raises(DraftBusy):
+        slot.claim("c", "C")

@@ -10,11 +10,11 @@ from cytonn_weekly.charts.block import (AVERAGE, CHART_ITEM, CHART_SCOPE, DEFECT
                                         SERIES_DEFECT_FLAG, SOURCE, STALE_FLAG, TEAM_CHART_NOTE, chart_blocks, chart_counts,
                                         chart_parts, set_team_chart, team_chart_chosen)
 from cytonn_weekly.charts.store import sha256
-from cytonn_weekly.checkers.digital_payments import MISMATCH, MISSING, SOURCES_DISAGREE
-from cytonn_weekly.common.review import build_review, check_section
+from cytonn_weekly.review.figures import MISMATCH, MISSING, SOURCES_DISAGREE
+from cytonn_weekly.review.blocks import build_review, check_section
 from cytonn_weekly.common.run_events import (CHECK_FINISHED, PART_SKIPPED, PIECE_FINISHED, PIECE_STARTED, SOURCE_FINISHED,
                                              SOURCE_STARTED)
-from cytonn_weekly.digital_payments.coordinator_review import CLEAN, FLAGGED, NOT_AUTO_VERIFIED
+from cytonn_weekly.review.model import CLEAN, FLAGGED, NOT_AUTO_VERIFIED
 from tests.chart_helpers import FRIDAY, book, day, put
 
 # What the invented draft prints, and an AVERAGE cell that agrees with the invented series' mean.
@@ -54,28 +54,23 @@ def test_with_no_workbook_each_chart_is_information_and_makes_no_review_item():
         ("chart", "chart_nasi_yield", "no_workbook", MISSING_BOOK[0], MISSING_BOOK[1])]
     assert files == {} and [b["png_sha256"] for b in blocks] == [None, None] and chart_parts(blocks[0]) == []
     assert events == [(PART_SKIPPED, "NASI P/E chart", MISSING_BOOK[0]), (PART_SKIPPED, "NASI dividend yield chart", MISSING_BOOK[0])]
-    assert review_of(blocks).review_items == []                     # nothing for the coordinator to resolve, and nothing flagged
+    assert review_of(blocks).review_items == []                     # nothing for the analyst to resolve, and nothing flagged
     assert [chart_counts(b) for b in blocks] == [{CLEAN: 0, FLAGGED: 0, NOT_AUTO_VERIFIED: 0}] * 2
 
 
-def test_no_workbook_does_not_hold_up_approval_but_a_workbook_that_cannot_give_the_chart_does():
-    other = {"kind": "supplied", "id": "company_updates", "title": "Company updates", "body_md": "Invented text.", "supplied_by": "coordinator"}
+def test_no_workbook_adds_no_item_but_a_workbook_that_cannot_give_the_chart_is_flagged():
+    other = {"kind": "supplied", "id": "bidding_range", "title": "Bidding range", "body_md": "Invented text.", "supplied_by": "coordinator"}
     none, _ = chart_blocks(None, "Equities workbook", FRIDAY, QUOTED, MISSING_BOOK)
     review = review_of([other, *none])
-    assert len(review.review_items) == 1 and not review.is_approvable
-    review.review_items[0].resolve("accept")
-    assert review.is_approvable                                        # the charts asked nothing of the coordinator
+    assert len(review.review_items) == 1 and review.is_approvable      # the charts asked nothing of the analyst
     for name, kw in (("stale", {"newest": day(1)}), ("short", {"weeks": 10}), ("future", {"newest": FRIDAY + timedelta(days=7)}),
                      ("missing sheet", {"edit": lambda ws: setattr(ws, "title", "NASI PE & Dividend Yield")})):
         blocks, _ = make(**kw)
         review = review_of([other, *blocks])
-        review.review_items[0].resolve("accept")
         assert [b["status"] for b in blocks] == ["not_drawn", "not_drawn"], name
         flagged = [i for i in review.review_items if i.kind == CHART_ITEM and i.status == FLAGGED]
-        assert flagged and not review.is_approvable, name              # an uploaded workbook that fails still holds the section up
-        for i in flagged:
-            i.resolve("accept")
-        assert review.is_approvable, name
+        assert flagged, name                                           # an uploaded workbook that fails is flagged for the reviewer
+        assert review.is_approvable, name                              # a flag is read, not resolved: it no longer blocks approval
 
 
 def test_a_drawn_block_holds_metadata_and_the_hashes_of_its_files_only():
@@ -99,9 +94,10 @@ def test_a_drawn_block_holds_metadata_and_the_hashes_of_its_files_only():
     assert json.loads(files["nasi_yield"]["json"])["points"][-1][3] == "5.0%"
 
 
-def test_the_window_is_five_years_and_the_average_still_covers_everything_since_2009():
+def test_the_window_is_seven_years_from_the_months_first_and_the_average_still_covers_everything_since_2009():
     pe = make(weeks=400)[0][0]
-    assert pe["window"]["years"] == 5 and pe["window"]["last"] == FRIDAY.isoformat()
+    assert pe["window"]["years"] == 7 and pe["window"]["last"] == FRIDAY.isoformat()
+    assert "2019-10-01" <= pe["window"]["first"] < "2019-10-08"
     assert pe["window"]["points"] < pe["average"]["count"] == 400
 
 
@@ -168,16 +164,11 @@ def test_a_missing_sheet_is_one_flagged_item_and_never_clean():
     assert "no sheet" in rows.detail[0].message and "stops the chart" in rows.detail[0].message
 
 
-def test_a_flagged_chart_blocks_approval_until_it_is_accepted():
+def test_a_flagged_chart_does_not_block_approval():
     review = review_of(make(quoted={**QUOTED, "pe": "10.1x"})[0])
     flagged = next(i for i in review.review_items if i.status == FLAGGED)
-    for i in review.review_items:
-        if i is not flagged:
-            i.resolve("accept")
-    assert not review.is_approvable
+    assert flagged.resolution is None and review.is_approvable
     flagged.resolve("fix_needed")
-    assert not review.is_approvable
-    flagged.resolve("accept")
     assert review.is_approvable
 
 
@@ -212,7 +203,7 @@ def test_setting_the_tool_chart_aside_accepts_all_its_items_and_can_be_taken_bac
     blocks, _ = make(quoted={**QUOTED, "pe": "10.1x"})               # one item is flagged (a mismatch)
     review = review_of(blocks)
     pe_items = items(review)
-    assert pe_items[0].status == FLAGGED and not review.is_approvable
+    assert pe_items[0].status == FLAGGED and pe_items[0].resolution is None
     set_team_chart(review, "nasi_pe", True)
     assert team_chart_chosen(review, "nasi_pe") and not team_chart_chosen(review, "nasi_yield")
     assert [(i.resolution, i.resolution_note) for i in pe_items] == [("accept", TEAM_CHART_NOTE)] * 5

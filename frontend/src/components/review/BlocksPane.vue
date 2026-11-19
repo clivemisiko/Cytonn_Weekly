@@ -61,6 +61,12 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
       <div class="space-y-2 empty:hidden">
         <Notice v-if="review.is_dev_draft && review.dev_mode_label" role="alert" class="font-semibold">{{ review.dev_mode_label }}</Notice>
         <Notice v-if="section.summary_note" tone="info" role="status">{{ section.summary_note }}</Notice>
+        <Notice v-if="section.model_calls" tone="info" role="status">
+          Model calls made for this draft: <span class="font-mono tabular-nums">{{ section.model_calls }}</span
+          ><template v-if="section.api_requests != null">
+            ({{ section.api_requests }} API {{ section.api_requests === 1 ? "request" : "requests" }}, searches that continued a reply included)</template
+          >.
+        </Notice>
         <Notice v-if="section.shortfall > 0" tone="warn" role="status" class="font-semibold">
           Only {{ section.pieces_found }} of {{ section.pieces_expected }} drafted pieces were found {{ review.period ? `for ${review.period}` : "this week" }}.
         </Notice>
@@ -96,7 +102,7 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
         </ul>
       </section>
 
-      <!-- The real issue's charts for this section. The tool does not draw them, so they are listed for the coordinator
+      <!-- The real issue's charts for this section. The tool does not draw them, so they are listed for the analyst
            to add by hand, with the issue they were read from. A note, not a review item. -->
       <section
         v-if="section.chart_notes && section.chart_notes.length > 0"
@@ -123,11 +129,20 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
         {{ b.group_heading }}
       </h3>
       <article v-if="b.kind === 'narrative'" :class="PIECE" :aria-labelledby="`blk-${b.id}`">
-        <component :is="b.group ? 'h4' : 'h3'" :id="`blk-${b.id}`" :class="HEAD">
-          <Numeral>{{ b.numeral }}</Numeral>
+        <!-- A Focus section's visible heading is its "Section I: ..." line above; this one names the article for a screen reader. -->
+        <component :is="b.group ? 'h4' : 'h3'" :id="`blk-${b.id}`" :class="[HEAD, b.role === 'section' || b.role === 'conclusion' || b.role === 'findings' ? 'sr-only' : '']">
+          <Numeral v-if="b.numeral || !b.role">{{ b.numeral }}</Numeral>
           <span>{{ b.headline }}</span>
         </component>
-        <Markdown :class="BODY" :text="b.body_md" />
+        <ul v-if="b.role === 'findings'" :aria-label="`${b.headline}: research notes`" class="max-w-[68ch] list-disc space-y-2 pl-5 text-sm leading-6 md:ml-11">
+          <li v-for="c in b.claims" :key="c.text + c.url" class="[overflow-wrap:anywhere]">
+            {{ c.text }}
+            <a v-if="safeUrl(c.url)" :href="safeUrl(c.url)!" target="_blank" rel="noopener noreferrer" :class="SOURCE_LINK">{{ c.title || c.url }}</a>
+            <span v-if="c.cited_text" class="block text-xs text-muted-foreground">Quote: “{{ c.cited_text }}”</span>
+          </li>
+        </ul>
+        <Markdown v-else :class="[BODY, b.outlook && 'font-bold italic']" :text="b.body_md" />
+        <p v-if="b.analyst_note" class="text-xs text-muted-foreground md:pl-11">{{ b.analyst_note }}</p>
         <ul v-if="edited(b).length" aria-label="Sentences you edited" class="space-y-1 text-xs text-muted-foreground md:pl-11">
           <li v-for="e in edited(b)" :key="`${e.at}|${e.now}`" class="[overflow-wrap:anywhere]">
             <span class="font-medium text-foreground">Edited by you, {{ friendlyTime(e.at) }}.</span> Now: "{{ e.now }}" Was: "{{ e.was }}"
@@ -147,7 +162,7 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
 
       <section v-else-if="b.kind === 'table'" :class="PIECE" :aria-labelledby="`blk-${b.id}`">
         <component :is="b.group ? 'h4' : 'h3'" :id="`blk-${b.id}`" class="flex items-center gap-3 text-base font-semibold">
-          <Numeral>{{ b.numeral }}</Numeral>
+          <Numeral v-if="b.numeral || !b.role">{{ b.numeral }}</Numeral>
           {{ b.title }}
         </component>
         <DataTable :id="b.id" :title="b.title" :columns="b.columns" :rows="b.rows" :row-key="b.key_field" />
@@ -170,10 +185,10 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
         </template>
       </section>
 
-      <!-- Text the coordinator supplied (Company Updates), shown as written. Never drafted, never checked. -->
+      <!-- Text the analyst supplied (the T-bond bidding range), shown as written. Never drafted, never checked. -->
       <article v-else-if="b.kind === 'supplied'" :class="PIECE" :aria-labelledby="`blk-${b.id}`">
         <h3 :id="`blk-${b.id}`" :class="HEAD">
-          <Numeral>{{ b.numeral }}</Numeral>
+          <Numeral v-if="b.numeral || !b.role">{{ b.numeral }}</Numeral>
           <span>{{ b.title }}</span>
         </h3>
         <Markdown :class="BODY" :text="b.body_md" />
@@ -184,30 +199,37 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
       <!-- A paragraph the tool worked out, not drafted: fixed wording around figures, each one a review item. -->
       <article v-else-if="b.kind === 'computed'" :class="PIECE" :aria-labelledby="`blk-${b.id}`">
         <h3 :id="`blk-${b.id}`" :class="HEAD">
-          <Numeral>{{ b.numeral }}</Numeral>
+          <Numeral v-if="b.numeral || !b.role">{{ b.numeral }}</Numeral>
           <span>{{ b.title }}</span>
         </h3>
         <Markdown :class="BODY" :text="b.body_md" />
-        <PartsLine :parts="computedParts(b)" />
+        <PartsLine v-if="b.role !== 'company_notes'" :parts="computedParts(b)" />
         <p v-for="n in b.notes" :key="n" class="text-xs text-muted-foreground md:pl-11">{{ n }}</p>
       </article>
 
       <!-- Text copied from the previous issue. It was not written for this week, so it is always flagged. -->
       <article v-else-if="b.kind === 'carried'" :class="PIECE" :aria-labelledby="`blk-${b.id}`">
         <h3 :id="`blk-${b.id}`" class="flex flex-wrap items-start gap-3 text-base font-semibold">
-          <Numeral>{{ b.numeral }}</Numeral>
+          <Numeral v-if="b.numeral || !b.role">{{ b.numeral }}</Numeral>
           <span>{{ b.title }}</span>
         </h3>
         <Notice v-if="b.edits?.length" tone="warn" class="font-medium md:ml-11">
           Edited by you, {{ friendlyTime(b.edits[b.edits.length - 1].at) }}. You wrote this paragraph, so the checker has no source for it. It was
           copied from {{ b.carried_from.issue_id ? `issue ${b.carried_from.issue_id}` : "the previous issue" }} before you changed it.
         </Notice>
+        <Notice v-else-if="b.role === 'analyst'" tone="flag" class="font-medium md:ml-11">
+          Analyst to write. The tool writes no text here; write it by editing this paragraph before approving.
+        </Notice>
+        <Notice v-else-if="b.role === 'standing'" tone="flag" class="font-medium md:ml-11">
+          Carried forward, edit before approving. {{ b.carried_from.note }}
+        </Notice>
         <Notice v-else tone="flag" class="font-medium md:ml-11">
           Carried forward, edit before approving. Copied from
           {{ b.carried_from.issue_id ? `issue ${b.carried_from.issue_id} on cytonnreport.com` : "the previous issue"
           }}{{ b.carried_from.published ? `, published ${friendlyDate(b.carried_from.published)}` : "" }}.
         </Notice>
-        <Markdown :class="BODY" :text="b.body_md" />
+        <p v-if="b.role === 'standing'" :class="[BODY, 'whitespace-pre-line']">{{ b.body_md }}</p>
+        <Markdown v-else :class="BODY" :text="b.body_md" />
       </article>
 
       <!-- A chart the tool draws from the analyst workbook: the picture, its facts and its points. Its checks are review
@@ -217,16 +239,16 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
       <!-- A part of the real report this tool cannot draft yet. Neutral, not a review-state colour: nothing was checked. -->
       <section v-else :class="PIECE" :aria-labelledby="`blk-${b.id}`">
         <h3 :id="`blk-${b.id}`" class="flex flex-wrap items-center gap-3 text-base font-semibold">
-          <Numeral>{{ b.numeral }}</Numeral>
+          <Numeral v-if="b.numeral || !b.role">{{ b.numeral }}</Numeral>
           {{ b.title }}
           <span class="inline-flex items-center gap-1 rounded-full border border-input px-2 py-0.5 text-xs font-semibold text-muted-foreground">
             <PhLockSimple weight="bold" class="size-3" aria-hidden="true" />
-            Not available yet
+            {{ b.sector ? "Not included" : "Not available yet" }}
           </span>
         </h3>
         <div class="space-y-2 rounded-md border bg-muted px-4 py-3 text-sm md:ml-11">
           <p>{{ b.reason }}</p>
-          <p class="text-muted-foreground"><span class="font-semibold text-foreground">Unblocked by:</span> {{ b.unblock }}</p>
+          <p class="text-muted-foreground"><span class="font-semibold text-foreground">{{ b.sector ? "To include it:" : "Unblocked by:" }}</span> {{ b.unblock }}</p>
         </div>
       </section>
     </template>

@@ -7,8 +7,14 @@ from api.main import create_app
 from api.problems import PROBLEMS
 from api.serialize import serialize_review
 from cytonn_weekly.common.computed import carried_block
-from cytonn_weekly.common.review import EDITED_PARAGRAPH_NOTE, build_review, check_section, supplied_block, unavailable_block
-from cytonn_weekly.digital_payments import review_store as rs
+from cytonn_weekly.review.blocks import (
+    EDITED_PARAGRAPH_NOTE,
+    build_review,
+    check_section,
+    supplied_block,
+    unavailable_block,
+)
+from cytonn_weekly.review import store as rs
 from cytonn_weekly.fixed_income import weekly as fi_weekly
 from cytonn_weekly.weekly import sentence_edit as se
 
@@ -82,14 +88,12 @@ def test_the_edited_item_is_not_auto_verified_with_the_plain_note_and_the_flag_i
     assert other.status == "flagged"
 
 
-def test_the_edited_paragraph_must_be_acknowledged_before_the_section_can_be_approved():
+def test_an_edited_paragraph_does_not_hold_up_approval():
     done = edit(make())
-    for item in done.review.review_items:
-        if item.ref != OUTLOOK_REF:
-            item.resolve("accept")
-    assert not done.review.is_approvable
-    done.review.review_items[idx(done.review, OUTLOOK_REF)].resolve("accept")
+    assert done.review.review_items[idx(done.review, OUTLOOK_REF)].resolution is None
     assert done.review.is_approvable
+    done.review.decide("approved", done.review.flagged_count)
+    assert done.review.decision == "approved"
 
 
 def test_typed_figures_are_not_compared_with_anything():
@@ -209,7 +213,7 @@ def test_an_approved_section_stays_approved_and_the_new_version_needs_approving_
     review = make()
     for item in review.review_items:
         item.resolve("accept")
-    review.decide("approved")
+    review.decide("approved", review.flagged_count)
     run_id, _ = saved(db, review)
     r = post(client, run_id, idx(review, OUTLOOK_REF), text=NEW)
     assert r.status_code == 200, r.text

@@ -1,13 +1,16 @@
 """Real Estate structured sources not yet built, with why.
 
-Neither is a weekly table: CBK's mortgage figures (loans outstanding, number of
-loans, average rate, NPLs) come once a year in the Bank Supervision Annual
-Report, and the KBA Housing Price Index is a quarterly PDF (kba.co.ke/housing-price-index/).
+Neither is a weekly table; both are for the quarterly, half-year and annual
+reviews.  The publication names are from the investments team, 2026-10-30:
+CBK's mortgage figures (loans outstanding, number of loans, average rate, NPLs)
+are in the CBK Bank Supervision Report, with the table still to be named, and the
+house price index is the KNBS Residential Property Price Index, not a KBA one.
 Their table layouts were not inspected in this pass, so no parser is written
 against a guessed layout.  In the meantime the Real Estate "Residential and
-mortgage lending" brief searches centralbank.go.ke and kba.co.ke first, so a
-release that lands in the report week reaches the draft as cited claims, whose
-figures are exact-matched against the cited text like any other claim.
+mortgage lending" brief searches centralbank.go.ke, kba.co.ke and knbs.or.ke among
+its sources first, so a release that lands in the report week reaches the draft
+as cited claims, whose figures are exact-matched against the cited text like any
+other claim.
 """
 
 from __future__ import annotations
@@ -16,10 +19,13 @@ from dataclasses import dataclass
 from typing import Optional
 
 MORTGAGE_UNBLOCK = (
-    "Confirm which CBK publication and table the report takes its mortgage figures from (Bank Supervision "
-    "Annual Report or the Mortgage Finance survey), then parse that table from a real sample."
+    "For the quarterly, half-year and annual reviews: name the table in the CBK Bank Supervision Report that holds "
+    "the mortgage figures (publication named by the investments team, 2026-10-30), then parse it from a real sample."
 )
-HPI_UNBLOCK = "Pick one real KBA HPI PDF as the reference sample and parse its quarterly and annual change table."
+HPI_UNBLOCK = (
+    "For the quarterly, half-year and annual reviews: one real release of the KNBS Residential Property Price Index "
+    "(named by the investments team, 2026-10-30) as the reference sample, then parse its changes."
+)
 
 
 @dataclass
@@ -46,5 +52,5 @@ class HousePriceIndex:
 
 
 def fetch_residential_price_index(quarter: Optional[str] = None) -> HousePriceIndex:
-    # TODO: quarterly KBA HPI PDF, layout not yet inspected; see HPI_UNBLOCK.
+    # TODO: KNBS Residential Property Price Index release, layout not yet inspected; see HPI_UNBLOCK.
     raise NotImplementedError("Residential price index parser not built: " + HPI_UNBLOCK)

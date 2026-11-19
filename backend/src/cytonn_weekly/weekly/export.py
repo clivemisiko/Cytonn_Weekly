@@ -1,18 +1,18 @@
 """The approved weekly report as one Word file, in the real issue's order.
 
 Allowed only when **every** weekly section of the week is approved: the tool never
-publishes anything a coordinator has not signed off, and a half-approved report is not a
+publishes anything an analyst has not signed off, and a half-approved report is not a
 report.  The file is for whoever lays the issue out and loads it into the CMS; nothing
 here sends or publishes it (publishing to the CMS is still a blocked stub).
 
 What it holds, read from Cytonn Weekly #38.2026 (cytonnreport.com issue 891):
 
-* the six sections under the issue's own headings, in its order;
+* the five sections under the issue's own headings, in its order;
 * every table as a Word table, with its source line and footnotes;
 * each chart the real issue carries, where the issue puts it: the tool's own picture (6.0 in wide, with a line under it
-  saying it is from the analyst workbook and not verified) for a chart it drew and the coordinator approved, otherwise
+  saying it is from the analyst workbook and not verified) for a chart it drew and the analyst approved, otherwise
   "[Chart to add: <caption>]" for the team's own chart (``_chart`` says each case);
-* text carried forward from the previous issue marked as such, and a part the coordinator
+* text carried forward from the previous issue marked as such, and a part the analyst
   approved as missing named as missing, so neither can pass for finished copy;
 * "Executive Summary:" on page 1, after the title, as the published issue (#41.2026) prints it: each section's summary
   as one paragraph led by the section's name in bold, a section with no summary left out.
@@ -26,13 +26,12 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from datetime import date
+from datetime import date, timedelta
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Optional, Union
 
 from docx import Document
-from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import parse_xml
 from docx.shared import Inches, Pt, RGBColor
@@ -45,16 +44,17 @@ from cytonn_weekly.common.word_layout import (
     add_linked_text,
     apply_report_look,
     executive_summary,
-    shade_header,
+    keep_together,
+    report_table,
     small_line,
     title,
     title_line,
 )
-from cytonn_weekly.digital_payments import review_store
-from cytonn_weekly.digital_payments.coordinator_review import APPROVED, CoordinatorReview
+from cytonn_weekly.review import store as review_store
+from cytonn_weekly.review.model import APPROVED, CoordinatorReview
 from cytonn_weekly.digital_payments.delivery import DevModeDeliveryBlocked, is_dev_mode_review
 from cytonn_weekly.digital_payments.fetcher import format_table_rows
-from cytonn_weekly.digital_payments.providers.base import LINK_RE
+from cytonn_weekly.drafting.results import LINK_RE
 from cytonn_weekly.digital_payments.summary import (
     TABLE_COLUMNS,
     TABLE_TITLE,
@@ -63,23 +63,26 @@ from cytonn_weekly.digital_payments.summary import (
     footnote_links,
 )
 from cytonn_weekly.real_estate.review_run import layout as real_estate_layout
-from cytonn_weekly.report_sections import SECTIONS, SectionSpec, is_current, latest_runs
+from cytonn_weekly.report_sections import SECTIONS, SectionSpec, is_current, latest_runs, report_periods
 from cytonn_weekly.report_types import WEEKLY, week_ending_of
 from cytonn_weekly.weekly import chart_uploads
 from cytonn_weekly.weekly.summaries import section_summary
-from cytonn_weekly.weekly.week import Week, day_text, ordinal, week_for
+from cytonn_weekly.weekly.week import Week, day_text, latest_friday, ordinal, week_for
 
 DEV_LABEL = "DEV MODE DRAFT (local model): NOT FOR PUBLICATION OR CIRCULATION"
 WATERMARK = "DEV MODE DRAFT"
 SUMMARY_HEADING = "Executive Summary:"
+GUIDE_LINE = "Focus of the Week: analyst to write"
 CARRIED_NOTE = "[Carried forward from the previous issue: edit before publishing]"
 CHART_WIDTH = Inches(6.0)
 CHART_NOT_VERIFIED = f"{PROVENANCE[0].upper()}{PROVENANCE[1:]}."   # its own paragraph, so the editor can delete it
 PICTURE_UNVERIFIED = "[Chart not drawn: the stored picture could not be verified]"
 UPLOAD_UNREADABLE = "[Chart image not used: the uploaded picture could not be read. Upload it again.]"
 
+UNLABELLED_CARRIED = ("outlook", "shilling_pressure")   # carried blocks the export prints with no heading
+
 # The issue's own section headings (#38.2026).
-HEADINGS = {"company_updates": "Company Updates", "fixed_income": "Fixed Income", "equities": "Equities",
+HEADINGS = {"fixed_income": "Fixed Income", "equities": "Equities",
             "real_estate": "Real Estate", "digital_payments": "Digital Payments Weekly Highlights", "focus": "Focus of the Week"}
 
 _RED = RGBColor(0xC0, 0x00, 0x00)
@@ -119,7 +122,9 @@ def export_status(db_path: Optional[Union[Path, str]], period: str, today: Optio
     """Whether the week's report can be exported, each section's state, and how many chart slots have no image."""
     reviews = weekly_reviews(db_path, period, today)
     sections = [{"slug": spec.slug, "title": HEADINGS.get(spec.slug, spec.title), "state": _state(review),
-                 "run_id": review.run_id if review else None} for spec, review in reviews]
+                 "run_id": review.run_id if review else None,
+                 "flagged_accepted_on_approval": review.accepted_on_approval() if review and review.decision == APPROVED else 0}
+                for spec, review in reviews]
     dev = [HEADINGS.get(spec.slug, spec.title) for spec, review in reviews if review is not None and is_dev_mode_review(review)]
     return {"period": period, "ready": all(s["state"] == APPROVED for s in sections), "sections": sections,
             "is_dev_draft": bool(dev), "dev_sections": dev, "dev_mode_label": DEV_LABEL if dev else None,
@@ -135,6 +140,51 @@ def require_all_approved(reviews: list[tuple[SectionSpec, Optional[CoordinatorRe
         raise ExportNotAllowed("The weekly report cannot be exported yet, because every section must be approved first. "
                                "Not approved yet: " + "; ".join(missing) + ". Approve those sections, then export again.")
     return [(spec, review) for spec, review in reviews if review is not None]
+
+
+def week_choices(db_path: Optional[Union[Path, str]], today: Optional[date] = None) -> list[dict[str, Any]]:
+    """The weeks an analyst can choose to draft, newest first: the coming Friday and the last eight, each with how many
+    of the five sections' newest runs (the export's grouping) are approved and a status: not_started, in_progress or approved."""
+    friday = latest_friday(today or date.today())
+    out = []
+    for n in range(1, -8, -1):
+        ending = friday + timedelta(days=7 * n)
+        period = f"Week ending {ending.isoformat()}"
+        runs = latest_runs(db_path, WEEKLY, period)
+        approved = sum(1 for spec in SECTIONS if runs.get(spec.slug, {}).get("decision") == APPROVED)
+        status = "approved" if approved == len(SECTIONS) else "in_progress" if runs else "not_started"
+        out.append({"week_ending": ending.isoformat(), "period": period, "status": status,
+                    "approved": approved, "total": len(SECTIONS)})
+    return out
+
+
+def approved_weeks(db_path: Optional[Union[Path, str]], today: Optional[date] = None) -> dict[str, Any]:
+    """Every weekly period whose five sections' newest runs are all approved, newest week first, and the week after
+    the latest of them (``next_week_ending``, None when no week is fully approved). ``default_week_ending``, never
+    None, is the latest Friday: approvals never move it, the analyst chooses the week (``choices``, see
+    ``week_choices``).
+
+    A week is a period label, grouped exactly as the export groups it (``weekly_reviews``); its week ending is the
+    one the export's chart uploads read (``export_week``)."""
+    weeks = []
+    for period in report_periods(db_path, WEEKLY):
+        reviews = weekly_reviews(db_path, period, today)
+        if any(_state(review) != APPROVED for _, review in reviews):
+            continue
+        weeks.append({
+            "period": period, "week_ending": export_week(period, reviews, today).ending.isoformat(),
+            "approved_at": max(review.decided_at or "" for _, review in reviews),
+            "is_dev_draft": any(is_dev_mode_review(review) for _, review in reviews),
+            "can_export": True,   # the export refuses only a week that is not fully approved
+            "sections": [{"slug": spec.slug, "title": HEADINGS.get(spec.slug, spec.title), "run_id": review.run_id}
+                         for spec, review in reviews],
+        })
+    weeks.sort(key=lambda w: (w["week_ending"], w["approved_at"]), reverse=True)
+    latest = date.fromisoformat(weeks[0]["week_ending"]) if weeks else None
+    after = latest + timedelta(days=7) if latest else None
+    return {"weeks": weeks, "next_week_ending": after.isoformat() if after else None,
+            "default_week_ending": latest_friday(today or date.today()).isoformat(),
+            "choices": week_choices(db_path, today)}
 
 
 def refuse_to_send(reviews: list[tuple[SectionSpec, CoordinatorReview]]) -> None:
@@ -186,45 +236,27 @@ def _add_text(doc, body_md: str) -> None:
             add_hyperlink(p, url, url).font.size = Pt(9)
 
 
-def _add_grid(doc, grid: list[list[str]], header_rows: int = 1, numeric_from: int = 1) -> None:
-    table = doc.add_table(rows=0, cols=len(grid[0]))
-    table.style = "Table Grid"
-    table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    for r, values in enumerate(grid):
-        cells = table.add_row().cells
-        for c, value in enumerate(values):
-            cells[c].text = ""
-            para = cells[c].paragraphs[0]
-            run = para.add_run("" if value is None else str(value))
-            run.font.size, run.bold = Pt(8), r < header_rows
-            para.alignment = WD_ALIGN_PARAGRAPH.RIGHT if c >= numeric_from and r >= header_rows else WD_ALIGN_PARAGRAPH.LEFT
-            para.paragraph_format.space_after = Pt(0)
-            if r < header_rows:
-                shade_header(cells[c])
-
-
-def _source_line(doc, source: dict[str, Any]) -> None:
+def _source_line(doc, source: dict[str, Any]):
     if source and source.get("name"):
-        small_line(doc, f"Source: {source['name']}")
+        return small_line(doc, f"Source: {source['name']}")
+    return None
 
 
 def _add_table_block(doc, block: dict[str, Any]) -> None:
-    title_line(doc, block["title"])
+    source = block.get("source") or {}
+    failed = [r for r in block.get("source_rows", []) if r.get("error")]
+    under = (block.get("footnotes") or []) + (block.get("notes") or []) + failed + ([1] if source.get("name") else [])
     if block.get("export_grid"):
-        _add_grid(doc, block["export_grid"], header_rows=2)
+        report_table(doc, block["export_grid"], header_rows=2, title=block["title"], keep_last=bool(under))
     else:
         columns = block["columns"]
-        numeric = next((n for n, c in enumerate(columns) if c.get("fmt", "text") != "text"), len(columns))
         grid = [[c["label"] for c in columns]] + [[row.get(c["key"], "") for c in columns] for row in block.get("rows", [])]
-        _add_grid(doc, grid, numeric_from=numeric)
-    for note in block.get("footnotes") or []:
-        small_line(doc, note)
-    for note in block.get("notes") or []:
-        small_line(doc, note, italic=True)
-    _source_line(doc, block.get("source") or {})
-    failed = [r for r in block.get("source_rows", []) if r.get("error")]
-    for r in failed:
-        small_line(doc, f"{r.get(block['key_field'])}: {r['error']}", color=_RED, italic=True)
+        report_table(doc, grid, title=block["title"], keep_last=bool(under))
+    lines = [small_line(doc, note) for note in block.get("footnotes") or []]
+    lines += [small_line(doc, note, italic=True) for note in block.get("notes") or []]
+    lines += [p for p in [_source_line(doc, source)] if p is not None]
+    lines += [small_line(doc, f"{r.get(block['key_field'])}: {r['error']}", color=_RED, italic=True) for r in failed]
+    keep_together(lines)
 
 
 def _mark(doc, text: str):
@@ -244,9 +276,10 @@ def _red_line(doc, text: str) -> None:
     r.italic, r.font.color.rgb = True, _RED
 
 
-def _uploaded_chart(doc, caption: str, upload: tuple[bytes, str]) -> None:
-    """The analyst's uploaded image: its lead-in, then the picture no wider than the text, keeping its proportions."""
-    data, lead_in = upload
+def _uploaded_chart(doc, caption: str, upload: tuple[bytes, str, str]) -> None:
+    """The analyst's uploaded image: its lead-in, then the picture no wider than the text, keeping its proportions,
+    then the analyst's source line, if one was typed; none is ever filled in."""
+    data, lead_in, source = upload
     para = doc.add_paragraph()
     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
     try:
@@ -261,6 +294,9 @@ def _uploaded_chart(doc, caption: str, upload: tuple[bytes, str]) -> None:
         shape.height, shape.width = int(shape.height * text_width / shape.width), text_width
     shape._inline.docPr.set("descr", lead_in)
     para.insert_paragraph_before(lead_in).paragraph_format.keep_with_next = True
+    if source:
+        para.paragraph_format.keep_with_next = True      # the line below stays on the picture's page
+        _source_line(doc, {"name": source})
 
 
 def export_week(period: str, reviews, today: Optional[date] = None) -> Week:
@@ -281,9 +317,9 @@ def export_week(period: str, reviews, today: Optional[date] = None) -> Week:
     return week_for(None, today)
 
 
-def _uploaded_charts(week: Optional[Week], inputs_root: Optional[Union[Path, str]]) -> dict[str, tuple[bytes, str]]:
-    """Caption to (image, lead-in) for each chart slot of the week with an uploaded image; the lead-in is the analyst's,
-    else the slot's default sentence, never the caption."""
+def _uploaded_charts(week: Optional[Week], inputs_root: Optional[Union[Path, str]]) -> dict[str, tuple[bytes, str, str]]:
+    """Caption to (image, lead-in, source) for each chart slot of the week with an uploaded image; the lead-in is the
+    analyst's, else the slot's default sentence, never the caption; the source is the analyst's or empty."""
     if week is None:
         return {}
     out = {}
@@ -291,19 +327,20 @@ def _uploaded_charts(week: Optional[Week], inputs_root: Optional[Union[Path, str
         stored = chart_uploads.image(week, slot["key"], inputs_root)
         if stored:
             out[slot["caption"]] = (stored[0], chart_uploads.lead_in(week, slot["key"], inputs_root)
-                                    or chart_uploads.DEFAULT_LEAD_INS[slot["key"]])
+                                    or chart_uploads.DEFAULT_LEAD_INS[slot["key"]],
+                                    chart_uploads.source(week, slot["key"], inputs_root))
     return out
 
 
 def _chart(doc, caption: str, chart: Optional[dict[str, Any]], review: CoordinatorReview,
-           charts_root: Optional[Union[Path, str]], upload: Optional[tuple[bytes, str]] = None) -> None:
+           charts_root: Optional[Union[Path, str]], upload: Optional[tuple[bytes, str, str]] = None) -> None:
     """One chart's place in the file.  ``chart`` is the section's chart block for this caption, if the tool has one.
 
     * The tool's chart was drawn, is still the one in use and its stored picture verifies (the same SHA-256 check as the
       review screen's route): the picture, 6.0 in wide, with the caption as its alt text and, in its own paragraph, the
       line saying where its history comes from.
-    * The coordinator chose the team's own chart, or no workbook was uploaded: the placeholder and nothing else.
-    * A workbook was uploaded but the chart was not drawn (the coordinator accepted it as missing): the placeholder and,
+    * The analyst chose the team's own chart, or no workbook was uploaded: the placeholder and nothing else.
+    * A workbook was uploaded but the chart was not drawn (the analyst accepted it as missing): the placeholder and,
       in red, why.
     * The picture is drawn but its file is changed or missing now: the placeholder and a red line, never a picture
       that cannot be verified.
@@ -332,8 +369,12 @@ def _chart(doc, caption: str, chart: Optional[dict[str, Any]], review: Coordinat
 
 
 def _add_blocks(doc, review: CoordinatorReview, charts_root: Optional[Union[Path, str]] = None,
-                uploads: Optional[dict[str, tuple[bytes, str]]] = None) -> None:
+                uploads: Optional[dict[str, tuple[bytes, str, str]]] = None) -> None:
     section = review.section
+    if any(b.get("role") == "findings" for b in section.get("blocks", [])):   # the Focus is the analyst's: its findings are never printed
+        note = _mark(doc, GUIDE_LINE)
+        note.bold, note.font.color.rgb = True, _RED
+        return
     chart_after: dict[str, list[str]] = section.get("chart_after") or {}
     charts = {b["caption"]: b for b in section.get("blocks", []) if b.get("kind") == "chart"}
 
@@ -342,7 +383,8 @@ def _add_blocks(doc, review: CoordinatorReview, charts_root: Optional[Union[Path
             _chart(doc, caption, charts.get(caption), review, charts_root, (uploads or {}).get(caption))
 
     placed: set[str] = set()
-    for block in real_estate_layout(section, WEEKLY):
+    layout = list(real_estate_layout(section, WEEKLY))
+    for n, block in enumerate(layout):
         kind = block["kind"]
         if block.get("export") is False:
             continue   # shown on the review screen only; its content is inside another block's table
@@ -350,6 +392,15 @@ def _add_blocks(doc, review: CoordinatorReview, charts_root: Optional[Union[Path
             doc.add_heading(block["group_heading"], level=2)
         if kind == "table":
             _add_table_block(doc, block)
+        elif kind == "narrative" and block.get("outlook"):   # Real Estate's closing outlook: bold italic, as the issue prints it
+            first = len(doc.paragraphs)
+            _add_text(doc, block.get("body_md") or "")
+            for para in doc.paragraphs[first:]:
+                if not para.text.startswith("Sources:") and not para.text.startswith("["):
+                    for run in para.runs:
+                        run.bold = run.italic = True
+        elif kind == "narrative" and block.get("role"):
+            _add_text(doc, block.get("body_md") or "")   # a Focus part: a section's heading is its group_heading, printed above
         elif kind == "narrative":
             headline = block.get("headline") or block.get("topic") or ""
             if block.get("group"):   # a Real Estate story under its group: "a. <headline>"
@@ -357,18 +408,35 @@ def _add_blocks(doc, review: CoordinatorReview, charts_root: Optional[Union[Path
             else:
                 doc.add_heading(headline, level=2)
             _add_text(doc, block.get("body_md") or "")
+        elif kind == "computed" and block.get("role") == "contents":
+            _add_text(doc, block["body_md"])   # the Focus's contents list: plain lines, one per paragraph
         elif kind == "computed":
-            doc.add_heading(block["title"], level=2)
-            _add_text(doc, block["body_md"])
+            if not block.get("continues"):   # a sentence that continues the carried paragraph before it is printed there
+                if not block.get("group"):   # a Real Estate paragraph sits under its group's heading, as the issue prints it
+                    doc.add_heading(block["title"], level=2)
+                _add_text(doc, block["body_md"])
             names = [s["name"] for s in block.get("sources") or [] if s.get("name")]
             if names:
                 small_line(doc, "Source: " + "; ".join(names))
+        elif kind == "carried" and block.get("role") == "analyst" and not block.get("edits"):
+            _red_line(doc, f"[Analyst to write: {block['title']}]")
+        elif kind == "carried" and block.get("role") == "standing":
+            if not block.get("edits"):
+                note = _mark(doc, CARRIED_NOTE)
+                note.bold, note.font.color.rgb = True, _RED
+            for line in block["body_md"].splitlines():   # the paragraph, then each list item on its own line
+                if line.strip():
+                    doc.add_paragraph(line.strip())
         elif kind == "carried":
-            doc.add_heading(block["title"], level=2)
+            # the issue prints these as plain paragraphs: the Focus's disclaimer starts with its own word, and the closing
+            # outlooks and the shilling's pressure bullets sit under their section with no label (issue #45.2026, pp. 8 and 13)
+            if block.get("role") not in ("disclaimer", "analyst") and block["id"] not in UNLABELLED_CARRIED:
+                doc.add_heading(block["title"], level=2)
             if not block.get("edits"):   # a paragraph the reviewer rewrote (sentence_edit.apply_paragraph) is no longer carried text
                 note = _mark(doc, CARRIED_NOTE)
                 note.bold, note.font.color.rgb = True, _RED
-            _add_text(doc, block["body_md"])
+            after = layout[n + 1] if n + 1 < len(layout) else {}
+            _add_text(doc, block["body_md"] + (" " + after["body_md"] if after.get("continues") == block["id"] else ""))
         elif kind == "supplied":
             if len(section.get("blocks", [])) > 1:
                 doc.add_heading(block["title"], level=2)
@@ -397,7 +465,7 @@ def _add_digital_payments(doc, section: dict[str, Any]) -> None:
             average = _average_row(outlook.get("stats") or {})
             if average:
                 grid.append(average)
-            _add_grid(doc, grid, numeric_from=2)
+            report_table(doc, grid, keep_last=True)
             small_line(doc, "Source: Yahoo Finance. Forward P/E is based on analyst consensus forward earnings estimates.")
     text = outlook.get("text") or (outlook.get("text_md") or "").strip("*")
     if text:
@@ -462,7 +530,7 @@ def build_weekly_document(reviews: list[tuple[SectionSpec, CoordinatorReview]], 
     title(doc, report_title(period))
     decided = max((review.decided_at or "" for _, review in reviews), default="")
     on = f" (last on {day_text(date.fromisoformat(decided[:10]))})" if decided else ""
-    small_line(doc, f"Every section checked and approved by the coordinator{on}. "
+    small_line(doc, f"Every section checked and approved by the analyst{on}. "
                 "Charts are added by hand where marked; text marked as carried forward must be edited before publishing.")
     executive_summary(doc, SUMMARY_HEADING, [(HEADINGS.get(spec.slug, spec.title), summary_text(review.section))
                                              for spec, review in reviews])
@@ -505,14 +573,14 @@ def slug(text: str) -> str:
 
 
 def focus_title(reviews, typed_first: bool = False) -> str:
-    """The Focus of the Week title as the Word file prints it: its piece's headline, else the coordinator's topic.
+    """The Focus of the Week title as the Word file prints it: its piece's headline, else the analyst's topic.
 
-    ``typed_first``: the topic the coordinator typed (the section's ``topic``) first, then the headline; the file
+    ``typed_first``: the topic the analyst typed (the section's ``topic``) first, then the headline; the file
     name uses this, because the headline is drafted and changes on every redraft."""
     for spec, review in reviews:
         if spec.slug == "focus" and review is not None:
             section = review.section
-            piece = next((b for b in section.get("blocks", []) if b.get("kind") == "narrative"), {})
+            piece = next((b for b in section.get("blocks", []) if b.get("kind") == "narrative" and not b.get("role")), {})
             names = [piece.get("headline"), piece.get("topic"), section.get("topic")]
             if typed_first:
                 names.insert(0, section.get("topic"))

@@ -15,14 +15,15 @@ from datetime import date
 
 import pytest
 
-from cytonn_weekly.checkers.digital_payments import MISMATCH, MISSING, SOURCES_DISAGREE, UNSOURCED
+from cytonn_weekly.review.figures import MISMATCH, MISSING, SOURCES_DISAGREE, UNSOURCED
 from cytonn_weekly.common import computed
 from cytonn_weekly.common.computed import ANALYST, BPS, OCR, PLAIN, PLAIN_PCT, POINTS, SOURCE, a_figure, an_input
-from cytonn_weekly.common.checks import check_table_block
+from cytonn_weekly.review.checks import check_table_block
 from cytonn_weekly.common.formatting import MULTIPLE, PCT
-from cytonn_weekly.common.review import build_review, check_section, numbered, table_block
+from cytonn_weekly.review.blocks import build_review, check_section, numbered, table_block
 from cytonn_weekly.common.run_events import EventLog
 from cytonn_weekly.equities import weekly as eqw
+from cytonn_weekly.fixed_income import cbk_auctions
 from cytonn_weekly.fixed_income import weekly as fiw
 from cytonn_weekly.weekly import cbk_bulletin, inputs, previous_issue
 from cytonn_weekly.weekly.week import Week
@@ -179,7 +180,7 @@ def test_a_builders_own_flag_and_carried_text_are_always_flagged():
     item = review.review_items[0]
     assert (item.kind, item.status, item.ref) == ("carried_text", "flagged", "Outlook (carried forward)")
     assert item.detail[0].message.startswith("carried forward, edit before approving: this text is copied from issue 891")
-    assert not review.is_approvable
+    assert review.is_approvable
 
 
 def test_a_table_row_can_be_analyst_input_and_a_derived_column_is_worked_out_again():
@@ -241,6 +242,38 @@ def test_tbonds_reproduce_cbks_results_for_the_week(root):
     assert "FXD3/2019/015" in b["body_md"] and "FXD1/2019/020" in b["body_md"] and "FXD1/2018/015" not in b["body_md"]  # the switch is not a primary auction
 
 
+@pytest.mark.parametrize("bps, printed", [("-0.04", "0.04 bps"), ("0.04", "0.04 bps"), ("0.05", "0.1 bps"), ("0.3", "0.3 bps"),
+                                          ("-0.34", "0.3 bps"), ("12.26", "12.3 bps"), ("0.049", "0.05 bps"),
+                                          ("0.0", None), ("-0.0004", None)])
+def test_the_interbank_change_takes_one_decimal_two_when_one_prints_zero_and_none_when_two_do(bps, printed):
+    places = fiw.interbank_bps_places(computed.Decimal(bps))
+    assert (computed.show(computed.Decimal(bps), BPS, places) if places else None) == printed
+
+
+NOW_DAYS = ("2026-09-25", "2026-09-28", "2026-09-29", "2026-09-30", "2026-10-01")
+LAST_DAYS = ("2026-09-18", "2026-09-21", "2026-09-22", "2026-09-23", "2026-09-24")
+
+
+@pytest.mark.parametrize("now, last, printed, sentence", [
+    ("8.80", "8.70", "10.0 bps", "tightened, with the average interbank rate increasing by 10.0 bps to 8.8%."),
+    ("8.7504", "8.7500", "0.04 bps", "tightened, with the average interbank rate increasing by 0.04 bps to 8.8%."),
+    ("8.7500", "8.7500", "0.00 bps", "was unchanged, with the average interbank rate unchanged to 8.8%."),
+])
+def test_the_checker_matches_the_interbank_change_at_each_precision(tmp_path, now, last, printed, sentence):
+    from cytonn_weekly.weekly import analyst
+    inputs.store(WEEK, "cbk_bulletin", BULLETIN, "bulletin.pdf", tmp_path)   # no workbook: the typed rates are the only reading
+    text = "\n".join([f"{d} {last}" for d in LAST_DAYS] + [f"{d} {now}" for d in NOW_DAYS])
+    analyst.save_form(WEEK, {"tables": {"interbank": {"text": text}}}, tmp_path)
+    review = build(tmp_path)
+    liquidity = blocks(review)["liquidity"]
+    fig = next(f for f in liquidity["figures"] if f["key"] == "rate_bps")
+    assert fig["display"] == printed and fig["in_text"] == (printed != "0.00 bps")
+    assert sentence in liquidity["body_md"] and ("bps to" in liquidity["body_md"]) == fig["in_text"]
+    assert computed.check_figure_record(liquidity, fig)[0] == []
+    [item] = [i for i in review.review_items if "Average interbank rate change" in i.ref]
+    assert item.status == "not_auto_verified"     # typed rates: never clean, and no mismatch at either precision
+
+
 def test_liquidity_volumes_eurobonds_shilling_and_reserves_reproduce_the_published_week(root):
     by = blocks(build(root))
     liquidity = figures(by["liquidity"])
@@ -270,6 +303,56 @@ def test_liquidity_volumes_eurobonds_shilling_and_reserves_reproduce_the_publish
         "14,930.0", "15,042.0", "6.1", "0.7%")
 
 
+# The yields at issue in the Eurobond table of the Cytonn Monthly of October 2026, by the report's column head.
+MONTHLY_YIELDS_AT_ISSUE = {"2018 10-year issue": "7.3%", "2018 30-year issue": "8.3%", "2019 12-year issue": "7.9%",
+                           "2021 13-year issue": "6.2%", "2024 7-year issue": "10.4%"}
+
+
+def yields_at_issue(review):
+    return {r["issue"]: r["yield_at_issue"] for r in blocks(review)["eurobonds_issues"]["rows"]}
+
+
+def test_each_eurobond_gets_its_own_yield_at_issue(root):
+    review = build(root)
+    assert yields_at_issue(review) == MONTHLY_YIELDS_AT_ISSUE
+    grid = blocks(review)["eurobonds_table"]["export_grid"]
+    assert next(r for r in grid if r[0] == "Yields at Issue")[1:] == ["7.3%", "8.3%", "7.9%", "6.2%", "10.4%"]
+    assert "eurobond_yield_at_issue" not in blocks(review)
+
+
+def test_the_yield_at_issue_follows_the_bond_when_columns_move_or_are_renamed(root, monkeypatch):
+    from cytonn_weekly.weekly import fi_workbook
+    specs = {s[0]: s for s in fi_workbook.EUROBOND_ISSUES}
+    # The 2021 issue renamed as the workbook heads it ("12-yr"), the order reversed, and a column inserted
+    # (read from the 2024 issue's workbook column, so the synthetic workbook has it).
+    renamed = ("2021_12y", ("2021", "12-year issue")) + specs["2021_13y"][2:]
+    inserted = ("2025_11y", ("2025", "11-year issue")) + specs["2024_7y"][2:5] + (2036,) + specs["2024_7y"][6:]
+    order = (specs["2024_7y"], inserted, renamed, specs["2019_12y"], specs["2018_30y"], specs["2018_10y"])
+    monkeypatch.setattr(fi_workbook, "EUROBOND_ISSUES", order)
+    monkeypatch.setitem(fiw.EUROBOND_NAMES, "2021_12y", "12-year Eurobond issued in 2021")
+    monkeypatch.setitem(fiw.EUROBOND_NAMES, "2025_11y", "11-year Eurobond issued in 2025")
+    review = build(root)
+    by, got = blocks(review), yields_at_issue(review)
+    assert got == {"2024 7-year issue": "10.4%", "2025 11-year issue": "-", "2021 12-year issue": "6.2%",
+                   "2019 12-year issue": "7.9%", "2018 30-year issue": "8.3%", "2018 10-year issue": "7.3%"}
+    missing = by["eurobond_yield_at_issue"]
+    assert missing["kind"] == "unavailable" and "2025 11-year issue" in missing["reason"]
+
+
+def test_a_bond_with_no_stored_yield_at_issue_is_unavailable_and_named(root, monkeypatch):
+    monkeypatch.delitem(fiw.YIELDS_AT_ISSUE, (2019, 2032), raising=False)
+    review = build(root)
+    got = yields_at_issue(review)
+    assert got["2019 12-year issue"] == "-"      # never a neighbour's value
+    assert {k: v for k, v in got.items() if k != "2019 12-year issue"} == {
+        k: v for k, v in MONTHLY_YIELDS_AT_ISSUE.items() if k != "2019 12-year issue"}
+    missing = blocks(review)["eurobond_yield_at_issue"]
+    assert missing["kind"] == "unavailable" and "2019 12-year issue" in missing["reason"]
+    assert "2021" not in missing["reason"] and "2018" not in missing["reason"]
+    [item] = items(review, "Kenya Eurobonds: yield at issue")
+    assert item.status == "flagged"
+
+
 def test_published_figures_are_clean_and_typed_ones_are_analyst_input(root):
     review = build(root)
     assert {i.status for i in items(review, "Money Markets, T-Bills Primary Auction:")} == {"clean"}
@@ -277,7 +360,7 @@ def test_published_figures_are_clean_and_typed_ones_are_analyst_input(root):
     assert {i.status for i in items(review, "Kenya Shilling: Shilling")} == {"clean"}
     table = items(review, "Money Market Fund Yield for Fund Managers")
     assert len(table) == len(wh.FUNDS) and {i.status for i in table} == {"not_auto_verified"}
-    assert "typed from Business Daily" in table[0].detail and "'Money Market Performance'!S12:U18" in table[0].detail
+    assert "typed from Daily Nation e-paper" in table[0].detail and "'Money Market Performance'!S12:U18" in table[0].detail
     top5 = items(review, "Money Market Performance: Average yield of the Top 5")[0]
     assert top5.status == "not_auto_verified" and "(10.72%)" in top5.ref   # the five highest rates of this week's table
     assert items(review, "Cytonn Report: Kenya Eurobonds Performance: 02-Jan-26")[0].status == "not_auto_verified"   # workbook only
@@ -293,21 +376,22 @@ def test_what_the_spec_says_to_flag_is_flagged(root):
     flagged = {i.ref: i for i in review.review_items if i.status == "flagged"}
     placements = flagged["Money Market Performance: 3-month bank placements (9.5%)"]
     assert "its source is unconfirmed" in placements.detail[0].message
-    target = next(i for ref, i in flagged.items() if ref.startswith("Net domestic borrowing against the pro-rated target: Pro-rated"))
-    message = target.detail[0].message
-    assert "has not confirmed which figure is the net domestic borrowing target" in message
-    assert "The app used" in message and "Budget workbook's 'Borrowings' sheet" in message
-    assert sum(1 for ref in flagged if "amount issued, years to maturity and yield at issue" in ref) == 5   # Yields at Issue
+    assert not any(ref.startswith("Net domestic borrowing against the pro-rated target: Pro-rated") for ref in flagged)
+    # The yields at issue are the October 2026 Monthly's, per bond: no longer flagged as unconfirmed.
+    assert not any("amount issued, years to maturity and yield at issue" in ref for ref in flagged)
     assert any(ref == "T-Bonds: recommended bidding range (the analysts' recommendation) (not available yet)" for ref in flagged)
     assert {"Kenya Shilling: what pressures the shilling (carried forward)", "Rates and outlook (closing paragraph) (carried forward)"} <= set(flagged)
-    assert not review.is_approvable
+    assert review.is_approvable
 
 
-def test_the_target_flag_names_the_cell_it_used_and_the_one_it_did_not_read():
-    from cytonn_weekly.weekly.workbook import Cell
-    msg = fiw.target_flag(Cell(919.36, "Government Borrowing", 40, 3))
-    assert "919.36 bn" in msg and "Government Borrowing" in msg and "C40" in msg and "only target the app reads" in msg
-    assert "does not read that workbook" in msg and "not known here" in msg
+def test_the_settled_target_is_not_flagged_and_stays_not_auto_verified(root):
+    # The team confirmed the target (Exchequer releases, 2026-11-03): no flag, but a typed figure is never clean.
+    review = build(root)
+    b = blocks(review)["borrowing"]
+    assert not any(f.get("flag") for f in b["figures"] if f["key"] in ("prorated_target", "ratio"))
+    for label in ("Pro-rated net domestic borrowing target", "Net borrowing as a share of the pro-rated target"):
+        [item] = [i for i in items(review, "Net domestic borrowing against the pro-rated target:") if label in i.ref]
+        assert item.status == "not_auto_verified"
 
 
 def test_the_borrowing_sentence_is_worked_out_and_never_says_ahead(root):
@@ -608,7 +692,7 @@ def test_the_real_workbook_reproduces_the_published_week(tmp_path):
     # of five named funds.  The difference is expected and is not tuned away.
     assert money["top5"] == "10.77%"
     assert len(by["mmf_table"]["rows"]) == 34 and by["mmf_table"]["title"].endswith("as published on 2nd October 2026")
-    assert by["mmf_table"]["source"]["name"] == "Business Daily"
+    assert by["mmf_table"]["source"]["name"] == "Daily Nation"
     liquidity = figures(by["liquidity"])
     assert (liquidity["rate_bps"], liquidity["volume_change"]) == ("0.04 bps", "34.4%")
     assert "liquidity in the money markets eased, with the average interbank rate decreasing by 0.04 bps to 8.8%" in by["liquidity"]["body_md"]
@@ -782,3 +866,116 @@ def test_the_flag_adds_the_review_sentence_only_where_the_kind_is_not_already_sa
     assert macro == copied_from(892, "2026-10-04") + "; taken from the Kenya Macro Economic Review of issue 892, a Markets Review"
     twin = computed.carried_flag(computed.carried_block("o", "Outlook", "Text.", {**base, "kind": "review", "skipped": [893]})).message
     assert twin.count("Markets Review") == 1 and "not a weekly" not in twin
+
+
+# ---------------------------------------------------------------------------
+# A Cytonn Monthly that supplies the carried text is named in the flag; the issue chosen is the same as before
+# ---------------------------------------------------------------------------
+
+def monthly_sentence(issue_id, published):
+    return (f"; the text is from issue {issue_id}, the Cytonn Monthly of {published}, not a weekly; check that it speaks of this "
+            "week and not only of the month")
+
+
+@pytest.mark.parametrize("friday, used, published", [
+    (date(2026, 2, 6), 845, "2026-02-01"),    # the January Monthly
+    (date(2026, 9, 11), 886, "2026-09-06"),   # the August Monthly
+])
+def test_a_monthly_that_supplies_the_fixed_income_outlook_is_named_in_the_flag(root, friday, used, published):
+    review = build(root, fetchers=fetchers(previous_issue=previous_by_lookup(friday)))
+    carried = blocks(review)["outlook"]["carried_from"]
+    assert carried == {"issue_id": used, "url": f"https://cytonnreport.com/api/series/1/research-reports/{used}",
+                       "published": published, "kind": "monthly"}
+    assert outlook_flag(review) == copied_from(used, published) + monthly_sentence(used, published)
+    assert "Markets Review" not in outlook_flag(review)
+
+
+def test_a_monthly_that_supplies_the_equities_outlook_is_named_in_the_flag():
+    block = fiw._carried(previous_issue_for(date(2026, 2, 6)), "outlook", "Equities outlook (closing paragraph)",
+                         eqw.equities_outlook_text, ("equities",))
+    assert block["carried_from"]["kind"] == "monthly"
+    assert computed.carried_flag(block).message == copied_from(845, "2026-02-01") + monthly_sentence(845, "2026-02-01")
+
+
+def test_the_flag_words_a_monthly_and_a_monthly_after_a_skipped_twin():
+    base = {"issue_id": 897, "url": "u", "published": "2026-11-01", "kind": "monthly"}
+    alone = computed.carried_flag(computed.carried_block("o", "Outlook", "Text.", base)).message
+    assert alone == copied_from(897, "2026-11-01") + monthly_sentence(897, "2026-11-01")
+    undated = computed.carried_flag(computed.carried_block("o", "Outlook", "Text.", {**base, "published": None})).message
+    assert undated.endswith("; the text is from issue 897, the Cytonn Monthly, not a weekly; check that it speaks of this "
+                            "week and not only of the month")
+    twin = computed.carried_flag(computed.carried_block("o", "Outlook", "Text.", {**base, "skipped": [898]})).message
+    assert twin.endswith("the lookup skipped issue 898 on cytonnreport.com, a copy of this issue with its charts stripped; "
+                         "the text is from issue 897, a Cytonn Monthly")
+    assert twin.count("Cytonn Monthly") == 1 and "not a weekly" not in twin
+
+
+def test_a_change_that_rounds_to_zero_is_shown_to_three_decimals_and_still_checks_exactly():
+    def change(new, old):
+        return a_figure("c", "Change", PLAIN_PCT, 1, {"a": an_input(new, SOURCE, "CBK"), "b": an_input(old, SOURCE, "CBK")},
+                        computed.pct_change("a", "b"))
+    for new, shown in ((10004, "0.040%"), (9996, "0.040%")):
+        fig = change(new, 10000)
+        assert fig["decimals"] == 3 and fig["display"].lstrip("(-").startswith("0.04")
+        assert computed.check_figure_record(_block(fig), fig) == ([], "")
+        tampered = {**fig, "display": "0.0%"}
+        assert [f.kind for f in computed.check_figure_record(_block(tampered), tampered)[0]] == [MISMATCH]
+    exact = change(10000, 10000)
+    assert exact["decimals"] == 1 and exact["display"] == "0.0%"      # a true zero keeps the usual precision
+    assert change(10050, 10000)["decimals"] == 1                      # a move that shows at one decimal is untouched
+
+
+def test_a_mixed_eurobond_week_names_the_biggest_riser_and_the_biggest_faller(root, monkeypatch):
+    from cytonn_weekly.weekly import fi_workbook
+    real, flipped = fiw._yield_on, fi_workbook.EUROBOND_ISSUES[0][5]
+
+    def mixed(series, bulletin, day, maturity):
+        value, where, other, other_where = real(series, bulletin, day, maturity)
+        return (20 - value, where, None, None) if maturity == flipped and value is not None else (value, where, other, other_where)
+    monkeypatch.setattr(fiw, "_yield_on", mixed)
+    block = blocks(build(root))["eurobonds"]
+    by_key = {f["key"]: f for f in block["figures"]}
+    body = block["body_md"]   # as issue #45.2026 prints it: names without "Eurobond", "increased the most by", "decreased the most by"
+    assert "registered a mixed performance with the " in body and " issued in " in body and "Eurobond issued" not in body
+    assert " increased the most by " in body and " while the yields on the " in body and " decreased the most by " in body
+    assert {"riser_bps", "riser_yield", "riser_previous", "faller_bps", "faller_yield", "faller_previous"} <= by_key.keys()
+    assert not [k for k in by_key if k.startswith("biggest")]
+    # What the record says and what the sentence prints must agree: no mismatch, no missing figure, no unworkable input.
+    # A "sources disagree" is allowed: the synthetic workbook's yields differ from the bulletin's for the riser's issue.
+    problems = {key: [(flag.kind, flag.message) for flag in computed.check_figure_record(block, fig)[0] if flag.kind != SOURCES_DISAGREE]
+                for key, fig in by_key.items()}
+    assert not any(problems.values()), {key: found for key, found in problems.items() if found}
+
+
+def test_a_week_with_every_eurobond_moving_one_way_keeps_the_single_bond_sentence(root):
+    block = blocks(build(root))["eurobonds"]
+    assert "led by" not in block["body_md"] and "increasing the most by" in block["body_md"]
+    assert {f["key"] for f in block["figures"]} == {"biggest_bps", "biggest_yield", "biggest_previous"}
+
+
+def test_a_file_left_out_of_the_bond_results_is_named_and_what_is_included_does_not_change():
+    base = "/uploads/historical_treasury_bond_results/"
+    names = ["Tap Sale IFB1 DATED 05-10-2026.pdf", "Switch FXD4 DATED 05-10-2026.pdf", "Auction results.pdf",
+             "Auction DATED 12-10-2026.pdf"]
+    listing = "".join(f'<a href="{base}{n}">x</a>' for n in names).encode()
+
+    def get(url):
+        return listing if not url.endswith(".pdf") else b"%PDF"
+    out = cbk_auctions.fetch_period_tbonds(date(2026, 10, 3), date(2026, 10, 9), get=get)
+    why = {s["file"]: s["why"] for s in out["skipped_files"]}
+    assert len(why) == 2
+    assert "no value date could be read" in why["Auction results.pdf"]
+    assert "its value date 2026-10-12 is outside 2026-10-03 to 2026-10-09" in why["Auction DATED 12-10-2026.pdf"]
+    assert [a["value_date"] for a in out["auctions"]] == ["2026-10-05", "2026-10-05"]   # inclusion is as before
+
+
+def test_tbonds_blocks_says_when_a_tap_sale_a_switch_or_a_file_is_left_out():
+    results = {"auctions": [
+        {"kind": "tap", "value_date": "2026-10-05", "url": "https://cbk.example/tap.pdf"},
+        {"kind": "switch", "value_date": "2026-10-05", "url": "https://cbk.example/switch.pdf"}],
+        "skipped_files": [{"file": "odd name.pdf", "why": "its name has no value date"}]}
+    problems = []
+    fiw.tbonds_blocks(results, None, WEEK, problems)
+    assert any("tap sale result with value date 2026-10-05 is not printed here" in p for p in problems)
+    assert any("switch result with value date 2026-10-05 is not printed here" in p for p in problems)
+    assert "T-Bonds Primary Market: the CBK result file odd name.pdf was left out because its name has no value date." in problems

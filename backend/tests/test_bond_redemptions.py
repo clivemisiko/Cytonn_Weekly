@@ -19,9 +19,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.main import create_app
-from cytonn_weekly.checkers.digital_payments import MISSING, SOURCES_DISAGREE
-from cytonn_weekly.common.checks import check_table_block
-from cytonn_weekly.common.review import second_sources
+from cytonn_weekly.review.figures import MISSING, SOURCES_DISAGREE
+from cytonn_weekly.review.checks import check_table_block
+from cytonn_weekly.review.blocks import second_sources
 from cytonn_weekly.fixed_income import bond_issues as bi
 from cytonn_weekly.fixed_income import cbk_auctions as cbk
 from cytonn_weekly.fixed_income import net_borrowing as nb
@@ -293,7 +293,7 @@ def test_the_rows_carry_to_the_next_week_and_are_used_at_once(root):
     after = Week(date(2026, 10, 16))
     done = analyst.carry_forward(after, root)
     assert TABLE in done["carried"] and TABLE not in done["unconfirmed"]        # a redemption stays a redemption all year
-    assert "borrowing_target" in done["unconfirmed"]
+    assert "borrowing_target" in done["carried"] and "borrowing_target" not in done["unconfirmed"]
     held = analyst.Analyst(inputs.WeeklyInputs(after, root)).borrowing()["redemptions"]
     assert [(r["date"], r["bond"], r["amount"].number) for r in held] == [(date(2026, 10, 12), "IFB1/2014/12", 9000.5)]
     assert held[0]["amount"].source == ("analyst input typed on the weekly form (other bond redemptions, IFB1/2014/12 on "

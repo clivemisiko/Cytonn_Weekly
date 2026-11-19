@@ -8,11 +8,18 @@ import type { ChartUpload } from "@/lib/types";
 import ToneChip from "./ToneChip.vue";
 
 const props = defineProps<{ entry: ChartUpload; week: string; busy: boolean; version: number }>();
-const emit = defineEmits<{ upload: [key: string, file: File]; remove: [key: string]; leadIn: [key: string, text: string] }>();
+const emit = defineEmits<{
+  upload: [key: string, file: File];
+  remove: [key: string];
+  leadIn: [key: string, text: string];
+  source: [key: string, text: string];
+}>();
 
 const picker = useTemplateRef<HTMLInputElement>("picker");
 const leadIn = ref(props.entry.lead_in);
 watch(() => props.entry.lead_in, (next) => (leadIn.value = next));
+const source = ref(props.entry.source);
+watch(() => props.entry.source, (next) => (source.value = next));
 const megabytes = (bytes: number) => `${(bytes / 1_048_576).toFixed(1)} MB`;
 
 function picked(event: Event) {
@@ -24,6 +31,10 @@ function picked(event: Event) {
 
 function saveLeadIn() {
   if (leadIn.value.trim() !== props.entry.lead_in) emit("leadIn", props.entry.key, leadIn.value);
+}
+
+function saveSource() {
+  if (source.value.trim() !== props.entry.source) emit("source", props.entry.key, source.value);
 }
 </script>
 
@@ -69,6 +80,7 @@ function saveLeadIn() {
           Remove
         </button>
       </p>
+      <p v-if="entry.source" class="basis-full text-xs text-muted-foreground">Source: {{ entry.source }}</p>
     </div>
     <div class="space-y-1">
       <label :for="`lead-in-${entry.key}`" class="text-xs font-semibold">Sentence above the chart</label>
@@ -86,6 +98,23 @@ function saveLeadIn() {
       />
       <p v-if="entry.has_image" :id="`lead-in-hint-${entry.key}`" class="text-xs text-muted-foreground">
         Add the dates to this sentence, as the published report does.
+      </p>
+    </div>
+    <div class="space-y-1">
+      <label :for="`source-${entry.key}`" class="text-xs font-semibold">Source line</label>
+      <input
+        :id="`source-${entry.key}`"
+        v-model="source"
+        type="text"
+        autocomplete="off"
+        maxlength="120"
+        :disabled="busy"
+        :aria-describedby="`source-hint-${entry.key}`"
+        :class="[FIELD, 'w-full']"
+        @blur="saveSource"
+      />
+      <p :id="`source-hint-${entry.key}`" class="text-xs text-muted-foreground">
+        Optional. Printed under the image as the source line.
       </p>
     </div>
   </li>

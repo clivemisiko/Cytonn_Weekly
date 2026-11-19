@@ -8,7 +8,7 @@ import { redraftNotes } from "./redraft";
 import { mergeEvents, overviewHref, stepLines } from "./run";
 import { THEME_SCRIPT } from "./theme-script";
 import { MAX_TOPIC, topicLength } from "./topic";
-import type { AnalystTable, AppConfig, Drafting, RunEvent, SectionSummary } from "./types";
+import { REPORT_TYPES, type AnalystTable, type AppConfig, type Drafting, type RunEvent, type SectionSummary } from "./types";
 
 const event = (seq: number, kind: RunEvent["kind"], label = "", extra: Partial<RunEvent> = {}): RunEvent => ({
   seq,
@@ -45,6 +45,13 @@ describe("run steps", () => {
     ]);
   });
 
+  it("shows a source left out of a draft as its own skipped line, naming the source and why", () => {
+    const lines = stepLines([event(1, "source_left_out", "Old report", { detail: "From example.com, dated 2026-08-01, outside 2026-09-23 to 2026-09-29, so it was not used for Land." })]);
+    expect(lines.map((l) => [l.text, l.mark])).toEqual([
+      ["Left out the source Old report. From example.com, dated 2026-08-01, outside 2026-09-23 to 2026-09-29, so it was not used for Land.", "skipped"],
+    ]);
+  });
+
   it("shows a billing sentence from the API whole, after the fixed words", () => {
     const sentence = "The Anthropic credit balance is empty, so drafting cannot continue. Trying again will not help until they do.";
     const lines = stepLines([event(1, "run_failed", "", { detail: sentence })]);
@@ -67,9 +74,14 @@ describe("run steps", () => {
   });
 
   it("builds the overview address", () => {
-    expect(overviewHref("weekly", "")).toBe("/overview");
+    expect(overviewHref("weekly", "")).toBe("/overview?report=weekly"); // a bare /overview now opens the default week
     expect(overviewHref("weekly", "Week ending 2026-10-09", 12)).toBe("/overview?report=weekly&period=Week+ending+2026-10-09&review=12");
     expect(overviewHref("quarterly", "Q3'2026")).toBe("/overview?report=quarterly&period=Q3%272026");
+    expect(overviewHref("monthly", "Oct'2026")).toBe("/overview?report=monthly&period=Oct%272026"); // the apostrophe label kept
+  });
+
+  it("lists the Monthly among the report types, after the weekly", () => {
+    expect(REPORT_TYPES).toEqual(["weekly", "monthly", "quarterly", "half_year", "annual", "companion"]);
   });
 });
 
@@ -133,21 +145,22 @@ describe("draft again", () => {
   const config = (provider_problem: string | null) => ({ provider_problem }) as unknown as AppConfig;
   const running = (over: Partial<Drafting> = {}) =>
     ({ slug: "real_estate", title: "Real Estate (Week ending 2026-10-09)", report_type: "weekly", period: "Week ending 2026-10-09", stale: false, ...over }) as Drafting;
-  const weekly = { type: "weekly", period: "Week ending 2026-10-09", kind: null } as const;
 
-  it("is off for the same two reasons the draft button is, and only for a section that calls the provider", () => {
-    expect(draftAgainOff(section(true), null, config(null), weekly)).toBeNull();
-    expect(draftAgainOff(section(true), running(), config(null), weekly)).toBe(
-      "Real Estate (Week ending 2026-10-09) is drafting now. Only one draft runs at a time, across every section.",
-    );
-    expect(draftAgainOff(section(true), running({ slug: "equities", title: "Equities" }), config(null), weekly)).toMatch(/^This section is drafting now/);
-    expect(draftAgainOff(section(true), null, config("No key."), weekly)).toBe("No key. Drafting is off until then.");
-    // a stuck draft does not hold the slot (the next draft replaces it); a section with no provider is never held up
-    expect(draftAgainOff(section(true), running({ stale: true }), config(null), weekly)).toBeNull();
-    expect(draftAgainOff(section(false), running(), config("No key."), weekly)).toBeNull();
+  it("is off only while this section is itself running or queued, or the provider cannot run", () => {
+    const mine = running({ slug: "equities", title: "Equities" });
+    expect(draftAgainOff(section(true), null, config(null))).toBeNull();
+    expect(draftAgainOff(section(true), mine, config(null))).toBe("Being drafted now.");
+    expect(draftAgainOff(section(true), { ...mine, state: "queued", position: 3 }, config(null))).toBe("Queued, 2 ahead.");
+    expect(draftAgainOff(section(true), { ...mine, state: "queued", position: 1 }, config(null))).toBe("Queued, next in line.");
+    expect(draftAgainOff(section(true), null, config("No key."))).toBe("No key. Drafting is off until then.");
+    // a stuck draft does not hold the seat (a new draft replaces it), a failed one never blocks, and a section with no
+    // provider is never held up
+    expect(draftAgainOff(section(true), { ...mine, stale: true }, config(null))).toBeNull();
+    expect(draftAgainOff(section(true), { ...mine, state: "failed" }, config(null))).toBeNull();
+    expect(draftAgainOff(section(false), mine, config("No key."))).toBeNull();
   });
 
-  it("tells a coordinator what happens to the earlier review, and about the export only after an approval", () => {
+  it("tells an analyst what happens to the earlier review, and about the export only after an approval", () => {
     expect(redraftNotes({ run_id: 7, decision: "rejected" }, "weekly", false)).toEqual([
       "The earlier review (run 7, rejected) stays saved and read-only.",
       "The new draft becomes the current one and starts undecided.",

@@ -1,4 +1,4 @@
-"""Email the latest approved Word summary of a report section to its insight recipients (Edwin and Liz).
+"""Email the latest approved Word summary of a report section to its insight recipients.
 
 Sends REAL email once real SMTP credentials are in .env, so it never sends by default:
 
@@ -27,7 +27,8 @@ import sys
 from pathlib import Path
 from typing import Any, Iterator, Optional, Union
 
-from cytonn_weekly.digital_payments import delivery, review_store, summary
+from cytonn_weekly.digital_payments import delivery, summary
+from cytonn_weekly.review import store as review_store
 
 # Sections summary.py can render.  Others have reviews but no Word summary yet.
 SUMMARY_SECTIONS = ("digital_payments",)

@@ -19,8 +19,10 @@ How the previous issue is found (checked 2026-10-09):
   have the higher id (850 for 849, 889 for 888, 841 for 840).  The walk skips a candidate that is
   such a twin; see ``STRIPPED_BELOW_IMAGES`` and ``TWIN_WINDOW_DAYS``.  A Markets Review is a
   valid previous issue and is never skipped.
+* A Cytonn Monthly takes the weekly's Sunday slot, so it is the previous issue of the week after
+  it.  It is chosen exactly as any issue is; only its ``kind`` says what it is (``MONTHLY_MARKERS``).
 
-A coordinator can also paste the previous issue's address; it is resolved the same way.
+An analyst can also paste the previous issue's address; it is resolved the same way.
 """
 
 from __future__ import annotations
@@ -44,13 +46,18 @@ MAX_WALK = 12   # issues looked at when walking back from the newest
 # STRIPPED_BELOW_IMAGES images, and (b) an issue with more images in those two sections was published within TWIN_WINDOW_DAYS
 # before it.  An image-light issue with no such twin is kept, and the walk never falls back to an older full issue for it.
 # Where the numbers come from (the 53 issues saved 2026-10-15, ids 840 to 892):
-#   4: every full weekly of 2026 (35) has at least 6 images in Fixed Income and 2 in Equities, 8 or more together; the stripped
-#      copies (841, 850, 860, 875, 876, 889, 890) have 0 or 1.
+#   4: every full weekly (29) and Cytonn Monthly (6) of 2026 has at least 6 images in Fixed Income and 2 in Equities, 8 or more
+#      together; the stripped copies (841, 850, 860, 875, 876, 889, 890) have 0 or 1.
 #   6: the stripped copies were published 0 to 5 days after the full one (849/850: 5, 840/841: 1, 888/889: 1, 860/861: 0,
 #      890/891: 0), and a weekly comes every 7 days, so a fuller issue 7 days earlier is last week's, not a twin.
 STRIPPED_BELOW_IMAGES = 4
 TWIN_WINDOW_DAYS = 6
 REVIEW_SECTIONS = ("global-markets", "sub-saharan")   # what a Markets Review has and a weekly has not
+# What a Cytonn Monthly prints and a weekly or a Markets Review does not (read from the seven Monthlies of 2026, ids 845 to 897,
+# and fourteen weeklies of the same months, 2026-11-03): its "Notable Monthly Highlights" heading (all but 845), or its
+# "Bond Issuances for <month> <year>-<month> <year>" table (all seven; a Markets Review's is "Bond Issuances in <period>").
+MONTHLY_MARKERS = re.compile(r"Notable Monthly Highlights|Bond Issuances for [A-Z][a-z]+ \d{4}\s*[-\u2013]\s*[A-Z][a-z]+ \d{4}")
+MONTHLY_TITLE = "cytonn monthly"   # the search endpoint's title, when the issue was reached through it
 
 Getter = Callable[[str], bytes]
 
@@ -65,6 +72,7 @@ class Issue:
     published: Optional[date]
     sections: dict[str, dict[str, str]] = field(default_factory=dict)   # slug -> {name, body (html), summary (html)}
     skipped_twins: list[int] = field(default_factory=list)   # ids of stripped copies the lookup passed over to reach this one
+    title: Optional[str] = None   # only when the issue was found through the search endpoint; the issue's own API gives none
 
     @property
     def url(self) -> str:
@@ -72,8 +80,15 @@ class Issue:
 
     @property
     def kind(self) -> str:
-        """"review" for a Markets Review (or the markets outlook, which has the same Global Markets and Africa sections), else "weekly"."""
-        return "review" if any(slug.startswith(REVIEW_SECTIONS) for slug in self.sections) else "weekly"
+        """"review" for a Markets Review (or the markets outlook, which has the same Global Markets and Africa sections), "monthly"
+        for a Cytonn Monthly (by its search title, else by what it prints), else "weekly".  Nothing reads it to choose an issue."""
+        if any(slug.startswith(REVIEW_SECTIONS) for slug in self.sections):
+            return "review"
+        if MONTHLY_TITLE in (self.title or "").lower():
+            return "monthly"
+        text = " ".join(html.unescape(re.sub(r"<[^>]+>", " ", s.get("body") or "")).replace("\xa0", " ")
+                        for s in self.sections.values())
+        return "monthly" if MONTHLY_MARKERS.search(" ".join(text.split())) else "weekly"
 
     @property
     def chart_images(self) -> int:
@@ -92,6 +107,26 @@ def html_paragraphs(body: str) -> list[str]:
     text = re.sub(r"(?i)</(p|tr|li|h\d|div|table|ul|ol|td|th)>|<br\s*/?>", "\n", text)
     text = html.unescape(re.sub(r"<[^>]+>", "", text)).replace("\xa0", " ")
     return [" ".join(line.split()) for line in text.split("\n") if line.strip()]
+
+
+def norm_url(url: str) -> str:
+    """An address as two mentions of one page would agree on it: no scheme, no www, no fragment, no trailing slash."""
+    parts = urlparse(str(url or "").strip())
+    host = (parts.hostname or "").lower().removeprefix("www.")
+    return f"{host}{parts.path.rstrip('/')}" + (f"?{parts.query}" if parts.query else "") if host else ""
+
+
+def digest(issue: Optional[Issue], *slugs: str) -> Optional[dict[str, Any]]:
+    """What an issue's section already reported: {"headings": bold or heading lines, "urls": every address it linked}.
+    ponytail: a heading is only what the section marks bold; None when the issue or section is missing, so nothing is filtered."""
+    section = issue.section(*slugs) if issue else None
+    if section is None:
+        return None
+    body = section.get("body") or ""
+    heads = [" ".join(html.unescape(re.sub(r"<[^>]+>", "", m)).replace("\xa0", " ").split())
+             for m in re.findall(r"(?is)<(?:strong|b|h[1-6])\b[^>]*>(.*?)</(?:strong|b|h[1-6])>", body)]
+    urls = {norm_url(u) for u in re.findall(r"""(?i)href\s*=\s*["']([^"']+)["']""", body)}
+    return {"headings": [h for h in dict.fromkeys(heads) if 12 <= len(h) <= 200], "urls": urls - {""}}
 
 
 def parse_issue(issue_id: int, payload: bytes) -> Issue:
@@ -131,13 +166,18 @@ def _search(text: str, get: Getter) -> list[dict[str, Any]]:
 
 
 def resolve_issue_id(reference: str, get: Getter = http_get) -> int:
-    """An issue id from what a coordinator pasted: the id itself, an API address, or a page address."""
+    """An issue id from what an analyst pasted: the id itself, an API address, or a page address."""
+    return _resolve(reference, get)[0]
+
+
+def _resolve(reference: str, get: Getter) -> tuple[int, Optional[str]]:
+    """The issue id, and its title when the search endpoint was asked (a page address); None otherwise."""
     ref = (reference or "").strip()
     if ref.isdigit():
-        return int(ref)
+        return int(ref), None
     m = re.search(r"/research-reports/(\d+)", ref)
     if m:
-        return int(m.group(1))
+        return int(m.group(1)), None
     if re.fullmatch(r"[a-z0-9][a-z0-9-]*", ref):
         slug = ref   # the page's own name, without its address
     else:
@@ -149,7 +189,7 @@ def resolve_issue_id(reference: str, get: Getter = http_get) -> int:
         raise PreviousIssueError(f"{ref!r} names no issue")
     for row in _search(slug, get):
         if str(row.get("url", "")).rstrip("/").endswith(f"/{slug}") and isinstance(row.get("id"), int):
-            return row["id"]
+            return row["id"], row.get("title") if isinstance(row.get("title"), str) else None
     raise PreviousIssueError(f"cytonnreport.com's search does not find the issue page {slug!r}")
 
 
@@ -183,13 +223,16 @@ def _has_fuller_twin(candidate: Issue, candidate_id: int, floor: int, issue_at: 
 def find_previous_issue(week_ending: date, get: Getter = http_get, reference: Optional[str] = None) -> Issue:
     """The issue to carry text forward from, for the week ending ``week_ending``.
 
-    With ``reference`` (an id or address the coordinator pasted) it is that issue.  Otherwise
+    With ``reference`` (an id or address the analyst pasted) it is that issue.  Otherwise
     the newest issue published on or before ``week_ending``, passing over any stripped twin of
     an issue (``skipped_twins`` names them).  PreviousIssueError if none within the newest
     ``MAX_WALK`` ids; the look-ahead for a twin stays inside them too.
     """
     if reference and reference.strip():
-        return fetch_issue(resolve_issue_id(reference, get), get)
+        issue_id, title = _resolve(reference, get)
+        issue = fetch_issue(issue_id, get)
+        issue.title = title
+        return issue
     newest = newest_issue_id(get)
     floor = max(newest - MAX_WALK + 1, 1)
     seen: dict[int, Optional[Issue]] = {}
