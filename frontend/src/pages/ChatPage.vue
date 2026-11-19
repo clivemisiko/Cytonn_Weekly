@@ -142,7 +142,7 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
 </script>
 
 <template>
-  <main id="main" tabindex="-1" class="cw-skin min-h-[calc(100dvh-var(--topbar-h))] bg-cw-page">
+  <main id="main" tabindex="-1" class="cw-skin cw-chat min-h-[calc(100dvh-var(--topbar-h))] bg-cw-page">
     <Masthead wide title="Chat" :class="current && 'sr-only'" />
     <PageGrid aside-title="This conversation">
       <div class="min-w-0 space-y-4">

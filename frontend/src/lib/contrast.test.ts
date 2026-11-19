@@ -91,6 +91,14 @@ export const PAIRS: Pair[] = [
   { what: "muted text on the skin bubble", fg: T("muted-foreground"), bg: T("cw-bubble"), min: TEXT },
   { what: "selected section text on the skin bubble", fg: T("cw-selected-fg"), bg: T("cw-bubble"), min: TEXT },
   { what: "selected section edge on the skin bubble", fg: T("cw-button"), bg: T("cw-bubble"), min: EDGE },
+  // The chat page's teal for the shared button, link and ring (.cw-chat).
+  { what: "chat button label on the button teal hover", fg: T("cw-button-fg"), bg: T("cw-button-hover"), min: TEXT },
+  { what: "chat link on the skin page", fg: T("cw-accent"), bg: T("cw-page"), min: TEXT },
+  { what: "chat link on the skin bubble", fg: T("cw-accent"), bg: T("cw-bubble"), min: TEXT },
+  { what: "chat link on the assistant bubble", fg: T("cw-accent"), bg: T("cw-assistant"), min: TEXT },
+  { what: "chat ring and outline on the skin page", fg: T("cw-button"), bg: T("cw-page"), min: EDGE },
+  { what: "chat ring on the assistant bubble", fg: T("cw-button"), bg: T("cw-assistant"), min: EDGE },
+  { what: "chat ring on card", fg: T("cw-button"), bg: T("card"), min: EDGE },
   { what: "ink on the skin chip", fg: T("foreground"), bg: T("cw-chip"), min: TEXT },
   { what: "control edge on the skin chip", fg: T("input"), bg: T("cw-chip"), min: EDGE },
 ];

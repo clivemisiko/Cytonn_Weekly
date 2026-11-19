@@ -22,6 +22,7 @@ test("T120 the readiness card shows every group, and the needs-you card works: f
   // A week with its inputs in: four groups, with a count each, in words; a group with nothing in it is left out.
   await page.goto(chatUrl("fixed_income"));
   const card = page.getByRole("region", { name: /What Fixed Income needs for the week ending 2026-10-09/ });
+  await card.getByRole("button", { name: "Show the list" }).click(); // the list starts folded
   await expect(card.getByText(/Needs you \(1\)/)).toBeVisible();
   await expect(card.getByText(/Fetched \(1\)/)).toBeVisible();
   await expect(card.getByText(/In place \(\d+\)/)).toBeVisible();
@@ -55,6 +56,7 @@ test("T121 Real Estate shows its snip counts and Focus its source counts as they
   const NOT_JUDGED = "The snip and source counts are as they are: this check does not say whether they are enough.";
   await page.goto(chatUrl("real_estate"));
   const readiness = page.getByRole("region", { name: /What Real Estate needs/ });
+  await readiness.getByRole("button", { name: "Show the list" }).click(); // the list starts folded
   await expect(readiness.getByText("Land: 0 uploaded, 0 read, 0 confirmed")).toBeVisible();
   await expect(readiness.getByText("0 saved, 0 dated inside the week, 0 outside it")).toBeVisible();
   await expect(readiness.getByText(NOT_JUDGED)).toBeVisible();
