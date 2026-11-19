@@ -61,7 +61,6 @@ const viewTo = (v: "prepare" | "conversation") => `/chat?${new URLSearchParams({
 const drafting = computed(() => (overview.value && current.value ? draftingFor(draftingList(overview.value), current.value.slug, report.value) : null));
 
 // The hidden page a chat button opens (the inputs form, the snips and sources, the Focus topic); there it shows "Back to chat".
-const oldPage = (section: string) => `/overview?${new URLSearchParams({ report: "weekly", period: period.value, section, from: "chat" }).toString()}`;
 const status = computed(() => statusLine(job.value));
 const off = computed(() => composerOff(job.value, config.value, sending.value));
 const used = computed(() => (job.value ? job.value.input_tokens + job.value.output_tokens : 0));
@@ -195,8 +194,8 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
               :config="config"
               :drafting="drafting"
               :state="state"
-              :old-page="oldPage(current.slug)"
               :conversation-to="viewTo('conversation')"
+              :open-on="first(route.query.step)"
               @changed="changed"
               @conversation="router.push(viewTo('conversation'))"
             />
@@ -252,7 +251,7 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
               :report="report"
               :drafting="drafting"
               :config="config"
-              :old-page="oldPage(current.slug)"
+              :old-page="viewTo('prepare')"
               :tick="tick"
               @changed="changed"
               @draft-ended="convo.refresh()"

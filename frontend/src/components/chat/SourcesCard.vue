@@ -20,6 +20,6 @@ defineProps<{ readiness: Readiness; oldPage: string }>();
       <p class="text-sm">{{ sourcesLine(readiness.sources) }}</p>
     </div>
     <p v-if="readiness.note" class="text-sm text-muted-foreground">{{ readiness.note }}</p>
-    <RouterLink :to="oldPage" :class="['inline-block text-sm', LINK]">{{ readiness.snips ? "Open snips and sources" : "Open sources" }}</RouterLink>
+    <RouterLink :to="`${oldPage}&step=${readiness.snips ? 'snips' : 'sources'}`" :class="['inline-block text-sm', LINK]">Back to sources and inputs</RouterLink>
   </section>
 </template>

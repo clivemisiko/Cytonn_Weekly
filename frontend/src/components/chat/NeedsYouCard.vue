@@ -99,7 +99,7 @@ async function upload(slot: string, event: Event) {
         <li v-for="e in needs.confirm" :key="e.key">{{ e.label }}: {{ e.why }}</li>
       </ul>
     </div>
-    <RouterLink v-if="needs.typed.length || needs.confirm.length" :to="formTo" :class="['inline-block text-sm', LINK]">Open inputs form</RouterLink>
+    <RouterLink v-if="needs.typed.length || needs.confirm.length" :to="`${formTo}&step=${encodeURIComponent((needs.typed[0] ?? needs.confirm[0]).key)}`" :class="['inline-block text-sm', LINK]">Back to sources and inputs</RouterLink>
 
     <Notice v-if="problem" role="alert" class="font-medium whitespace-pre-line">{{ problem }}</Notice>
   </section>

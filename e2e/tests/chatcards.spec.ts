@@ -5,7 +5,8 @@ test.skip(!!VARIANT, "runs on the default test backend");
 test.describe.configure({ mode: "serial" });
 
 const json = { "Content-Type": "application/json" };
-const chatUrl = (section: string, period = PERIOD) => `/chat?section=${section}&period=${encodeURIComponent(period)}`;
+// These cards are the conversation view's: a section with no draft opens on the prepare page (prepare.spec.ts) unless asked.
+const chatUrl = (section: string, period = PERIOD) => `/chat?section=${section}&period=${encodeURIComponent(period)}&view=conversation`;
 const live = (page: Page) => page.getByRole("region", { name: "What you can do now" });
 const aside = (page: Page) => page.getByRole("complementary", { name: "This conversation" });
 const rail = (page: Page) => page.getByRole("navigation", { name: "Report sections" });
@@ -46,13 +47,14 @@ test("T120 the readiness card shows every group, and the needs-you card works: f
   await needs.getByLabel("Upload Fixed income workbook").setInputFiles({ name: "bad.xlsx", mimeType: "application/octet-stream", buffer: Buffer.from("not a workbook") });
   await expect(needs.getByRole("alert")).toContainText("bad.xlsx:");
 
-  const form = needs.getByRole("link", { name: "Open inputs form" });
-  await expect(form).toHaveAttribute("href", /\/overview\?report=weekly&period=Week\+ending\+2026-08-28&section=fixed_income&from=chat$/);
+  // The way to the inputs is the prepare page, opened on the step the card names; never the old form.
+  const form = needs.getByRole("link", { name: "Back to sources and inputs" });
+  await expect(form).toHaveAttribute("href", /^\/chat\?period=Week\+ending\+2026-08-28&section=fixed_income&view=prepare&step=\w+$/);
   await form.click();
-  await expect(page.getByRole("heading", { name: "Fixed Income: analyst review", level: 1 })).toBeVisible();
+  await expect(page.locator('[data-card="prepare"]').getByRole("heading", { name: "Fixed Income", level: 2 })).toBeVisible();
 });
 
-test("T121 Real Estate shows its snip counts and Focus its source counts as they are, with the not-judged note; Focus sends the topic to the Focus page", async ({ page }) => {
+test("T121 Real Estate shows its snip counts and Focus its source counts as they are, with the not-judged note; Focus sends the topic to its prepare page", async ({ page }) => {
   const NOT_JUDGED = "The snip and source counts are as they are: this check does not say whether they are enough.";
   await page.goto(chatUrl("real_estate"));
   const readiness = page.getByRole("region", { name: /What Real Estate needs/ });
@@ -63,18 +65,15 @@ test("T121 Real Estate shows its snip counts and Focus its source counts as they
   const sources = page.getByRole("region", { name: "Sources and snips" });
   await expect(sources.getByText("Hospitality and Tourism: 0 uploaded, 0 read, 0 confirmed")).toBeVisible();
   await expect(sources.getByText(NOT_JUDGED)).toBeVisible();
-  await expect(sources.getByRole("link", { name: /Open snips and sources/ })).toHaveAttribute("href", /section=real_estate&from=chat$/);
+  await expect(sources.getByRole("link", { name: "Back to sources and inputs" })).toHaveAttribute("href", /section=real_estate&view=prepare&step=snips$/);
 
   await page.goto(chatUrl("focus"));
   await expect(page.getByRole("region", { name: "Sources and snips" }).or(page.getByRole("region", { name: "Sources" })).getByText("0 saved, 0 dated inside the week, 0 outside it")).toBeVisible();
-  await expect(live(page).getByText("This section needs a topic and section titles, which are typed on the Focus page.")).toBeVisible();
+  await expect(live(page).getByText("This section needs a topic and section titles, which are typed under sources and inputs.")).toBeVisible();
   await expect(live(page).getByRole("button", { name: /Start draft/ })).toHaveCount(0);
-  await live(page).getByRole("link", { name: "Open the Focus page" }).click();
-  await expect(page.getByRole("heading", { name: "Focus of the Week: analyst review", level: 1 })).toBeVisible();
-  await expect(page.getByLabel(/topic/i).first()).toBeVisible(); // where the topic is typed
-  await page.getByRole("link", { name: "Back to chat" }).click();
-  await expect(page).toHaveURL(/\/chat\?.*section=focus/);
-  await expect(page.getByRole("heading", { name: "Focus of the Week", level: 2 })).toBeVisible();
+  await live(page).getByRole("link", { name: "Back to sources and inputs" }).and(page.locator("a[href$=\"step=topic\"]")).click(); // the draft card's; the sources card has its own
+  await expect(page).toHaveURL(/\/chat\?.*section=focus.*view=prepare&step=topic/);
+  await expect(page.getByLabel("This week’s topic")).toBeVisible(); // where the topic is typed now
 });
 
 test("T122 Start draft shows the steps as they happen, then the review summary joins the conversation and the review is read-only in the aside until it is decided here", async ({ page }) => {
@@ -228,21 +227,25 @@ test("T125 the rail and the chat have no way to the old pages: no Overview or Pr
   await expect(page).toHaveURL(/\/chat\?.*section=equities/);
 });
 
-test("T126 Open inputs form opens the form, and Back to chat returns to the same section and week", async ({ page }) => {
+test("T126 the inputs link opens the prepare page on the step it names, for the same week; the old form still opens by its address", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   const bare = "Week ending 2026-08-28";
   await page.goto(chatUrl("fixed_income", bare));
-  await page.getByRole("region", { name: "Needs you" }).getByRole("link", { name: "Open inputs form" }).click();
-  await expect(page.getByRole("heading", { name: "Fixed Income: analyst review", level: 1 })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Weekly analyst inputs" })).toBeVisible();
-  await expect(topbar(page).getByRole("button", { name: "Back to chat" })).toBeVisible(); // the top bar's Back goes there too
-  await page.getByRole("link", { name: "Back to chat" }).click();
-  await expect(page).toHaveURL(/\/chat\?.*section=fixed_income/);
+  await page.getByRole("region", { name: "Needs you" }).getByRole("link", { name: "Back to sources and inputs" }).click();
+  await expect(page).toHaveURL(/\/chat\?.*section=fixed_income.*view=prepare&step=/);
   expect(new URL(page.url()).searchParams.get("period")).toBe(bare);
-  await expect(page.getByRole("heading", { name: "Fixed Income", level: 2 })).toBeVisible();
+  const step = new URL(page.url()).searchParams.get("step") ?? "";
+  const prepare = page.locator('[data-card="prepare"]');
+  await expect(prepare.getByRole("heading", { name: "Fixed Income", level: 2 })).toBeVisible();
+  await expect(prepare.locator('[data-step]:visible')).toHaveCount(1); // opened on that step
+  expect(step).not.toBe("");
   await expect(page.getByLabel("Week", { exact: true })).toHaveValue(bare);
 
-  // The same page by its address, not from the chat: no Back to chat, and it works as it always did.
+  // The old form is unchanged and still opens by its address: from the chat's address it offers Back to chat.
+  await page.goto(`${overviewUrl(bare)}&section=fixed_income&from=chat`);
+  await expect(page.getByRole("heading", { name: "Weekly analyst inputs" })).toBeVisible();
+  await page.getByRole("link", { name: "Back to chat" }).click();
+  await expect(page).toHaveURL(/\/chat\?.*section=fixed_income/);
   await page.goto(`${overviewUrl(bare)}&section=fixed_income`);
   await expect(page.getByRole("heading", { name: "Weekly analyst inputs" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Back to chat" })).toHaveCount(0);
@@ -343,17 +346,20 @@ test("T130 the fund snip card: upload, list, read, decide, type a cell and a fun
   await expect(page.getByRole("region", { name: "Needs you" }).getByText(/Money market fund table/)).toHaveCount(0);
 });
 
-// A bare Fixed Income week has four inline steps: 1 placements (a field), 2 Eurobond issues (the grid), 3 the borrowing target
-// (a field), 4 other bond redemptions (the paste table).  Each test takes its own Friday, so a save in one never shows in another.
+// The chat's typed card is the prepare page's stepper: every Fixed Income form item is a step, saved or not, in one order
+// (the fund table keeps its own card here): 1 placements, 2 the Cytonn fund's last yield, 3 what drove liquidity, 4 the
+// borrowing target, 5 the fiscal year start, 6 Eurobond issues (the grid), 7 the auction log, 8 other bond redemptions
+// (the paste table), 9 the fund table's date, 10 its source label. It opens on the first one still required.
+// Each test takes its own Friday, so a save in one never shows in another.
 const typedCard = (page: Page) => page.getByRole("region", { name: "Type these here" });
+const at = (card: ReturnType<typeof typedCard>, n: number) => expect(card.getByText(`Step ${n} of 10`, { exact: true })).toBeVisible();
 
 test("T131 a typed value is saved from the chat: a refusal keeps the text under the API's words, Enter saves and moves on", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto(chatUrl("fixed_income", "Week ending 2026-08-14"));
   const card = typedCard(page);
   const box = card.getByLabel("3-month bank placements");
-  await expect(card.getByText("Step 1 of 4", { exact: true })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Needs you" }).getByText(/3-month bank placements/)).toHaveCount(0);
+  await at(card, 1);
 
   const save = card.getByRole("button", { name: /^Save\s*: 3-month bank placements$/ });
   await save.click();
@@ -362,40 +368,42 @@ test("T131 a typed value is saved from the chat: a refusal keeps the text under 
   await save.click();
   await expect(card.getByText(/is not a number/)).toBeVisible();
   await expect(box).toHaveValue("not a figure");
-  await expect(card.getByText("Step 1 of 4", { exact: true })).toBeVisible();
+  await at(card, 1);
 
   await box.fill("5.55");
   await box.press("Enter");
-  await expect(card.getByText("Step 2 of 4", { exact: true })).toBeVisible();
-  await expect(card.locator("[aria-live]").first()).toHaveText("Step 2 of 4, Eurobond issues"); // the polite announcement
-  await card.getByRole("button", { name: "Previous" }).click();
+  await at(card, 2);
+  await expect(card.locator("[aria-live]").first()).toHaveText("Step 2 of 10, Cytonn Money Market Fund yield, previous week"); // the polite announcement
+  await expect(card.getByLabel("Cytonn Money Market Fund yield, previous week")).toBeFocused(); // the box takes focus after a save
+  await card.getByRole("button", { name: "Previous", exact: true }).click();
   await expect(card.getByText("Saved: 5.55")).toBeVisible(); // the step stays in place, marked
-  await expect(card.getByText("Step 1 of 4", { exact: true })).toBeVisible();
+  await expect(box).toHaveValue("5.55");
+  await at(card, 1);
 });
 
-test("T132 Next and Previous move between steps, typed text survives going back, a skipped line is still to type", async ({ page }) => {
+test("T132 Next and Previous move between steps, typed text survives going back, a skipped line is still to do", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 900 });
   await page.goto(chatUrl("fixed_income", "Week ending 2026-07-31"));
   const card = typedCard(page);
-  const previous = card.getByRole("button", { name: "Previous" });
+  const previous = card.getByRole("button", { name: "Previous", exact: true });
   const next = card.getByRole("button", { name: "Next" });
   await expect(previous).toBeDisabled();
   await card.getByLabel("3-month bank placements").fill("7.77");
   await next.click();
-  await expect(card.getByText("Step 2 of 4", { exact: true })).toBeVisible();
+  await at(card, 2);
   await expect(card.getByLabel("3-month bank placements")).toBeHidden();
   await next.click();
+  await next.click();
   await expect(card.getByLabel("Net domestic borrowing target for the fiscal year")).toBeFocused();
-  await previous.click();
-  await previous.click();
+  for (let i = 0; i < 3; i++) await previous.click();
   await expect(card.getByLabel("3-month bank placements")).toHaveValue("7.77");
   await expect(card.getByLabel("3-month bank placements")).toBeFocused();
 
-  for (let i = 0; i < 3; i++) await next.click();
+  for (let i = 0; i < 9; i++) await next.click();
   await card.getByRole("button", { name: "Done" }).click();
-  await expect(card.getByText("4 still to type", { exact: true })).toBeVisible();
+  await expect(card.getByText(/^\d+ still to do$/)).toBeVisible();
   await card.getByRole("button", { name: "Go to the first one" }).click();
-  await expect(card.getByText("Step 1 of 4", { exact: true })).toBeVisible();
+  await at(card, 1);
   await expect(card.getByLabel("3-month bank placements")).toHaveValue("7.77");
   // Skipped, so nothing was saved: the readiness check still lists it as needing the analyst.
   const job = page.waitForResponse((r) => /\/api\/jobs\/\d+\/readiness/.test(r.url()));
@@ -404,124 +412,37 @@ test("T132 Next and Previous move between steps, typed text survives going back,
   expect(groups.needs_analyst.map((e: { key: string }) => e.key)).toContain("placements");
 });
 
-test("T133 every step saved, the grid and the paste table included: the confirmation shows and focus is on the heading", async ({ page }) => {
+test("T133 every required step saved, the grid and the paste table included: the confirmation shows and focus is on the heading", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto(chatUrl("fixed_income", "Week ending 2026-07-24"));
   const card = typedCard(page);
+  const next = card.getByRole("button", { name: "Next" });
   await card.getByLabel("3-month bank placements").fill("5.55");
   await card.getByLabel("3-month bank placements").press("Enter");
-
-  await expect(card.getByText("Step 2 of 4", { exact: true })).toBeVisible();
-  await card.locator('[data-step="1"] input').first().fill("1000");
-  await card.locator('[data-step="1"]').getByRole("button", { name: "Save", exact: true }).click();
-
-  await expect(card.getByText("Step 3 of 4", { exact: true })).toBeVisible();
+  await at(card, 2);
+  await next.click();
+  await next.click();
   await card.getByLabel("Net domestic borrowing target for the fiscal year").fill("100");
   await card.getByLabel("Net domestic borrowing target for the fiscal year").press("Enter");
+  await at(card, 5);
+  await next.click();
 
-  await expect(card.getByText("Step 4 of 4", { exact: true })).toBeVisible();
+  await at(card, 6);
+  await card.locator('[data-step="5"] input').first().fill("1000");
+  await card.locator('[data-step="5"]').getByRole("button", { name: "Save", exact: true }).click();
+  await at(card, 7);
+  await next.click();
+
+  await at(card, 8);
   await card.getByLabel("Other bond redemptions: paste the rows").fill("2026-07-20  FAKE/0000/01  123.45");
   await card.getByRole("button", { name: "Save table" }).click();
+  await at(card, 9);
+  await card.getByLabel("Fund table published on").fill("2026-07-23");
+  await card.getByLabel("Fund table published on").press("Enter");
+  await at(card, 10);
+  await card.getByLabel("Fund table source label").fill("Fake Paper");
+  await card.getByLabel("Fund table source label").press("Enter");
 
-  await expect(card.getByText("All typed values are saved.")).toBeVisible();
+  await expect(card.getByText("Everything required here is in place.")).toBeVisible();
   expect(await page.evaluate(() => document.activeElement?.id)).toBe("live-title");
-});
-
-// ---- The prepare page: Equities with no draft opens on it, with no conversation. Each test takes its own Friday. ----
-const prepare = (page: Page) => page.locator('[data-card="prepare"]');
-
-test("T134 the prepare page: the banner counts, the source table, an upload and a fetch refused in words, and no conversation opened", async ({ page }) => {
-  await page.setViewportSize({ width: 1366, height: 900 });
-  const opened: string[] = [];
-  page.on("request", (r) => r.method() === "POST" && r.url().endsWith("/api/jobs") && opened.push(r.url()));
-  await page.goto(chatUrl("equities", "Week ending 2026-06-05"));
-  const p = prepare(page);
-  await expect(p.getByRole("heading", { name: "Equities", level: 2 })).toBeVisible();
-  await expect(p.getByText("Not drafted", { exact: true })).toBeVisible();
-  await expect(p.getByText(/^\d+ required items? missing$/)).toBeVisible();
-  await expect(page.getByRole("log", { name: "Conversation" })).toHaveCount(0);
-
-  const checklist = p.getByRole("button", { name: "View checklist" });
-  await expect(checklist).toHaveAttribute("aria-expanded", "false");
-  await checklist.click();
-  await expect(p.getByRole("button", { name: "Hide checklist" })).toHaveAttribute("aria-expanded", "true");
-  await expect(p.locator("#prepare-checklist").getByText("Equities workbook: not uploaded")).toBeVisible();
-
-  const table = p.getByRole("table");
-  await expect(table.getByRole("columnheader")).toHaveText(["Document", "Status", "Action"]);
-  await expect(table.getByRole("row", { name: /Equities workbook/ })).toContainText("Not uploaded");
-  await expect(p.getByText("0 of 4 added")).toBeVisible();
-
-  await p.getByLabel("Upload Equities workbook").setInputFiles({ name: "fake.xlsx", mimeType: "application/octet-stream", buffer: Buffer.from("not a workbook") });
-  await expect(p.getByRole("alert")).toContainText("fake.xlsx:");
-  await expect(table.getByText("Chosen: fake.xlsx")).toBeVisible();
-
-  await p.getByRole("button", { name: /^Fetch from CBK\s*: CBK Weekly Bulletin$/ }).click();
-  await expect(p.getByRole("alert")).toContainText("E2E: no bulletin is saved for 2026-06-05");
-  expect(opened).toEqual([]); // reading, uploading and fetching opened no conversation
-});
-
-test("T135 the prepare page's inputs: Save moves on and lowers the banner count, Previous shows it saved, a skip keeps what was typed", async ({ page }) => {
-  await page.setViewportSize({ width: 1366, height: 900 });
-  await page.goto(chatUrl("equities", "Week ending 2026-06-12"));
-  const p = prepare(page);
-  const banner = p.getByText(/^\d+ required items? missing$/);
-  const before = Number((await banner.textContent())!.split(" ")[0]);
-  await expect(p.getByText("Step 1 of 9", { exact: true })).toBeVisible();
-  await expect(p.getByRole("button", { name: "Previous" })).toBeDisabled();
-
-  const first = p.getByLabel("Year-to-date equities turnover");
-  await first.fill("123.4");
-  await first.press("Enter");
-  await expect(p.getByText("Step 2 of 9", { exact: true })).toBeVisible();
-  await expect(p.getByLabel("Year-to-date foreign net position")).toBeFocused();
-  await expect(p.getByText(`${before - 1} required item${before - 1 === 1 ? "" : "s"} missing`)).toBeVisible();
-
-  await p.getByLabel("Year-to-date foreign net position").fill("1.5");
-  await p.getByRole("button", { name: "Next" }).click(); // a skip: nothing is saved
-  await expect(p.getByText("Step 3 of 9", { exact: true })).toBeVisible();
-  await p.getByRole("button", { name: "Previous" }).click();
-  await expect(p.getByLabel("Year-to-date foreign net position")).toHaveValue("1.5");
-  await p.getByRole("button", { name: "Previous" }).click();
-  await expect(p.getByText("Saved: 123.4")).toBeVisible();
-  await expect(p.getByText(`${before - 1} required item${before - 1 === 1 ? "" : "s"} missing`)).toBeVisible(); // the skip lowered nothing
-});
-
-test("T136 Create draft opens the conversation and starts the draft; a drafted section shows the conversation with a way back", async ({ page }) => {
-  test.setTimeout(240_000);
-  await page.setViewportSize({ width: 1366, height: 900 });
-  const period = "Week ending 2026-09-04"; // a demo Friday the test backend drafts Equities for with no outside source
-  await page.goto(chatUrl("equities", period));
-  await prepare(page).getByRole("button", { name: /Create draft/ }).click();
-  const ask = page.getByRole("dialog", { name: "Draft this section?" });
-  await expect(ask.or(page.getByRole("log", { name: "Conversation" }))).toBeVisible();
-  if (await ask.isVisible()) await ask.getByRole("button", { name: "Draft anyway" }).click();
-  await expect(page).toHaveURL(/view=conversation/);
-  await expect(page.getByRole("log", { name: "Conversation" })).toBeVisible();
-  await expect(live(page).getByRole("region", { name: /^Review of Equities/ })).toBeVisible({ timeout: 180_000 });
-
-  await page.goto(chatUrl("equities", period)); // no flag: the section has a draft, so the conversation view
-  await expect(page.getByRole("log", { name: "Conversation" })).toBeVisible();
-  await expect(prepare(page)).toHaveCount(0);
-  await page.getByRole("link", { name: "Back to sources and inputs" }).click();
-  await expect(prepare(page).getByText("In review", { exact: true })).toBeVisible();
-  await expect(prepare(page).getByRole("link", { name: "Open the conversation" })).toHaveCount(0); // only the snapshot is in it
-});
-
-test("T137 the prepare page offers the conversation when one already holds more than its snapshot, and only then", async ({ page }) => {
-  await page.setViewportSize({ width: 1366, height: 900 });
-  const period = "Week ending 2026-06-19";
-  await page.goto(chatUrl("equities", period));
-  await expect(prepare(page).getByRole("heading", { name: "Source documents" })).toBeVisible();
-  await expect(prepare(page).getByRole("link", { name: "Open the conversation" })).toHaveCount(0);
-  // Someone talked before drafting: the readiness route is stood in for, saying so.
-  await page.route("**/api/sections/equities/readiness*", async (route) => {
-    const res = await route.fetch();
-    await route.fulfill({ response: res, json: { ...(await res.json()), conversation: true } });
-  });
-  await page.reload();
-  const link = prepare(page).getByRole("link", { name: "Open the conversation" });
-  await expect(link).toHaveAttribute("href", /view=conversation/);
-  await link.click();
-  await expect(page.getByRole("log", { name: "Conversation" })).toBeVisible();
 });

@@ -102,6 +102,8 @@ export const PAIRS: Pair[] = [
   // The prepare page: the saved mark and a refusal on the skin page.
   { what: "saved mark on the skin page", fg: T("ok-fg"), bg: T("cw-page"), min: TEXT },
   { what: "refusal text on the skin page", fg: T("flag-fg"), bg: T("cw-page"), min: TEXT },
+  // The snip steps: a snip's "Unconfirmed" status, on the skin page.
+  { what: "warning text on the skin page", fg: T("warn-fg"), bg: T("cw-page"), min: TEXT },
   { what: "ink on the skin chip", fg: T("foreground"), bg: T("cw-chip"), min: TEXT },
   { what: "control edge on the skin chip", fg: T("input"), bg: T("cw-chip"), min: EDGE },
 ];

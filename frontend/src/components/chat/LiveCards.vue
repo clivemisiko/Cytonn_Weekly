@@ -4,14 +4,15 @@ import ExportBar from "@/components/review/ExportBar.vue";
 import Notice from "@/components/review/Notice.vue";
 import * as api from "@/lib/api";
 import type { Job } from "@/lib/chat";
-import { captureSteps, draftCard, hasNeeds, needsYou, parseReadiness, type Readiness, type ReadinessEntry } from "@/lib/chatcards";
-import type { AppConfig, Drafting, ReportChoice, Review, SectionSummary } from "@/lib/types";
+import { draftCard, hasNeeds, needsYou, parseReadiness, type Readiness } from "@/lib/chatcards";
+import { type Step, itemSteps, openingStep } from "@/lib/prepare";
+import type { AnalystForm, AppConfig, Drafting, ReportChoice, Review, SectionSummary } from "@/lib/types";
 import DraftCard from "./DraftCard.vue";
 import FundSnipCard from "./FundSnipCard.vue";
 import LiveReviewCard from "./LiveReviewCard.vue";
 import NeedsYouCard from "./NeedsYouCard.vue";
 import SourcesCard from "./SourcesCard.vue";
-import TypedInputsCard from "./TypedInputsCard.vue";
+import InputSteps from "./InputSteps.vue";
 
 const props = defineProps<{
   job: Job;
@@ -19,7 +20,7 @@ const props = defineProps<{
   report: ReportChoice;
   drafting: Drafting | null;
   config: AppConfig | null;
-  /** The old page's address for this section: where the inputs form, the sources and the snips are. */
+  /** The prepare page's address for this section: where its inputs, sources and snips are. A card adds `&step=` to it. */
   oldPage: string;
   /** Counted up by the page after anything changed, so the cards read again. */
   tick: number;
@@ -68,10 +69,25 @@ watch(() => [props.tick, props.job.job_id, props.section.latest?.run_id, props.s
 onUnmounted(() => generation++);
 
 const needs = computed(() => (readiness.value ? needsYou(readiness.value) : null));
-const typedSteps = shallowRef<ReadinessEntry[] | null>(null);
+// The typed inputs: the prepare page's own stepper over every form item (the fund table keeps its own card here). Its steps
+// are captured once, when the form is first read, so later reads never add, drop or reorder them.
+const form = shallowRef<AnalystForm | null>(null);
+const typedSteps = shallowRef<Step[] | null>(null);
 const liveTitle = ref<HTMLElement | null>(null);
-watch(() => `${props.job.job_id} ${props.section.slug} ${props.report.period}`, () => (typedSteps.value = null));
-watch(needs, (n) => (typedSteps.value = captureSteps(typedSteps.value, n?.inline ?? [])));
+watch(() => `${props.job.job_id} ${props.section.slug} ${props.report.period}`, () => {
+  form.value = null;
+  typedSteps.value = null;
+});
+watch(readiness, async (r) => {
+  if (!r || form.value || !weekly.value || !Object.values(r.groups).some((g) => g.some((e) => e.kind !== "upload"))) return;
+  try {
+    form.value = await api.getAnalystInputs(week.value, props.section.slug);
+    typedSteps.value ??= itemSteps(form.value, false);
+  } catch {
+    /* the needs-you card still lists what is missing */
+  }
+});
+const missing = computed(() => (readiness.value ? [...readiness.value.groups.needs_analyst, ...readiness.value.groups.carried_or_suggested].map((e) => e.key) : []));
 const formNeeds = computed(() => !!needs.value && hasNeeds({ ...needs.value, inline: [] }));
 const draft = computed(() => draftCard(props.section, props.drafting, props.config));
 const counted = computed(() => readiness.value !== null && (readiness.value.snips !== null || readiness.value.sources !== null));
@@ -95,7 +111,21 @@ const done = () => {
     <p v-else-if="needs && !hasNeeds(needs)" class="text-sm text-muted-foreground">Nothing is missing for this section.</p>
 
     <NeedsYouCard v-if="needs && formNeeds" :needs="needs" :week="week" :section="section.slug" :form-to="oldPage" @changed="done" />
-    <TypedInputsCard v-if="weekly && typedSteps" :key="job.job_id" :steps="typedSteps" @empty="liveTitle?.focus()" :week="week" :section="section.slug" @changed="done" />
+    <InputSteps
+      v-if="weekly && typedSteps?.length"
+      :key="job.job_id"
+      :steps="typedSteps"
+      :form="form"
+      :week="week"
+      :section="section.slug"
+      :missing="missing"
+      :start="openingStep(typedSteps, missing)"
+      heading="Type these here"
+      data-card="typed_inputs"
+      @form="(f) => (form = f)"
+      @done="liveTitle?.focus()"
+      @changed="done"
+    />
     <FundSnipCard v-if="weekly && section.slug === 'fixed_income'" :week="week" :section="section.slug" @changed="done" />
     <SourcesCard v-if="readiness && counted" :readiness="readiness" :old-page="oldPage" />
     <DraftCard v-if="draft.kind !== 'none'" :section="section" :card="draft" :report="report" :config="config" :old-page="oldPage" @changed="done" @ended="ended" />

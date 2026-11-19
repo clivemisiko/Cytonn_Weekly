@@ -200,7 +200,7 @@ describe("the prepare page's source documents", () => {
       ["equities_workbook", "Not uploaded", false, true, null],
       ["cbk_bulletin", "Not received; fetch it or upload it", false, true, "Fetch from CBK"],
       ["kcb_weekly", "Uploaded", true, true, null],
-      ["interbank", "Not filled", false, false, "Fetch interbank rates from CBK"],
+      ["interbank", "Optional, not filled", false, false, "Fetch interbank rates from CBK"],
     ]);
   });
 
