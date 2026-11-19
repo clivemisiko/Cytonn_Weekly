@@ -32,6 +32,8 @@ export const KIND_LABELS: Record<ItemKind, string> = {
   supplied_text: "Your text",
   computed_figure: "Computed figure",
   carried_text: "Carried forward",
+  piece_check: "Whole piece",
+  workbook_quarter: "Workbook quarter",
   chart: "Chart",
 };
 
@@ -62,12 +64,6 @@ export const RESOLUTION_CHIPS: Record<"none" | "accept" | "fix_needed", string> 
 export const truncateId = (id: string) => (id.length > 14 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id);
 /** A run of 24 or more hex digits (a SHA-256, a commit): what `TextWithIds` shortens inside system-written text. */
 export const LONG_ID = /([0-9a-f]{24,})/i;
-
-/** Why Approve is off, in one wording for every section; null when it is not off. The status bar and the Approve button both read it. */
-export function approveHint(p: { fix_needed: number }, approvable: boolean): string | null {
-  if (approvable) return null;
-  return p.fix_needed ? `Not approvable yet: ${p.fix_needed} marked fix needed.` : "Approve unlocks once every item is resolved and none needs a fix.";
-}
 
 export const resolutionKey = (r: Resolution): "none" | "accept" | "fix_needed" => r ?? "none";
 
@@ -104,6 +100,13 @@ function parseStamp(stamp: string): Date {
 export function friendlyTime(stamp: string): string {
   const d = parseStamp(stamp);
   return Number.isNaN(d.getTime()) ? stamp : `${TIME_FMT.format(d).replace(" at ", ", ")} EAT`;
+}
+
+const CLOCK_FMT = new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Nairobi", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+/** "2026-10-01T13:24:13+00:00" -> "16:24:13" (Nairobi time; a run's step log carries the date elsewhere). */
+export function clockTime(stamp: string): string {
+  const d = parseStamp(stamp);
+  return Number.isNaN(d.getTime()) ? stamp : CLOCK_FMT.format(d);
 }
 
 export function weekRange(start: string, end: string): string {

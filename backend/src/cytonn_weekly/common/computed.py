@@ -15,7 +15,7 @@ figure is recorded beside the paragraph with what it was made from::
                     "offered": {...}}}]}
 
 The checking policy, applied to every such figure (and to table rows that say where they
-came from; see common/review.py):
+came from; see review/blocks.py):
 
 * **Computed figures carry their source rows and are exact-matched.**  The checker works
   the figure out again from ``inputs`` with ``expr``, rounds it half up to the display
@@ -36,7 +36,7 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from typing import Any, Optional, Union
 
-from cytonn_weekly.checkers.digital_payments import (
+from cytonn_weekly.review.figures import (
     MISMATCH,
     MISSING,
     SOURCES_DISAGREE,
@@ -46,7 +46,7 @@ from cytonn_weekly.checkers.digital_payments import (
     normalize,
     parse_number,
 )
-from cytonn_weekly.common.formatting import fmt_value, round_half_up
+from cytonn_weekly.common.formatting import PCT, fmt_value, round_half_up
 
 COMPUTED_SCOPE = "computed"
 CARRIED_SCOPE = "carried"
@@ -184,6 +184,8 @@ def a_figure(key: str, label: str, fmt: str, decimals: int, inputs: dict[str, di
             raise ValueError(f"figure {key!r} has {len(inputs)} inputs and no expression")
         expr = next(iter(inputs))
     value = evaluate(expr, inputs)
+    if fmt in (PLAIN_PCT, PCT, POINTS) and value != 0 and round_half_up(value, decimals) == 0:
+        decimals = 3   # a real change that rounds to 0.0% is shown to three decimals; the checker reads this same figure["decimals"]
     return {"key": key, "label": label, "fmt": fmt, "decimals": decimals, "value": float(value),
             "display": show(value, fmt, decimals), "expr": expr, "inputs": inputs, "in_text": in_text, "note": note}
 
@@ -316,6 +318,9 @@ def check_computed_block(block: dict[str, Any]) -> CheckReport:
 
 def carried_flag(block: dict[str, Any]) -> Flag:
     src = block.get("carried_from") or {}
+    if block.get("role") == "analyst":   # a part only the analyst can write: nothing was carried, so say that
+        return Flag(kind=CARRIED_FORWARD, scope=CARRIED_SCOPE, subject=block["id"], field=None,
+                    message=f"Analyst to write: {block['title']}. The tool writes no text here; write it by editing this paragraph before approving")
     where = f"issue {src.get('issue_id')} on cytonnreport.com" if src.get("issue_id") else "the previous issue"
     when = f", published {src['published']}" if src.get("published") else ""
     return Flag(kind=CARRIED_FORWARD, scope=CARRIED_SCOPE, subject=block["id"], field=None,

@@ -20,8 +20,8 @@ from fastapi.testclient import TestClient
 
 from api.main import create_app
 from cytonn_weekly.charts.specs import SPECS
-from cytonn_weekly.checkers.digital_payments import SOURCES_DISAGREE
-from cytonn_weekly.weekly import analyst, inputs
+from cytonn_weekly.review.figures import SOURCES_DISAGREE
+from cytonn_weekly.weekly import analyst, inputs, previous_issue
 from cytonn_weekly.weekly.inputs import InputError
 from cytonn_weekly.weekly.week import Week
 from tests import test_weekly_equities as eq
@@ -261,8 +261,13 @@ def test_typing_the_synthetic_workbooks_figures_gives_the_same_sections(tmp_path
     # The rest are the synthetic workbook's own weekly sums, which disagree with what KCB's figures give: flagged with
     # the workbook, and with nothing to disagree once the workbook is gone.
     others = {ref: change for ref, change in changed.items() if ref not in OCR_ONLY}
+    # CBK's Table 6 is read first for the indices, and the real bulletin's last-week levels differ from the synthetic
+    # workbook's invented ones, so the three week-on-week changes the workbook can disagree with go the same way.
     assert set(others) == {"Market Performance: equities turnover: Equities turnover over the week",
-                           "Market Performance: foreign investors: Foreign investors' net position over the week"}
+                           "Market Performance: foreign investors: Foreign investors' net position over the week",
+                           "Market Performance: NASI week-on-week change",
+                           "Market Performance: NSE 20 week-on-week change",
+                           "Market Performance: NSE 25 week-on-week change"}
     assert all(was == "flagged" for was, _ in others.values())
     for i in equities.review_items:
         if i.ref.split(" (")[0] in others:
@@ -336,7 +341,7 @@ def test_every_typed_value_is_an_analyst_input_never_clean(typed_week):
                                      "source: Cytonn analyst estimates and company filings; prices from the NSE). The changes, yield")
     # the checker still works every figure out again: a derived figure cannot be typed, and a tampered one is caught
     assert blocks(equities)["universe_of_coverage"]["source"]["name"] == "Weekly analyst inputs, Universe of Coverage"
-    assert not review.is_approvable and not equities.is_approvable
+    assert review.is_approvable and equities.is_approvable
 
 
 def test_the_model_is_handed_nothing_from_the_form(typed_week):
@@ -348,7 +353,9 @@ def test_the_model_is_handed_nothing_from_the_form(typed_week):
 
     fi.fiw.build_fixed_income_review(WEEK.ending, inputs=inputs.WeeklyInputs(WEEK, typed_week), fetchers=fi.fetchers(), draft=drafting)
     briefs, target, kwargs = seen[0]
-    assert set(kwargs) == {"provider", "today", "window", "on_event"} and briefs is fi.fiw.BRIEFS
+    assert set(kwargs) == {"provider", "today", "window", "on_event", "earlier"} and briefs is fi.fiw.BRIEFS
+    # "earlier" is the previous issue's own section and nothing else, so no form value (liquidity_driver included) can travel in it
+    assert kwargs["earlier"] == previous_issue.digest(fi.ISSUE, "fixed-income")
     typed = json.dumps(analyst.read_form(WEEK, typed_week))
     assert "10.8" in typed and not any("10.8" in str(b) for b in briefs)   # no typed figure is in what the drafter is given
 
@@ -646,8 +653,10 @@ def test_what_is_no_longer_valid_for_the_week_is_not_carried(tmp_path):
     done = analyst.carry_forward(november, tmp_path)
     assert set(done["carried"]) == {"foreign_prior_year", "universe"}       # the month turned: last month's open, month end, days
     assert analyst.read_form(november, tmp_path)["tables"]["universe"] == [{"company": "Alpha Bank", "target": "55"}]
-    january = Week(date(2027, 1, 1))
-    save_week(tmp_path, Week(date(2026, 12, 25)), fields={"foreign_prior_year": "-6", "large_caps": "Safaricom"})
+    # The week ending Friday 1 January 2027 is as at Thursday 31 December 2026, so it is still in 2026's running totals:
+    # the year turns with the week ending 8 January.
+    january = Week(date(2027, 1, 8))
+    save_week(tmp_path, Week(date(2027, 1, 1)), fields={"foreign_prior_year": "-6", "large_caps": "Safaricom"})
     assert analyst.carry_forward(january, tmp_path)["carried"] == ["large_caps"]   # "the previous year" is another year now
 
 
@@ -678,7 +687,7 @@ def test_a_running_total_is_suggested_as_last_weeks_plus_this_weeks_worked_out_f
     assert missing["turnover_ytd"]["reason"].startswith("Year-to-date equities turnover: this week's figure cannot be worked out: "
                                                         "no equities turnover or CBK rate for Friday 02 October")
     assert "value" in missing["foreign_ytd"]                             # KCB's weekly report still lists each weekday's flows
-    first = Week(date(2027, 1, 1))
+    first = Week(date(2027, 1, 8))
     assert "restarts with the year" in eq.eqw.running_total_suggestions(inputs.WeeklyInputs(first, tmp_path), lambda: eq.RATES)["turnover_ytd"]["reason"]
 
 
@@ -745,7 +754,7 @@ def test_every_refusal_of_a_suggestion_says_what_is_missing_and_what_to_do(tmp_p
         "Year-to-date equities turnover: this week's figure cannot be worked out: no equities turnover or CBK rate for Friday 02 October")
     assert r.json()["detail"].endswith("Upload what is missing under \"This week's inputs\" and try again, or type this week's total yourself.")
     # the year turned: last year's total is never the base
-    r = suggest("turnover_ytd", "2027-01-01")
+    r = suggest("turnover_ytd", "2027-01-08")
     assert r.status_code == 409 and r.json()["detail"] == (
         "Year-to-date equities turnover: the running total restarts with the year, so last week's is not carried into it. "
         "Type this week's total, the year so far, yourself.")
@@ -820,7 +829,7 @@ def test_kcbs_friday_price_equals_the_workbooks_for_all_thirteen_companies(tmp_p
 
 
 def checked(table):
-    from cytonn_weekly.common.review import check_section, numbered
+    from cytonn_weekly.review.blocks import check_section, numbered
 
     content = {"section": "equities", "blocks": numbered([table])}
     return content, check_section(content)
@@ -893,3 +902,20 @@ def test_the_label_carries_forward_and_is_used_at_once(tmp_path):
     assert "mmf_source" in done["carried"] and "mmf_source" not in done["unconfirmed"]
     assert source_label(tmp_path, NEXT) == "Invented Paper"
     assert analyst.status(NEXT, tmp_path)["unconfirmed"] == []
+
+
+def test_the_liquidity_driver_is_the_teams_own_words_printed_and_marked_as_analyst_input(typed_week):
+    clause = "partly attributable to tax payments that offset government payments"
+    assert clause not in blocks(fi.build(typed_week))["liquidity"]["body_md"]     # nothing is written by the tool
+    save(typed_week, {"liquidity_driver": f"  {clause}. "})
+    block = blocks(fi.build(typed_week))["liquidity"]
+    assert f", {clause}." in block["body_md"] and ".." not in block["body_md"]
+    assert any(clause in n and "analyst input typed on the weekly form" in n for n in block["notes"])
+    assert analyst.read_form(WEEK, typed_week)["fields"]["liquidity_driver"] == f"{clause}."   # trimmed; kept as typed
+
+
+def test_the_liquidity_driver_is_one_line_of_at_most_200_characters_and_is_not_carried_forward(tmp_path):
+    save(tmp_path, {"liquidity_driver": "x" * 200})
+    assert "at most 200 characters" in refused(tmp_path, {"liquidity_driver": "x" * 201})
+    assert "one line" in refused(tmp_path, {"liquidity_driver": "one\ntwo"})
+    assert "liquidity_driver" not in analyst.SLOW_FIELDS + analyst.WEEKLY_FIELDS

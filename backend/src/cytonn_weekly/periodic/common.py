@@ -7,10 +7,10 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Callable, Optional, Sequence, Union
 
-from cytonn_weekly.common.review import numbered, unavailable_block
+from cytonn_weekly.review.blocks import numbered, unavailable_block
 from cytonn_weekly.common.run_events import Observer
-from cytonn_weekly.narrative.base import NarrativeBrief, NarrativeProvider
-from cytonn_weekly.narrative.drafter import draft_pieces
+from cytonn_weekly.drafting.base import NarrativeBrief, NarrativeProvider
+from cytonn_weekly.drafting.drafter import draft_pieces
 from cytonn_weekly.report_types import (
     ANNUAL,
     HALF_YEAR,
@@ -41,24 +41,23 @@ REFERENCE_ISSUES = {
 
 @dataclass(frozen=True)
 class PeriodContext:
-    """One Markets Review draft: which report, which period, and what the coordinator supplied."""
+    """One Markets Review draft: which report, which period, and what the analyst supplied."""
 
     report_type: str
     period: str
     start: date
     end: date
     today: date
-    text: Optional[str] = None                       # Company Updates only: the coordinator's text
     db_path: Optional[Union[Path, str]] = None       # Executive Summary only: where the approved sections are
 
     @classmethod
-    def of(cls, report_type: str, period: str, *, today: Optional[date] = None, text: Optional[str] = None,
+    def of(cls, report_type: str, period: str, *, today: Optional[date] = None,
            db_path: Optional[Union[Path, str]] = None) -> "PeriodContext":
         if report_type not in PERIODIC:
             raise ValueError(f"{report_type!r} is not a Markets Review type")
         period = normalize_period(report_type, period)
         start, end = period_window(report_type, period)
-        return cls(report_type, period, start, end, today or date.today(), text, db_path)
+        return cls(report_type, period, start, end, today or date.today(), db_path)
 
     @property
     def prose(self) -> str:
@@ -92,7 +91,7 @@ class Stub:
 
     ``fetch`` is the module's own function that raises NotImplementedError with the
     module's ``*_BLOCKED_REASON`` (the documented-stub pattern); ``block()`` is how the
-    coordinator sees it: an ``unavailable`` block they must explicitly acknowledge.
+    analyst sees it: an ``unavailable`` block they must explicitly acknowledge.
     """
 
     id: str
@@ -132,7 +131,7 @@ def draft_period(briefs: Sequence[NarrativeBrief], target: int, ctx: PeriodConte
 
 
 def no_draft() -> dict[str, Any]:
-    """The draft_pieces shape for a section that drafts nothing (Company Updates, the summary)."""
+    """The draft_pieces shape for a section that drafts nothing (the summary)."""
     return {"pieces": [], "shortfall": 0, "warnings": []}
 
 
@@ -143,7 +142,7 @@ def no_draft() -> dict[str, Any]:
 def compose(slug: str, title: str, ctx: PeriodContext, blocks: list[dict[str, Any]], *,
             draft: Optional[dict[str, Any]] = None, expected: int = 0, warnings: Sequence[str] = (),
             charts: Optional[dict[str, tuple[str, ...]]] = None) -> dict[str, Any]:
-    """The section content every Markets Review section stores (common/review.py's shape, plus the period).
+    """The section content every Markets Review section stores (review/blocks.py's shape, plus the period).
 
     ``week_start``/``week_end`` carry the period too, so a screen written for the weekly
     report still shows a date range; ``period_start``/``period_end`` say what it is.

@@ -13,6 +13,7 @@ from cytonn_weekly.focus import review_run as focus_run
 from cytonn_weekly.focus.review_run import MAX_TOPIC_CHARS, clean_topic
 from tests import section_helpers as sh
 
+SECTIONS = "Overview\nRisks"   # Focus under Bedrock needs typed section titles; these tests are about the topic
 WORDS_300 = ("  Kenya's   public debt \n and the Eurobond buyback  " * 12)[:300]   # untidy whitespace, 300 characters
 
 
@@ -28,16 +29,16 @@ def seen():
 
 @pytest.fixture
 def client(tmp_path, monkeypatch, seen):
-    def build(topic, on_event=None):
+    def build(topic, on_event=None, sections=None, **_):
         seen.append(topic)                       # the topic exactly as the API handed it to the builder
-        return sh.focus_review(topic=topic, on_event=on_event)
+        return sh.focus_review(topic=topic, on_event=on_event, sections=sections)
 
     monkeypatch.setattr(focus_run, "build_focus_review", build)
     return TestClient(create_app(db_path=tmp_path / "app.db", load_dotenv=False))
 
 
 def draft(client, topic):
-    return client.post("/api/sections/focus/draft", json={"topic": topic})
+    return client.post("/api/sections/focus/draft", json={"topic": topic, "sections": SECTIONS})
 
 
 def test_the_limit_is_500():
@@ -68,7 +69,7 @@ def test_501_characters_is_refused_by_both_in_the_same_words(client, seen):
     assert str(exc.value) == "the topic is 501 characters; the limit is 500"
     r = draft(client, topic)
     assert r.status_code == 422 and r.json()["detail"] == str(exc.value)
-    run = client.post("/api/runs", json={"section": "focus", "topic": topic})
+    run = client.post("/api/runs", json={"section": "focus", "topic": topic, "sections": SECTIONS})
     assert run.status_code == 422 and run.json()["detail"] == str(exc.value)
     assert seen == []                            # refused before any draft was started
     assert client.get("/api/sections").json()["drafting"] is None
@@ -101,9 +102,32 @@ def test_blank_and_missing_topics_are_refused_as_before(client, seen):
 def test_the_run_route_hands_the_builder_the_same_cleaned_topic(client, seen):
     import time
 
-    run_id = client.post("/api/runs", json={"section": "focus", "topic": WORDS_300}).json()["run_id"]
+    run_id = client.post("/api/runs", json={"section": "focus", "topic": WORDS_300, "sections": SECTIONS}).json()["run_id"]
     deadline = time.monotonic() + 20
     while client.get(f"/api/runs/{run_id}").json()["status"] == "running" and time.monotonic() < deadline:
         time.sleep(0.01)
     assert client.get(f"/api/runs/{run_id}").json()["status"] == "finished"
     assert seen == [clean_topic(WORDS_300)]
+
+
+def test_typed_section_titles_reach_the_builder_and_come_back_numbered(client, seen):
+    r = client.post("/api/sections/focus/draft", json={"topic": "SSA", "sections": "Overview\nSection 2: Yields\n\nRecommendations and Conclusion"})
+    assert r.status_code == 200, r.text
+    assert r.json()["section"]["outline"] == {"titles": ["Overview", "Yields", "Recommendations and Conclusion"], "source": "typed"}
+
+
+@pytest.mark.parametrize("sections, reason", [
+    ("\n".join(f"Title {n}" for n in range(9)), "9 section titles; the limit is 8"),
+    ("Fine\n" + "x" * 121, "section title 2 is 121 characters; the limit is 120"),
+])
+def test_too_many_or_too_long_section_titles_are_refused_with_a_sentence_and_nothing_is_drafted(client, seen, sections, reason):
+    for url, body in (("/api/sections/focus/draft", {"topic": "SSA", "sections": sections}),
+                      ("/api/runs", {"section": "focus", "topic": "SSA", "sections": sections})):
+        r = client.post(url, json=body)
+        assert r.status_code == 422 and r.json()["detail"] == reason and r.json()["problems"][0]["code"] == "draft_input_invalid"
+    assert seen == []
+
+
+def test_a_blank_topic_is_refused_even_with_section_titles(client, seen):
+    r = client.post("/api/sections/focus/draft", json={"topic": " ", "sections": "Overview"})
+    assert r.status_code == 422 and r.json()["detail"] == "Type a topic for Focus of the Week first, then start the draft."

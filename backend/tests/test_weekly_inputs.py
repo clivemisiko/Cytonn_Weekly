@@ -619,7 +619,7 @@ def test_an_upload_that_is_the_wrong_document_is_refused_with_the_reason(tmp_pat
 def test_the_status_shows_each_slot_and_each_missing_daily(tmp_path, text_pdfs):
     empty = inputs.status(WEEK, tmp_path)
     assert [s["slug"] for s in empty["slots"]] == ["equities_workbook", "fi_workbook", "kcb_daily", "kcb_weekly", "cbk_bulletin",
-                                                 "nse_yield_curve"]
+                                                 "nse_yield_curve", "dp_workbook"]
     assert not any(s["received"] for s in empty["slots"]) and empty["notes"] == {}
     inputs.store(WEEK, "kcb_daily", wh.fake_pdf(wh.kcb_daily_text(date(2026, 10, 2))), "fri.pdf", tmp_path)
     inputs.store(WEEK, "fi_workbook", wh.fi_workbook_bytes(), "FI.xlsx", tmp_path)

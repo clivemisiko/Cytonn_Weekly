@@ -58,7 +58,7 @@ def typed(cell: Any, workbook: str, *, scale: float = 1.0, second: Optional[dict
     is then the input's second reading, so the difference is a "sources disagree" flag.
     """
     value = cell.number * scale if cell.number is not None else cell.value
-    if getattr(cell, "source", None) is not None:
+    if getattr(cell, "source", None) is not None and hasattr(cell, "other"):   # a Typed; a Reading keeps the second reading it is given
         second, decimals = typed_second(getattr(cell, "other", None), workbook, scale), None
     return an_input(value, ANALYST, typed_source(cell, workbook), second=second, decimals=decimals)
 
@@ -98,6 +98,17 @@ def try_fetch(on_event: Optional[Observer], label: str, fetch: Callable[..., T],
         if problems is not None:
             problems.append(f"{label}: {type(exc).__name__}: {' '.join(str(exc).split())}"[:300])
         return None
+
+
+def fetch_week_bulletin(fetch: Callable[[Any], T], week: Any) -> T:
+    """The CBK bulletin for the week: the issue of its Friday, or, when that was a holiday, the one dated the as-at day."""
+    first: Optional[LookupError] = None
+    for day in week.report_dates:
+        try:
+            return fetch(day)
+        except LookupError as exc:
+            first = first or exc
+    raise first
 
 
 def join_names(names: list[str]) -> str:

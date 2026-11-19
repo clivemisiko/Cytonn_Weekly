@@ -2,7 +2,7 @@
 
 Each is a real interface that fails loudly, so the section visibly cannot draft
 these parts rather than guessing at them.  The review run turns each into an
-``unavailable`` block, which the coordinator must explicitly acknowledge.
+``unavailable`` block, which the analyst must explicitly acknowledge.
 """
 
 from __future__ import annotations

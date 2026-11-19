@@ -10,7 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.main import create_app
-from cytonn_weekly.digital_payments import review_store
+from cytonn_weekly.review import store as review_store
 from cytonn_weekly.equities import review_run as eq_run
 from cytonn_weekly.equities import weekly as eq_weekly
 from cytonn_weekly.focus import review_run as focus_run
@@ -27,17 +27,17 @@ def db(tmp_path):
 @pytest.fixture
 def client(db, monkeypatch):
     monkeypatch.setattr(eq_weekly, "build_equities_weekly_review", lambda: sh.equities_review())
-    monkeypatch.setattr(re_run, "build_real_estate_review", lambda: sh.real_estate_review())
-    monkeypatch.setattr(focus_run, "build_focus_review", lambda topic: sh.focus_review(topic=topic))
+    monkeypatch.setattr(re_run, "build_real_estate_review", lambda **_: sh.real_estate_review())
+    monkeypatch.setattr(focus_run, "build_focus_review", lambda topic, **_: sh.focus_review(topic=topic))
     return TestClient(create_app(db_path=db, load_dotenv=False))
 
 
 def test_overview_lists_the_weekly_sections_in_report_order(client):
     body = client.get("/api/sections").json()
-    assert [s["slug"] for s in body["sections"]] == ["company_updates", "fixed_income", "equities", "real_estate",
-                                                     "digital_payments", "focus"]   # as #38.2026 orders them
-    updates, fi = body["sections"][0], body["sections"][1]
-    assert updates["needs_text"] is True and updates["uses_provider"] is False
+    assert [s["slug"] for s in body["sections"]] == ["fixed_income", "equities", "real_estate",
+                                                     "digital_payments", "focus"]   # as #38.2026 orders them, less Company Updates
+    fi = body["sections"][0]
+    assert all(s["uses_provider"] for s in body["sections"]) and "needs_text" not in fi
     # Fixed Income is drafted from the week's inputs and CBK: nothing blocks it any more.
     assert fi["available"] is True and fi["reason"] is None and fi["built_parts"] == []
     assert fi["subsections"][0] == "Money Markets, T-Bills Primary Auction:" and len(fi["charts"]) == 6
@@ -67,7 +67,7 @@ def test_generic_section_serialization(client):
     assert "source_rows" not in indices  # the screen gets display strings only
     uoc = sec["blocks"][4]
     assert uoc["title"] == "Universe of Coverage" and "proprietary" in uoc["reason"]
-    assert (sec["pieces_found"], sec["pieces_expected"]) == (3, 3)
+    assert (sec["pieces_found"], sec["pieces_expected"]) == (2, 3)   # the fake finds nothing for one of the three briefs
 
 
 def test_unavailable_section_cannot_be_drafted(client):
@@ -81,7 +81,7 @@ def test_unavailable_section_cannot_be_drafted(client):
 def test_focus_needs_a_topic_and_carries_it(client):
     assert client.post("/api/sections/focus/draft").status_code == 422
     assert client.post("/api/sections/focus/draft", json={"topic": "   "}).status_code == 422
-    r = client.post("/api/sections/focus/draft", json={"topic": "SSA Eurobonds"})
+    r = client.post("/api/sections/focus/draft", json={"topic": "SSA Eurobonds", "sections": "Overview"})
     assert r.status_code == 200 and r.json()["section"]["topic"] == "SSA Eurobonds"
 
 
@@ -93,7 +93,7 @@ def test_resolve_and_approve_a_generic_review(client):
             review = client.patch(f"/api/reviews/{run}/items/{item['index']}", json={"resolution": "accept"}).json()
     review = client.post(f"/api/reviews/{run}/accept-clean").json()
     assert review["is_approvable"] is True
-    done = client.post(f"/api/reviews/{run}/decide", json={"decision": "approved"}).json()
+    done = client.post(f"/api/reviews/{run}/decide", json={"decision": "approved", "acknowledged_flagged": sum(i["status"] == "flagged" for i in review["review_items"])}).json()
     assert done["decision"] == "approved" and done["section_slug"] == "real_estate"
     assert client.patch(f"/api/reviews/{run}/items/0", json={"resolution": None}).status_code == 409
     re_row = next(s for s in client.get("/api/sections").json()["sections"] if s["slug"] == "real_estate")
@@ -102,7 +102,7 @@ def test_resolve_and_approve_a_generic_review(client):
 
 def test_sections_are_independent(client, db):
     eq = client.post("/api/sections/equities/draft").json()
-    focus = client.post("/api/sections/focus/draft", json={"topic": "Budget review"}).json()
+    focus = client.post("/api/sections/focus/draft", json={"topic": "Budget review", "sections": "Overview"}).json()
     client.post(f"/api/reviews/{eq['run_id']}/decide", json={"decision": "rejected"})
     rows = {s["slug"]: s["latest"] for s in client.get("/api/sections").json()["sections"]}
     assert rows["equities"]["decision"] == "rejected" and rows["focus"]["decision"] is None
@@ -143,15 +143,15 @@ def test_failed_draft_is_reported_not_saved(client, db, monkeypatch):
 
 
 def test_flagged_table_row_is_marked_in_the_serialized_table(client, db):
-    from cytonn_weekly.common.review import build_review, check_section
+    from cytonn_weekly.review.blocks import build_review, check_section
 
     review = sh.real_estate_review()
     content = review.section
-    content["blocks"][-1]["rows"][0]["price"] = "29.6"  # source 29.65 shows as "29.7"
+    next(b for b in content["blocks"] if b["kind"] == "table")["rows"][0]["price"] = "29.6"  # source 29.65 shows as "29.7"
     tampered = build_review(content, check_section(content))
     review_store.save_review(tampered, section="real_estate", db_path=db)
     body = client.get(f"/api/reviews/{tampered.run_id}").json()
-    rows = body["section"]["blocks"][-1]["rows"]
+    rows = next(b for b in body["section"]["blocks"] if b["kind"] == "table")["rows"]
     assert [r["flagged"] for r in rows] == [True, False, False]
 
 

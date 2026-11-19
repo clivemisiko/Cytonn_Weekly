@@ -1,0 +1,22 @@
+# Local override: the Docker stack on SQLite, on this machine only. Never loaded on its own (compose
+# auto-loads only docker-compose.override.yml), and deploy.sh names its files explicitly.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml down
+#
+# Never put the hosted database URL in the local .env: the empty value below wins over env_file,
+# but a native run reads .env directly.
+
+services:
+  api:
+    environment:
+      CYTONN_REQUIRE_POSTGRES: "0"
+      # environment beats env_file, so a URL in .env never reaches this container.
+      CYTONN_DATABASE_URL: ""
+    # Replaces the bind mount of backend/data: app.db and everything else the app writes lives on
+    # this volume, so the real backend/data is never touched.
+    volumes: !override
+      - cytonn_local_data:/app/data
+
+volumes:
+  cytonn_local_data:

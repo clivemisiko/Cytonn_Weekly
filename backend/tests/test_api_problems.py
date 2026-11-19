@@ -12,14 +12,17 @@ from fastapi.testclient import TestClient
 import api.main as api_main
 from api.main import create_app
 from api.problems import PROBLEMS, TARGETS, ProblemError
-from cytonn_weekly.digital_payments import review_store as rs
+from cytonn_weekly.review import store as rs
 from cytonn_weekly.equities import weekly as eq_weekly
 from cytonn_weekly.weekly import inputs as weekly_inputs
 from tests import section_helpers as sh
 from tests.review_helpers import make_review
 
+TITLES = "Overview\nRisks"   # Focus under Bedrock needs typed section titles
+
 WEEK = "2026-10-02"
-MAIN = Path(api_main.__file__)
+API_FILES = [Path(api_main.__file__), Path(api_main.__file__).with_name("deps.py"),
+             *sorted(Path(api_main.__file__).with_name("routers").glob("*.py"))]   # the modules that raise ProblemError
 
 
 @pytest.fixture
@@ -54,11 +57,12 @@ def test_every_entry_is_well_formed():
 
 def test_every_call_site_names_a_code_in_the_table_and_every_code_is_used():
     used = []
-    for node in ast.walk(ast.parse(MAIN.read_text(encoding="utf-8"))):
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "ProblemError":
-            code = node.args[2]
-            assert isinstance(code, ast.Constant) and code.value in PROBLEMS, ast.dump(code)
-            used.append(code.value)
+    for file in API_FILES:
+        for node in ast.walk(ast.parse(file.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "ProblemError":
+                code = node.args[2]
+                assert isinstance(code, ast.Constant) and code.value in PROBLEMS, ast.dump(code)
+                used.append(code.value)
     assert set(used) == set(PROBLEMS)
 
 
@@ -129,14 +133,15 @@ def test_a_draft_that_cannot_start(client, monkeypatch):
     expect(client.post("/api/runs", json={"section": "focus"}), 422, "draft_topic_missing", "Type a topic")
     expect(client.post("/api/runs", json={"section": "focus", "topic": "x" * 600}), 422, "draft_topic_invalid",
            "the limit is 500")
-    expect(client.post("/api/runs", json={"section": "company_updates"}), 422, "draft_text_missing", "Paste the text")
     expect(client.post("/api/sections/reits.section_1/draft",
                        json={"report_type": "companion", "period": "#33.2026", "kind": "reits"}), 409,
            "draft_section_unavailable", "cannot be drafted yet")
-    expect(client.post("/api/runs", json={"section": "focus", "topic": "x", "provider": "local"}), 409,
+    expect(client.post("/api/runs", json={"section": "focus", "topic": "x", "sections": TITLES, "provider": "local"}), 409,
            "draft_mode_changed", "drafting mode changed")
-    monkeypatch.delenv("ANTHROPIC_API_KEY")
-    expect(client.post("/api/runs", json={"section": "focus", "topic": "x"}), 409, "drafting_off", "ANTHROPIC_API_KEY")
+    monkeypatch.delenv("AWS_REGION")
+    expect(client.post("/api/runs", json={"section": "focus", "topic": "x", "sections": TITLES}), 409, "drafting_off", "AWS region")
+    monkeypatch.setenv("CYTONN_LLM_PROVIDER", "anthropic")   # the removed provider: its own sentence, bedrock and local are the only two
+    expect(client.post("/api/runs", json={"section": "focus", "topic": "x", "sections": TITLES}), 409, "drafting_off", "was removed")
 
 
 def test_a_draft_that_stops_or_is_refused_on_the_section_route(client, monkeypatch):
@@ -169,7 +174,6 @@ def test_a_second_draft_while_one_runs(db, monkeypatch):
     try:
         assert entered.wait(timeout=10)
         expect(client.post("/api/runs", json={"section": "equities"}), 409, "draft_already_running", "already being drafted")
-        expect(client.post("/api/runs", json={"section": "real_estate"}), 409, "draft_busy", "Another draft is running")
     finally:
         release.set()
 
@@ -183,9 +187,9 @@ def test_a_run_the_api_does_not_know(client):
 def test_the_review_routes(client, db):
     expect(client.get("/api/reviews/9999"), 404, "review_not_found", "no saved review number 9999")
     run_id = rs.save_review(make_review(), db_path=db)
-    expect(client.post(f"/api/reviews/{run_id}/decide", json={"decision": "approved"}), 409, "review_not_decidable",
-           "cannot approve")
     assert client.post(f"/api/reviews/{run_id}/decide", json={"decision": "rejected"}).status_code == 200
+    expect(client.post(f"/api/reviews/{run_id}/decide", json={"decision": "approved"}), 409, "review_not_decidable",
+           "already decided")
     expect(client.patch(f"/api/reviews/{run_id}/items/0", json={"resolution": "accept"}), 409, "review_already_decided",
            "already rejected")
 

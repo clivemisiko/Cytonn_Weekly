@@ -19,9 +19,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.main import create_app
-from cytonn_weekly.checkers.digital_payments import MISSING, SOURCES_DISAGREE
-from cytonn_weekly.common.checks import check_table_block
-from cytonn_weekly.common.review import second_sources
+from cytonn_weekly.review.figures import MISSING, SOURCES_DISAGREE
+from cytonn_weekly.review.checks import check_table_block
+from cytonn_weekly.review.blocks import second_sources
 from cytonn_weekly.fixed_income import bond_issues as bi
 from cytonn_weekly.fixed_income import cbk_auctions as cbk
 from cytonn_weekly.fixed_income import net_borrowing as nb

@@ -17,8 +17,8 @@ export const topbar = (page: Page) => page.getByRole("navigation", { name: "App"
 /** A section's start screen, from the overview card's own button. */
 export async function openStart(page: Page, title: string, period = PERIOD, type = "weekly") {
   await page.goto(overviewUrl(period, type));
-  await card(page, title).getByRole("button", { name: /Draft section|Add your text|Compose summary|View review|Resume review/ }).click();
-  await expect(page.getByRole("heading", { name: `${title}: coordinator review`, level: 1 })).toBeVisible();
+  await card(page, title).getByRole("button", { name: /Draft section|Compose summary|Draft again|View review|Resume review/ }).click();
+  await expect(page.getByRole("heading", { name: `${title}: analyst review`, level: 1 })).toBeVisible();
 }
 
 /**
@@ -47,15 +47,16 @@ export async function startRun(request: APIRequestContext, section: string, peri
 }
 
 /** Draft a section through the API, accept every item and approve it: the set-up for what needs approved sections. */
-export async function draftAndApprove(request: APIRequestContext, section: string, period: string, type: string, text?: string) {
-  const drafted = await request.post(`${API}/api/sections/${section}/draft`, { headers: json, data: { report_type: type, period, text }, timeout: 120_000 });
+export async function draftAndApprove(request: APIRequestContext, section: string, period: string, type: string) {
+  const drafted = await request.post(`${API}/api/sections/${section}/draft`, { headers: json, data: { report_type: type, period }, timeout: 120_000 });
   expect(drafted.status(), await drafted.text()).toBe(200);
   const review = await drafted.json();
   for (const item of review.review_items) {
     const res = await request.patch(`${API}/api/reviews/${review.run_id}/items/${item.index}`, { headers: json, data: { resolution: "accept" } });
     expect(res.ok()).toBe(true);
   }
-  const decided = await request.post(`${API}/api/reviews/${review.run_id}/decide`, { headers: json, data: { decision: "approved" } });
+  const flagged = review.review_items.filter((i: { status: string }) => i.status === "flagged").length;
+  const decided = await request.post(`${API}/api/reviews/${review.run_id}/decide`, { headers: json, data: { decision: "approved", acknowledged_flagged: flagged } });
   expect(decided.status(), await decided.text()).toBe(200);
 }
 

@@ -5,12 +5,11 @@ from datetime import date
 import pytest
 
 from api.serialize import is_dev_draft
-from cytonn_weekly.common.review import SUPPLIED_TEXT
-from cytonn_weekly.digital_payments import review_store
-from cytonn_weekly.digital_payments.coordinator_review import APPROVED, CLEAN, FLAGGED, NOT_AUTO_VERIFIED
+from cytonn_weekly.review import store as review_store
+from cytonn_weekly.review.model import APPROVED, CLEAN, FLAGGED, NOT_AUTO_VERIFIED
 from cytonn_weekly.fixed_income import cbk_auctions
-from cytonn_weekly.narrative import anthropic_provider
-from cytonn_weekly.narrative.base import NarrativeBrief
+from cytonn_weekly.drafting.prompts import narrative_system
+from cytonn_weekly.drafting.base import NarrativeBrief
 from cytonn_weekly.periodic import executive_summary, fixed_income, kenya_macro
 from cytonn_weekly.periodic.common import period_brief
 from tests import periodic_helpers as ph
@@ -171,7 +170,7 @@ def test_each_section_builds_with_its_period_and_charts(report_type, period, slu
     sec = review.section
     assert (sec["section"], sec["report_type"], sec["period"]) == (slug, report_type, period)
     assert sec["period_start"] < sec["period_end"]
-    # Every missing part is a flagged item the coordinator must acknowledge; nothing is silently left out.
+    # Every missing part is a flagged item the analyst must acknowledge; nothing is silently left out.
     unavailable = [b for b in sec["blocks"] if b["kind"] == "unavailable"]
     assert len([i for i in review.review_items if i.kind == "unavailable_part"]) == len(unavailable)
     assert all(i.status == FLAGGED for i in review.review_items if i.kind == "unavailable_part")
@@ -182,20 +181,17 @@ def test_each_section_builds_with_its_period_and_charts(report_type, period, slu
 def test_period_briefs_name_the_report_and_its_period_not_the_week():
     ctx = ph.ctx()
     brief = period_brief(ctx, "growth", "Global Markets Review", "Growth", "global growth", ("worldbank.org",))
-    system = anthropic_provider.system_prompt(brief)
-    prompt = anthropic_provider._prompt(brief, False, ctx.start, ctx.end, ctx.today)
-    assert "quarterly markets review" in system and "report period" in system and "that week" not in system
-    assert "The report period is 2026-07-01 to 2026-09-30" in prompt
+    system = narrative_system(brief)
+    assert "quarterly markets review" in system and "weekly investment research report" not in system
+    assert brief.window == "report period"
     assert "Q3’2026" in brief.focus and brief.opener is None
 
 
 def test_weekly_prompts_are_unchanged():
     brief = NarrativeBrief(id="x", section="Real Estate", label="Land", focus="land prices")
-    system = anthropic_provider.system_prompt(brief)
+    system = narrative_system(brief)
     assert "section of a weekly investment research report" in system
-    assert "published during the report week given in the user" in system and "If nothing published that week" in system
-    prompt = anthropic_provider._prompt(brief, False, date(2026, 9, 26), date(2026, 10, 2), date(2026, 10, 2))
-    assert "The report week is 2026-09-26 to 2026-10-02" in prompt
+    assert brief.report == "weekly" and brief.window == "report week"
 
 
 def test_period_drafts_search_the_whole_period():
@@ -210,7 +206,7 @@ def test_period_drafts_search_the_whole_period():
     assert set(seen) == {(date(2026, 7, 1), date(2026, 9, 30))}
 
 # ---------------------------------------------------------------------------
-# Digital Payments, Company Updates, Executive Summary
+# Digital Payments, Executive Summary
 # ---------------------------------------------------------------------------
 
 
@@ -239,21 +235,11 @@ def test_half_year_digital_payments_follows_h1s_columns():
     assert all(i.status == CLEAN for i in review.review_items if i.kind == "table_row")
 
 
-def test_company_updates_is_carried_verbatim_and_never_verified():
-    review = ph.company_updates_review(text="Investment Updates: CMMF closed at 11.0% p.a.")
-    (block,) = review.section["blocks"]
-    assert (block["kind"], block["body_md"]) == ("supplied", "Investment Updates: CMMF closed at 11.0% p.a.")
-    (item,) = review.review_items
-    assert (item.kind, item.status) == (SUPPLIED_TEXT, NOT_AUTO_VERIFIED)
-    with pytest.raises(ValueError, match="paste"):
-        ph.company_updates_review(text="   ")
-
-
 def save_approved(review, db, report_type="quarterly", period="Q3'2026"):
     review.report_type, review.period = report_type, period
     for item in review.review_items:
         item.resolve("accept")
-    review.decide(APPROVED)
+    review.decide(APPROVED, review.flagged_count)
     review_store.save_review(review, section=review.section["section"], db_path=db)
     return review
 
@@ -264,7 +250,7 @@ def test_executive_summary_waits_for_every_section_and_names_them(tmp_path):
     with pytest.raises(executive_summary.SectionsNotApproved) as exc:
         executive_summary.build_executive_summary_review(ph.ctx(db_path=db))
     assert "Global Markets Review" not in str(exc.value)
-    assert "Fixed Income (not drafted)" in str(exc.value) and "Company Updates" not in str(exc.value)
+    assert "Fixed Income (not drafted)" in str(exc.value)
 
 
 def test_executive_summary_carries_each_approved_lead_piece_verbatim(tmp_path):

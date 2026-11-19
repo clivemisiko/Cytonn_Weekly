@@ -20,8 +20,8 @@ from docx.shared import Inches, RGBColor
 from cytonn_weekly.charts import store
 from cytonn_weekly.charts.block import chart_blocks, set_team_chart
 from cytonn_weekly.charts.specs import NASI_PE, NASI_YIELD
-from cytonn_weekly.common.review import build_review, check_section
-from cytonn_weekly.digital_payments import review_store
+from cytonn_weekly.review.blocks import build_review, check_section
+from cytonn_weekly.review import store as review_store
 from cytonn_weekly.report_sections import BY_SLUG
 from cytonn_weekly.weekly import export
 from tests.chart_helpers import FRIDAY, book, day
@@ -48,7 +48,7 @@ def approved(tmp_path, *, workbook=True, team=(), extra=(), charts=True, listed=
     for item in review.review_items:
         if item.resolution is None:
             item.resolve("accept")
-    review.decide("approved")
+    review.decide("approved", review.flagged_count)
     review.report_type, review.period = "weekly", PERIOD
     review_store.save_review(review, section="equities", db_path=tmp_path / "app.db")
     folder = tmp_path / "charts"
@@ -145,7 +145,7 @@ def test_a_chart_not_drawn_but_accepted_as_missing_keeps_the_placeholder_and_say
     # the red line follows its placeholder
     t = texts(doc)
     assert t.index(lines[0][0]) == t.index(f"[Chart to add: {CAPTIONS[0]}]") + 1
-    # choosing the team's own chart for it says nothing in red: the placeholder is what the coordinator wants
+    # choosing the team's own chart for it says nothing in red: the placeholder is what the analyst wants
     chosen, folder2 = approved(tmp_path / "team", newest=day(1), team=("nasi_pe", "nasi_yield"))
     assert red_lines(document(chosen, folder2)) == []
 

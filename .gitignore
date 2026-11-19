@@ -39,7 +39,7 @@ env/
 # Cached Exa search results (local dev provider)
 backend/data/exa_cache/
 
-# Generated Word summaries for Edwin/Liz
+# Generated Word summaries for its recipients
 backend/data/summaries/
 
 # SQLite
@@ -69,3 +69,4 @@ backend/data/
 Claude outputs/
 # Scratch output of end-to-end runs
 e2e-*.log
+backend/reference/

@@ -22,7 +22,7 @@ How the previous issue is found (checked 2026-10-09):
 * A Cytonn Monthly takes the weekly's Sunday slot, so it is the previous issue of the week after
   it.  It is chosen exactly as any issue is; only its ``kind`` says what it is (``MONTHLY_MARKERS``).
 
-A coordinator can also paste the previous issue's address; it is resolved the same way.
+An analyst can also paste the previous issue's address; it is resolved the same way.
 """
 
 from __future__ import annotations
@@ -109,6 +109,26 @@ def html_paragraphs(body: str) -> list[str]:
     return [" ".join(line.split()) for line in text.split("\n") if line.strip()]
 
 
+def norm_url(url: str) -> str:
+    """An address as two mentions of one page would agree on it: no scheme, no www, no fragment, no trailing slash."""
+    parts = urlparse(str(url or "").strip())
+    host = (parts.hostname or "").lower().removeprefix("www.")
+    return f"{host}{parts.path.rstrip('/')}" + (f"?{parts.query}" if parts.query else "") if host else ""
+
+
+def digest(issue: Optional[Issue], *slugs: str) -> Optional[dict[str, Any]]:
+    """What an issue's section already reported: {"headings": bold or heading lines, "urls": every address it linked}.
+    ponytail: a heading is only what the section marks bold; None when the issue or section is missing, so nothing is filtered."""
+    section = issue.section(*slugs) if issue else None
+    if section is None:
+        return None
+    body = section.get("body") or ""
+    heads = [" ".join(html.unescape(re.sub(r"<[^>]+>", "", m)).replace("\xa0", " ").split())
+             for m in re.findall(r"(?is)<(?:strong|b|h[1-6])\b[^>]*>(.*?)</(?:strong|b|h[1-6])>", body)]
+    urls = {norm_url(u) for u in re.findall(r"""(?i)href\s*=\s*["']([^"']+)["']""", body)}
+    return {"headings": [h for h in dict.fromkeys(heads) if 12 <= len(h) <= 200], "urls": urls - {""}}
+
+
 def parse_issue(issue_id: int, payload: bytes) -> Issue:
     try:
         rows = json.loads(payload.decode("utf-8"))
@@ -146,7 +166,7 @@ def _search(text: str, get: Getter) -> list[dict[str, Any]]:
 
 
 def resolve_issue_id(reference: str, get: Getter = http_get) -> int:
-    """An issue id from what a coordinator pasted: the id itself, an API address, or a page address."""
+    """An issue id from what an analyst pasted: the id itself, an API address, or a page address."""
     return _resolve(reference, get)[0]
 
 
@@ -203,7 +223,7 @@ def _has_fuller_twin(candidate: Issue, candidate_id: int, floor: int, issue_at: 
 def find_previous_issue(week_ending: date, get: Getter = http_get, reference: Optional[str] = None) -> Issue:
     """The issue to carry text forward from, for the week ending ``week_ending``.
 
-    With ``reference`` (an id or address the coordinator pasted) it is that issue.  Otherwise
+    With ``reference`` (an id or address the analyst pasted) it is that issue.  Otherwise
     the newest issue published on or before ``week_ending``, passing over any stripped twin of
     an issue (``skipped_twins`` names them).  PreviousIssueError if none within the newest
     ``MAX_WALK`` ids; the look-ahead for a twin stays inside them too.

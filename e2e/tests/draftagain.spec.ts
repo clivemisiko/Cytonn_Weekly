@@ -3,21 +3,20 @@ import { API, VARIANT, card, draftAndApprove, hold, overviewUrl, release, startR
 
 /**
  * "Draft again": a section that already has a review (in review, approved or rejected) can be drafted over from its
- * overview card, after a confirmation. Company Updates is used where a provider is not needed (the test instance drafts it
- * with no model, as T23 and T37 do); the disabled button needs a section that calls the provider, so that one uses Digital
- * Payments. This file has its own run on a freshly restored test backend (`playwright test draftagain`), and each test uses
- * its own week, so none sees another's runs.
+ * overview card, after a confirmation. Digital Payments is used throughout: the test instance drafts it from fixed rows,
+ * with no network. This file has its own run on a freshly restored test backend (`playwright test draftagain`), and each
+ * test uses its own week, so none sees another's runs.
  */
 test.skip(!!VARIANT, "runs on the default test backend");
 test.describe.configure({ mode: "serial" });
 test.afterEach(() => void release());
 
 const json = { "Content-Type": "application/json" };
-const HEADING = { name: "Company Updates: coordinator review", level: 1 } as const;
+const HEADING = { name: "Digital Payments: analyst review", level: 1 } as const;
 
-/** Company Updates drafted through the API for that week; the run's id. */
-async function draftCompanyUpdates(request: APIRequestContext, period: string, text: string): Promise<number> {
-  const res = await request.post(`${API}/api/sections/company_updates/draft`, { headers: json, data: { report_type: "weekly", period, text } });
+/** Digital Payments drafted through the API for that week; the run's id. */
+async function draftPayments(request: APIRequestContext, period: string): Promise<number> {
+  const res = await request.post(`${API}/api/sections/digital_payments/draft`, { headers: json, data: { report_type: "weekly", period }, timeout: 120_000 });
   expect(res.status(), await res.text()).toBe(200);
   return (await res.json()).run_id;
 }
@@ -29,28 +28,27 @@ async function latest(request: APIRequestContext, period: string, slug: string):
   return (await res.json()).sections.find((s: { slug: string }) => s.slug === slug).latest;
 }
 
-/** From the overview card's "Draft again" to a drafted Company Updates: the text, the confirmation, the run view. */
-async function draftAgain(page: Page, period: string, text: string) {
+/** From the overview card's "Draft again" to a started draft: the start screen, the draft button, the confirmation. */
+async function draftAgain(page: Page, period: string) {
   await page.goto(overviewUrl(period));
-  await card(page, "Company Updates").getByRole("button", { name: "Draft again" }).click();
+  await card(page, "Digital Payments").getByRole("button", { name: "Draft again" }).click();
   await expect(page.getByRole("heading", HEADING)).toBeVisible();
-  await page.getByLabel("Your Company Updates text").fill(text);
-  await page.getByRole("button", { name: "Save your text as the section" }).click();
-  return page.getByRole("dialog", { name: "Draft Company Updates again?" });
+  await page.getByRole("button", { name: `Draft the ${period} section` }).click();
+  return page.getByRole("dialog", { name: "Draft Digital Payments again?" });
 }
 
 test("T42 an approved section: Draft again asks first, the new run is undecided and current, the old one stays approved", async ({ page, request }) => {
   const period = "Week ending 2026-11-06";
-  await draftAndApprove(request, "company_updates", period, "weekly", "Investment Updates:\nSYNTHETIC e2e text, approved.");
-  const old = (await latest(request, period, "company_updates")).run_id;
+  await draftAndApprove(request, "digital_payments", period, "weekly");
+  const old = (await latest(request, period, "digital_payments")).run_id;
 
   await page.goto(overviewUrl(period));
-  const cu = card(page, "Company Updates");
-  await expect(cu).toContainText("Approved");
-  await expect(cu.getByRole("button", { name: "View review" })).toBeVisible();
-  await expect(cu.getByRole("button", { name: "Draft again" })).toBeEnabled();
+  const payments = card(page, "Digital Payments");
+  await expect(payments).toContainText("Approved");
+  await expect(payments.getByRole("button", { name: "View review" })).toBeVisible();
+  await expect(payments.getByRole("button", { name: "Draft again" })).toBeEnabled();
 
-  const dialog = await draftAgain(page, period, "Investment Updates:\nSYNTHETIC e2e text, drafted again.");
+  const dialog = await draftAgain(page, period);
   await expect(page.getByText(/review \(run \d+\) was approved/)).toBeVisible();
   await expect(dialog).toContainText(`The earlier review (run ${old}, approved) stays saved and read-only.`);
   await expect(dialog).toContainText("The new draft becomes the current one and starts undecided.");
@@ -59,18 +57,18 @@ test("T42 an approved section: Draft again asks first, the new run is undecided 
   // Cancelling drafts nothing.
   await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(dialog).toBeHidden();
-  expect((await latest(request, period, "company_updates")).run_id).toBe(old);
+  expect((await latest(request, period, "digital_payments")).run_id).toBe(old);
 
-  await page.getByRole("button", { name: "Save your text as the section" }).click();
+  await page.getByRole("button", { name: `Draft the ${period} section` }).click();
   await dialog.getByRole("button", { name: "Draft again" }).click();
   await expect(page.getByRole("heading", { name: "Draft ready for review", level: 2 })).toBeVisible();
-  const fresh = await latest(request, period, "company_updates");
+  const fresh = await latest(request, period, "digital_payments");
   expect(fresh.run_id).toBeGreaterThan(old);
   expect(fresh.decision).toBeNull();
 
   await page.getByRole("link", { name: "Open review" }).click();
   await expect(page.getByRole("heading", HEADING)).toBeVisible();
-  await expect(page.getByText("1 unresolved · 0 of 1 resolved")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeEnabled(); // undecided, and its own
 
   // The earlier run is untouched: still approved, still locked, still readable.
   const earlier = await (await request.get(`${API}/api/reviews/${old}`)).json();
@@ -81,21 +79,19 @@ test("T42 an approved section: Draft again asks first, the new run is undecided 
 
 test("T43 a rejected section: Draft again shows the notes of the rejected draft on the new review", async ({ page, request }) => {
   const period = "Week ending 2026-11-13";
-  const first = await draftCompanyUpdates(request, period, "Investment Updates:\nSYNTHETIC e2e text, first draft.");
+  const first = await draftPayments(request, period);
+  // The screen no longer sets a resolution or a note; the API still stores them, and a rejection carries them to the next draft.
+  const marked = await request.patch(`${API}/api/reviews/${first}/items/0`, { headers: json, data: { resolution: "fix_needed", note: "SYNTHETIC e2e: the hospitality line is missing." } });
+  expect(marked.ok(), await marked.text()).toBe(true);
   await page.goto(`${overviewUrl(period)}&review=${first}`);
   await expect(page.getByRole("heading", HEADING)).toBeVisible();
-  await page.getByRole("radio", { name: "Fix needed" }).click();
-  const note = page.getByLabel(/^Note for /);
-  await note.fill("SYNTHETIC e2e: the hospitality line is missing.");
-  await note.press("Enter");
-  await expect(page.getByText("Saved as run")).toBeVisible();
   await page.getByRole("button", { name: "Reject", exact: true }).click();
   await page.getByRole("dialog", { name: "Reject this section?" }).getByRole("button", { name: "Reject", exact: true }).click();
   await expect(page.getByText("Rejected and locked")).toBeVisible();
   await page.getByRole("button", { name: "Back to all sections" }).last().click();
-  await expect(card(page, "Company Updates")).toContainText("Rejected");
+  await expect(card(page, "Digital Payments")).toContainText("Rejected");
 
-  const dialog = await draftAgain(page, period, "Investment Updates:\nSYNTHETIC e2e text, second draft.");
+  const dialog = await draftAgain(page, period);
   await expect(page.getByText(/review \(run \d+\) was rejected/)).toBeVisible();
   await expect(dialog).toContainText(`The earlier review (run ${first}, rejected) stays saved and read-only.`);
   await expect(dialog).not.toContainText("needs it approved again"); // nothing was approved
@@ -106,62 +102,63 @@ test("T43 a rejected section: Draft again shows the notes of the rejected draft 
   const panel = page.getByRole("region", { name: `Notes from the rejected draft (run ${first})` });
   await expect(panel).toBeVisible();
   await expect(panel).toContainText("SYNTHETIC e2e: the hospitality line is missing.");
-  await expect(page.getByText("1 unresolved · 0 of 1 resolved")).toBeVisible(); // nothing was copied onto the new item
+  // Nothing was copied onto the new items: the new review is undecided and none of its items carries a resolution or a note.
+  await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeEnabled();
+  const fresh = await (await request.get(`${API}/api/reviews/${(await latest(request, period, "digital_payments")).run_id}`)).json();
+  expect(fresh.review_items.every((i: { resolution: string | null; note?: string | null }) => i.resolution === null && !i.note)).toBe(true);
 });
 
 test("T44 a section in review: Draft again leaves the unfinished review as it is and makes the new draft current", async ({ page, request }) => {
   const period = "Week ending 2026-11-20";
-  const old = await draftCompanyUpdates(request, period, "Investment Updates:\nSYNTHETIC e2e text, left in review.");
+  const old = await draftPayments(request, period);
 
   await page.goto(overviewUrl(period));
-  const cu = card(page, "Company Updates");
-  await expect(cu.getByRole("button", { name: "Resume review" })).toBeVisible();
-  const dialog = await draftAgain(page, period, "Investment Updates:\nSYNTHETIC e2e text, drafted again.");
+  const payments = card(page, "Digital Payments");
+  await expect(payments.getByRole("button", { name: "Resume review" })).toBeVisible();
+  const dialog = await draftAgain(page, period);
   await expect(page.getByText(new RegExp(`review is in progress \\(run ${old}`))).toBeVisible();
   await expect(dialog).toContainText(`The earlier review (run ${old}) was still in review. It stays saved as it is, undecided`);
   await expect(dialog).not.toContainText("needs it approved again");
   await dialog.getByRole("button", { name: "Draft again" }).click();
   await expect(page.getByRole("heading", { name: "Draft ready for review", level: 2 })).toBeVisible();
 
-  const fresh = await latest(request, period, "company_updates");
+  const fresh = await latest(request, period, "digital_payments");
   expect(fresh.run_id).toBeGreaterThan(old);
   const earlier = await (await request.get(`${API}/api/reviews/${old}`)).json();
   expect([earlier.decision, earlier.locked]).toEqual([null, false]);
   await page.goto(overviewUrl(period));
-  await expect(card(page, "Company Updates")).toContainText(`Run ${fresh.run_id}`);
+  await expect(card(page, "Digital Payments")).toContainText(`Run ${fresh.run_id}`);
 });
 
-test("T45 Draft again is off, with the reason, while another draft holds the one draft slot", async ({ page, request }) => {
+test("T45 Draft again is off, with the reason, only while that section is itself drafting; another section drafting does not turn it off", async ({ page, request }) => {
   const period = "Week ending 2026-11-27";
-  await draftCompanyUpdates(request, period, "Investment Updates:\nSYNTHETIC e2e text.");
-  const dp = await request.post(`${API}/api/sections/digital_payments/draft`, { headers: json, data: { report_type: "weekly", period }, timeout: 120_000 });
-  expect(dp.status(), await dp.text()).toBe(200);
+  await draftPayments(request, period);
 
   hold();
   const running = await startRun(request, "real_estate", period);
   await page.goto(overviewUrl(period));
   const payments = card(page, "Digital Payments");
   await expect(payments.getByRole("button", { name: "Resume review" })).toBeEnabled();
-  const again = payments.getByRole("button", { name: "Draft again" });
-  await expect(again).toBeDisabled();
-  await expect(payments).toContainText(`Real Estate (${period}) is drafting now. Only one draft runs at a time, across every section.`);
-  await expect(again).toHaveAccessibleDescription(/is drafting now/);
-  // A section that calls no provider takes no slot, so it is not held up.
-  await expect(card(page, "Company Updates").getByRole("button", { name: "Draft again" })).toBeEnabled();
+  // Real Estate is drafting; Digital Payments is a different section, so its button stays on.
+  await expect(payments.getByRole("button", { name: "Draft again" })).toBeEnabled();
+  await expect(payments).not.toContainText("Being drafted now");
 
-  // Once the run ends the slot is free and the button is on again.
+  // The section that is drafting has its own button off, with the reason.
+  const own = card(page, "Real Estate").getByRole("button", { name: "Draft again" });
+  if (await own.count()) {
+    await expect(own).toBeDisabled();
+    await expect(own).toHaveAccessibleDescription(/Being drafted now/);
+  }
+
   release();
   await expect.poll(async () => (await (await request.get(`${API}/api/runs/${running}`)).json()).status).not.toBe("running");
-  await page.reload();
-  await expect(card(page, "Digital Payments").getByRole("button", { name: "Draft again" })).toBeEnabled();
-  await expect(card(page, "Digital Payments")).not.toContainText("is drafting now");
 });
 
 test("T46 a section never drafted for the week still shows only Draft section, and no Draft again anywhere", async ({ page }) => {
   await page.goto(overviewUrl("Week ending 2026-12-04"));
-  await expect(card(page, "Company Updates")).toBeVisible();
+  await expect(card(page, "Fixed Income")).toBeVisible();
   await expect(page.getByRole("button", { name: "Draft again" })).toHaveCount(0);
-  const only = (title: string, name: string) => expect(card(page, title).getByRole("button")).toHaveText([name]);
-  await only("Company Updates", "Add your text");
-  for (const title of ["Fixed Income", "Equities", "Real Estate", "Digital Payments", "Focus of the Week"]) await only(title, "Draft section");
+  for (const title of ["Fixed Income", "Equities", "Real Estate", "Digital Payments", "Focus of the Week"]) {
+    await expect(card(page, title).getByRole("button")).toHaveText(["Draft section"]);
+  }
 });

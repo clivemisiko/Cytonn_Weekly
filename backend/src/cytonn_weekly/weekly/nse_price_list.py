@@ -38,6 +38,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+from cytonn_weekly.common import atomic
 from cytonn_weekly.common.http import NotFound, http_get_pdf
 
 SOURCE_NAME = "NSE Daily Equity Price List (OCR)"
@@ -90,6 +91,7 @@ class IndexBox:
     list_date: Optional[date]                       # the date printed at the top of the list
     values: dict[str, float] = field(default_factory=dict)
     problems: list[str] = field(default_factory=list)
+    from_saved_copy: bool = field(default=False, compare=False)   # set when read back from the cache, not stored in it
 
     def to_dict(self) -> dict[str, Any]:
         return {"list_date": self.list_date.isoformat() if self.list_date else None, "values": self.values,
@@ -280,9 +282,9 @@ def read_index_box_cached(pdf_bytes: bytes, cache_dir: Optional[Path], engine: O
     if cache_dir is None:
         return read_index_box(pdf_bytes, engine)
     path = Path(cache_dir) / f"{hashlib.sha256(pdf_bytes).hexdigest()}.json"
-    if path.is_file():
-        return IndexBox.from_dict(json.loads(path.read_text(encoding="utf-8")))
-    box = read_index_box(pdf_bytes, engine)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(box.to_dict(), indent=1), encoding="utf-8")
+    with atomic.key_lock(str(path)):   # two drafts that need the same list read it once: the second finds it cached
+        if path.is_file():
+            return IndexBox.from_dict(json.loads(path.read_text(encoding="utf-8")))
+        box = read_index_box(pdf_bytes, engine)
+        atomic.write_atomic(path, json.dumps(box.to_dict(), indent=1))
     return box

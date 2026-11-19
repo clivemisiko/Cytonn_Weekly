@@ -5,20 +5,21 @@ CoordinatorReview.  A review's key is (report type, period, section slug), so th
 slug in two report types (the weekly "fixed_income" and the Q3'2026 "fixed_income") is
 two different reviews.  This registry only says, per report type and slug: the display
 title, whether a draft can run today (and if not, what blocks it), whether the
-coordinator must supply a topic or text, the steps a run takes, the real report's own
+analyst must supply a topic or text, the steps a run takes, the real report's own
 subsection headings and charts, and the function that builds the review.
 
 Orders are the real reports' own (CLAUDE.md, "Report types", records where each was read):
 
-* weekly: Company Updates, Fixed Income, Equities, Real Estate, Digital Payments Weekly
-  Highlights, Focus of the Week, as #38.2026 orders them (``SECTIONS`` and ``BY_SLUG`` are
-  this list).  Fixed Income and Equities are worked out from the week's uploaded inputs
-  (weekly/inputs.py) and published sources; Company Updates is the coordinator's own text.
-* quarterly and half_year: Executive Summary, Company Updates, Global Markets Review,
+* weekly: Fixed Income, Equities, Real Estate, Digital Payments Weekly Highlights, Focus of
+  the Week, as #38.2026 orders them (``SECTIONS`` and ``BY_SLUG`` are this list).  Fixed
+  Income and Equities are worked out from the week's uploaded inputs (weekly/inputs.py) and
+  published sources.  Company Updates is written by the CT team after the exported document
+  is received, so no report has that section.
+* quarterly and half_year: Executive Summary, Global Markets Review,
   Sub-Saharan Africa Region Review, Kenya Macro Economic Review, Fixed Income, Equities,
   Real Estate, Digital Payments.
 * annual: the same without Digital Payments, which first ran in May 2026, after FY'2025.
-* monthly: Company Updates, Fixed Income, Equities, Real Estate, Digital Payments, as the October
+* monthly: Fixed Income, Equities, Real Estate, Digital Payments, as the October
   2026 Monthly (issue 897) orders them; no Focus of the Week.  Stage 1: every section is a stub.
 * companion: one per verified kind, each section of it a stub (periodic/companion.py).
 """
@@ -32,18 +33,18 @@ from typing import Any, Callable, Optional, Union
 
 from cytonn_weekly import db
 from cytonn_weekly.common.run_events import Observer
-from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview
+from cytonn_weekly.review.model import CoordinatorReview
 from cytonn_weekly.report_types import ANNUAL, COMPANION, HALF_YEAR, MONTHLY, QUARTERLY, WEEKLY
 
 
 @dataclass(frozen=True)
 class DraftContext:
-    """What one draft run is for: the report and period, and anything the coordinator supplied."""
+    """What one draft run is for: the report and period, and anything the analyst supplied."""
 
     report_type: str = WEEKLY
     period: str = ""
     topic: Optional[str] = None     # Focus of the Week
-    text: Optional[str] = None      # Company Updates
+    sections: tuple[str, ...] = ()  # Focus of the Week: its section titles, cleaned; empty means the model proposes them
     db_path: Optional[Union[Path, str]] = None  # Executive Summary reads the approved sections from here
     today: Optional[date] = None
     # Told each real step of the run (common/run_events.py).  None, the default, is a plain draft.
@@ -66,7 +67,6 @@ class SectionSpec:
     unblock: str = ""           # unavailable only: what would unblock it
     built_parts: tuple[str, ...] = field(default_factory=tuple)  # unavailable only: what already exists
     build: Optional[Callable[[DraftContext], CoordinatorReview]] = None
-    needs_text: bool = False         # Company Updates: the coordinator pastes the text
     requires_approved: bool = False  # Executive Summary: composed from the other sections once approved
     subsections: tuple[str, ...] = ()  # the real issue's own headings for this section, verbatim
     charts: tuple[str, ...] = ()       # the real issue's charts, which the tool does not draw
@@ -99,16 +99,28 @@ def _as_of(ctx: DraftContext) -> dict[str, Any]:
     return {} if ctx.week_ending is None else {"today": ctx.week_ending}
 
 
+def _table_as_at(ctx: DraftContext) -> dict[str, Any]:
+    """``as_at`` for a Digital Payments table, only in a week whose Friday was a market holiday (or whose as-at date was set)."""
+    if ctx.week_ending is None:
+        return {}
+    from cytonn_weekly.weekly.inputs import WeeklyInputs
+    from cytonn_weekly.weekly.week import Week
+
+    as_at = WeeklyInputs(Week(ctx.week_ending), ctx.inputs_root).week.as_at
+    return {} if as_at == ctx.week_ending else {"as_at": as_at}
+
+
 def _digital_payments(ctx: DraftContext) -> CoordinatorReview:
     from cytonn_weekly.digital_payments.review_run import build_digital_payments_review
 
-    return build_digital_payments_review(**_as_of(ctx), **_observer(ctx))
+    book = {}
+    if ctx.week_ending is not None:
+        from cytonn_weekly.weekly.inputs import WeeklyInputs
+        from cytonn_weekly.weekly.week import Week
 
-
-def _company_updates(ctx: DraftContext) -> CoordinatorReview:
-    from cytonn_weekly.weekly import company_updates
-
-    return company_updates.build_company_updates_weekly_review(ctx.text or "", **_week(ctx))
+        found = WeeklyInputs(Week(ctx.week_ending), ctx.inputs_root).dp_book
+        book = {} if found is None else {"workbook": found}
+    return build_digital_payments_review(**_as_of(ctx), **_table_as_at(ctx), **_observer(ctx), **book)
 
 
 def _fixed_income(ctx: DraftContext) -> CoordinatorReview:
@@ -126,13 +138,14 @@ def _equities(ctx: DraftContext) -> CoordinatorReview:
 def _real_estate(ctx: DraftContext) -> CoordinatorReview:
     from cytonn_weekly.real_estate.review_run import build_real_estate_review
 
-    return build_real_estate_review(**_as_of(ctx), **_observer(ctx))
+    return build_real_estate_review(**_as_of(ctx), **_observer(ctx), db_path=ctx.db_path)
 
 
 def _focus(ctx: DraftContext) -> CoordinatorReview:
     from cytonn_weekly.focus.review_run import build_focus_review
 
-    return build_focus_review(ctx.topic or "", **_as_of(ctx), **_observer(ctx))
+    titles = {"sections": ctx.sections} if ctx.sections else {}   # left out when none were typed, like the other optional inputs
+    return build_focus_review(ctx.topic or "", **titles, **_as_of(ctx), **_observer(ctx))
 
 
 _YOUR_REVIEW = ("Your review", "You resolve each item, then approve or reject the whole section.")
@@ -151,19 +164,11 @@ _FI_CHARTS = (
     "The chart below shows the interbank rates in the market over the years",
     "The chart below summarizes the evolution of Kenya's months of import cover over the last two years",
 )
-_EQ_SUBSECTIONS = ("Market Performance:", "Universe of Coverage:", "Weekly highlights")
+_EQ_SUBSECTIONS = ("Market Performance:", "Universe of Coverage:", "Weekly highlights", "Listed banks and insurers")
 _EQ_CHARTS = ("The charts below indicate the historical P/E and dividend yields of the market (P/E chart)",
               "The charts below indicate the historical P/E and dividend yields of the market (dividend yield chart)")
 
 SECTIONS: tuple[SectionSpec, ...] = (
-    SectionSpec(
-        slug="company_updates", title="Company Updates", available=True, needs_text=True, build=_company_updates,
-        subsections=("Investment Updates:", "Hospitality Updates:"),
-        steps=(
-            ("Your text", "Paste the Investment Updates and Hospitality Updates. The tool never drafts Cytonn's own copy."),
-            _YOUR_REVIEW,
-        ),
-    ),
     SectionSpec(
         slug="fixed_income", title="Fixed Income", available=True, build=_fixed_income,
         subsections=_FI_SUBSECTIONS, charts=_FI_CHARTS,
@@ -189,16 +194,25 @@ SECTIONS: tuple[SectionSpec, ...] = (
                       "NSE 10 and the Banking index), and CBK's daily US dollar rates."),
             ("Work out", "Index moves, large-cap movers, turnover and foreign flows in USD, valuation, and the Universe "
                          "of Coverage table."),
-            ("Draft highlights", "Up to three NSE company, banking and regulatory stories from the week, each with its source."),
+            ("Draft highlights", "Up to three NSE company and regulatory stories from the week, each with its source."),
+            ("Listed banks and insurers", "With the production model, each company with a website set in equities/companies.json is "
+                                          "searched on that site alone for the week (one search, two pages at most) and written up "
+                                          "from its own pages. A company with no website set is listed as not searched, and one "
+                                          "with nothing this week is only named in the notes."),
             _INPUTS_CHECK, _YOUR_REVIEW,
         ),
     ),
     SectionSpec(
         slug="real_estate", title="Real Estate", available=True, build=_real_estate,
+        subsections=("Industry reports", "Residential sector", "Land", "Hospitality and Tourism", "REITs"),
         steps=(
-            ("Draft subsections", "Up to four of this week's housing, mortgage, hospitality, infrastructure and other stories."),
-            ("Fetch REITs", "Acorn D-REIT, Acorn I-REIT and ILAM Fahari prices from the NSE Ibuka weekly PDF."),
-            ("Check", "REIT figures exact-matched to the PDF; every claim's figures matched to its cited text."),
+            ("Your snips", "You upload magazine snips under Industry reports, Residential sector, Land, Hospitality and Tourism "
+                           "and REITs, read each, fix its text and confirm it. Nothing is searched for this section."),
+            ("Draft sectors", "Each sector with a confirmed snip is written from that sector's snips alone; one without is left out and named."),
+            ("Fetch REITs", "Acorn D-REIT, Acorn I-REIT and ILAM Fahari prices from the NSE Ibuka weekly PDF; the standing REITs "
+                            "text is carried from the last saved review."),
+            ("Check", "REIT figures exact-matched to the PDF; every claim's quote found word for word in its snip; every outlook "
+                      "sentence must rest on a claim."),
             _YOUR_REVIEW,
         ),
     ),
@@ -215,8 +229,8 @@ SECTIONS: tuple[SectionSpec, ...] = (
         slug="focus", title="Focus of the Week", available=True, needs_topic=True, build=_focus,
         steps=(
             ("Your topic", "You choose this week's theme; the tool never picks it."),
-            ("Research and draft", "One long-form piece written only from what the search returned, every claim cited."),
-            ("Check", "Each claim's figures matched to the text it cites."),
+            ("Research", "Research notes for each section, only findings with a quote from a supplied source. The tool writes no Focus text; you write it."),
+            ("Check", "Each finding's figures matched to the text it cites."),
             _YOUR_REVIEW,
         ),
     ),
@@ -238,7 +252,7 @@ def _periodic(module: str, function: str) -> Callable[[DraftContext], Coordinato
         from cytonn_weekly.periodic.common import PeriodContext
 
         mod = importlib.import_module(f"cytonn_weekly.periodic.{module}")
-        pctx = PeriodContext.of(ctx.report_type, ctx.period, today=ctx.today, text=ctx.text, db_path=ctx.db_path)
+        pctx = PeriodContext.of(ctx.report_type, ctx.period, today=ctx.today, db_path=ctx.db_path)
         return getattr(mod, function)(pctx, **_observer(ctx))
 
     return build
@@ -253,7 +267,6 @@ _SUBSECTIONS: dict[str, dict[str, tuple[str, ...]]] = {
     QUARTERLY: {
         "executive_summary": ("Global Markets Review:", "Sub-Saharan Africa Regional Review:", "Kenya Macroeconomic Review:",
                               "Fixed Income:", "Equities:", "Real Estate:", "Digital Payments:"),
-        "company_updates": ("Investment Updates:", "Hospitality Updates:"),
         "global_markets": ("Global Economic Growth:", "Global Commodities Market Performance:",
                            "Global Equities Market Performance:"),
         "ssa": ("Currency Performance:", "African Eurobonds:", "Equities Market Performance:",
@@ -278,7 +291,6 @@ _SUBSECTIONS: dict[str, dict[str, tuple[str, ...]]] = {
     HALF_YEAR: {
         "executive_summary": ("Global Markets Review:", "Sub-Saharan Africa Regional Review:", "Kenya Macroeconomic Review:",
                               "Fixed Income:", "Equities:", "Real Estate:", "Digital Payments:"),
-        "company_updates": ("Investment Updates:", "Hospitality Updates:"),
         "global_markets": ("Global Economic Growth:", "Global Commodities Market Performance:",
                            "Global Equities Market Performance:"),
         "ssa": ("Currency Performance:", "African Eurobonds:", "Equities Market Performance:",
@@ -302,7 +314,6 @@ _SUBSECTIONS: dict[str, dict[str, tuple[str, ...]]] = {
     ANNUAL: {
         "executive_summary": ("Global Markets Review:", "Sub-Saharan Africa Regional Review:", "Kenya Macro Economic Review:",
                               "Fixed Income:", "Equities:", "Real Estate:"),
-        "company_updates": ("Investment Updates:", "Hospitality Updates:"),
         "global_markets": ("Global Economic Growth:", "Global Commodities Market Performance:",
                            "Global Equities Market Performance:"),
         "ssa": ("Currency Performance", "African Eurobonds:", "Equities Market Performance:"),
@@ -351,9 +362,6 @@ def _periodic_sections(report_type: str) -> tuple[SectionSpec, ...]:
             ("Compose", "Each approved section's lead piece, carried verbatim with its sources. Nothing new is written."),
             ("Check", "The carried figures are matched to their cited text again."),
         ), requires_approved=True),
-        spec("company_updates", "Company Updates", "company_updates", "build_company_updates_review", (
-            ("Your text", "Paste the Investment Updates and Hospitality Updates. The tool never drafts Cytonn's own copy."),
-        ), needs_text=True),
         spec("global_markets", "Global Markets Review", "global_markets", "build_global_markets_review", (
             ("Draft", f"Global growth (World Bank, IMF), commodities and equities over the {span}, every claim cited."),
             _CHECK,
@@ -400,7 +408,6 @@ def _periodic_sections(report_type: str) -> tuple[SectionSpec, ...]:
 # Headings as printed in the October 2026 Monthly (issue 897), checked against 886 (August) and 881 (July) on 2026-11-03.
 # "optional" marks a part not in all three; a part in brackets has no heading of its own.
 _MONTHLY_SUBSECTIONS = {
-    "company_updates": ("Investment Updates:", "Hospitality Updates:"),
     "fixed_income": (
         "Money Markets, T-Bills Primary Auction:",
         "T-bonds Primary Market (with the Bond Issuances table for the previous and the current month)",
@@ -434,7 +441,6 @@ _MONTHLY_SUBSECTIONS = {
 
 # None of the three issues gives a chart a caption or alt text, so the titles are unknown and none is made up.
 _MONTHLY_CHARTS = {
-    "company_updates": ("No chart images in the October 2026 Monthly (issue 897)",),
     "fixed_income": ("9 chart images in the October 2026 Monthly (issue 897); their titles are unknown: the issue gives "
                      "them no caption or alt text",),
     "equities": ("2 chart images in the October 2026 Monthly (issue 897); their titles are unknown. In 881 they follow "
@@ -445,11 +451,6 @@ _MONTHLY_CHARTS = {
 
 # (slug, title, reason, open question, what already exists)
 _MONTHLY_STUBS = (
-    ("company_updates", "Company Updates",
-     "The weekly Company Updates records a reporting week (the latest Friday) on its review, so it cannot be reused "
-     "unchanged for a month.",
-     "Next stage: carry your pasted text verbatim under the month's period, as the Markets Reviews' Company Updates does.",
-     ("Company Updates from your pasted text, for the weekly and the Markets Reviews",)),
     ("fixed_income", "Fixed Income",
      "The monthly T-bill and T-bond averages, the two-month Bond Issuances table, the secondary market, liquidity and "
      "the inflation table are not built for a month.",

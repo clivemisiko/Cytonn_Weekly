@@ -5,7 +5,6 @@ issue's Executive Summary from the summaries.  Read from #38.2026: a summary is 
 section's own lead paragraphs, 1,500 to 3,000 characters (Fixed Income: the T-bills and
 T-bonds paragraphs and the week's highlight; Equities: the market paragraphs and the first
 highlight; Real Estate and Digital Payments: the opening of each item; Focus: its opening).
-Company Updates has none.
 
 So a summary here is composed, never drafted: no model is called.  Fixed Income and
 Equities compose theirs when they are built (their lead paragraphs are computed).  For the
@@ -33,10 +32,15 @@ def _fit(paragraphs: list[str], limit: int = LIMIT) -> str:
 
 
 def section_summary(section: dict[str, Any]) -> str:
-    """The section content's summary text ("" when it has none, as Company Updates)."""
+    """The section content's summary text ("" when it has none)."""
     if isinstance(section.get("summary"), str):
         return section["summary"]
     if "blocks" in section:
-        return _fit([_first_paragraph(b.get("body_md", "")) for b in section["blocks"] if b.get("kind") == "narrative"])
+        if any(b.get("role") == "findings" for b in section["blocks"]):   # a Focus the analyst writes has no summary yet
+            return ""
+        leads = [b for b in section["blocks"] if b.get("role") == "lead"]   # a Focus: its lead paragraph, not each section's opening
+        if leads:
+            return _fit([_first_paragraph(b.get("body_md", "")) for b in leads])
+        return _fit([_first_paragraph(b.get("body_md", "")) for b in section["blocks"] if b.get("kind") == "narrative" and not b.get("outlook")])
     # The weekly Digital Payments shape: highlights as items.
     return _fit([_first_paragraph(i.get("body_md", "")) for i in section.get("items", []) if i.get("kind") == "highlight"])

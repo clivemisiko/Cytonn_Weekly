@@ -14,10 +14,12 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from api.main import create_app, failure_message
+from api.deps import failure_message
+from api.main import create_app
 from api.runs import RunRegistry
 from cytonn_weekly.common import run_events as ev
-from cytonn_weekly.digital_payments import review_run, review_store
+from cytonn_weekly.digital_payments import review_run
+from cytonn_weekly.review import store as review_store
 from cytonn_weekly.equities import review_run as eq_run
 from cytonn_weekly.equities import weekly as eq_weekly
 from cytonn_weekly.focus import review_run as focus_run
@@ -87,11 +89,12 @@ def clock():
 def app(db, clock, monkeypatch):
     dp_pipeline(monkeypatch)
     monkeypatch.setattr(eq_weekly, "build_equities_weekly_review", lambda on_event=None: sh.equities_review(on_event=on_event))
-    monkeypatch.setattr(re_run, "build_real_estate_review", lambda on_event=None: sh.real_estate_review(on_event=on_event))
+    monkeypatch.setattr(re_run, "build_real_estate_review", lambda on_event=None, **_: sh.real_estate_review(on_event=on_event))
     monkeypatch.setattr(focus_run, "build_focus_review",
-                        lambda topic, on_event=None: sh.focus_review(topic=topic, on_event=on_event))
+                        lambda topic, on_event=None, **_: sh.focus_review(topic=topic, on_event=on_event))
     for module, name, builder in PERIODIC:
         monkeypatch.setattr(module, name, lambda ctx, on_event=None, _b=builder: _b(ctx, on_event=on_event))
+    monkeypatch.setenv("CYTONN_DRAFT_CONCURRENCY", "1")   # one seat, so these tests pin the seat and queue rules
     return create_app(db_path=db, load_dotenv=False, clock=clock)
 
 
@@ -103,7 +106,7 @@ def client(app):
 def start(client, **body):
     r = client.post("/api/runs", json=body)
     assert r.status_code == 202, r.text
-    assert set(r.json()) == {"run_id"}
+    assert set(r.json()) == {"run_id", "state", "position"}
     return r.json()["run_id"]
 
 
@@ -112,7 +115,7 @@ def finished(client, run_id, timeout=20.0):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         run = client.get(f"/api/runs/{run_id}").json()
-        if run["status"] != "running":
+        if run["status"] not in ("running", "queued"):
             return run
         time.sleep(0.01)
     raise AssertionError(f"run {run_id} did not end within {timeout}s")
@@ -147,7 +150,7 @@ def approve(client, run_id):
     for item in review["review_items"]:
         if item["resolution"] is None:
             client.patch(f"/api/reviews/{run_id}/items/{item['index']}", json={"resolution": "accept"})
-    assert client.post(f"/api/reviews/{run_id}/decide", json={"decision": "approved"}).status_code == 200
+    assert client.post(f"/api/reviews/{run_id}/decide", json={"decision": "approved", "acknowledged_flagged": sum(i["status"] == "flagged" for i in review["review_items"])}).status_code == 200
 
 
 # ---------------------------------------------------------------------------
@@ -182,7 +185,7 @@ def test_the_review_a_run_saves_equals_the_one_the_draft_route_saves(client, db)
     """Same builder, same stamp, same save: field for field, apart from ids and timestamps."""
     for body, path in [(WEEKLY_DP, "/api/reviews/draft"), ({"section": "equities"}, "/api/sections/equities/draft"),
                        ({"section": "fixed_income", **Q3}, "/api/sections/fixed_income/draft"),
-                       ({"section": "focus", "topic": "SSA Eurobonds performance"}, "/api/sections/focus/draft")]:
+                       ({"section": "focus", "topic": "SSA Eurobonds performance", "sections": "Overview"}, "/api/sections/focus/draft")]:
         via_run = run_to_end(client, **body)
         assert via_run["status"] == "finished", via_run
         direct = client.post(path, json={k: v for k, v in body.items() if k != "section"} or None)
@@ -268,11 +271,10 @@ def test_an_executive_summary_run_is_only_its_start_and_its_end(client):
     assert sum(run["events"][-1]["counts"].values()) > 0
 
 
-def test_company_updates_runs_with_no_provider_and_no_draft_slot(client, monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY")
-    run = run_to_end(client, section="company_updates", text="Investment Updates: demo.", **Q3)
-    assert kinds(run) == ["run_started", "run_finished"]
-    assert run["events"][-1]["counts"] == {"clean": 0, "flagged": 0, "not_auto_verified": 1}
+def test_the_executive_summary_runs_with_no_provider_and_no_draft_slot(client, monkeypatch):
+    monkeypatch.delenv("AWS_REGION")
+    run = run_to_end(client, section="executive_summary", **Q3)   # no section approved yet: it stops at once, with no AWS settings needed
+    assert kinds(run) == ["run_started", "run_failed"] and run["status"] == "failed"
 
 
 def test_a_development_provider_run_is_reported_as_a_dev_draft(client, db, monkeypatch):
@@ -294,7 +296,7 @@ OLD_KEY, NEW_KEY = "exa-old-0123456789abcdef-a420", "exa-new-fedcba9876543210-c0
 def test_a_refused_search_key_ends_the_run_with_a_plain_message_and_no_key(client, monkeypatch, tmp_path, caplog, status):
     """Seen live: a stale key in a Windows variable beat .env, Exa answered 401 and the run page showed httpx's text."""
     from cytonn_weekly import env
-    from cytonn_weekly.digital_payments.providers.local_provider import LocalProvider
+    from cytonn_weekly.drafting.local import LocalProvider
 
     dot_env = tmp_path / ".env"
     dot_env.write_text("=".join(["EXA_API_KEY", NEW_KEY]) + "\n", encoding="utf-8")
@@ -326,10 +328,10 @@ def test_a_refused_search_key_ends_the_run_with_a_plain_message_and_no_key(clien
 
 
 def test_a_failure_message_carries_no_traceback_and_no_secret(monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-0123456789abcdef")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "sk-test-0123456789abcdef")
     message = failure_message(RuntimeError("401 for key sk-test-0123456789abcdef\n  at line 3"))
     assert message == "An unexpected error occurred (401 for key [redacted] at line 3). Try again; if it happens again, report it with the section name."
-    # a ValueError is the pipeline talking to the coordinator: its message stands alone, as the draft route shows it
+    # a ValueError is the pipeline talking to the analyst: its message stands alone, as the draft route shows it
     assert failure_message(ValueError("the topic is 900 characters")) == "the topic is 900 characters"
     assert failure_message(executive_summary.SectionsNotApproved(["Equities (not drafted)"])).startswith(
         "The Executive Summary is composed from approved sections only.")
@@ -343,13 +345,13 @@ def test_a_connection_failure_is_worded_for_the_coordinator():
     handshake = "_ssl.c:983: The handshake operation timed out"
     for exc in (httpx.ConnectTimeout(handshake, request=request), anthropic.APITimeoutError(request=request)):
         message = failure_message(exc)
-        assert message.startswith("Could not reach api.exa.ai: it did not answer in time.")
+        assert message.startswith("The server could not reach api.exa.ai: it did not answer in time.")
         assert "try again" in message
         assert "_ssl" not in message and "ConnectTimeout" not in message and "sk-test" not in message
     assert failure_message(httpx.ConnectError("refused", request=request)).startswith(
-        "Could not reach api.exa.ai: it could not be reached.")
+        "The server could not reach api.exa.ai: it could not be reached.")
     # an error that carries no request (httpx raises when asked for it) still gets a plain message
-    assert failure_message(httpx.ConnectTimeout(handshake)).startswith("Could not reach an outside service:")
+    assert failure_message(httpx.ConnectTimeout(handshake)).startswith("The server could not reach an outside service:")
     # anything that is not a connection failure is named by its type, as before
     assert failure_message(KeyError("x")) == "An unexpected error occurred ('x'). Try again; if it happens again, report it with the section name."
 
@@ -383,7 +385,7 @@ def test_a_run_is_refused_for_the_reasons_a_draft_is(client, monkeypatch):
          "/api/sections/reits.section_1/draft", {"report_type": "companion", "period": "#33.2026", "kind": "reits"},
          409),  # unavailable (a companion report's sections are stubs)
         ({"section": "focus"}, "/api/sections/focus/draft", None, 422),  # no topic
-        ({"section": "company_updates", **Q3}, "/api/sections/company_updates/draft", Q3, 422),  # no text
+        ({"section": "company_updates", **Q3}, "/api/sections/company_updates/draft", Q3, 404),  # no such section
         ({"section": "equities", "report_type": "companion", "kind": "nope"}, "/api/sections/equities/draft",
          {"report_type": "companion", "kind": "nope"}, 422),
     ]
@@ -392,8 +394,8 @@ def test_a_run_is_refused_for_the_reasons_a_draft_is(client, monkeypatch):
         assert as_run.status_code == direct.status_code == status, body
         assert as_run.json()["detail"] == direct.json()["detail"]
     assert client.post("/api/runs", json={"report_type": "weekly"}).status_code == 422  # the section is required
-    # no key in anthropic mode: refused before anything starts, in the draft route's words
-    monkeypatch.delenv("ANTHROPIC_API_KEY")
+    # no AWS region in bedrock mode: refused before anything starts, in the draft route's words
+    monkeypatch.delenv("AWS_REGION")
     as_run, direct = client.post("/api/runs", json={"section": "equities"}), client.post("/api/sections/equities/draft")
     assert as_run.status_code == direct.status_code == 409 and as_run.json()["detail"] == direct.json()["detail"]
     assert client.get("/api/sections").json()["drafting"] is None
@@ -404,10 +406,10 @@ def test_provider_is_only_a_check_of_what_the_screen_showed(client, monkeypatch)
     r = client.post("/api/runs", json={**WEEKLY_DP, "provider": "local"})
     assert r.status_code == 409 and "The tool's drafting mode changed after this page was opened" in r.json()["detail"]
     assert client.get("/api/sections").json()["drafting"] is None
-    assert run_to_end(client, **WEEKLY_DP, provider="anthropic")["status"] == "finished"
+    assert run_to_end(client, **WEEKLY_DP, provider="bedrock")["status"] == "finished"
     monkeypatch.setenv("CYTONN_LLM_PROVIDER", "local")
     monkeypatch.setenv("EXA_API_KEY", "test-placeholder-not-a-real-key")   # local mode is refused without one
-    assert client.post("/api/runs", json={**WEEKLY_DP, "provider": "anthropic"}).status_code == 409
+    assert client.post("/api/runs", json={**WEEKLY_DP, "provider": "bedrock"}).status_code == 409
     assert run_to_end(client, **WEEKLY_DP, provider="local")["status"] == "finished"
 
 
@@ -419,16 +421,24 @@ def test_a_second_run_of_the_same_section_is_refused_while_the_first_is_running(
         assert provider.entered.wait(timeout=10)
         r = client.post("/api/runs", json=WEEKLY_DP)
         assert r.status_code == 409
-        assert r.json()["detail"].startswith("Digital Payments is already being drafted.")
-        # another section is refused too, by the one draft slot, which names the draft that holds it
+        assert r.json()["detail"].startswith("Digital Payments is already being drafted or is queued.")
+        # with the only seat taken, another section waits in the queue instead of being refused
         other = client.post("/api/runs", json={"section": "equities"})
-        assert other.status_code == 409 and "Another draft is running: Digital Payments" in other.json()["detail"]
-        # ... and the refused run left nothing behind: only the first is on the overview
-        assert client.get("/api/sections").json()["drafting"]["slug"] == "digital_payments"
-        # the same section of another report is a different run, but it too waits for the slot
-        assert client.post("/api/runs", json={"section": "digital_payments", **Q3}).status_code == 409
-        # a section that calls no provider takes no slot, so it runs alongside
-        assert run_to_end(client, section="company_updates", text="Demo.", **Q3)["status"] == "finished"
+        assert other.status_code == 202 and other.json()["state"] == "queued" and other.json()["position"] == 1
+        listed = client.get("/api/sections").json()
+        assert listed["drafting"]["slug"] == "digital_payments"   # the older single key: the seat holder
+        assert [(d["section"], d["state"], d["position"]) for d in listed["drafting_list"]] == [
+            ("digital_payments", "running", None), ("equities", "queued", 1)]
+        # the same section of another report is a different run, and queues behind it
+        again = client.post("/api/runs", json={"section": "digital_payments", **Q3})
+        assert again.status_code == 202 and again.json()["position"] == 2
+        # a queued run can be cancelled, a running one cannot
+        assert client.post(f"/api/runs/{again.json()['run_id']}/cancel").status_code == 200
+        assert client.get(f"/api/runs/{again.json()['run_id']}").json()["status"] == "failed"
+        running_cancel = client.post(f"/api/runs/{first}/cancel")
+        assert running_cancel.status_code == 409 and "cannot be stopped" in running_cancel.json()["detail"]
+        # a section that calls no provider takes no seat
+        assert run_to_end(client, section="executive_summary", **Q3)["status"] == "failed"   # ends at once, without waiting for a seat
         assert client.get(f"/api/runs/{first}").json()["status"] == "running"
     finally:
         provider.release.set()
@@ -463,11 +473,11 @@ def test_an_unknown_run_is_not_found(client):
     assert "runs are not kept across a restart" in client.get("/api/runs/nope").json()["detail"]
 
 
-def test_runs_are_in_memory_only_so_a_restart_forgets_them(app, client, db, clock):
+def test_a_finished_run_is_still_known_after_a_restart_because_it_was_saved_as_it_ran(app, client, db, clock):
     run = run_to_end(client, **WEEKLY_DP)
     restarted = TestClient(create_app(db_path=db, load_dotenv=False, clock=clock))
-    assert restarted.get(f"/api/runs/{run['run_id']}").status_code == 404
-    # the review it saved is in the database, so nothing that matters is lost
+    assert restarted.get(f"/api/runs/{run['run_id']}").json() == run   # read back from storage (test_run_store.py has the rest)
+    # and the review it saved is in the database either way
     assert restarted.get(f"/api/reviews/{run['review_id']}").status_code == 200
     saved = next(s for s in restarted.get("/api/sections").json()["sections"] if s["slug"] == "digital_payments")
     assert saved["latest"]["run_id"] == run["review_id"]
@@ -549,62 +559,20 @@ def test_the_default_keepalive_is_fifteen_seconds():
     assert runs.SSE_KEEPALIVE_SECONDS == 15.0
 
 
-FAKE_KEY = "sk-ant-api03-Abcdefghijklmnop0123456789"
-UNEXPECTED = "An unexpected error occurred ({}). Try again; if it happens again, report it with the section name."
-
-
-def api_error(status, message, kind=None):
-    import anthropic
-
-    kinds_by_status = {400: anthropic.BadRequestError, 401: anthropic.AuthenticationError,
-                       403: anthropic.PermissionDeniedError, 429: anthropic.RateLimitError}
-    response = httpx.Response(status, request=httpx.Request("POST", "https://api.example.invalid/v1/messages"))
-    return (kind or kinds_by_status[status])(message, response=response, body=None)
-
-
-CREDIT_MESSAGE = f"Error code: 400 - Your credit balance is too low to access the API. key {FAKE_KEY}"
-
-
-@pytest.mark.parametrize("status, message, sentence, retryable", [
-    (400, CREDIT_MESSAGE, "The Anthropic credit balance is empty, so drafting cannot continue. Ask whoever manages "
-                          "Billing to add credit. Trying again will not help until they do.", False),
-    (400, "Error code: 400 - YOUR CREDIT BALANCE IS TOO LOW", "The Anthropic credit balance is empty, so drafting cannot "
-                          "continue. Ask whoever manages Billing to add credit. Trying again will not help until they do.", False),
-    (401, f"Error code: 401 - invalid x-api-key {FAKE_KEY}", "The Anthropic key was not accepted. It may be wrong, revoked "
-                          "or expired. Ask the person who looks after the server settings to replace it.", False),
-    (403, f"Error code: 403 - not allowed {FAKE_KEY}", "The Anthropic key is not allowed to do this. Ask the person who "
-                          "looks after the account to check the key's workspace and permissions.", False),
-    (429, f"Error code: 429 - rate limited {FAKE_KEY}", "Anthropic is limiting requests right now. Wait a minute and try "
-                          "again. If it keeps happening, the workspace's monthly limit may be reached.", True),
-])
-def test_an_anthropic_billing_or_limit_error_is_a_plain_sentence(status, message, sentence, retryable):
-    error = api_error(status, message)
-    assert ev.anthropic_problem(error) == (sentence, retryable)
-    assert failure_message(error) == sentence
-    assert "sk-ant-" not in failure_message(error) and "Error code" not in failure_message(error)
-    described = ev.safe_describe(error)
-    assert described == f"{type(error).__name__} (status {status})"
-
-
-def test_any_other_anthropic_400_keeps_todays_message():
-    error = api_error(400, "messages: at least one message is required")
-    assert ev.anthropic_problem(error) is None
-    assert failure_message(error) == UNEXPECTED.format("messages: at least one message is required")
-    assert ev.safe_describe(error) == "BadRequestError: messages: at least one message is required"
-
-
-def test_a_status_with_no_sentence_and_an_error_from_elsewhere_are_not_mapped():
-    import anthropic
-
-    assert ev.anthropic_problem(api_error(500, "server error", anthropic.InternalServerError)) is None
-    assert ev.anthropic_problem(ValueError("credit balance is too low")) is None
-
-
-def test_a_run_stopped_by_an_empty_credit_balance_shows_the_sentence(client, monkeypatch):
-    def out_of_credit(on_event=None):
-        raise api_error(400, CREDIT_MESSAGE)
-
-    monkeypatch.setattr(review_run, "build_digital_payments_review", out_of_credit)
-    run = run_to_end(client, **WEEKLY_DP)
-    assert kinds(run) == ["run_started", "run_failed"]
-    assert run["events"][-1]["detail"] == ev.anthropic_problem(api_error(400, CREDIT_MESSAGE))[0]
+def test_the_running_draft_names_its_run_and_both_carry_the_servers_elapsed_time(client, clock, monkeypatch):
+    provider = GatedProvider()
+    dp_pipeline(monkeypatch, provider=provider)
+    run_id = start(client, **WEEKLY_DP)
+    try:
+        assert provider.entered.wait(timeout=10)
+        clock.t += 134
+        drafting = client.get("/api/sections").json()["drafting"]
+        assert drafting["run_id"] == run_id and drafting["elapsed_seconds"] == 134 and drafting["stale"] is False
+        run = client.get(f"/api/runs/{run_id}").json()
+        assert run["elapsed_seconds"] == 134 and run["stale"] is False
+        clock.t += 3600
+        assert client.get(f"/api/runs/{run_id}").json()["stale"] is True
+    finally:
+        provider.release.set()
+    done = finished(client, run_id)
+    assert "elapsed_seconds" not in done and client.get("/api/sections").json()["drafting"] is None

@@ -309,7 +309,7 @@ def test_average_forward_pe_is_one_decimal_half_up():
 import json
 from pathlib import Path
 
-from cytonn_weekly.checkers.digital_payments import check_digital_payments
+from cytonn_weekly.digital_payments.checks import check_digital_payments
 
 CAPTURED = json.loads((Path(__file__).parent / "fixtures" / "sources" / "yahoo_dp_year_open_2026-10-05.json").read_text())["bars"]
 

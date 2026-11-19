@@ -15,8 +15,8 @@ import pytest
 from dotenv import dotenv_values
 
 from cytonn_weekly import db as database
-from cytonn_weekly.digital_payments import coordinator_review as cr
-from cytonn_weekly.digital_payments import review_store as rs
+from cytonn_weekly.review import model as cr
+from cytonn_weekly.review import store as rs
 from cytonn_weekly.notable import store as notable_store
 from cytonn_weekly.paths import REPO_ROOT
 from tests.review_helpers import make_review
@@ -77,7 +77,7 @@ def decided(review, how=cr.APPROVED):
     for i in review.review_items:
         if i.resolution is None:
             i.resolve(cr.ACCEPT)
-    review.decide(how)
+    review.decide(how, review.flagged_count)
     return review
 
 
@@ -97,7 +97,7 @@ def test_the_schema_creates_and_its_tables_and_columns_have_the_names_schema_sql
         in_sqlite = {(t, c["name"]) for t in tables for c in lite.execute(f"PRAGMA table_info({t})")}
     finally:
         lite.close()
-    assert {t for t, _ in in_sqlite} == {"sections", "coordinator_reviews", "suggestion_decisions"}
+    assert {"series", "series_points"} <= {t for t, _ in in_sqlite}      # the list of every table is schema.sql; what matters is that PostgreSQL agrees with it
     assert in_postgres == in_sqlite
 
 

@@ -1,4 +1,4 @@
-# Server override for 159.223.140.184.
+# Server override for the production host.
 #
 # Nothing is ever built here: this box has too little memory to compile either image without risking
 # its other workloads. api and web are pulled from ghcr.io (built by .github/workflows/publish-images.yml);
@@ -6,8 +6,8 @@
 #
 #   ./deploy.sh [sha-<commit>]      see DEPLOY.md
 #
-# Both ports stay on 127.0.0.1: the app has no sign-in, so it is reached over an SSH tunnel.
-#   ssh -L 8010:127.0.0.1:8010 -L 5173:127.0.0.1:5173 clive@159.223.140.184
+# Both ports stay on 127.0.0.1; the proxy below is the way in from outside, and an SSH tunnel also works.
+#   ssh -L 8010:127.0.0.1:8010 -L 5173:127.0.0.1:5173 <deploy-user>@<production-host>
 
 services:
   api:
@@ -20,14 +20,38 @@ services:
     # This box runs other production workloads in under 2 GB. The limit is here so that if this
     # app does not fit, the kernel kills this container and not a neighbour.
     mem_limit: 768m
-    # The image builds a home for uid 10001, but the bind-mounted data folder is owned by clive
-    # (1007) and root is not available here to change it. So the api runs as clive instead, and
+    # The image builds a home for uid 10001, but the bind-mounted data folder is owned by the deploy
+    # user (uid 1007) and root is not available here to change it. So the api runs as that user instead, and
     # HOME moves to the one folder it can write: without it matplotlib's font cache has nowhere
     # to go. Revert both lines once the data folder is chowned to 10001.
     user: "1007:1007"
+    # Drafting with Amazon Bedrock needs no line here: the AWS variables (AWS_REGION, AWS_ACCESS_KEY_ID,
+    # AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN, AWS_BEARER_TOKEN_BEDROCK) and BEDROCK_MODEL_ID reach
+    # the api through the env_file of docker-compose.yml, which this file adds to. env_file is read when the
+    # container is created, so after editing .env run: docker compose up -d --force-recreate api
     environment:
       HOME: /app/data
       MPLCONFIGDIR: /app/data/.mplconfig
+      # Source gathering for a Bedrock draft (see .env.example). Names only: a value comes from the environment or the
+      # env_file when one is set, and nothing is passed when it is not. Force-recreate the api after editing .env.
+      EXA_API_KEY:
+      CYTONN_SOURCES_ENOUGH:
+      CYTONN_SOURCES_MAX_QUERIES:
+      CYTONN_SOURCES_MAX_PAGES:
+      CYTONN_SOURCES_GATHER_SECONDS:
+      CYTONN_SOURCES_MARKET:
+      CYTONN_BEDROCK_RETRIES:
+      CYTONN_BEDROCK_RETRY_BASE_SECONDS:
+      CYTONN_BEDROCK_MAX_CALLS_PER_DRAFT:
+      CYTONN_DRAFT_CONCURRENCY:
+      CYTONN_DRAFT_QUEUE_MAX:
+      CYTONN_JOB_MAX_TOOL_CALLS:
+      CYTONN_JOB_CALL_BUDGET:
+      CYTONN_JOB_TOKEN_BUDGET:
+      CYTONN_CHAT_MODEL_ID:
+      CYTONN_CHAT_CONCURRENCY:
+      # The history store's read switch: off, compare or on (see .env.example). Name only, as above.
+      CYTONN_HISTORY_READS:
 
   web:
     image: ghcr.io/clivemisiko/cytonn-weekly-web:${IMAGE_TAG:-latest}
