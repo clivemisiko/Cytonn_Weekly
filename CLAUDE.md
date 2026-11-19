@@ -105,25 +105,33 @@ docker compose down
 - **Tests** are not in the runtime image: `docker build --target test -t cytonn-api-test backend`, then `docker run --rm --network none cytonn-api-test` (no `.env`, no data folder, no network; the PostgreSQL smoke tests are deselected).
 - **Never run `docker compose config` without `--quiet` or `--no-env-resolution`:** it expands `env_file` and prints the database URL with its password.
 
-## Where the detailed notes live
+### Run locally with Docker (SQLite)
 
-The notes below were moved out of this file, word for word, into the folder each is about. Claude Code reads a folder's CLAUDE.md when it works in that folder; read the one you need before changing its code.
+`docker-compose.local.yml` (2026-11-04) runs the stack on SQLite on this machine only: `CYTONN_REQUIRE_POSTGRES=0`, `CYTONN_DATABASE_URL` forced empty (`environment` beats `env_file`), and `/app/data` on the named volume `cytonn_local_data` instead of the bind mount, so the real `backend/data` and its `app.db` are never touched. Compose never loads it on its own and `deploy/deploy.sh` names its files, so the droplet still requires PostgreSQL.
 
-| Topic | File |
-| --- | --- |
-| Local model settings, drafting with Amazon Bedrock, the source policy, the gather step | `backend/src/cytonn_weekly/drafting/CLAUDE.md` |
-| The two content shapes and the review model | `backend/src/cytonn_weekly/review/CLAUDE.md` |
-| The review API, run events, drafting seats and the queue | `backend/api/CLAUDE.md` |
-| The web app, the end-to-end tests, the visual design system | `frontend/CLAUDE.md` |
-| The weekly report's inputs, parsers, week windows, section summaries, the Word export | `backend/src/cytonn_weekly/weekly/CLAUDE.md` |
-| The weekly Fixed Income section and the net domestic borrowing log | `backend/src/cytonn_weekly/fixed_income/CLAUDE.md` |
-| The weekly Equities section and the listed banks and insurers | `backend/src/cytonn_weekly/equities/CLAUDE.md` |
-| The charts the tool draws | `backend/src/cytonn_weekly/charts/CLAUDE.md` |
-| Notable this week and the detector library | `backend/src/cytonn_weekly/notable/CLAUDE.md` |
-| Sources per section, and the blocked stubs | `backend/src/cytonn_weekly/CLAUDE.md` |
-| Report types: Markets Reviews, the Monthly, companion reports | `backend/src/cytonn_weekly/periodic/CLAUDE.md` |
-| The analyst chat agent (Phase 8): the loop, the read tools, the job limits | `backend/src/cytonn_weekly/agent/CLAUDE.md` |
-| The history store (Phase 4): series, points, corrections, confirmation | `backend/src/cytonn_weekly/history/CLAUDE.md` |
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.local.yml down
+```
+
+**Never put the hosted database URL in the local `.env`.** The override blanks it for the container, but a native run reads `.env` directly and would write to the hosted database.
+
+### Local model speed settings (development only)
+
+Four opt-in environment variables shorten a local (Ollama) draft. They are read in one place, `read_local_settings()` in `digital_payments/providers/local_provider.py`, when a provider is created, and `LocalProvider` and `LocalNarrativeProvider` both use them. The Anthropic provider never reads them. Unset, empty or blank means the default, which is the behaviour before they existed (the requests are pinned by `backend/tests/fixtures/local_provider_requests_before.json`).
+
+| Variable | Range | Default |
+| --- | --- | --- |
+| `CYTONN_LOCAL_MAX_SEARCH_RESULTS` | 1 to 5 | 5 |
+| `CYTONN_LOCAL_RESULT_CHARS` | 500 to 3000 | no extra cut (Exa already returns at most 3000 characters per result) |
+| `CYTONN_LOCAL_NUM_THREAD` | 1 to 16 | not sent (Ollama picks the thread count) |
+| `CYTONN_LOCAL_NUM_PREDICT` | 1024 to 4096 | 2048 |
+
+- **`num_ctx` is fixed at 8192 and has no variable** (4096 breaks drafts). `keep_alive` is not sent, as before. The `num_predict` minimum is 1024 because a cap of 700 truncates Markets Review briefs. A per-model override in `_MODEL_CONFIG` still wins over `CYTONN_LOCAL_NUM_PREDICT`.
+- **An invalid value** (not an integer, or outside the range) logs one warning naming the variable and the range, and the default is used; it is never clamped.
+- **Trimming happens after the search, where the prompt is built** (`_trim_results`), so the Exa request and `backend/data/exa_cache/` are the same whatever the settings. The draft is validated against the trimmed list, so a link or claim citing a result the model was not shown is dropped. A result's text is cut at a word boundary and never inside a number; its title and URL are untouched.
+- Each provider logs its effective values once, at first use (logger `cytonn_weekly.digital_payments.providers.local_provider`): a WARNING when any setting is off its default, so it shows without any logging setup, and INFO when all four are defaults. Nothing of it enters a draft.
+- `docker-compose.yml` forwards the four to the `api` service as `${NAME:-}`, so an unset one arrives empty and is read as unset. The fast preset is in `.env.example`.
 
 ## Architecture
 
