@@ -237,6 +237,29 @@
   letter-spacing: normal;
   text-transform: none;
 }
+/* On the prepare page the export bar is a quiet row under the draft card, not a card of its own. */
+.cw-skin [data-card="prepare"] > [aria-labelledby="export-title"] {
+  border: 0;
+  border-top: 1px solid var(--cw-hairline);
+  border-radius: 0;
+  box-shadow: none;
+  padding: 1rem 0 0;
+  background: none;
+}
+.cw-skin [data-card="prepare"] > [aria-labelledby="export-title"] button {
+  min-height: 2.75rem;
+}
+/* A step that holds the old start screen's sources panel: the step is the card, so the panel loses its own frame. */
+.cw-skin [data-card="prepare"] section[aria-labelledby="sources-title"] {
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: none;
+}
+/* The snip controls are small on the old page; on the prepare page every control is at least 44px tall. */
+.cw-skin [data-card="prepare"] :is([data-snip], [data-card="fund_snip"]) :is(button, select, input[type="date"]) {
+  min-height: 2.75rem;
+}
 .typing-dot {
   animation: typing-dot 1s ease-in-out infinite;
 }
@@ -471,7 +494,7 @@
 
 /* Press feedback on every pressable thing, quiet when motion is reduced. */
 @media (prefers-reduced-motion: no-preference) {
-  button:not(:disabled):active,
+  button:not(:disabled, [aria-disabled="true"]):active,
   [role="radio"]:not(:disabled):active {
     transform: scale(0.97);
   }

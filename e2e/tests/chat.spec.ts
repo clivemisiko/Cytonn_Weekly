@@ -39,6 +39,9 @@ test("T116 the chat opens on a section picker with the week, a section opens its
   await main.getByRole("button", { name: "Whole report" }).click();
   await expect(page).toHaveURL(/section=fixed_income/);
   await expect(page.getByRole("heading", { name: "Fixed Income", level: 2 })).toBeVisible();
+  // A section with no draft opens on its prepare page; its conversation is one link away (view=conversation).
+  await expect(page.locator('[data-card="prepare"]')).toBeVisible();
+  await page.goto(`/chat?section=fixed_income&period=${encodeURIComponent(PERIOD)}&view=conversation`);
   const log = page.getByRole("log", { name: "Conversation" });
   await expect(log.getByRole("region", { name: /What Fixed Income needs for the week ending 2026-10-09/ })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Report sections" }).getByRole("button", { name: /^Fixed Income/ })).toHaveAttribute("aria-current", "page");
@@ -67,7 +70,7 @@ test("T117 an answer arrives by polling as plain text, and polling stops once th
     }
     return { json: { job: job(state), messages: [] } };
   });
-  await page.goto(`/chat?section=fixed_income&period=${encodeURIComponent(PERIOD)}`);
+  await page.goto(`/chat?section=fixed_income&period=${encodeURIComponent(PERIOD)}&view=conversation`); // the conversation view: the section has no draft
   await page.getByLabel("Message").fill("What is missing?");
   await page.getByRole("button", { name: "Send" }).click();
   await expect(page.getByText("The assistant is answering.", { exact: true })).toBeVisible();
@@ -90,7 +93,7 @@ test("T118 a refusal shows in words, and a budget stop shows the raise button an
     if (method === "POST") return { json: { job: job("idle") } }; // the raise
     return { json: { job: state === "paused" ? job("paused", { paused_reason: "call_budget", calls_used: 20 }) : job("idle", { call_budget: 30 }), messages: [] } };
   });
-  await page.goto(`/chat?section=fixed_income&period=${encodeURIComponent(PERIOD)}`);
+  await page.goto(`/chat?section=fixed_income&period=${encodeURIComponent(PERIOD)}&view=conversation`); // the conversation view: the section has no draft
   await expect(page.getByText(/Paused\. This conversation has used 20 of its 20 model calls/)).toBeVisible();
   await expect(page.getByText("Raise the budget first, then send your message.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Send" })).toBeDisabled();

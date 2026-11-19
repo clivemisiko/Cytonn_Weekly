@@ -7,78 +7,22 @@ import RedraftDialog from "@/components/review/RedraftDialog.vue";
 import Button from "@/components/ui/Button.vue";
 import { LINK } from "@/components/ui/button";
 import * as api from "@/lib/api";
-import { type DraftCard as Card, weekOf } from "@/lib/chatcards";
-import { draftChartsNote } from "@/lib/charts";
+import type { DraftCard as Card } from "@/lib/chatcards";
 import { queueText } from "@/lib/drafting";
-import { redraftNotes } from "@/lib/redraft";
+import { useDraftStart } from "@/lib/draftstart";
 import { mergeEvents, stepLines } from "@/lib/run";
-import { missingSourcesNote, piecesNothingFoundFor, usesSources } from "@/lib/sources";
 import type { AppConfig, ReportChoice, RunEvent, SectionSummary } from "@/lib/types";
 
 const POLL_MS = 2_000;
 const props = defineProps<{ section: SectionSummary; card: Card; report: ReportChoice; config: AppConfig | null; oldPage: string }>();
 const emit = defineEmits<{ changed: []; ended: [] }>();
 
-const starting = ref(false);
-const problem = ref<string | null>(null);
-const asking = ref<string[] | null>(null);
-const startedRun = ref<string | null>(null);
+const { starting, problem, asking, startedRun, start, draft } = useDraftStart(
+  { section: () => props.section, report: () => props.report, config: () => props.config },
+  () => emit("changed"),
+);
 
-const week = computed(() => weekOf(props.report.period));
 const runId = computed(() => (props.card.kind === "running" || props.card.kind === "queued" ? (props.card.drafting.run_id ?? startedRun.value) : startedRun.value));
-
-/** The questions the old start screen asks before a draft, asked together in one dialog: charts with no image, pieces a search found
- *  nothing for, and what a new draft does to an earlier review. */
-async function notes(): Promise<string[]> {
-  const out: string[] = [];
-  const slug = props.section.slug;
-  if (slug === "fixed_income" || slug === "equities") {
-    try {
-      const note = draftChartsNote((await api.getInputs(week.value)).charts ?? [], slug);
-      if (note) out.push(note);
-    } catch {
-      /* a failed read never stops a draft */
-    }
-  }
-  if (props.config && usesSources(props.config, props.section) && slug !== "real_estate") {
-    try {
-      const note = missingSourcesNote(piecesNothingFoundFor((await api.getSources(slug, props.report)).pieces));
-      if (note) out.push(note);
-    } catch {
-      /* the same */
-    }
-  }
-  const earlier = props.section.latest;
-  if (earlier && (earlier.current ?? earlier.this_week)) out.push(...redraftNotes(earlier, props.report.type, props.section.requires_approved));
-  return out;
-}
-
-async function start() {
-  problem.value = null;
-  starting.value = true;
-  try {
-    const found = await notes();
-    if (found.length) asking.value = found;
-    else await draft();
-  } finally {
-    starting.value = false;
-  }
-}
-
-async function draft() {
-  asking.value = null;
-  starting.value = true;
-  problem.value = null;
-  try {
-    const started = await api.startRun(props.section.slug, props.report, { provider: props.section.uses_provider ? props.config?.provider : undefined });
-    startedRun.value = started.run_id;
-  } catch (err) {
-    problem.value = (err as Error).message;
-  } finally {
-    starting.value = false;
-    emit("changed");
-  }
-}
 
 // ---- A draft under way: its real steps, read every two seconds; nothing here is timed or guessed ----
 const events = shallowRef<RunEvent[]>([]);
@@ -165,13 +109,13 @@ const underway = computed(() => props.card.kind === "running" || props.card.kind
 
     <template v-else>
       <h3 class="text-sm font-semibold">{{ card.kind === "ready" && card.again ? "Draft this section again" : "Ready to draft" }}</h3>
-      <p v-if="card.kind === 'ready'" class="text-sm text-muted-foreground">
+      <p v-if="card.kind === 'ready'" id="draft-card-caption" class="text-sm text-muted-foreground">
         The tool drafts the section from what is in place. {{ card.again ? "The earlier review stays saved; the new draft becomes the current one." : "Anything still missing comes back as a named gap, never as invented text." }}
       </p>
       <p v-else-if="card.kind === 'failed'" class="flex items-start gap-1.5 text-sm"><PhWarningCircle weight="bold" class="mt-0.5 size-4 shrink-0" aria-hidden="true" />The last draft stopped. {{ card.why }}</p>
       <p v-else-if="card.kind === 'blocked' || card.kind === 'none'" class="text-sm text-muted-foreground">{{ card.why }}</p>
-      <RouterLink v-if="card.kind === 'blocked' && section.needs_topic" :to="oldPage" :class="['inline-block text-sm', LINK]">Open the Focus page</RouterLink>
-      <Button v-if="card.kind === 'ready' || card.kind === 'failed'" :disabled="starting" @click="start">
+      <RouterLink v-if="card.kind === 'blocked' && section.needs_topic" :to="`${oldPage}&step=topic`" :class="['inline-block text-sm', LINK]">Back to sources and inputs</RouterLink>
+      <Button v-if="card.kind === 'ready' || card.kind === 'failed'" :aria-disabled="starting || undefined" :aria-describedby="card.kind === 'ready' ? 'draft-card-caption' : undefined" @click="!starting && start()">
         <PhPlay weight="bold" data-icon="inline-start" aria-hidden="true" />
         {{ starting ? "Starting…" : card.kind === "failed" || (card.kind === "ready" && card.again) ? "Start draft again" : "Start draft" }}
       </Button>

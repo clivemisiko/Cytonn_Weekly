@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FOCUS_ON_OLD_PAGE, GROUPS, NOT_JUDGED, draftCard, flaggedOf, hasNeeds, needsYou, parseReadiness, parseReviewSnapshot, snipLine, sourcesLine, typedProblem, captureSteps, unsavedSteps, weekOf } from "./chatcards";
+import { FOCUS_ON_OLD_PAGE, GROUPS, NOT_JUDGED, draftCard, flaggedOf, hasNeeds, needsYou, parseReadiness, parseReviewSnapshot, snipLine, sourceRows, sourcesLine, typedProblem, captureSteps, unsavedSteps, weekOf } from "./chatcards";
 import type { AppConfig, Drafting, Review, SectionSummary } from "./types";
 
 const entry = (key: string, over: Record<string, unknown> = {}) => ({ kind: "upload", key, label: key.toUpperCase(), why: "not uploaded", ...over });
@@ -179,5 +179,35 @@ describe("the draft card", () => {
 
   it("offers a failed draft again with the failure", () => {
     expect(draftCard(section(), drafting({ state: "failed", reason: "The source site was down." }), config())).toEqual({ kind: "failed", why: "The source site was down." });
+  });
+});
+
+describe("the prepare page's source documents", () => {
+  const r = () =>
+    parseReadiness(
+      data({
+        groups: {
+          needs_analyst: [entry("equities_workbook", { label: "Fake workbook", why: "not uploaded" }), entry("cbk_bulletin", { why: "not received; fetch it or upload it" }), entry("pe", { kind: "field" })],
+          in_place: [entry("kcb_weekly", { why: "uploaded" })],
+          optional: [entry("interbank", { kind: "table", why: "not filled" })],
+        },
+      }),
+    )!;
+
+  it("lists every upload and every fetchable table, with the check's own words capitalised, and counts what is added", () => {
+    const rows = sourceRows(r());
+    expect(rows.map((x) => [x.key, x.status, x.added, x.upload, x.fetch])).toEqual([
+      ["equities_workbook", "Not uploaded", false, true, null],
+      ["cbk_bulletin", "Not received; fetch it or upload it", false, true, "Fetch from CBK"],
+      ["kcb_weekly", "Uploaded", true, true, null],
+      ["interbank", "Optional, not filled", false, false, "Fetch interbank rates from CBK"],
+    ]);
+  });
+
+  it("keeps the first-seen order when an upload moves a row to another group", () => {
+    const order = sourceRows(r()).map((x) => x.key);
+    const later = r();
+    later.groups.in_place.push(later.groups.needs_analyst.shift()!);
+    expect(sourceRows(later, order).map((x) => x.key)).toEqual(order);
   });
 });

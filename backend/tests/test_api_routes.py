@@ -63,6 +63,7 @@ ROUTES = [
     "POST /api/runs",
     "POST /api/runs/{run_id}/cancel",
     "POST /api/sections/{slug}/draft",
+    "GET /api/sections/{slug}/readiness",
     "POST /api/snips/{week_ending}/{h}/confirm",
     "POST /api/snips/{week_ending}/{h}/read",
     "POST /api/sources",
