@@ -4,7 +4,7 @@ import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "reka-ui
 import { computed, nextTick, ref, useTemplateRef, watch } from "vue";
 import { RouterLink, useRouter } from "vue-router";
 import { reportName } from "@/lib/format";
-import { chatHref, mayLeave } from "@/lib/nav";
+import { HOME, chatHref, mayLeave } from "@/lib/nav";
 import { MARKS } from "@/lib/railmarks";
 import { type RailSection, shell } from "@/lib/shell";
 
@@ -64,7 +64,7 @@ const showProgress = computed(() => shell.held.value !== null && !atOverview.val
 // The current item is a green-tinted pill with an accent bar (and bold, and aria-current); an item that does nothing is dimmed and has no hover.
 // Only pages that exist; the chat's own sections stay in the list below.
 const PAGES = [
-  { to: "/", name: "Home", icon: PhHouse },
+  { to: HOME, name: "Home", icon: PhHouse },
   { to: "/chat", name: "Chat", icon: PhChatCircle },
 ];
 const ITEM =
