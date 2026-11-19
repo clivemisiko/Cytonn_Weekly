@@ -303,3 +303,24 @@ Roadmap, not this window: workbook fallback/cross-check; Focus topic suggestion 
 
 ---
 *This file is the current-state reference for coding. The fuller decision history lives in the "Cytonn Weekly: AI-Assisted Report Generation" Claude Project (`claude/project-status.md`), which Claude Code can't read. Update this file as decisions change.*
+
+## Test scope
+
+Run only the tests a change can break. Do not run the whole suite by default.
+
+- Always run the unit tests for the files you changed, plus typecheck, lint and build.
+- Run only the Playwright spec files that cover the feature you touched, each in its own command with one worker.
+- Run only the backend tests for the modules you touched.
+- Run a full suite only when the change touches something shared: backend routes or schemas, shared stores or API helpers, global styles or design tokens, build or dependency files, or a component used by several pages. Say which one applies and why a full run is justified.
+- Never run suites in parallel. Stop any server you started when a run ends.
+- While they still fail on main, editsentence (T38) and the variants fingerprint check are not caused by your change. Report them if they still fail, but do not chase them.
+
+## Uniform sections
+
+The report has five sections: Fixed Income, Equities, Real Estate, Digital Payments and Focus of the Week. Every change must be uniform across all five.
+
+- The same page structure, cards, stepper, states and wording rules apply to every section. A section differs from another only in its data, such as which documents and steps it has.
+- Do not build or change something for one section only. If a change cannot apply to all five in the same round, say so before building and wait for a decision.
+- Shared code stays shared. Do not fork a component or add a section-specific branch where a data difference would do.
+- Tests for new behaviour run on all five sections, or through a table-driven test that loops over them. Keep the guard test that checks the five sections share one structure.
+- Inputs are entered on the page itself, with Previous and Next. Never send an analyst to an old page to enter an input.
