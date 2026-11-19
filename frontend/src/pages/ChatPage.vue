@@ -142,8 +142,8 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
 </script>
 
 <template>
-  <main id="main" tabindex="-1" class="cw-skin">
-    <Masthead wide title="Chat" />
+  <main id="main" tabindex="-1" class="cw-skin min-h-[calc(100dvh-var(--topbar-h))] bg-cw-page">
+    <Masthead wide title="Chat" :class="current && 'sr-only'" />
     <PageGrid aside-title="This conversation">
       <div class="min-w-0 space-y-4">
         <p v-if="loading && !overview" role="status" class="text-sm text-muted-foreground">Opening the chat…</p>
@@ -178,7 +178,7 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
             </ul>
           </section>
 
-          <section v-if="current" aria-labelledby="chat-title" class="space-y-4 pt-4">
+          <section v-if="current" aria-labelledby="chat-title" class="mx-auto max-w-[47.5rem] space-y-4 pt-4">
             <h2 id="chat-title" class="text-2xl font-normal tracking-tight text-cw-accent">{{ current.title }}</h2>
 
             <Notice v-if="notice" tone="flag" role="alert" class="font-medium">{{ notice }}</Notice>
@@ -192,7 +192,7 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
                     <PhUser weight="fill" class="size-3.5" />
                   </span>
                   <span v-else class="mt-1" aria-hidden="true"><CytonnMark avatar :size="44" /></span>
-                  <div class="min-w-0 flex-1 space-y-2 rounded-3xl px-4 py-3.5" :class="m.role === 'user' ? 'bg-cw-bubble' : 'border bg-card'">
+                  <div class="min-w-0 flex-1 space-y-2 rounded-3xl bg-cw-bubble px-4 py-3.5">
                     <p class="sr-only">{{ m.role === "user" ? "You" : "Assistant" }}</p>
                     <p v-if="m.content" class="max-w-[70ch] whitespace-pre-wrap text-base leading-7 [overflow-wrap:anywhere]">{{ m.content }}</p>
                     <template v-for="(c, i) in cards" :key="i">

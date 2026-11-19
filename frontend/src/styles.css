@@ -191,6 +191,8 @@
 /* The landing and chat skin (2026-11-19, from the Weekly-Landing and Weekly-Chat artboards). Defined only on .cw-skin, which
    only LandingPage and ChatPage carry, so the bg-cw-* utilities resolve to nothing anywhere else. AA pairs in contrast.test.ts. */
 .cw-skin {
+  --cw-page: light-dark(#ffffff, #0b0d10); /* the design's white page; dark keeps the app's page */
+  --cw-hairline: light-dark(#ececec, #1c2027); /* the quieter card edge: decorative, like --border */
   --cw-accent: light-dark(#17757b, #5fc4c9); /* headings: 5.4 on card, 4.9 on page */
   --cw-button: light-dark(#13707a, #5fc4c9);
   --cw-button-fg: light-dark(#ffffff, #000000);
@@ -205,6 +207,13 @@
   --cw-logo-purple: #8e44ad;
   --cw-logo-blue: #29a8e0;
 }
+/* Quieter chat cards: the saved cards, the live cards and the export bar inside them. Unlayered, so it beats the utilities. */
+.cw-skin [data-card]:not([data-card="live"]),
+.cw-skin [data-card="live"] > .border {
+  border-color: var(--cw-hairline);
+  background: var(--cw-page);
+  box-shadow: none;
+}
 .typing-dot {
   animation: typing-dot 1s ease-in-out infinite;
 }
@@ -215,6 +224,7 @@
   .typing-dot { animation: none; }
 }
 @theme inline {
+  --color-cw-page: var(--cw-page);
   --color-cw-accent: var(--cw-accent);
   --color-cw-button: var(--cw-button);
   --color-cw-button-fg: var(--cw-button-fg);

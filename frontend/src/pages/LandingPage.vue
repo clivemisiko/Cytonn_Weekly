@@ -29,7 +29,7 @@ const rise = (order: number) => ({ animationDelay: `${order * 60}ms` });
 </script>
 
 <template>
-  <main id="main" tabindex="-1" class="cw-skin min-h-[calc(100dvh-var(--topbar-h))] bg-card px-4 pt-6 pb-6 sm:px-6">
+  <main id="main" tabindex="-1" class="cw-skin min-h-[calc(100dvh-var(--topbar-h))] bg-cw-page px-4 pt-6 pb-6 sm:px-6">
     <!-- The wordmark (with the page's h1), then the centred welcome, what it does, the two ways in and the notice. -->
     <div class="mx-auto flex w-full max-w-4xl flex-col items-center gap-6 text-center">
       <div class="rise-slow flex items-center gap-2 self-start text-left text-cw-brand" :style="rise(0)">
