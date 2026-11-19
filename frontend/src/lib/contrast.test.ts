@@ -99,6 +99,9 @@ export const PAIRS: Pair[] = [
   { what: "chat ring and outline on the skin page", fg: T("cw-button"), bg: T("cw-page"), min: EDGE },
   { what: "chat ring on the assistant bubble", fg: T("cw-button"), bg: T("cw-assistant"), min: EDGE },
   { what: "chat ring on card", fg: T("cw-button"), bg: T("card"), min: EDGE },
+  // The prepare page: the saved mark and a refusal on the skin page.
+  { what: "saved mark on the skin page", fg: T("ok-fg"), bg: T("cw-page"), min: TEXT },
+  { what: "refusal text on the skin page", fg: T("flag-fg"), bg: T("cw-page"), min: TEXT },
   { what: "ink on the skin chip", fg: T("foreground"), bg: T("cw-chip"), min: TEXT },
   { what: "control edge on the skin chip", fg: T("input"), bg: T("cw-chip"), min: EDGE },
 ];

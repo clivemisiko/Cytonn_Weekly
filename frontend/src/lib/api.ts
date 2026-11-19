@@ -433,6 +433,11 @@ const jobBody = (body: unknown) => (body as { job?: unknown } | null)?.job;
 /** What the section needs for the week, worked out now (not the saved card). The page checks the shape (parseReadiness in chatcards.ts). */
 export const getReadiness = (jobId: number) => request<{ readiness: unknown }>(`/api/jobs/${jobId}/readiness`);
 
+/** The same check for a section and week with no conversation (the prepare page): it opens no job and calls no model.
+ *  `conversation` says whether a conversation for them already holds more than its recorded snapshot. */
+export const getSectionReadiness = (section: string, period: string) =>
+  request<{ readiness: unknown; conversation: boolean }>(`/api/sections/${encodeURIComponent(section)}/readiness?${new URLSearchParams({ period }).toString()}`);
+
 /** The four calls the chat page makes. Each answer is checked whole; one that is not as expected is an error, never half used. */
 export const chatApi: ChatApi = {
   async open(section, period) {

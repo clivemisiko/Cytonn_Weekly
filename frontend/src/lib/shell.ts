@@ -6,7 +6,7 @@ import type { AppConfig, Overview, ReportChoice, ReportType, SectionSummary } fr
 /** What the side rail shows for a section: its state on the overview, "drafting" while it is being drafted, or null (unknown). */
 export type RailState = SectionState | "drafting" | "queued";
 
-function railState(overview: Overview, s: SectionSummary, report: ReportChoice): RailState {
+export function railState(overview: Overview, s: SectionSummary, report: ReportChoice): RailState {
   const mine = draftingFor(draftingList(overview), s.slug, report);
   if (isLive(mine)) return mine.state === "queued" ? "queued" : "drafting";
   return stateOf(s);

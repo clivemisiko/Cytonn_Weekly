@@ -426,3 +426,102 @@ test("T133 every step saved, the grid and the paste table included: the confirma
   await expect(card.getByText("All typed values are saved.")).toBeVisible();
   expect(await page.evaluate(() => document.activeElement?.id)).toBe("live-title");
 });
+
+// ---- The prepare page: Equities with no draft opens on it, with no conversation. Each test takes its own Friday. ----
+const prepare = (page: Page) => page.locator('[data-card="prepare"]');
+
+test("T134 the prepare page: the banner counts, the source table, an upload and a fetch refused in words, and no conversation opened", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  const opened: string[] = [];
+  page.on("request", (r) => r.method() === "POST" && r.url().endsWith("/api/jobs") && opened.push(r.url()));
+  await page.goto(chatUrl("equities", "Week ending 2026-06-05"));
+  const p = prepare(page);
+  await expect(p.getByRole("heading", { name: "Equities", level: 2 })).toBeVisible();
+  await expect(p.getByText("Not drafted", { exact: true })).toBeVisible();
+  await expect(p.getByText(/^\d+ required items? missing$/)).toBeVisible();
+  await expect(page.getByRole("log", { name: "Conversation" })).toHaveCount(0);
+
+  const checklist = p.getByRole("button", { name: "View checklist" });
+  await expect(checklist).toHaveAttribute("aria-expanded", "false");
+  await checklist.click();
+  await expect(p.getByRole("button", { name: "Hide checklist" })).toHaveAttribute("aria-expanded", "true");
+  await expect(p.locator("#prepare-checklist").getByText("Equities workbook: not uploaded")).toBeVisible();
+
+  const table = p.getByRole("table");
+  await expect(table.getByRole("columnheader")).toHaveText(["Document", "Status", "Action"]);
+  await expect(table.getByRole("row", { name: /Equities workbook/ })).toContainText("Not uploaded");
+  await expect(p.getByText("0 of 4 added")).toBeVisible();
+
+  await p.getByLabel("Upload Equities workbook").setInputFiles({ name: "fake.xlsx", mimeType: "application/octet-stream", buffer: Buffer.from("not a workbook") });
+  await expect(p.getByRole("alert")).toContainText("fake.xlsx:");
+  await expect(table.getByText("Chosen: fake.xlsx")).toBeVisible();
+
+  await p.getByRole("button", { name: /^Fetch from CBK\s*: CBK Weekly Bulletin$/ }).click();
+  await expect(p.getByRole("alert")).toContainText("E2E: no bulletin is saved for 2026-06-05");
+  expect(opened).toEqual([]); // reading, uploading and fetching opened no conversation
+});
+
+test("T135 the prepare page's inputs: Save moves on and lowers the banner count, Previous shows it saved, a skip keeps what was typed", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(chatUrl("equities", "Week ending 2026-06-12"));
+  const p = prepare(page);
+  const banner = p.getByText(/^\d+ required items? missing$/);
+  const before = Number((await banner.textContent())!.split(" ")[0]);
+  await expect(p.getByText("Step 1 of 9", { exact: true })).toBeVisible();
+  await expect(p.getByRole("button", { name: "Previous" })).toBeDisabled();
+
+  const first = p.getByLabel("Year-to-date equities turnover");
+  await first.fill("123.4");
+  await first.press("Enter");
+  await expect(p.getByText("Step 2 of 9", { exact: true })).toBeVisible();
+  await expect(p.getByLabel("Year-to-date foreign net position")).toBeFocused();
+  await expect(p.getByText(`${before - 1} required item${before - 1 === 1 ? "" : "s"} missing`)).toBeVisible();
+
+  await p.getByLabel("Year-to-date foreign net position").fill("1.5");
+  await p.getByRole("button", { name: "Next" }).click(); // a skip: nothing is saved
+  await expect(p.getByText("Step 3 of 9", { exact: true })).toBeVisible();
+  await p.getByRole("button", { name: "Previous" }).click();
+  await expect(p.getByLabel("Year-to-date foreign net position")).toHaveValue("1.5");
+  await p.getByRole("button", { name: "Previous" }).click();
+  await expect(p.getByText("Saved: 123.4")).toBeVisible();
+  await expect(p.getByText(`${before - 1} required item${before - 1 === 1 ? "" : "s"} missing`)).toBeVisible(); // the skip lowered nothing
+});
+
+test("T136 Create draft opens the conversation and starts the draft; a drafted section shows the conversation with a way back", async ({ page }) => {
+  test.setTimeout(240_000);
+  await page.setViewportSize({ width: 1366, height: 900 });
+  const period = "Week ending 2026-09-04"; // a demo Friday the test backend drafts Equities for with no outside source
+  await page.goto(chatUrl("equities", period));
+  await prepare(page).getByRole("button", { name: /Create draft/ }).click();
+  const ask = page.getByRole("dialog", { name: "Draft this section?" });
+  await expect(ask.or(page.getByRole("log", { name: "Conversation" }))).toBeVisible();
+  if (await ask.isVisible()) await ask.getByRole("button", { name: "Draft anyway" }).click();
+  await expect(page).toHaveURL(/view=conversation/);
+  await expect(page.getByRole("log", { name: "Conversation" })).toBeVisible();
+  await expect(live(page).getByRole("region", { name: /^Review of Equities/ })).toBeVisible({ timeout: 180_000 });
+
+  await page.goto(chatUrl("equities", period)); // no flag: the section has a draft, so the conversation view
+  await expect(page.getByRole("log", { name: "Conversation" })).toBeVisible();
+  await expect(prepare(page)).toHaveCount(0);
+  await page.getByRole("link", { name: "Back to sources and inputs" }).click();
+  await expect(prepare(page).getByText("In review", { exact: true })).toBeVisible();
+  await expect(prepare(page).getByRole("link", { name: "Open the conversation" })).toHaveCount(0); // only the snapshot is in it
+});
+
+test("T137 the prepare page offers the conversation when one already holds more than its snapshot, and only then", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  const period = "Week ending 2026-06-19";
+  await page.goto(chatUrl("equities", period));
+  await expect(prepare(page).getByRole("heading", { name: "Source documents" })).toBeVisible();
+  await expect(prepare(page).getByRole("link", { name: "Open the conversation" })).toHaveCount(0);
+  // Someone talked before drafting: the readiness route is stood in for, saying so.
+  await page.route("**/api/sections/equities/readiness*", async (route) => {
+    const res = await route.fetch();
+    await route.fulfill({ response: res, json: { ...(await res.json()), conversation: true } });
+  });
+  await page.reload();
+  const link = prepare(page).getByRole("link", { name: "Open the conversation" });
+  await expect(link).toHaveAttribute("href", /view=conversation/);
+  await link.click();
+  await expect(page.getByRole("log", { name: "Conversation" })).toBeVisible();
+});

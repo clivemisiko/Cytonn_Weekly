@@ -116,6 +116,47 @@ export const unsavedSteps = (steps: ReadinessEntry[], saved: Record<string, stri
 /** Checked before the save is sent; every other check is the API's, in its own words (a blank would clear the value). */
 export const typedProblem = (text: string) => (text.trim() ? null : "Type a value before saving.");
 
+// ---- The prepare page: what a section with no draft shows instead of the conversation ----
+
+/** Sections that open on the prepare page while they have no draft. The others keep the conversation view until reviewed. */
+export const PREPARE_SECTIONS = ["equities"];
+
+export interface SourceRow {
+  key: string;
+  label: string;
+  /** The readiness check's own words, first letter capitalised. */
+  status: string;
+  added: boolean;
+  /** A file can be uploaded for it (an input slot). */
+  upload: boolean;
+  /** The words on its fetch button, or null when the tool cannot fetch it. */
+  fetch: string | null;
+}
+
+const capitalised = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+
+/** Card 1's rows: every upload slot of the section and every form table the tool can fetch, whatever group it is in now.
+ *  `order` is the keys in the order first seen, so a row never moves when an upload changes its group. */
+export function sourceRows(r: Readiness, order: string[] = []): SourceRow[] {
+  const rows: SourceRow[] = [];
+  for (const { key: group } of GROUPS) {
+    for (const e of r.groups[group]) {
+      const fetchTable = e.kind === "table" && e.key in FETCHABLE_ITEMS;
+      if (e.kind !== "upload" && !fetchTable) continue;
+      rows.push({
+        key: e.key,
+        label: e.label,
+        status: capitalised(e.why),
+        added: group === "fetched" || group === "in_place",
+        upload: e.kind === "upload",
+        fetch: fetchTable ? FETCHABLE_ITEMS[e.key] : FETCHABLE.includes(e.key) ? "Fetch from CBK" : null,
+      });
+    }
+  }
+  const at = (k: string) => (order.includes(k) ? order.indexOf(k) : order.length);
+  return rows.sort((a, b) => at(a.key) - at(b.key));
+}
+
 // ---- The review summary the code saves when a draft finishes ----
 
 export interface ReviewSnapshot {

@@ -237,6 +237,18 @@
   letter-spacing: normal;
   text-transform: none;
 }
+/* On the prepare page the export bar is a quiet row under the draft card, not a card of its own. */
+.cw-skin [data-card="prepare"] > [aria-labelledby="export-title"] {
+  border: 0;
+  border-top: 1px solid var(--cw-hairline);
+  border-radius: 0;
+  box-shadow: none;
+  padding: 1rem 0 0;
+  background: none;
+}
+.cw-skin [data-card="prepare"] > [aria-labelledby="export-title"] button {
+  min-height: 2.75rem;
+}
 .typing-dot {
   animation: typing-dot 1s ease-in-out infinite;
 }

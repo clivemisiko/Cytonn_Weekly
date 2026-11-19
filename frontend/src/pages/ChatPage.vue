@@ -1,25 +1,26 @@
 <script setup lang="ts">
 import { PhPauseCircle, PhUser } from "@phosphor-icons/vue";
 import { computed, nextTick, onUnmounted, ref, shallowRef, useTemplateRef, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { RouterLink, useRoute, useRouter } from "vue-router";
 import CytonnMark from "@/components/brand/CytonnMark.vue";
 import FullView from "@/components/chat/FullView.vue";
 import LiveCards from "@/components/chat/LiveCards.vue";
+import PreparePage from "@/components/chat/PreparePage.vue";
 import ReadinessCard from "@/components/chat/ReadinessCard.vue";
 import ReviewSummaryCard from "@/components/chat/ReviewSummaryCard.vue";
 import PageGrid from "@/components/nav/PageGrid.vue";
 import Masthead from "@/components/review/Masthead.vue";
 import Notice from "@/components/review/Notice.vue";
 import Button from "@/components/ui/Button.vue";
-import { FIELD } from "@/components/ui/button";
+import { FIELD, LINK } from "@/components/ui/button";
 import * as api from "@/lib/api";
 import { type ChatCard, composerOff, createConversation, statusLine, toolLine } from "@/lib/chat";
-import { parseReadiness, parseReviewSnapshot } from "@/lib/chatcards";
+import { PREPARE_SECTIONS, parseReadiness, parseReviewSnapshot } from "@/lib/chatcards";
 import { draftingFor, draftingList } from "@/lib/drafting";
 import { friendlyDate } from "@/lib/format";
 import { BACK_NONE, type BackTarget, useBack } from "@/lib/nav";
 import { weekChoiceLabel } from "@/lib/previous";
-import { shell, useShellActions, useShellHere, useShellRibbon } from "@/lib/shell";
+import { railState, shell, useShellActions, useShellHere, useShellRibbon } from "@/lib/shell";
 import type { AppConfig, Overview, ReportChoice, WeekChoice } from "@/lib/types";
 
 const route = useRoute();
@@ -50,6 +51,13 @@ const weekOptions = computed(() => {
   const p = period.value;
   return p && !list.some((o) => o.period === p) ? [{ period: p, label: friendlyDate(p.slice("Week ending ".length)) }, ...list] : list;
 });
+// A section in PREPARE_SECTIONS opens on the prepare page while it has no draft; `view` in the address overrides it, so a link can
+// open the conversation of a section with no draft, or the prepare page of one that has a draft.
+const view = computed(() => first(route.query.view));
+const state = computed(() => (overview.value && current.value ? railState(overview.value, current.value, report.value) : null));
+const prepares = computed(() => !!current.value && PREPARE_SECTIONS.includes(current.value.slug));
+const preparing = computed(() => prepares.value && (view.value === "prepare" || (view.value !== "conversation" && state.value === "not_drafted")));
+const viewTo = (v: "prepare" | "conversation") => `/chat?${new URLSearchParams({ period: period.value, section: slug.value ?? "", view: v }).toString()}`;
 const drafting = computed(() => (overview.value && current.value ? draftingFor(draftingList(overview.value), current.value.slug, report.value) : null));
 
 // The hidden page a chat button opens (the inputs form, the snips and sources, the Focus topic); there it shows "Back to chat".
@@ -83,7 +91,8 @@ async function load() {
     overview.value = await api.getOverview(report.value);
     shell.setOverview(overview.value); // the rail takes the same payload
     const wanted = slug.value;
-    if (wanted && overview.value.sections.some((s) => s.slug === wanted && s.available)) await convo.open(wanted, period.value);
+    // The prepare page opens no conversation: it reads the section's readiness on its own.
+    if (wanted && !preparing.value && overview.value.sections.some((s) => s.slug === wanted && s.available)) await convo.open(wanted, period.value);
     else convo.stop();
   } catch (err) {
     problem.value = err instanceof Error ? err.message : String(err);
@@ -91,7 +100,7 @@ async function load() {
     loading.value = false;
   }
 }
-watch(() => [route.query.section, route.query.period], load, { immediate: true });
+watch(() => `${first(route.query.section)} ${first(route.query.period)} ${first(route.query.view)}`, load, { immediate: true });
 
 // After any button on a card: the rail and the overview are read again, so neither shows an old state, and the cards read the server again.
 const tick = ref(0);
@@ -179,7 +188,21 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
           </section>
 
           <section v-if="current" aria-labelledby="chat-title" class="mx-auto max-w-[47.5rem] space-y-4 pt-4">
+            <PreparePage
+              v-if="preparing"
+              :section="current"
+              :report="report"
+              :config="config"
+              :drafting="drafting"
+              :state="state"
+              :old-page="oldPage(current.slug)"
+              :conversation-to="viewTo('conversation')"
+              @changed="changed"
+              @conversation="router.push(viewTo('conversation'))"
+            />
+            <template v-else>
             <h2 id="chat-title" class="text-2xl font-normal tracking-tight text-cw-accent">{{ current.title }}</h2>
+            <RouterLink v-if="prepares" :to="viewTo('prepare')" :class="['inline-flex min-h-11 items-center text-sm', LINK]">Back to sources and inputs</RouterLink>
 
             <Notice v-if="notice" tone="flag" role="alert" class="font-medium">{{ notice }}</Notice>
             <Notice v-if="lost" tone="warn" role="alert">{{ lost }}</Notice>
@@ -257,6 +280,7 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
               <p v-if="off" id="chat-off" class="text-sm text-muted-foreground">{{ off }}</p>
             </form>
             <div ref="end" aria-hidden="true" />
+            </template>
           </section>
         </template>
       </div>
