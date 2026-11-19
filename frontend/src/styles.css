@@ -494,7 +494,7 @@
 
 /* Press feedback on every pressable thing, quiet when motion is reduced. */
 @media (prefers-reduced-motion: no-preference) {
-  button:not(:disabled):active,
+  button:not(:disabled, [aria-disabled="true"]):active,
   [role="radio"]:not(:disabled):active {
     transform: scale(0.97);
   }

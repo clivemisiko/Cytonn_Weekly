@@ -49,6 +49,8 @@ let rowOrder: string[] = [];
 // counts snips, a topic when the section needs one, sources when the drafting engine searches.
 const hasForm = computed(() => !!readiness.value && Object.values(readiness.value.groups).some((g) => g.some((e) => e.kind !== "upload")));
 const bedrock = computed(() => !!props.config && usesSources(props.config, props.section));
+// A section written from snips takes no sources (the API refuses them), as on the old start screen; readiness says which sections those are.
+const takesSources = computed(() => bedrock.value && !readiness.value?.snips);
 const snips = useSnips(week);
 
 /** Read with GET /api/sections/{slug}/readiness: no conversation is opened and no model is called. */
@@ -103,7 +105,7 @@ watch(
   [readiness, form, snips.listing],
   () => {
     if (steps.value || !readiness.value || (hasForm.value && !form.value) || (readiness.value.snips && !snips.listing.value)) return;
-    steps.value = prepareSteps({ form: form.value, sectors: snips.listing.value?.sectors ?? [], topic: props.section.needs_topic, sources: bedrock.value });
+    steps.value = prepareSteps({ form: form.value, sectors: snips.listing.value?.sectors ?? [], topic: props.section.needs_topic, sources: takesSources.value });
   },
   { immediate: true },
 );
@@ -157,6 +159,8 @@ async function upload(slot: string, event: Event) {
 // review summary has a conversation to land in; then the draft card's own start, questions dialog included. ----
 const card = computed(() => draftCard(props.section, props.drafting, props.config, true));
 const focusMissing = computed(() => (focus.value ? focusProblems(topic.value, titles.value, bedrock.value) : []));
+// Off, but still focusable: a keyboard user reaches the button and hears its caption say why.
+const blocked = computed(() => opening.value || starting.value || focusMissing.value.length > 0);
 const opening = ref(false);
 const openProblem = ref<string | null>(null);
 const { starting, problem, asking, start: startDraft, draft } = useDraftStart(
@@ -350,7 +354,7 @@ const mark = computed(() => MARKS[props.state ?? "unknown"]);
             <p v-else-if="card.kind === 'running' || card.kind === 'queued'" class="text-sm">This section is being drafted. <RouterLink :to="conversationTo" :class="LINK">Open the conversation</RouterLink> to follow it.</p>
           </div>
           <div v-if="card.kind === 'ready' || card.kind === 'failed'" class="space-y-1 text-center max-sm:w-full">
-            <Button class="min-h-11 px-6 max-sm:w-full" :disabled="opening || starting || focusMissing.length > 0" aria-describedby="prepare-draft-caption" @click="create">
+            <Button class="min-h-11 px-6 max-sm:w-full" :aria-disabled="blocked || undefined" aria-describedby="prepare-draft-caption" @click="!blocked && create()">
               {{ opening || starting ? "Starting…" : "Create draft" }}<PhArrowRight weight="bold" data-icon="inline-end" aria-hidden="true" />
             </Button>
             <p id="prepare-draft-caption" class="text-xs text-muted-foreground" data-caption>{{ caption }}</p>

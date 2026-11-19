@@ -12,11 +12,13 @@ const banner = (page: Page) => prepare(page).locator("[data-banner]");
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
 
 const SECTIONS = [
-  { slug: "fixed_income", title: "Fixed Income", friday: "2027-03-05" },
-  { slug: "equities", title: "Equities", friday: "2027-03-12" },
-  { slug: "real_estate", title: "Real Estate", friday: "2027-03-19" },
-  { slug: "digital_payments", title: "Digital Payments", friday: "2027-03-26" },
-  { slug: "focus", title: "Focus of the Week", friday: "2027-04-02" },
+  // `sources`: whether the section has a sources step with a search engine. Real Estate has none: it is written from
+  // the snips the analyst uploads, and the API refuses a source for it (the old start screen leaves it out too).
+  { slug: "fixed_income", title: "Fixed Income", friday: "2027-03-05", sources: true },
+  { slug: "equities", title: "Equities", friday: "2027-03-12", sources: true },
+  { slug: "real_estate", title: "Real Estate", friday: "2027-03-19", sources: false },
+  { slug: "digital_payments", title: "Digital Payments", friday: "2027-03-26", sources: true },
+  { slug: "focus", title: "Focus of the Week", friday: "2027-04-02", sources: true },
 ];
 
 /** The links rule: no link to an old form, the overview or previous reports; a link to a /sources/{id} record only, opening
@@ -61,10 +63,15 @@ for (const s of SECTIONS) {
     expect(opened).toEqual([]); // the page opened no conversation
   });
 
-  test(`T141 ${s.title}: with a search engine, sources are the last step, and the address can open on them`, async ({ page }) => {
+  test(`T141 ${s.title}: with a search engine, ${s.sources ? "sources are the last step, and the address can open on them" : "there is no sources step, because the section is written from snips and takes no source"}`, async ({ page }) => {
     await page.setViewportSize({ width: 1366, height: 900 });
     await asBedrock(page);
     await page.goto(url(s.slug, s.friday, "&step=sources"));
+    if (!s.sources) {
+      await expect(inputs(page).getByText(/^Step 1 of \d+$/)).toBeVisible();
+      await expect(inputs(page).getByRole("heading", { name: "Sources", level: 2 })).toHaveCount(0);
+      return;
+    }
     await expect(inputs(page).getByRole("heading", { name: "Sources", level: 2 })).toBeVisible();
     await expect(inputs(page).getByText(/^Step (\d+) of \1$/)).toBeVisible();
     await expect(inputs(page).getByRole("button", { name: "Done" })).toBeVisible();
@@ -192,12 +199,22 @@ test("T147 Focus of the Week: Create draft waits for the topic, the caption name
   const card = inputs(page);
   const create = p.getByRole("button", { name: /Create draft/ });
   await expect(p.getByText("Nothing to upload here. The topic and section titles are typed in the next card.")).toBeVisible();
-  await expect(create).toBeDisabled();
+  // Off but focusable, so a keyboard user meets it and hears why; pressing it starts nothing.
+  await expect(create).toHaveAttribute("aria-disabled", "true");
+  await expect(create).not.toHaveAttribute("disabled");
+  await expect(create).toHaveAttribute("aria-describedby", "prepare-draft-caption");
   await expect(p.locator("[data-caption]")).toHaveText("Still needed: the topic");
+  let runs = 0;
+  page.on("request", (r) => r.method() === "POST" && r.url().includes("/api/runs") && runs++);
+  await create.focus();
+  await expect(create).toBeFocused();
+  await page.keyboard.press("Enter");
+  await create.click({ force: true });
+  expect(runs).toBe(0);
   await expect(banner(page)).toHaveText(/^1 required item missing/);
 
   await card.getByLabel("This week’s topic").fill("A fake topic about invented bonds");
-  await expect(create).toBeEnabled();
+  await expect(create).not.toHaveAttribute("aria-disabled");
   await expect(p.locator("[data-caption]")).toHaveText("Everything required is in place");
   await card.getByLabel("This week’s topic").press("Enter");
   await expect(card.getByLabel("Section titles")).toBeFocused();

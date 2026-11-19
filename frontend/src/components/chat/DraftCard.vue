@@ -109,13 +109,13 @@ const underway = computed(() => props.card.kind === "running" || props.card.kind
 
     <template v-else>
       <h3 class="text-sm font-semibold">{{ card.kind === "ready" && card.again ? "Draft this section again" : "Ready to draft" }}</h3>
-      <p v-if="card.kind === 'ready'" class="text-sm text-muted-foreground">
+      <p v-if="card.kind === 'ready'" id="draft-card-caption" class="text-sm text-muted-foreground">
         The tool drafts the section from what is in place. {{ card.again ? "The earlier review stays saved; the new draft becomes the current one." : "Anything still missing comes back as a named gap, never as invented text." }}
       </p>
       <p v-else-if="card.kind === 'failed'" class="flex items-start gap-1.5 text-sm"><PhWarningCircle weight="bold" class="mt-0.5 size-4 shrink-0" aria-hidden="true" />The last draft stopped. {{ card.why }}</p>
       <p v-else-if="card.kind === 'blocked' || card.kind === 'none'" class="text-sm text-muted-foreground">{{ card.why }}</p>
       <RouterLink v-if="card.kind === 'blocked' && section.needs_topic" :to="`${oldPage}&step=topic`" :class="['inline-block text-sm', LINK]">Back to sources and inputs</RouterLink>
-      <Button v-if="card.kind === 'ready' || card.kind === 'failed'" :disabled="starting" @click="start">
+      <Button v-if="card.kind === 'ready' || card.kind === 'failed'" :aria-disabled="starting || undefined" :aria-describedby="card.kind === 'ready' ? 'draft-card-caption' : undefined" @click="!starting && start()">
         <PhPlay weight="bold" data-icon="inline-start" aria-hidden="true" />
         {{ starting ? "Starting…" : card.kind === "failed" || (card.kind === "ready" && card.again) ? "Start draft again" : "Start draft" }}
       </Button>
