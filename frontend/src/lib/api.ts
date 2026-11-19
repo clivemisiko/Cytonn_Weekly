@@ -464,8 +464,24 @@ export const chatApi: ChatApi = {
   },
 };
 
-/** The approved weekly report as a Word file. The API refuses (409, naming each section) unless all are approved. */
+/** The weekly report as a Word file: every section whose draft is finished, approved or not. 409 when none is. */
 export const exportWeekly = (period: string) => postForFile(exportPath(period), "cytonn-weekly.docx");
+
+/** Hand a downloaded file to the browser under its own name. */
+export function saveFile({ blob, name }: { blob: Blob; name: string }) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+/** One weekly section's finished draft as its own Word file. 409, with the reason, until its draft is finished. */
+export const exportSection = (period: string, slug: string) =>
+  postForFile(`/api/export/weekly/${encodeURIComponent(slug)}${period ? `?period=${encodeURIComponent(period)}` : ""}`, `cytonn-weekly-${slug}.docx`);
 
 /** This week's rows from the history store as an .xlsx. 422 for a day that is not a Friday, 409 when an uploaded workbook cannot be read. */
 export const exportWeeklyRows = (weekEnding: string) => postForFile(`/api/export/weekly-rows/${encodeURIComponent(weekEnding)}`, "weekly-rows.xlsx");

@@ -37,22 +37,18 @@ watch(
   { immediate: true },
 );
 
-function save({ blob, name }: { blob: Blob; name: string }) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = name;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
+const save = api.saveFile;
+// What the last export left out, read from the status it was made from; never written into the file.
+const leftOut = ref<string | null>(null);
 
 async function download() {
   busy.value = true;
   error.value = null;
+  leftOut.value = null;
   try {
+    const skipped = status.value?.left_out ?? [];
     save(await api.exportWeekly(props.period));
+    leftOut.value = skipped.length ? `Not included: ${skipped.join(", ")}.` : null;
   } catch (err) {
     error.value = (err as Error).message;
   } finally {
@@ -75,7 +71,6 @@ async function downloadRows() {
   }
 }
 
-const waiting = computed(() => (status.value ? status.value.sections.filter((s) => s.state !== "approved") : []));
 const iconOf = (state: string) => (state === "approved" ? PhCheck : state === "rejected" ? PhWarning : PhQuestion);
 </script>
 
@@ -86,11 +81,14 @@ const iconOf = (state: string) => (state === "approved" ? PhCheck : state === "r
         <h2 id="export-title" class="panel-title">Export weekly report</h2>
         <p class="text-sm leading-relaxed text-muted-foreground">
           {{
-            status?.ready
-              ? "Every section is approved. The Word file has the five sections in the issue’s order, tables, chart placeholders and each section’s summary for the CMS."
-              : `Available once every section is approved: ${waiting.length} of ${status?.sections.length ?? 6} still to go.`
+            !status?.ready
+              ? status?.reason
+              : status.all_approved
+                ? "Every section is approved. The Word file has the five sections in the issue’s order, tables, chart placeholders and each section’s summary for the CMS."
+                : "The Word file has every section whose draft is finished, approved or not, in the issue’s order."
           }}
         </p>
+        <p v-if="leftOut" role="status" class="text-sm font-medium">{{ leftOut }}</p>
       </div>
       <div class="flex flex-wrap gap-2">
         <Button v-if="rows" variant="outline" size="lg" :disabled="!rowsOf || busyRows" @click="downloadRows">

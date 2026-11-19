@@ -3,6 +3,7 @@ import { PhArrowSquareOut, PhLockSimple } from "@phosphor-icons/vue";
 import { computed, watch } from "vue";
 import DecisionControls from "@/components/review/DecisionControls.vue";
 import Notice from "@/components/review/Notice.vue";
+import SectionDownload from "@/components/review/SectionDownload.vue";
 import Button from "@/components/ui/Button.vue";
 import { flaggedOf } from "@/lib/chatcards";
 import { friendlyTime, plural } from "@/lib/format";
@@ -65,6 +66,7 @@ watch(
       Open full view<span class="sr-only"> of the whole review</span>
     </Button>
 
+    <SectionDownload :review="review" />
     <DecisionControls :review="review" :deciding="session.deciding.value" :on-decide="session.decide" @close="emit('close')" />
     <Notice v-if="session.decisionError.value" data-problem role="alert" class="font-medium">{{ session.decisionError.value }}</Notice>
   </section>

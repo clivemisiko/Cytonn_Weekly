@@ -544,11 +544,24 @@ export interface InputSlot {
   days?: { date: string; weekday: string; received: boolean; file: InputFile | null }[];
 }
 
-/** Whether the week's report can be exported, with each weekly section's state. */
+/** Whether the week's report can be exported (any section's draft finished), with each weekly section's state. */
 export interface ExportStatus {
   period: string;
   ready: boolean;
-  sections: { slug: string; title: string; state: "approved" | "in_review" | "rejected" | "not_drafted"; run_id: number | null }[];
+  /** Why nothing can be exported, when ready is false. */
+  reason: string | null;
+  all_approved: boolean;
+  /** "<Section> (<why>)" for each section the export leaves out. */
+  left_out: string[];
+  sections: {
+    slug: string;
+    title: string;
+    state: "approved" | "in_review" | "rejected" | "not_drafted";
+    run_id: number | null;
+    /** Why the section is left out (still drafting, failed, not started, placeholder only), or null. */
+    left_out_reason: string | null;
+    file_name: string;
+  }[];
   is_dev_draft: boolean;
   dev_sections: string[];
   dev_mode_label: string | null;

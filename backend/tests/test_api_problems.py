@@ -194,5 +194,5 @@ def test_the_review_routes(client, db):
            "already rejected")
 
 
-def test_the_export_before_every_section_is_approved(client):
-    expect(client.post("/api/export/weekly"), 409, "export_not_ready", "cannot be exported yet")
+def test_the_export_before_any_section_is_drafted(client):
+    expect(client.post("/api/export/weekly"), 409, "export_not_ready", "No section has a finished draft")

@@ -91,9 +91,11 @@ test("T122 Start draft shows the steps as they happen, then the review summary j
   await expect(review.getByText(/0 flagged/)).toBeVisible();
   await expect(rail(page).getByRole("button", { name: /^Digital Payments, In review/ })).toBeVisible();
 
-  // The export control is the old page's own, and says what it says there.
-  await expect(page.getByText(/Available once every section is approved: \d of \d still to go\./)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Export weekly report" })).toBeDisabled();
+  // The export control is the old page's own: a finished draft, approved or not, is enough to export.
+  await expect(page.getByRole("button", { name: "Export weekly report" })).toBeEnabled();
+  // The finished draft has its own download, with the full export's renderer and the section's file name.
+  const [one] = await Promise.all([page.waitForEvent("download"), review.getByRole("button", { name: "Download this section" }).click()]);
+  expect(one.suggestedFilename()).toMatch(/^Cytonn-Weekly-Digital-Payments-\d{4}-\d{2}-\d{2}\.docx$/);
 
   // Open full view: the review's own items in the aside, nothing in it that changes anything.
   await review.getByRole("button", { name: /^Open full view of the whole review/ }).click();

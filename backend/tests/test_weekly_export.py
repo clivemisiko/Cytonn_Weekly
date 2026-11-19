@@ -1,4 +1,4 @@
-"""The approved weekly report as one Word file: only when every section is approved, in the real order.
+"""The weekly report as one Word file: every finished section, approved or not, in the real order.
 
 The sections here are real reviews: Fixed Income and Equities from the weekly
 builders (synthetic inputs, the public bulletin), the others from the section helpers.
@@ -99,24 +99,94 @@ def _text(path_or_bytes):
     return doc, [p.text for p in doc.paragraphs]
 
 
-def test_the_export_is_refused_until_every_section_is_approved(tmp_path, built):
+def test_with_nothing_drafted_the_export_is_refused_with_a_plain_reason(tmp_path):
     db = tmp_path / "app.db"
     status = export.export_status(db, PERIOD)
-    assert status["ready"] is False and [s["state"] for s in status["sections"]] == ["not_drafted"] * 5
+    assert status["ready"] is False and status["reason"] == export.NONE_FINISHED
+    assert [s["state"] for s in status["sections"]] == ["not_drafted"] * 5
     assert [s["title"] for s in status["sections"]] == ORDER and status["file_name"] == "cytonn-weekly-2026-10-02.docx"
-    fi, _ = built
-    _save(db, "fixed_income", _copy(fi), approve=False)
-    rejected = sh.real_estate_review()
-    rejected.report_type, rejected.period = "weekly", PERIOD
-    rejected.decide("rejected")
-    review_store.save_review(rejected, section="real_estate", db_path=db)
-    with pytest.raises(export.ExportNotAllowed) as refused:
+    assert status["left_out"] == [f"{t} (not started)" for t in ("Fixed Income", "Equities", "Real Estate", "Digital Payments", "Focus of the Week")]
+    with pytest.raises(export.ExportNotAllowed, match="No section has a finished draft"):
         export.write_weekly_report(db, PERIOD, tmp_path / "out")
-    assert str(refused.value) == (
-        "The weekly report cannot be exported yet, because every section must be approved first. Not approved yet: "
-        "Fixed Income (still in review); Equities (not drafted); Real Estate (rejected); Digital Payments Weekly Highlights "
-        "(not drafted); Focus of the Week (not drafted). Approve those sections, then export again.")
     assert not (tmp_path / "out").exists()   # nothing is written
+
+
+SLUGS = ["fixed_income", "equities", "real_estate", "digital_payments", "focus"]
+TITLES = dict(zip(SLUGS, ["Fixed Income", "Equities", "Real Estate", "Digital Payments", "Focus of the Week"]))
+
+
+def _placeholder_of(review):
+    """The same review holding nothing but placeholders."""
+    if "blocks" in review.section:
+        review.section["blocks"] = [{"id": "x", "kind": "unavailable", "title": "Everything", "reason": "No inputs."}]
+    else:
+        review.section["items"] = []
+    return review
+
+
+@pytest.mark.parametrize("slug", SLUGS)
+@pytest.mark.parametrize("case", ["finished_unapproved", "finished_rejected", "drafting", "failed", "not_started", "placeholder"])
+def test_each_section_is_exported_once_its_draft_is_finished_approved_or_not(tmp_path, built, slug, case):
+    """The same rule on all five sections: approval never gates the file; drafting, failed, not started and
+    placeholder-only sections are left out, named in the status and never in the file."""
+    fi, eq = built
+    makers = {"fixed_income": lambda: _copy(fi), "equities": lambda: _copy(eq), "real_estate": sh.real_estate_review,
+              "digital_payments": make_review, "focus": lambda: sh.focus_review(topic="SSA Eurobonds")}
+    week = tmp_path / "app.db"
+    for other in SLUGS:
+        if other != slug:
+            _save(week, other, makers[other]())
+        elif case == "finished_rejected":
+            rejected = makers[slug]()
+            rejected.report_type, rejected.period = "weekly", PERIOD
+            rejected.section.setdefault("section", slug)
+            rejected.decide("rejected")
+            review_store.save_review(rejected, section=slug, db_path=week)
+        elif case == "placeholder":
+            _save(week, slug, _placeholder_of(makers[slug]()), approve=False)
+        elif case != "not_started":
+            _save(week, slug, makers[slug](), approve=case != "finished_unapproved")
+    live = {slug: case} if case in ("drafting", "failed") else {}
+
+    status = export.export_status(week, PERIOD, live=live)
+    reason = {"drafting": "still drafting", "failed": "failed", "not_started": "not started", "placeholder": "placeholder only"}.get(case)
+    assert status["ready"] is True
+    assert status["left_out"] == ([f"{TITLES[slug]} ({reason})"] if reason else [])
+    assert {s["slug"]: s["left_out_reason"] for s in status["sections"]}[slug] == reason
+    doc, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out", live=live))
+    headings = [p.text for p in doc.paragraphs if p.style.name == "Heading 1"][1:]
+    expected = [h for s, h in zip(SLUGS, ORDER) if not (reason and s == slug)]
+    assert headings == expected   # the usual order, the left-out section absent
+    body = "\n".join(text)
+    assert not any(f"{TITLES[slug]} ({why})" in body for why in ("still drafting", "failed", "not started", "placeholder only"))
+    approved_claim = any(t.startswith("Every section checked and approved") for t in text)
+    assert approved_claim is (case not in ("finished_unapproved", "finished_rejected"))
+    # the one-section download follows the same rule
+    if reason:
+        with pytest.raises(export.ExportNotAllowed, match=rf"cannot be downloaded yet: {TITLES[slug]} \({reason}\)"):
+            export.write_weekly_report(week, PERIOD, tmp_path / "one", live=live, section=slug)
+    else:
+        path = export.write_weekly_report(week, PERIOD, tmp_path / "one", live=live, section=slug)
+        assert path.name == f"Cytonn-Weekly-{TITLES[slug].replace(' ', '-')}-2026-10-02.docx"
+        one, words = _text(path)
+        assert [p.text for p in one.paragraphs if p.style.name == "Heading 1"] == [ORDER[SLUGS.index(slug)]]   # no summary, no other section
+
+
+def test_the_api_exports_without_approval_and_serves_one_section(tmp_path, built):
+    db = tmp_path / "app.db"
+    _, eq = built
+    _save(db, "equities", _copy(eq), approve=False)   # in review, not approved
+    client = TestClient(create_app(db_path=db, load_dotenv=False, export_root=tmp_path / "exports"))
+    status = client.get("/api/export/weekly", params={"period": "2026-10-02"}).json()
+    assert status["ready"] is True and "Equities (not started)" not in status["left_out"]
+    whole = client.post("/api/export/weekly", params={"period": "2026-10-02"})
+    assert whole.status_code == 200
+    assert [p.text for p in Document(io.BytesIO(whole.content)).paragraphs if p.style.name == "Heading 1"] == ["Executive Summary:", "Equities"]
+    one = client.post("/api/export/weekly/equities", params={"period": "2026-10-02"})
+    assert one.status_code == 200 and 'filename="Cytonn-Weekly-Equities-2026-10-02.docx"' in one.headers["content-disposition"]
+    refused = client.post("/api/export/weekly/real_estate", params={"period": "2026-10-02"})
+    assert refused.status_code == 409 and "Real Estate (not started)" in refused.json()["detail"]
+    assert client.post("/api/export/weekly/nope", params={"period": "2026-10-02"}).status_code == 409
 
 
 def test_the_export_status_counts_flagged_items_accepted_by_approving(tmp_path):
@@ -206,7 +276,7 @@ def test_a_dev_mode_week_is_watermarked_and_never_sendable(week, tmp_path):
     header = doc.sections[0].header
     assert header.paragraphs[0].text == export.DEV_LABEL
     assert 'string="DEV MODE DRAFT"' in header._element.xml and "rotation:315" in header._element.xml   # the watermark
-    reviews = export.require_all_approved(export.weekly_reviews(week, PERIOD))
+    reviews = export.exportable(export.weekly_reviews(week, PERIOD))[0]
     with pytest.raises(DevModeDeliveryBlocked, match="Digital Payments Weekly Highlights hold pieces drafted by the local model"):
         export.refuse_to_send(reviews)
 
@@ -226,30 +296,8 @@ def test_the_pictures_are_read_from_the_charts_folder_the_app_was_given(week, tm
     assert len(doc.inline_shapes) == 0 and [p.text for p in doc.paragraphs].count(export.PICTURE_UNVERIFIED) == 2
 
 
-def test_an_equities_section_in_review_or_rejected_stops_the_export(tmp_path, built):
-    db = tmp_path / "app.db"
-    fi, eq = built
-    _save(db, "fixed_income", _copy(fi))
-    _save(db, "real_estate", sh.real_estate_review())
-    _save(db, "digital_payments", make_review())
-    _save(db, "focus", sh.focus_review(topic="SSA Eurobonds"))
-    equities = _copy(eq)
-    equities.report_type, equities.period = "weekly", PERIOD
-    equities.section.setdefault("section", "equities")
-    review_store.save_review(equities, section="equities", db_path=db)          # undecided: still in review
-    assert export.export_status(db, PERIOD)["ready"] is False
-    equities.decide("rejected")                          # rejecting is always allowed
-    review_store.save_review(equities, section="equities", db_path=db)
-    with pytest.raises(export.ExportNotAllowed, match=r"Not approved yet: Equities \(rejected\)\. Approve those sections, then export again\.$"):
-        export.write_weekly_report(db, PERIOD, tmp_path / "out")
-    client = TestClient(create_app(db_path=db, load_dotenv=False, export_root=tmp_path / "exports"))
-    refused = client.post("/api/export/weekly", params={"period": "2026-10-02"})
-    assert refused.status_code == 409 and "Equities (rejected)" in refused.json()["detail"]
-    assert not (tmp_path / "exports").exists() and not (tmp_path / "out").exists()      # nothing is written
-
-
 def test_a_normal_week_may_be_sent(week):
-    export.refuse_to_send(export.require_all_approved(export.weekly_reviews(week, PERIOD)))   # does not raise
+    export.refuse_to_send(export.exportable(export.weekly_reviews(week, PERIOD))[0])   # does not raise
 
 
 def test_each_week_exports_only_its_own_sections(week, tmp_path):
@@ -274,7 +322,7 @@ def test_the_api_reports_readiness_and_returns_the_file(week, tmp_path):
     assert len(Document(io.BytesIO(r.content)).inline_shapes) == 2        # the Equities charts, read through the route's own check
     assert (tmp_path / "exports" / "ssa-eurobonds-cytonn-weekly.docx").is_file()
     refused = client.post("/api/export/weekly", params={"period": "2026-09-25"})
-    assert refused.status_code == 409 and refused.json()["detail"].startswith("The weekly report cannot be exported yet")
+    assert refused.status_code == 409 and refused.json()["detail"] == export.NONE_FINISHED
     assert client.get("/api/export/weekly", params={"period": "2026-10-03"}).status_code == 422
 
 
@@ -396,7 +444,7 @@ def test_the_approval_line_writes_its_date_as_the_app_does(week, tmp_path):
 
     _, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
     line = text[1]
-    reviews = export.require_all_approved(export.weekly_reviews(week, PERIOD))
+    reviews = export.exportable(export.weekly_reviews(week, PERIOD))[0]
     last = max(review.decided_at for _, review in reviews)
     assert line.startswith(f"Every section checked and approved by the analyst (last on {day_text(date.fromisoformat(last[:10]))}). ")
     assert re.search(r"\(last on \d{1,2} [A-Z][a-z]{2} \d{4}\)", line) and not re.search(r"\d{4}-\d{2}-\d{2}", line)
