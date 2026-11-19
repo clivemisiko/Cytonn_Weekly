@@ -9,7 +9,13 @@ import type { AppConfig, ReportChoice, SectionSummary } from "./types";
 /** Starting a draft as the chat's draft card does: the old start screen's questions asked together in one dialog (`asking`),
  *  then POST /api/runs. The draft card and the prepare page share it, so the two can never start a draft differently. */
 export function useDraftStart(
-  opts: { section: MaybeRefOrGetter<SectionSummary>; report: MaybeRefOrGetter<ReportChoice>; config: MaybeRefOrGetter<AppConfig | null> },
+  opts: {
+    section: MaybeRefOrGetter<SectionSummary>;
+    report: MaybeRefOrGetter<ReportChoice>;
+    config: MaybeRefOrGetter<AppConfig | null>;
+    /** A Focus's typed topic and section titles, sent with the draft as the old start screen sends them. */
+    focus?: MaybeRefOrGetter<{ topic: string; titles: string } | null>;
+  },
   after: () => void,
 ) {
   const starting = ref(false);
@@ -64,7 +70,12 @@ export function useDraftStart(
     problem.value = null;
     const section = toValue(opts.section);
     try {
-      const started = await api.startRun(section.slug, toValue(opts.report), { provider: section.uses_provider ? toValue(opts.config)?.provider : undefined });
+      const focus = section.needs_topic ? toValue(opts.focus) : null;
+      const started = await api.startRun(section.slug, toValue(opts.report), {
+        provider: section.uses_provider ? toValue(opts.config)?.provider : undefined,
+        topic: focus ? focus.topic.trim() : undefined,
+        sections: focus && focus.titles.trim() ? focus.titles : undefined,
+      });
       startedRun.value = started.run_id;
     } catch (err) {
       problem.value = (err as Error).message;
