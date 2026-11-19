@@ -198,6 +198,7 @@
   --cw-button-fg: light-dark(#ffffff, #000000);
   --cw-brand: light-dark(#0b6b4f, #4fc79a); /* the wordmark */
   --cw-bubble: light-dark(#eef8f6, #12292a); /* the user's messages, the selected section, the landing notice */
+  --cw-assistant: light-dark(#f6f7f7, #171a20); /* the assistant's messages and the typing indicator */
   --cw-selected-fg: light-dark(#0e5a62, #8fdade);
   --cw-chip: light-dark(#f1f1f1, #1c2027);
   --cw-dots: light-dark(#5c9a1f, #8fd14f); /* decorative only: always beside text that says the same */
@@ -230,6 +231,7 @@
   --color-cw-button-fg: var(--cw-button-fg);
   --color-cw-brand: var(--cw-brand);
   --color-cw-bubble: var(--cw-bubble);
+  --color-cw-assistant: var(--cw-assistant);
   --color-cw-selected-fg: var(--cw-selected-fg);
   --color-cw-chip: var(--cw-chip);
   --color-cw-dots: var(--cw-dots);

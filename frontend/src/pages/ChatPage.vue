@@ -192,7 +192,7 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
                     <PhUser weight="fill" class="size-3.5" />
                   </span>
                   <span v-else class="mt-1" aria-hidden="true"><CytonnMark avatar :size="44" /></span>
-                  <div class="min-w-0 flex-1 space-y-2 rounded-3xl bg-cw-bubble px-4 py-3.5">
+                  <div class="min-w-0 flex-1 space-y-2 rounded-3xl px-4 py-3.5" :class="m.role === 'user' ? 'bg-cw-bubble' : 'bg-cw-assistant'">
                     <p class="sr-only">{{ m.role === "user" ? "You" : "Assistant" }}</p>
                     <p v-if="m.content" class="max-w-[70ch] whitespace-pre-wrap text-base leading-7 [overflow-wrap:anywhere]">{{ m.content }}</p>
                     <template v-for="(c, i) in cards" :key="i">
@@ -207,7 +207,7 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
 
             <div v-if="status?.kind === 'working'" class="flex items-start gap-4">
               <span class="mt-1" aria-hidden="true"><CytonnMark avatar :size="44" /></span>
-              <div role="status" class="flex h-[4.375rem] w-[6.875rem] items-end justify-center gap-2.5 rounded-3xl bg-cw-chip pb-4">
+              <div role="status" class="flex h-[4.375rem] w-[6.875rem] items-end justify-center gap-2.5 rounded-3xl bg-cw-assistant pb-4">
                 <span class="sr-only">{{ status.text }}</span>
                 <span v-for="d in 3" :key="d" class="typing-dot size-2.5 rounded-full bg-cw-dots" :style="{ animationDelay: `${(d - 1) * 160}ms` }" aria-hidden="true" />
               </div>
