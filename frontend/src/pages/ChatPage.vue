@@ -21,7 +21,7 @@ import { friendlyDate } from "@/lib/format";
 import { BACK_NONE, type BackTarget, useBack } from "@/lib/nav";
 import { openingWeek, weekChoiceLabel } from "@/lib/previous";
 import { MARKS } from "@/lib/railmarks";
-import { shell, useShellActions, useShellHere, useShellRibbon } from "@/lib/shell";
+import { railState, shell, useShellActions, useShellHere, useShellRibbon } from "@/lib/shell";
 import type { AppConfig, Overview, ReportChoice, WeekChoice } from "@/lib/types";
 
 const route = useRoute();
