@@ -1,9 +1,24 @@
 <script setup lang="ts">
 import { PhArrowsClockwise, PhCheckCircle, PhDownloadSimple, PhMinusCircle, PhWarningCircle } from "@phosphor-icons/vue";
+import { ref } from "vue";
+import { LINK } from "@/components/ui/button";
 import { friendlyTime } from "@/lib/format";
 import { GROUPS, type GroupKey, type Readiness, sourcesLine, snipLine } from "@/lib/chatcards";
 
-defineProps<{ readiness: Readiness; title: string; at: string }>();
+const props = defineProps<{ readiness: Readiness; title: string; at: string }>();
+
+// Starts folded: the live cards below say what to do; the full list is one press away.
+const open = ref(false);
+const listId = `readiness-list-${props.at.replace(/\W/g, "")}`;
+const counts = (
+  [
+    [props.readiness.groups.needs_analyst.length, "need you"],
+    [props.readiness.groups.optional.length, "optional"],
+  ] as const
+)
+  .filter(([n]) => n > 0)
+  .map(([n, w]) => `${n} ${w}`)
+  .join(", ");
 
 const ICONS = { needs_analyst: PhWarningCircle, carried_or_suggested: PhArrowsClockwise, fetched: PhDownloadSimple, in_place: PhCheckCircle, optional: PhMinusCircle } satisfies Record<GroupKey, unknown>;
 </script>
@@ -13,7 +28,14 @@ const ICONS = { needs_analyst: PhWarningCircle, carried_or_suggested: PhArrowsCl
     <div class="space-y-0.5">
       <h3 class="text-sm font-semibold">What {{ title }} needs for the week ending {{ readiness.weekEnding }}</h3>
       <p class="text-xs text-muted-foreground">As it was when this conversation opened, {{ friendlyTime(at) }}. What can be done now is under “What you can do now”.</p>
+      <div class="flex flex-wrap items-center gap-x-3">
+        <p v-if="counts" class="text-sm">{{ counts }}</p>
+        <button type="button" :aria-expanded="open" :aria-controls="listId" :class="['min-h-11 text-sm', LINK]" @click="open = !open">
+          {{ open ? "Hide the list" : "Show the list" }}
+        </button>
+      </div>
     </div>
+    <div v-show="open" :id="listId" class="space-y-3">
     <template v-for="g in GROUPS" :key="g.key">
       <div v-if="readiness.groups[g.key].length" class="space-y-1">
         <p class="flex items-center gap-1.5 text-sm font-semibold">
@@ -37,5 +59,6 @@ const ICONS = { needs_analyst: PhWarningCircle, carried_or_suggested: PhArrowsCl
       <p class="text-sm">{{ sourcesLine(readiness.sources) }}</p>
     </div>
     <p v-if="readiness.note" class="text-sm text-muted-foreground">{{ readiness.note }}</p>
+    </div>
   </section>
 </template>

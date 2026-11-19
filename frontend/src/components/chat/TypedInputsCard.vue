@@ -97,7 +97,7 @@ const pastedRows = (text: string) => text.split("\n").filter((l) => l.trim()).le
 </script>
 
 <template>
-  <section aria-labelledby="typed-title" class="space-y-3 rounded-md border bg-background px-3 py-2.5" data-card="typed_inputs">
+  <section aria-labelledby="typed-title" class="space-y-3 rounded-md border bg-background px-3 py-2.5" :class="!finished && 'outline-2 -outline-offset-1 outline-cw-button outline-solid'" data-card="typed_inputs">
     <h3 id="typed-title" class="text-sm font-semibold">Type these here</h3>
     <p aria-live="polite" class="sr-only">{{ announce }}</p>
     <p v-if="readProblem" role="alert" class="text-xs font-medium whitespace-pre-line text-flag-fg">{{ readProblem }}</p>

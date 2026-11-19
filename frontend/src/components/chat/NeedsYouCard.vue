@@ -4,7 +4,7 @@ import { ref } from "vue";
 import { RouterLink } from "vue-router";
 import Notice from "@/components/review/Notice.vue";
 import Button from "@/components/ui/Button.vue";
-import { FIELD, LINK } from "@/components/ui/button";
+import { LINK, buttonVariants } from "@/components/ui/button";
 import * as api from "@/lib/api";
 import { FETCHABLE_ITEMS, type NeedsYou } from "@/lib/chatcards";
 
@@ -13,6 +13,8 @@ const emit = defineEmits<{ changed: [] }>();
 
 const busy = ref<string | null>(null);
 const problem = ref<string | null>(null);
+/** The file names last picked per slot: the native "No file chosen" text is hidden, so the name is shown here. */
+const picked = ref<Record<string, string>>({});
 
 /** Every button here calls the route the old page's inputs panel calls, and the card is read again after it. */
 async function act(key: string, call: () => Promise<unknown>) {
@@ -36,6 +38,7 @@ async function upload(slot: string, event: Event) {
   const files = [...(input.files ?? [])];
   input.value = "";
   if (!files.length) return;
+  picked.value = { ...picked.value, [slot]: files.map((f) => f.name).join(", ") };
   await act(`upload-${slot}`, async () => {
     const refused: string[] = [];
     for (const file of files) {
@@ -55,19 +58,21 @@ async function upload(slot: string, event: Event) {
     <h3 class="text-sm font-semibold">Needs you</h3>
 
     <ul v-if="needs.uploads.length" class="space-y-3">
-      <li v-for="u in needs.uploads" :key="u.key" class="space-y-1.5">
+      <li v-for="u in needs.uploads" :key="u.key" class="flex flex-wrap items-center gap-x-3 gap-y-1">
         <p class="text-sm font-medium">{{ u.label }}</p>
         <p class="text-xs text-muted-foreground">{{ u.why }}</p>
-        <div class="flex flex-wrap items-center gap-2">
-          <Button v-if="u.fetchable" variant="outline" size="sm" :disabled="busy !== null" @click="fetchBulletin">
+        <div class="flex flex-wrap items-center gap-2 sm:ml-auto">
+          <Button v-if="u.fetchable" variant="outline" size="sm" class="min-h-11" :disabled="busy !== null" @click="fetchBulletin">
             <PhCloudArrowDown weight="bold" data-icon="inline-start" aria-hidden="true" />
             {{ busy === "fetch" ? "Fetching…" : "Fetch from CBK" }}<span class="sr-only">: {{ u.label }}</span>
           </Button>
-          <label class="text-sm">
-            <span class="sr-only">Upload {{ u.label }}</span>
-            <input type="file" multiple accept=".pdf,.xlsx" :disabled="busy !== null" :aria-label="`Upload ${u.label}`" :class="[FIELD, 'h-9 max-w-full py-1 text-sm']" @change="upload(u.key, $event)" />
+          <!-- The same input, visually hidden: the label is the button, and it shows the ring while the input has keyboard focus. -->
+          <label :class="[buttonVariants({ variant: 'outline', size: 'sm' }), 'min-h-11 cursor-pointer has-[:focus-visible]:ring-3 has-[:focus-visible]:ring-ring/50 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50']">
+            <input type="file" multiple accept=".pdf,.xlsx" :disabled="busy !== null" :aria-label="`Upload ${u.label}`" class="sr-only" @change="upload(u.key, $event)" />
+            <span aria-hidden="true">Choose file</span>
           </label>
         </div>
+        <p v-if="picked[u.key]" class="w-full text-xs [overflow-wrap:anywhere]">Chosen: {{ picked[u.key] }}</p>
       </li>
     </ul>
 

@@ -196,6 +196,7 @@
   --cw-accent: light-dark(#17757b, #5fc4c9); /* headings: 5.4 on card, 4.9 on page */
   --cw-button: light-dark(#13707a, #5fc4c9);
   --cw-button-fg: light-dark(#ffffff, #000000);
+  --cw-button-hover: light-dark(#0e5a62, #8fdade);
   --cw-brand: light-dark(#0b6b4f, #4fc79a); /* the wordmark */
   --cw-bubble: light-dark(#eef8f6, #12292a); /* the user's messages, the selected section, the landing notice */
   --cw-assistant: light-dark(#f6f7f7, #171a20); /* the assistant's messages and the typing indicator */
@@ -214,6 +215,27 @@
   border-color: var(--cw-hairline);
   background: var(--cw-page);
   box-shadow: none;
+}
+/* The chat page in one colour family: the shared button, link and ring tokens take the skin's teal inside ChatPage only
+   (.cw-chat). The shared classes and the overview pages are unchanged. AA pairs in contrast.test.ts. */
+.cw-chat {
+  --primary: var(--cw-button);
+  --primary-hover: var(--cw-button-hover);
+  --primary-foreground: var(--cw-button-fg);
+  --link: var(--cw-accent);
+  --ring: var(--cw-button);
+  --cw-dots: var(--cw-button);
+}
+/* One look for every live card, the shared export bar included. */
+.cw-skin [data-card="live"] > .border {
+  border-radius: var(--radius-md);
+  padding: 0.625rem 0.75rem;
+}
+.cw-skin [data-card="live"] > .border .panel-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
 }
 .typing-dot {
   animation: typing-dot 1s ease-in-out infinite;
