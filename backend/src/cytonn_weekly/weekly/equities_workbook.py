@@ -232,13 +232,15 @@ def read_large_caps(book: Workbook) -> list[Cell]:
     return names
 
 
-def read_gainers_losers(book: Workbook, days: list[date]) -> list[tuple[str, dict[date, Cell]]]:
-    """[(ticker, {day: price cell})] in the sheet's row order, for each day asked for.
+def read_gainers_losers(book: Workbook, week: Week, as_at: Optional[date] = None) -> list[tuple[str, dict[date, Cell]]]:
+    """[(ticker, {day: price cell})] in the sheet's row order: the as-at day (the week's Friday unless given) first, then
+    the Friday before.
 
     Each day's column is the one whose row-2 cell is that exact date.  The tickers are in the
     nearest column left of the first day's column with text in row 3, read down to the first gap.
     """
     sheet = book.sheet(GAINERS_SHEET)
+    days = [as_at or week.ending, week.previous_friday]
     cols = {}
     for day in days:
         hits = [c for c in sheet.cells(rows=range(2, 3)) if c.day == day]

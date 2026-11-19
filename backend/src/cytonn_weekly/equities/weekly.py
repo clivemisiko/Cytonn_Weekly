@@ -109,12 +109,17 @@ LARGE_CAP_TICKERS = {"safaricom": "SCOM", "equity group": "EQTY", "kcb": "KCB", 
                      "hfcb group": "HFCK"}
 # 'Gainers & Losers' tickers as the paragraphs print them (the October 2026 Monthly and the Q3'2026 review), and the
 # two that KCB IB's report lists under another ticker.
-SHEET_NAMES = {"SCOM": "Safaricom", "EQTY": "Equity", "COOP": "Co-op Bank", "BAMB": "Bamburi", "SCBK": "Standard Chartered Bank",
-               "STANBIC": "Stanbic"}
-BANK_NAMES = {**SHEET_NAMES, "DTBK": "DTB-K"}
+# Ryan's names (5 Nov 2026) for Co-op, BAT and DTBK; the tables keep their short names.  Bamburi's was not given.
+SHEET_NAMES = {"SCOM": "Safaricom", "EQTY": "Equity", "COOP": "Co-operative Bank", "BAMB": "Bamburi Cement",
+               "SCBK": "Standard Chartered Bank", "STANBIC": "Stanbic", "BAT": "British American Tobacco",
+               "DTBK": "Diamond Trust Bank of Kenya"}
+BAMBURI_FLAG = "the name \"Bamburi Cement\" is assumed: the team did not give the name to print for Bamburi, check it"
 KCB_TICKERS = {"DTBK": "DTK", "STANBIC": "SBIC"}
-# The banks among the twelve; to be confirmed with Ryan on 5 Nov 2026.
+# Ryan confirmed on 5 Nov 2026 that the banking paragraph names banks only.  He did not itemise which of the twelve are
+# banks, so if this list changes the reviewer is still asked to check it.
 BANKS = ("EQTY", "KCB", "COOP", "ABSA", "SCBK", "DTBK", "NCBA", "STANBIC")
+# BANKS under the tickers KCB IB's report uses, for the typed-list path.
+BANK_KEYS = {*BANKS, *(KCB_TICKERS[b] for b in BANKS if b in KCB_TICKERS)}
 LARGE_CAP_FLAG = ("check the names: this sentence names the biggest movers among the team's large-cap list, which is the "
                   "equities team's stated rule, but the published issues have not always followed it (they have named EABL, "
                   "which is not on the list, and passed over bigger movers)")
@@ -408,7 +413,7 @@ def banking_block(m: Market) -> dict[str, Any]:
             notes.append(f"No stocks are named: {exc}.")
     if gainers or losers:
         down = moved < 0 if moved else len(losers) >= len(gainers)
-        lead_word, (a, b), other_word, other = attribution(figs, gainers, losers, down, "bank_move", names=BANK_NAMES)
+        lead_word, (a, b), other_word, other = attribution(figs, gainers, losers, down, "bank_move")
         text += f" This is attributable to {lead_word} recorded by large cap stocks such as {a} of {b}."
         if other:
             text += (f" The performance was however {'supported' if lead_word == 'losses' else 'weighed down'} by "
@@ -425,11 +430,12 @@ def sheet_movers(m: Market) -> list[Mover]:
     """The twelve large caps' weeks from the workbook's 'Gainers & Losers' prices, with KCB IB's change as each one's
     second reading.  WorkbookError, naming the sheet and the date, if the sheet cannot give them."""
     week, report = m.week, m.inputs.kcb_weekly
-    rows = equities_workbook.read_gainers_losers(m.inputs.equities_book, [week.ending, week.previous_friday])
+    rows = equities_workbook.read_gainers_losers(m.inputs.equities_book, week)
     src = f"{kcb.SOURCE_NAME} weekly report, {report.report_date.isoformat()}" if report else ""
     out = []
     for ticker, cells in rows:
-        inputs = {"now": typed(cells[week.ending], WB), "last_week": typed(cells[week.previous_friday], WB)}
+        now, last = cells.values()      # the as-at day first, then the Friday before
+        inputs = {"now": typed(now, WB), "last_week": typed(last, WB)}
         expr = pct_change("now", "last_week")
         stock = report.securities.get(KCB_TICKERS.get(ticker, ticker)) if report else None
         second = second_reading(stock["change_pct"], src) if stock else None
@@ -438,15 +444,17 @@ def sheet_movers(m: Market) -> list[Mover]:
 
 
 def ranked(movers: list[Mover]) -> tuple[list[Mover], list[Mover]]:
-    """(up to three gainers, up to three losers).  A change of exactly zero is neither; a tie on the unrounded change
-    keeps the order given (the sheet's row order), because the sort is stable."""
-    gainers = sorted((x for x in movers if x.change > 0), key=lambda x: -x.change)[:3]
-    losers = sorted((x for x in movers if x.change < 0), key=lambda x: x.change)[:3]
+    """(up to three gainers, up to three losers).  A change of exactly zero is neither.  A tie on the unrounded change goes
+    to a bank first, then alphabetically by the printed name (Ryan, 5 Nov 2026), at the cut-off too."""
+    def tie(x: Mover) -> tuple[bool, str]:
+        return x.ticker not in BANK_KEYS, x.name.casefold()
+
+    gainers = sorted((x for x in movers if x.change > 0), key=lambda x: (-x.change, *tie(x)))[:3]
+    losers = sorted((x for x in movers if x.change < 0), key=lambda x: (x.change, *tie(x)))[:3]
     return gainers, losers
 
 
-def attribution(figs: Figures, gainers: list[Mover], losers: list[Mover], down: bool, prefix: str, flag: str = "",
-                names: Optional[dict[str, str]] = None) -> tuple[str, tuple[str, str], str, Optional[tuple[str, str]]]:
+def attribution(figs: Figures, gainers: list[Mover], losers: list[Mover], down: bool, prefix: str, flag: str = "") -> tuple[str, tuple[str, str], str, Optional[tuple[str, str]]]:
     """(lead word, (lead names, their changes), other word, (other names, their changes) or None), the losses leading
     when ``down``; an empty lead group swaps with the other."""
     lead, other = (losers, gainers) if down else (gainers, losers)
@@ -457,12 +465,13 @@ def attribution(figs: Figures, gainers: list[Mover], losers: list[Mover], down: 
     def listed(group: list[Mover]) -> tuple[str, str]:
         shown = []
         for x in group:
+            first = flag if not figs.items else ""
+            note = "; ".join(f for f in (first, BAMBURI_FLAG if x.ticker == "BAMB" else "") if f)
             shown.append(figs.add(f"{prefix}_{x.ticker}", f"{x.name} week-on-week change", PLAIN_PCT, 1, x.inputs, x.expr,
-                                  flag=flag if not figs.items else ""))
+                                  flag=note))
             if x.second:
                 figs.items[-1]["second"] = x.second
-        printed = [(names or {}).get(x.ticker, x.name) for x in group]
-        return join_names(printed), join_names(shown) + (" respectively" if len(group) > 1 else "")
+        return join_names([x.name for x in group]), join_names(shown) + (" respectively" if len(group) > 1 else "")
 
     return lead_word, listed(lead), other_word, listed(other) if other else None
 
