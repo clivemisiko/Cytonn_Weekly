@@ -39,6 +39,9 @@ test("T116 the chat opens on a section picker with the week, a section opens its
   await main.getByRole("button", { name: "Whole report" }).click();
   await expect(page).toHaveURL(/section=fixed_income/);
   await expect(page.getByRole("heading", { name: "Fixed Income", level: 2 })).toBeVisible();
+  // A section with no draft opens on its prepare page; its conversation is one link away (view=conversation).
+  await expect(page.locator('[data-card="prepare"]')).toBeVisible();
+  await page.goto(`/chat?section=fixed_income&period=${encodeURIComponent(PERIOD)}&view=conversation`);
   const log = page.getByRole("log", { name: "Conversation" });
   await expect(log.getByRole("region", { name: /What Fixed Income needs for the week ending 2026-10-09/ })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Report sections" }).getByRole("button", { name: /^Fixed Income/ })).toHaveAttribute("aria-current", "page");
