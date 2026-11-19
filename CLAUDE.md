@@ -105,25 +105,33 @@ docker compose down
 - **Tests** are not in the runtime image: `docker build --target test -t cytonn-api-test backend`, then `docker run --rm --network none cytonn-api-test` (no `.env`, no data folder, no network; the PostgreSQL smoke tests are deselected).
 - **Never run `docker compose config` without `--quiet` or `--no-env-resolution`:** it expands `env_file` and prints the database URL with its password.
 
-## Where the detailed notes live
+### Run locally with Docker (SQLite)
 
-The notes below were moved out of this file, word for word, into the folder each is about. Claude Code reads a folder's CLAUDE.md when it works in that folder; read the one you need before changing its code.
+`docker-compose.local.yml` (2026-11-04) runs the stack on SQLite on this machine only: `CYTONN_REQUIRE_POSTGRES=0`, `CYTONN_DATABASE_URL` forced empty (`environment` beats `env_file`), and `/app/data` on the named volume `cytonn_local_data` instead of the bind mount, so the real `backend/data` and its `app.db` are never touched. Compose never loads it on its own and `deploy/deploy.sh` names its files, so the droplet still requires PostgreSQL.
 
-| Topic | File |
-| --- | --- |
-| Local model settings, drafting with Amazon Bedrock, the source policy, the gather step | `backend/src/cytonn_weekly/drafting/CLAUDE.md` |
-| The two content shapes and the review model | `backend/src/cytonn_weekly/review/CLAUDE.md` |
-| The review API, run events, drafting seats and the queue | `backend/api/CLAUDE.md` |
-| The web app, the end-to-end tests, the visual design system | `frontend/CLAUDE.md` |
-| The weekly report's inputs, parsers, week windows, section summaries, the Word export | `backend/src/cytonn_weekly/weekly/CLAUDE.md` |
-| The weekly Fixed Income section and the net domestic borrowing log | `backend/src/cytonn_weekly/fixed_income/CLAUDE.md` |
-| The weekly Equities section and the listed banks and insurers | `backend/src/cytonn_weekly/equities/CLAUDE.md` |
-| The charts the tool draws | `backend/src/cytonn_weekly/charts/CLAUDE.md` |
-| Notable this week and the detector library | `backend/src/cytonn_weekly/notable/CLAUDE.md` |
-| Sources per section, and the blocked stubs | `backend/src/cytonn_weekly/CLAUDE.md` |
-| Report types: Markets Reviews, the Monthly, companion reports | `backend/src/cytonn_weekly/periodic/CLAUDE.md` |
-| The analyst chat agent (Phase 8): the loop, the read tools, the job limits | `backend/src/cytonn_weekly/agent/CLAUDE.md` |
-| The history store (Phase 4): series, points, corrections, confirmation | `backend/src/cytonn_weekly/history/CLAUDE.md` |
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.local.yml down
+```
+
+**Never put the hosted database URL in the local `.env`.** The override blanks it for the container, but a native run reads `.env` directly and would write to the hosted database.
+
+### Local model speed settings (development only)
+
+Four opt-in environment variables shorten a local (Ollama) draft. They are read in one place, `read_local_settings()` in `digital_payments/providers/local_provider.py`, when a provider is created, and `LocalProvider` and `LocalNarrativeProvider` both use them. The Anthropic provider never reads them. Unset, empty or blank means the default, which is the behaviour before they existed (the requests are pinned by `backend/tests/fixtures/local_provider_requests_before.json`).
+
+| Variable | Range | Default |
+| --- | --- | --- |
+| `CYTONN_LOCAL_MAX_SEARCH_RESULTS` | 1 to 5 | 5 |
+| `CYTONN_LOCAL_RESULT_CHARS` | 500 to 3000 | no extra cut (Exa already returns at most 3000 characters per result) |
+| `CYTONN_LOCAL_NUM_THREAD` | 1 to 16 | not sent (Ollama picks the thread count) |
+| `CYTONN_LOCAL_NUM_PREDICT` | 1024 to 4096 | 2048 |
+
+- **`num_ctx` is fixed at 8192 and has no variable** (4096 breaks drafts). `keep_alive` is not sent, as before. The `num_predict` minimum is 1024 because a cap of 700 truncates Markets Review briefs. A per-model override in `_MODEL_CONFIG` still wins over `CYTONN_LOCAL_NUM_PREDICT`.
+- **An invalid value** (not an integer, or outside the range) logs one warning naming the variable and the range, and the default is used; it is never clamped.
+- **Trimming happens after the search, where the prompt is built** (`_trim_results`), so the Exa request and `backend/data/exa_cache/` are the same whatever the settings. The draft is validated against the trimmed list, so a link or claim citing a result the model was not shown is dropped. A result's text is cut at a word boundary and never inside a number; its title and URL are untouched.
+- Each provider logs its effective values once, at first use (logger `cytonn_weekly.digital_payments.providers.local_provider`): a WARNING when any setting is off its default, so it shows without any logging setup, and INFO when all four are defaults. Nothing of it enters a draft.
+- `docker-compose.yml` forwards the four to the `api` service as `${NAME:-}`, so an unset one arrives empty and is read as unset. The fast preset is in `.env.example`.
 
 ## Architecture
 
@@ -269,7 +277,7 @@ Roadmap, not this window: workbook fallback/cross-check; Focus topic suggestion 
   - **Market P/E:** typed from Bloomberg's NASI P/E after Friday's close. The Bloomberg login exists (since 15 October); whether the licence allows scripted retrieval is not settled, so the P/E stays a typed number (the form or the workbook).
   - **Money market fund table:** the analysts type it from the Daily Nation e-paper of the Friday or last working day, so every row is analyst input. The source label is a form item defaulting to "Daily Nation", and the tool needs no login for it.
   - **Eurobond "Yields at Issue":** not in the workbook's issue list. `YIELDS_AT_ISSUE` in `fixed_income/weekly.py` holds the figures #38.2026 printed, whose fixed rows are known to be stale or shifted; the rows are flagged until the analysts confirm each.
-  - **Large-cap movers (settled 2026-11-04):** the stocks come from the 'Gainers & Losers' sheet (Ryan, 4 Nov 2026), whose twelve include EABL and leave out I&M and HF. On the 30 Oct 2026 workbook the rule gives the October 2026 Monthly's weekly and banking lists exactly, and on that workbook's 2 Oct and 25 Sep columns the names the Q3'2026 review printed. Which of the twelve are banks is still to be confirmed. The "check the names" flag remains only on the no-workbook fallback.
+  - **Large-cap movers (settled 2026-11-04):** the stocks come from the 'Gainers & Losers' sheet (Ryan, 4 Nov 2026), whose twelve include EABL and leave out I&M and HF. On the 30 Oct 2026 workbook the rule gives the October 2026 Monthly's weekly and banking lists exactly, and on that workbook's 2 Oct and 25 Sep columns the names the Q3'2026 review printed. Ryan's answers of 5 Nov: gainers are only stocks that rose (up to three), losers the three lowest, and the banking paragraph names banks only (which of the twelve are banks was not itemised, so `BANKS` stays a list to check if it changes). The sentences print "Co-operative Bank", "British American Tobacco" and "Diamond Trust Bank of Kenya" (the tables keep their short names); Bamburi's name was not given, so "Bamburi Cement" is assumed and its figure is flagged. A tie goes to a bank, then alphabetically by the printed name, at the cut-off too. `read_gainers_losers(book, week, as_at=None)` reads the as-at day (the week's Friday unless given) and the Friday before. The "check the names" flag remains only on the no-workbook fallback.
   - **The Top 5 funds' average against last week** needs last week's workbook among last week's inputs; without it the sentence gives this week's average only. The team's rule gives a different figure from the one the Q3'2026 review printed, which used a stale list of five named funds.
   - **A printed rounding difference:** the Q3'2026 review printed the previous week's foreign net buying as USD 0.5 mn where the workbook's figure rounds to 0.6; the tool rounds half up.
   - **The Universe of Coverage against #38.2026:** nine of thirteen rows reproduce every printed cell from the 2 October workbook; the other four differ only in Target Price, Upside and Recommendation, because the analysts revised those targets after #38 went out.
@@ -303,3 +311,24 @@ Roadmap, not this window: workbook fallback/cross-check; Focus topic suggestion 
 
 ---
 *This file is the current-state reference for coding. The fuller decision history lives in the "Cytonn Weekly: AI-Assisted Report Generation" Claude Project (`claude/project-status.md`), which Claude Code can't read. Update this file as decisions change.*
+
+## Test scope
+
+Run only the tests a change can break. Do not run the whole suite by default.
+
+- Always run the unit tests for the files you changed, plus typecheck, lint and build.
+- Run only the Playwright spec files that cover the feature you touched, each in its own command with one worker.
+- Run only the backend tests for the modules you touched.
+- Run a full suite only when the change touches something shared: backend routes or schemas, shared stores or API helpers, global styles or design tokens, build or dependency files, or a component used by several pages. Say which one applies and why a full run is justified.
+- Never run suites in parallel. Stop any server you started when a run ends.
+- While they still fail on main, editsentence (T38) and the variants fingerprint check are not caused by your change. Report them if they still fail, but do not chase them.
+
+## Uniform sections
+
+The report has five sections: Fixed Income, Equities, Real Estate, Digital Payments and Focus of the Week. Every change must be uniform across all five.
+
+- The same page structure, cards, stepper, states and wording rules apply to every section. A section differs from another only in its data, such as which documents and steps it has.
+- Do not build or change something for one section only. If a change cannot apply to all five in the same round, say so before building and wait for a decision.
+- Shared code stays shared. Do not fork a component or add a section-specific branch where a data difference would do.
+- Tests for new behaviour run on all five sections, or through a table-driven test that loops over them. Keep the guard test that checks the five sections share one structure.
+- Inputs are entered on the page itself, with Previous and Next. Never send an analyst to an old page to enter an input.

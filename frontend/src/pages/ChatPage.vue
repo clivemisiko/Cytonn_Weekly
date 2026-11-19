@@ -19,14 +19,16 @@ import { PREPARE_SECTIONS, parseReadiness, parseReviewSnapshot } from "@/lib/cha
 import { draftingFor, draftingList } from "@/lib/drafting";
 import { friendlyDate } from "@/lib/format";
 import { BACK_NONE, type BackTarget, useBack } from "@/lib/nav";
-import { weekChoiceLabel } from "@/lib/previous";
-import { railState, shell, useShellActions, useShellHere, useShellRibbon } from "@/lib/shell";
+import { openingWeek, weekChoiceLabel } from "@/lib/previous";
+import { MARKS } from "@/lib/railmarks";
+import { shell, useShellActions, useShellHere, useShellRibbon } from "@/lib/shell";
 import type { AppConfig, Overview, ReportChoice, WeekChoice } from "@/lib/types";
 
 const route = useRoute();
 const router = useRouter();
 const SECTION_BTN = "h-11 rounded-sm border border-transparent bg-cw-chip px-4 font-normal text-foreground hover:bg-cw-chip hover:border-input aria-[current=true]:!border-cw-button aria-[current=true]:!bg-cw-bubble aria-[current=true]:font-semibold aria-[current=true]:text-cw-selected-fg";
 const first = (v: unknown) => (Array.isArray(v) ? String(v[0] ?? "") : typeof v === "string" ? v : "");
+const START_BTN = "h-12 w-full rounded-xl bg-cw-button font-semibold text-cw-button-fg hover:bg-cw-button hover:opacity-90";
 const WEEK = /^Week ending \d{4}-\d{2}-\d{2}$/;
 
 const config = shallowRef<AppConfig | null>(null);
@@ -85,7 +87,8 @@ async function load() {
       config.value = c;
       shell.config.value = c;
       choices.value = weeks.choices ?? [];
-      defaultPeriod.value = api.weekPeriod(weeks.default_week_ending);
+      // Settled before the overview below is read, so the Week select never shows one week then another.
+      if (!WEEK.test(first(route.query.period))) defaultPeriod.value = await openingWeek(weeks, () => api.getOverview());
     }
     overview.value = await api.getOverview(report.value);
     shell.setOverview(overview.value); // the rail takes the same payload
@@ -150,14 +153,19 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
 </script>
 
 <template>
-  <main id="main" tabindex="-1" class="cw-skin cw-chat min-h-[calc(100dvh-var(--topbar-h))] bg-cw-page">
-    <Masthead wide title="Chat" :class="current && 'sr-only'" />
+  <main id="main" tabindex="-1" class="cw-skin min-h-[calc(100dvh-var(--topbar-h))] bg-cw-page">
+    <Masthead v-if="current" wide title="Chat" class="sr-only" />
+    <header v-else class="px-4 pt-8 sm:px-6 min-[1100px]:px-10">
+      <h1 class="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">Let's get this week's report going.</h1>
+      <p class="mt-2 text-base text-muted-foreground">Pick the week, then choose a section to work on.</p>
+    </header>
     <PageGrid aside-title="This conversation">
       <div class="min-w-0 space-y-4">
         <p v-if="loading && !overview" role="status" class="text-sm text-muted-foreground">Opening the chat…</p>
         <Notice v-else-if="problem" role="alert" class="font-medium">{{ problem }}</Notice>
 
         <template v-else>
+          <div :class="!current && 'space-y-6 rounded-3xl border bg-card p-6 shadow-sm sm:p-8'">
           <div class="flex flex-wrap items-end gap-3">
             <div class="space-y-1.5">
               <label for="chat-week" class="block text-xs font-bold text-foreground">Week</label>
@@ -168,10 +176,10 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
           </div>
 
           <section aria-labelledby="chat-sections" class="space-y-2">
-            <h2 id="chat-sections" class="text-xs font-bold text-foreground">{{ current ? "Sections" : "Choose what to talk about" }}</h2>
+            <h2 id="chat-sections" :class="current ? 'text-xs font-bold text-foreground' : 'text-xl font-semibold tracking-tight text-cw-accent'">{{ current ? "Sections" : "Choose what to talk about" }}</h2>
             <ul class="flex flex-wrap gap-2.5">
-              <li>
-                <Button variant="ghost" :class="SECTION_BTN" @click="wholeReport">Whole report</Button>
+              <li :class="!current && 'basis-full pb-2'">
+                <Button variant="ghost" :class="current ? SECTION_BTN : START_BTN" @click="wholeReport">Whole report</Button>
               </li>
               <li v-for="s in sections" :key="s.slug" class="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <Button
@@ -183,6 +191,14 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
                 >{{ s.title }}</Button>
                 <span v-if="!s.available" class="text-sm text-muted-foreground">Not available yet.</span>
               </li>
+            </ul>
+          </section>
+          </div>
+
+          <section v-if="!current && choices.length" aria-labelledby="chat-recent" class="space-y-3 pt-4">
+            <h2 id="chat-recent" class="text-xl font-semibold tracking-tight text-foreground">Recent weeks</h2>
+            <ul class="divide-y overflow-hidden rounded-2xl border bg-card">
+              <li v-for="c in choices.slice(0, 4)" :key="c.period" class="px-5 py-3.5 text-sm text-foreground">{{ weekChoiceLabel(c) }}</li>
             </ul>
           </section>
 
@@ -298,7 +314,19 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
             <dd class="font-mono">{{ used.toLocaleString("en-GB") }} of {{ job.token_budget.toLocaleString("en-GB") }}</dd>
           </template>
         </dl>
-        <p v-else class="text-sm text-muted-foreground">Choose a section to start. Each section is its own conversation.</p>
+        <!-- .rail-stack flattens the aside's direct children, so the tint sits one level in. -->
+        <div v-else><div class="space-y-4 rounded-3xl bg-cw-bubble p-6">
+          <p class="text-sm text-foreground">Choose a section to start. Each section is its own conversation.</p>
+          <ol v-if="shell.sections.value.length" class="space-y-3">
+            <li v-for="(s, i) in shell.sections.value" :key="s.slug" class="grid grid-cols-[2rem_1fr] text-sm">
+              <span class="font-mono text-muted-foreground" aria-hidden="true">{{ String(i + 1).padStart(2, "0") }}</span>
+              <span>
+                <span class="block font-semibold text-foreground">{{ s.title }}</span>
+                <span class="block text-muted-foreground">{{ MARKS[s.state ?? "unknown"].label }}</span>
+              </span>
+            </li>
+          </ol>
+        </div></div>
       </template>
     </PageGrid>
   </main>

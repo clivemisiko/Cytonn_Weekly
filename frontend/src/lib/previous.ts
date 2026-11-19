@@ -1,6 +1,7 @@
 import type { InjectionKey } from "vue";
 import { friendlyDate, friendlyTime } from "./format";
-import type { Overview, PreviousWeek, PreviousWeeks, ReportChoice, WeekChoice } from "./types";
+import { draftingList, isLive } from "./drafting";
+import type { Drafting, Overview, PreviousWeek, PreviousWeeks, ReportChoice, WeekChoice } from "./types";
 
 export const APPROVED_BANNER = "All five sections of this week are approved. The read-only archive and the Word export are under Previous reports.";
 export const NO_WEEKS = "No approved weeks yet.";
@@ -53,11 +54,37 @@ export function rememberWeek(period: string, storage: Pick<Storage, "setItem"> |
   }
 }
 
-/** The opening report: the week this browser last chose, else the API's default week; a failed read is the unlabelled report. */
-export async function openingReport(read: () => Promise<PreviousWeeks>, remembered: string | null = rememberedWeek()): Promise<ReportChoice> {
-  if (remembered) return { type: "weekly", period: remembered, kind: null };
+/** Only this many of the newest weeks can be "midway" (rule 1), so an abandoned old draft cannot hold the default. */
+export const MIDWAY_WEEKS = 3;
+
+/**
+ * The week to open on when nothing names one. 1: the newest of the MIDWAY_WEEKS newest weeks with a section drafting
+ * or queued, or drafted and not fully approved. 2: else the newest week with no draft at all. 3: else the newest week.
+ * `drafting` null (the overview could not be read) applies the rules on the statuses alone. Null for an empty list.
+ */
+export function defaultWeek(choices: WeekChoice[], drafting: Drafting[] | null): string | null {
+  const weeks = [...choices].sort((a, b) => b.week_ending.localeCompare(a.week_ending));
+  const live = new Set((drafting ?? []).filter((d) => isLive(d) && (d.report_type ?? "weekly") === "weekly").map((d) => d.period ?? ""));
+  const midway = weeks.slice(0, MIDWAY_WEEKS).find((w) => live.has(w.period) || w.status === "in_progress");
+  const fresh = weeks.find((w) => w.status === "not_started" && !live.has(w.period));
+  return (midway ?? fresh ?? weeks[0])?.period ?? null;
+}
+
+/** The default period, after both reads, so it settles once: the API's default_week_ending only when there are no choices. */
+export async function openingWeek(weeks: PreviousWeeks, readOverview: () => Promise<Overview>): Promise<string> {
+  let drafting: Drafting[] | null = null;
   try {
-    return defaultReport((await read()).default_week_ending);
+    drafting = draftingList(await readOverview());
+  } catch {
+    // the statuses alone decide
+  }
+  return defaultWeek(weeks.choices ?? [], drafting) ?? `Week ending ${weeks.default_week_ending}`;
+}
+
+/** The opening report when the address names none; a failed read of the weeks is the unlabelled report. */
+export async function openingReport(read: () => Promise<PreviousWeeks>, readOverview: () => Promise<Overview>): Promise<ReportChoice> {
+  try {
+    return { type: "weekly", period: await openingWeek(await read(), readOverview), kind: null };
   } catch {
     return defaultReport(null); // the overview read that follows says whether the API is reachable
   }

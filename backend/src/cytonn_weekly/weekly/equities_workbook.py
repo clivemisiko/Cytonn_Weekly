@@ -17,20 +17,19 @@ workbook (v6) on 2026-10-09; every item is found by label or date:
   both series; the cell under the "PEG" label is the P/E divided by a fixed 8.
 * 'Market PE & Dividend Yield': the large-cap list sits in the column left of the
   "Year Open" header.
-* 'Gainers & Losers': the twelve large caps' tickers in one column from row 3 and, to their
-  right, one price column per date (the date in row 2).  A 2016 block sits at B2:C17 and an
-  older date sits further right, so a column is found by its exact date only.
-* 'Universe of Coverage': row 2 heads the columns; the weekly "Price as at dd/mm/yyyy"
-  columns are found by their dates and the inputs by their header text, taking the first
-  one to the right of the week's price column (older blocks repeat the headers further left).
+* 'Universe of Coverage': row 2 heads the columns; the inputs are found by their header text
+  to the right of the last "Price as at" column (older blocks repeat the headers further left),
+  and the price columns by the workbook's own w/w and m/m formulas (see ``read_universe``).
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Optional
+
+from openpyxl.utils import column_index_from_string, get_column_letter
 
 from cytonn_weekly.weekly.week import Week
 from cytonn_weekly.weekly.workbook import Cell, Sheet, Workbook, WorkbookError, average_range, norm
@@ -233,13 +232,15 @@ def read_large_caps(book: Workbook) -> list[Cell]:
     return names
 
 
-def read_gainers_losers(book: Workbook, days: list[date]) -> list[tuple[str, dict[date, Cell]]]:
-    """[(ticker, {day: price cell})] in the sheet's row order, for each day asked for.
+def read_gainers_losers(book: Workbook, week: Week, as_at: Optional[date] = None) -> list[tuple[str, dict[date, Cell]]]:
+    """[(ticker, {day: price cell})] in the sheet's row order: the as-at day (the week's Friday unless given) first, then
+    the Friday before.
 
     Each day's column is the one whose row-2 cell is that exact date.  The tickers are in the
     nearest column left of the first day's column with text in row 3, read down to the first gap.
     """
     sheet = book.sheet(GAINERS_SHEET)
+    days = [as_at or week.ending, week.previous_friday]
     cols = {}
     for day in days:
         hits = [c for c in sheet.cells(rows=range(2, 3)) if c.day == day]
@@ -283,52 +284,154 @@ def _price_columns(sheet: Sheet) -> dict[date, int]:
     return out
 
 
+_RATIO = re.compile(r"^=\s*\(?\s*\$?([A-Z]{1,3})\$?(\d+)\s*/\s*\$?([A-Z]{1,3})\$?(\d+)\s*\)?\s*-\s*1\s*$", re.I)
+
+
+def _header_date(value: Any) -> Optional[date]:
+    m = _PRICE_HEAD.match(norm(value))
+    if not m:
+        return None
+    try:
+        return date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+    except ValueError:
+        return None
+
+
+def last_weekday_before(day: date) -> date:
+    """The last weekday of the month before ``day``'s: the m/m base the tool prints (holidays are not known)."""
+    out = day.replace(day=1) - timedelta(days=1)
+    while out.weekday() >= 5:
+        out -= timedelta(days=1)
+    return out
+
+
 def read_universe(book: Workbook, week: Week) -> dict[str, Any]:
     """The Universe of Coverage inputs for the week: per company, the three prices and the typed inputs.
 
-    ``month_end`` is the latest price column dated before the month the week ends in (the
-    previous month's last close, the base of the m/m change).
+    The labels (w/w change, m/m change, YTD Change, Year Open <year>, Target Price*, DPS, No. of
+    Shares(bn), Tangible Book Value (bn)) are found once each to the right of the last "Price as
+    at" column; older blocks further left repeat them.  This week's price is the last price column;
+    last Friday's and the m/m base are the columns the workbook's own w/w and m/m formulas divide
+    by, the same in every company row.  The dates written in the price headers are never used to
+    find a column (the analysts mistype them: "30/10/2028"); one that disagrees with the report
+    week is a warning naming the cell.  Two cases still read the dates: a header dated before
+    this Friday in the last price column is a workbook not yet updated (refused), and a workbook
+    whose header dated this Friday sits left of its last price column is a later week's workbook
+    read for an earlier week (its columns are found by their dates, as before).
+    ``month_end`` is the date the tool prints for the m/m base.
     """
     sheet = book.sheet(UNIVERSE_SHEET)
-    prices = _price_columns(sheet)
-    if week.as_at not in prices:
-        raise WorkbookError(f"'{UNIVERSE_SHEET}' has no 'Price as at {week.as_at.strftime('%d/%m/%Y')}' column: "
-                            "workbook not yet updated for this week")
-    if week.previous_as_at not in prices:
-        raise WorkbookError(f"'{UNIVERSE_SHEET}' has no 'Price as at {week.previous_as_at.strftime('%d/%m/%Y')}' column")
-    month_start = week.as_at.replace(day=1)
-    earlier = [d for d in prices if d < month_start]
-    if not earlier:
-        raise WorkbookError(f"'{UNIVERSE_SHEET}' has no price column before {month_start.isoformat()} for the m/m change")
-    month_end = max(earlier)
-    this_col = prices[week.as_at]
+    heads = list(sheet.cells(rows=range(HEADER_ROW, HEADER_ROW + 1)))
+    price_cols = [c.col for c in heads if norm(c.value).startswith("price as at")]
+    if not price_cols:
+        raise WorkbookError(f"'{UNIVERSE_SHEET}' has no 'Price as at' column in row {HEADER_ROW}")
+    current = max(price_cols)
+    block = [c for c in heads if c.col > current]
 
-    def right_of(label_test, what: str) -> int:
-        found = [c for c in sheet.find_all(label_test, rows=range(HEADER_ROW, HEADER_ROW + 1)) if c.col > this_col]
+    def one(test, label: str) -> int:
+        found = [c for c in block if test(norm(c.value))]
         if not found:
-            raise WorkbookError(f"'{UNIVERSE_SHEET}' has no {what} column to the right of the week's price column")
-        return min(found, key=lambda c: c.col).col
+            raise WorkbookError(f"'{UNIVERSE_SHEET}' has no '{label}' column to the right of its last price column "
+                                f"({get_column_letter(current)}{HEADER_ROW})")
+        if len(found) > 1:
+            raise WorkbookError(f"'{UNIVERSE_SHEET}' has '{label}' more than once to the right of its last price column: "
+                                f"{', '.join(c.a1 for c in found)}")
+        return found[0].col
 
-    year = week.as_at.year
+    year = week.ending.year
+    wow_col = one(lambda s: s == "w/w change", "w/w change")
+    mom_col = one(lambda s: s == "m/m change", "m/m change")
+    ytd_col = one(lambda s: s == "ytd change", "YTD Change")
     cols = {
-        "year_open": right_of(f"year open {year}", f"'Year Open {year}'"),
-        "target": right_of(lambda s: s.startswith("target price"), "'Target Price'"),
-        "dps": right_of("dps", "'DPS'"),
-        "shares_bn": right_of(lambda s: s.startswith("no. of shares"), "'No. of Shares(bn)'"),
-        "tbv_bn": right_of(lambda s: s.startswith("tangible book value (bn)"), "'Tangible Book Value (bn)'"),
+        "year_open": one(lambda s: s == f"year open {year}", f"Year Open {year}"),
+        "target": one(lambda s: s.startswith("target price"), "Target Price*"),
+        "dps": one(lambda s: s == "dps", "DPS"),
+        "shares_bn": one(lambda s: s.startswith("no. of shares"), "No. of Shares(bn)"),
+        "tbv_bn": one(lambda s: s.startswith("tangible book value (bn)"), "Tangible Book Value (bn)"),
     }
     company_col = sheet.find("company", rows=range(HEADER_ROW, HEADER_ROW + 1), cols=range(1, 6), what="'Company' header").col
-    companies = []
+    rows = []
     for r in range(HEADER_ROW + 1, sheet.max_row + 1):
         name = sheet.value(r, company_col)
-        if not isinstance(name, str) or not name.strip():
+        if not isinstance(name, str) or not name.strip() or norm(name) == "high":
             break
+        rows.append(r)
+    if not rows:
+        raise WorkbookError(f"'{UNIVERSE_SHEET}' lists no companies under its 'Company' header")
+
+    def head(col: int) -> Cell:
+        return sheet.cell(HEADER_ROW, col)
+
+    warnings: list[str] = []
+    dated = _price_columns(sheet)
+    if dated.get(week.ending, current) < current:
+        # A later week's workbook read for this earlier week: its formulas speak of the later week.
+        this_col = dated[week.ending]
+        if week.previous_friday not in dated:
+            raise WorkbookError(f"'{UNIVERSE_SHEET}' has no 'Price as at {week.previous_friday.strftime('%d/%m/%Y')}' column")
+        month_start = week.ending.replace(day=1)
+        earlier = [d for d in dated if d < month_start]
+        if not earlier:
+            raise WorkbookError(f"'{UNIVERSE_SHEET}' has no price column before {month_start.isoformat()} for the m/m change")
+        month_end = max(earlier)
+        last_col, base_col = dated[week.previous_friday], dated[month_end]
+    else:
+        shown = _header_date(head(current).value)
+        if shown is not None and shown < week.ending:
+            raise WorkbookError(f"'{UNIVERSE_SHEET}' has no 'Price as at {week.ending.strftime('%d/%m/%Y')}' column: workbook "
+                                f"not yet updated for this week (its last price column, {head(current).a1}, reads "
+                                f"{head(current).value!r})")
+
+        def divides(col: int, label: str) -> tuple[int, int]:
+            """(numerator, denominator) columns of the label's formula, the same in every company row."""
+            first = None
+            for r in rows:
+                cell = sheet.cell(r, col)
+                text = book.formula(cell)
+                m = _RATIO.match(text or "")
+                if not m or int(m.group(2)) != r or int(m.group(4)) != r:
+                    raise WorkbookError(f"'{UNIVERSE_SHEET}' {cell.a1} ({label}, {sheet.value(r, company_col)}) holds "
+                                        f"{text or cell.value!r}, not a formula of the form =<price>{r}/<base>{r}-1: its "
+                                        "columns cannot be located")
+                pair = (column_index_from_string(m.group(1).upper()), column_index_from_string(m.group(3).upper()))
+                if first is None:
+                    first = (pair, r)
+                elif pair != first[0]:
+                    raise WorkbookError(
+                        f"'{UNIVERSE_SHEET}' {cell.a1} ({label}, {sheet.value(r, company_col)}, row {r}) divides "
+                        f"{get_column_letter(pair[0])} by {get_column_letter(pair[1])}, but row {first[1]} divides "
+                        f"{get_column_letter(first[0][0])} by {get_column_letter(first[0][1])}")
+            return first[0]
+
+        located = {label: divides(col, label) for col, label in ((wow_col, "w/w change"), (mom_col, "m/m change"),
+                                                                  (ytd_col, "YTD Change"))}
+        for label, (num, den) in located.items():
+            if num != current:
+                raise WorkbookError(f"'{UNIVERSE_SHEET}' '{label}' ({get_column_letter(num)}) is not worked out from the last "
+                                    f"price column, {get_column_letter(current)}")
+        if located["YTD Change"][1] != cols["year_open"]:
+            raise WorkbookError(f"'{UNIVERSE_SHEET}' 'YTD Change' divides by {get_column_letter(located['YTD Change'][1])}, "
+                                f"not by the 'Year Open {year}' column {get_column_letter(cols['year_open'])}")
+        this_col, last_col, base_col = current, located["w/w change"][1], located["m/m change"][1]
+        for col, label in ((last_col, "w/w change"), (base_col, "m/m change")):
+            if col not in price_cols:
+                raise WorkbookError(f"'{UNIVERSE_SHEET}' '{label}' divides by {get_column_letter(col)}, which is not a "
+                                    "'Price as at' column")
+        month_end = last_weekday_before(week.ending)
+        for col, expected, what in ((this_col, week.ending, "this Friday's price"),
+                                    (last_col, week.previous_friday, "last Friday's price, the w/w base"),
+                                    (base_col, month_end, "the m/m base")):
+            if _header_date(head(col).value) != expected:
+                warnings.append(f"Universe of Coverage: the workbook's header {head(col).a1} reads {head(col).value!r}; the "
+                                f"column is {what}, located by the workbook's own formulas, and the table prints "
+                                f"'Price as at {expected.strftime('%d/%m/%Y')}'. Check the header in the workbook.")
+
+    companies = []
+    for r in rows:
         row = {"company": sheet.cell(r, company_col), "price": sheet.cell(r, this_col),
-               "last_price": sheet.cell(r, prices[week.previous_as_at]), "month_end_price": sheet.cell(r, prices[month_end])}
+               "last_price": sheet.cell(r, last_col), "month_end_price": sheet.cell(r, base_col)}
         row.update({key: sheet.cell(r, col) for key, col in cols.items()})
         companies.append(row)
-    if not companies:
-        raise WorkbookError(f"'{UNIVERSE_SHEET}' lists no companies under its 'Company' header")
     return {"companies": companies, "month_end": month_end, "week_ending": week.ending,
-            "previous_friday": week.previous_friday, "as_at": week.as_at, "previous_as_at": week.previous_as_at,
-            "month_end_cell": Cell(month_end, sheet.name, HEADER_ROW, prices[month_end])}
+            "previous_friday": week.previous_friday, "warnings": warnings,
+            "month_end_cell": Cell(month_end, sheet.name, HEADER_ROW, base_col)}
