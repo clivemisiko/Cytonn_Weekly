@@ -8,6 +8,7 @@ from cytonn_weekly.weekly import inputs as weekly_inputs
 from cytonn_weekly.weekly.workbook import WorkbookError
 from api.problems import ProblemError
 from api.deps import Deps, week_of
+from api.runs import ACTIVE, FAILED
 
 
 def make_router(d: Deps) -> APIRouter:
@@ -20,10 +21,20 @@ def make_router(d: Deps) -> APIRouter:
             raise HTTPException(422, str(exc))
 
 
+    def live(period: str) -> dict[str, str]:
+        """Each weekly section of this period whose newest run is still going ("drafting") or failed ("failed")."""
+        return {r.section: "drafting" if r.status in ACTIVE else "failed" for r in d.runs.latest_by_key()
+                if r.key[:2] == (WEEKLY, period) and (r.status in ACTIVE or r.status == FAILED)}
+
+    def docx(path) -> FileResponse:
+        return FileResponse(path, filename=path.name,
+                            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
     @router.get("/api/export/weekly")
     def export_weekly_status(period: Optional[str] = Query(default=None, max_length=40)) -> dict:
-        """Whether the week's report can be exported: every weekly section's state, and whether it is a dev-mode draft."""
-        return weekly_export.export_status(d.db_path, weekly_period(period), inputs_root=d.root)
+        """What the export holds: every weekly section's state, what is left out and why, and whether it is a dev-mode draft."""
+        normalized = weekly_period(period)
+        return weekly_export.export_status(d.db_path, normalized, inputs_root=d.root, live=live(normalized))
 
     @router.get("/api/previous/weekly")
     def previous_weekly() -> dict:
@@ -32,19 +43,24 @@ def make_router(d: Deps) -> APIRouter:
 
     @router.post("/api/export/weekly")
     def export_weekly(period: Optional[str] = Query(default=None, max_length=40)) -> FileResponse:
-        """Write the approved weekly report and return the .docx.  409, naming each section, unless all are approved.
+        """Write every section whose draft is finished, approved or not, and return the .docx.  409 when none is.
 
         Nothing is sent or published: the file is handed to the analyst who asked for it.  A dev-mode
         draft is exported with its watermark and banner.
         """
-        normalized = weekly_period(period)
+        return docx(write(weekly_period(period), None))
+
+    @router.post("/api/export/weekly/{section}")
+    def export_weekly_section(section: str, period: Optional[str] = Query(default=None, max_length=40)) -> FileResponse:
+        """One section's finished draft as its own .docx, with the full export's renderer.  409 until its draft is finished."""
+        return docx(write(weekly_period(period), section))
+
+    def write(normalized: str, section: Optional[str]):
         try:
-            path = weekly_export.write_weekly_report(d.db_path, normalized, d.export_root, charts_root=d.charts_root,
-                                                     inputs_root=d.root)
+            return weekly_export.write_weekly_report(d.db_path, normalized, d.export_root, charts_root=d.charts_root,
+                                                     inputs_root=d.root, live=live(normalized), section=section)
         except weekly_export.ExportNotAllowed as exc:
             raise ProblemError(409, str(exc), "export_not_ready")
-        return FileResponse(path, filename=path.name,
-                            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
     @router.post("/api/export/weekly-rows/{week_ending}")
     def export_weekly_rows(week_ending: str) -> FileResponse:

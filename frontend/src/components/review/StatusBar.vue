@@ -6,6 +6,7 @@ import { READ_ONLY } from "@/lib/previous";
 import type { Decision, Review } from "@/lib/types";
 import DecisionControls from "./DecisionControls.vue";
 import Notice from "./Notice.vue";
+import SectionDownload from "./SectionDownload.vue";
 
 const props = defineProps<{
   review: Review;
@@ -57,6 +58,7 @@ const counts = computed(() => props.review.counts);
             <span>Ready for a decision: nothing is flagged.</span>
           </span>
         </div>
+        <SectionDownload :review="review" />
         <div v-if="!readOnly" class="basis-full lg:basis-auto">
           <DecisionControls :review="review" :deciding="deciding" :on-decide="onDecide" @close="emit('close')" />
         </div>

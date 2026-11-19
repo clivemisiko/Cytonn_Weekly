@@ -42,6 +42,7 @@ ROUTES = [
     "PATCH /api/reviews/{run_id}/items/{index}",
     "PATCH /api/snips/{week_ending}/{h}",
     "POST /api/export/weekly",
+    "POST /api/export/weekly/{section}",
     "POST /api/export/weekly-rows/{week_ending}",
     "POST /api/inputs/weekly/{week_ending}/analyst/carry",
     "POST /api/inputs/weekly/{week_ending}/analyst/fetch/{key}",

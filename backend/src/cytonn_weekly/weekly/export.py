@@ -1,9 +1,10 @@
-"""The approved weekly report as one Word file, in the real issue's order.
+"""The weekly report as one Word file, in the real issue's order, or one section of it as its own file.
 
-Allowed only when **every** weekly section of the week is approved: the tool never
-publishes anything an analyst has not signed off, and a half-approved report is not a
-report.  The file is for whoever lays the issue out and loads it into the CMS; nothing
-here sends or publishes it (publishing to the CMS is still a blocked stub).
+Every section whose draft is finished is exported, approved or not (``exportable``); a section not started, still
+drafting, failed or holding only placeholders is left out, and the file says nothing about it.  Approval no longer
+gates the file, but the file claims approval only when every section in it is approved.  The file is for whoever
+lays the issue out and loads it into the CMS; nothing here sends or publishes it (publishing to the CMS is still a
+blocked stub, and ``refuse_to_send`` still blocks a dev-mode draft).
 
 What it holds, read from Cytonn Weekly #38.2026 (cytonnreport.com issue 891):
 
@@ -117,29 +118,63 @@ def _state(review: Optional[CoordinatorReview]) -> str:
     return review.decision or "in_review"
 
 
+NONE_FINISHED = "No section has a finished draft for this week yet. Draft a section, then export."
+
+
+def is_placeholder(review: CoordinatorReview) -> bool:
+    """A review with nothing but placeholders: every block is ``unavailable`` (or there are none), or a Digital
+    Payments review with no items."""
+    section = review.section
+    if "blocks" in section:
+        return all(b.get("kind") == "unavailable" for b in section["blocks"])
+    return not section.get("items")
+
+
+def left_out_reason(review: Optional[CoordinatorReview], live: Optional[str]) -> Optional[str]:
+    """Why a section is left out of the export, or None when its draft is finished.  ``live`` is the API's newest run
+    state of the section ("drafting" or "failed"), which wins over an older saved review; approval plays no part."""
+    if live == "drafting":
+        return "still drafting"
+    if live == "failed":
+        return "failed"
+    if review is None:
+        return "not started"
+    return "placeholder only" if is_placeholder(review) else None
+
+
+def exportable(reviews: list[tuple[SectionSpec, Optional[CoordinatorReview]]], live: Optional[dict[str, str]] = None
+               ) -> tuple[list[tuple[SectionSpec, CoordinatorReview]], list[str]]:
+    """The sections with a finished draft, in the report's order, and "<title> (<reason>)" for each one left out."""
+    live = live or {}
+    kept, out = [], []
+    for spec, review in reviews:
+        why = left_out_reason(review, live.get(spec.slug))
+        if why:
+            out.append(f"{spec.title} ({why})")
+        else:
+            kept.append((spec, review))
+    return kept, out
+
+
 def export_status(db_path: Optional[Union[Path, str]], period: str, today: Optional[date] = None,
-                  inputs_root: Optional[Union[Path, str]] = None) -> dict[str, Any]:
-    """Whether the week's report can be exported, each section's state, and how many chart slots have no image."""
+                  inputs_root: Optional[Union[Path, str]] = None, live: Optional[dict[str, str]] = None) -> dict[str, Any]:
+    """Whether the week's report can be exported (any section's draft finished), each section's state, what the export
+    leaves out and why, and how many chart slots have no image."""
     reviews = weekly_reviews(db_path, period, today)
+    live = live or {}
     sections = [{"slug": spec.slug, "title": HEADINGS.get(spec.slug, spec.title), "state": _state(review),
                  "run_id": review.run_id if review else None,
+                 "left_out_reason": left_out_reason(review, live.get(spec.slug)),
+                 "file_name": section_file_name(spec, period, reviews, today),
                  "flagged_accepted_on_approval": review.accepted_on_approval() if review and review.decision == APPROVED else 0}
                 for spec, review in reviews]
-    dev = [HEADINGS.get(spec.slug, spec.title) for spec, review in reviews if review is not None and is_dev_mode_review(review)]
-    return {"period": period, "ready": all(s["state"] == APPROVED for s in sections), "sections": sections,
+    kept, left_out = exportable(reviews, live)
+    dev = [HEADINGS.get(spec.slug, spec.title) for spec, review in kept if is_dev_mode_review(review)]
+    return {"period": period, "ready": bool(kept), "reason": None if kept else NONE_FINISHED,
+            "all_approved": all(s["state"] == APPROVED for s in sections), "left_out": left_out, "sections": sections,
             "is_dev_draft": bool(dev), "dev_sections": dev, "dev_mode_label": DEV_LABEL if dev else None,
-            "can_send": not dev, "file_name": file_name(period, focus_title(reviews, typed_first=True)),
+            "can_send": not dev, "file_name": file_name(period, focus_title(kept, typed_first=True)),
             "charts_missing": chart_uploads.missing(export_week(period, reviews, today), inputs_root)}
-
-
-def require_all_approved(reviews: list[tuple[SectionSpec, Optional[CoordinatorReview]]]) -> list[tuple[SectionSpec, CoordinatorReview]]:
-    wording = {"not_drafted": "not drafted", "in_review": "still in review", "rejected": "rejected"}
-    missing = [f"{HEADINGS.get(spec.slug, spec.title)} ({wording[_state(review)]})" for spec, review in reviews
-               if _state(review) != APPROVED]
-    if missing:
-        raise ExportNotAllowed("The weekly report cannot be exported yet, because every section must be approved first. "
-                               "Not approved yet: " + "; ".join(missing) + ". Approve those sections, then export again.")
-    return [(spec, review) for spec, review in reviews if review is not None]
 
 
 def week_choices(db_path: Optional[Union[Path, str]], today: Optional[date] = None) -> list[dict[str, Any]]:
@@ -510,11 +545,13 @@ def report_title(period: str) -> str:
 
 
 def build_weekly_document(reviews: list[tuple[SectionSpec, CoordinatorReview]], period: str,
-                          charts_root: Optional[Union[Path, str]] = None, inputs_root: Optional[Union[Path, str]] = None):
-    """The python-docx Document of an approved week (the caller has already required every section approved).
+                          charts_root: Optional[Union[Path, str]] = None, inputs_root: Optional[Union[Path, str]] = None,
+                          summary: bool = True):
+    """The python-docx Document of the given sections (the caller picks them: ``exportable``), approved or not.
 
     ``charts_root`` is where the reviews' chart files are kept (default: under the data directory); ``inputs_root``
-    is the weekly inputs store, where the week's uploaded chart images are."""
+    is the weekly inputs store, where the week's uploaded chart images are.  ``summary`` False leaves out the
+    Executive Summary (a one-section download)."""
     doc = Document()
     _style_document(doc)
     apply_report_look(doc)
@@ -528,12 +565,16 @@ def build_weekly_document(reviews: list[tuple[SectionSpec, CoordinatorReview]], 
         banner.bold, banner.font.color.rgb = True, _RED
 
     title(doc, report_title(period))
-    decided = max((review.decided_at or "" for _, review in reviews), default="")
-    on = f" (last on {day_text(date.fromisoformat(decided[:10]))})" if decided else ""
-    small_line(doc, f"Every section checked and approved by the analyst{on}. "
-                "Charts are added by hand where marked; text marked as carried forward must be edited before publishing.")
-    executive_summary(doc, SUMMARY_HEADING, [(HEADINGS.get(spec.slug, spec.title), summary_text(review.section))
-                                             for spec, review in reviews])
+    tail = "Charts are added by hand where marked; text marked as carried forward must be edited before publishing."
+    if reviews and all(review.decision == APPROVED for _, review in reviews):
+        decided = max((review.decided_at or "" for _, review in reviews), default="")
+        on = f" (last on {day_text(date.fromisoformat(decided[:10]))})" if decided else ""
+        small_line(doc, f"Every section checked and approved by the analyst{on}. " + tail)
+    else:   # an approval is never claimed for a draft that has none
+        small_line(doc, "Draft for review: not every section here is approved yet. " + tail)
+    if summary:
+        executive_summary(doc, SUMMARY_HEADING, [(HEADINGS.get(spec.slug, spec.title), summary_text(review.section))
+                                                 for spec, review in reviews])
 
     uploads = _uploaded_charts(export_week(period, reviews), inputs_root)
     for spec, review in reviews:
@@ -603,11 +644,33 @@ def export_dir(root: Optional[Union[Path, str]] = None) -> Path:
 
 def write_weekly_report(db_path: Optional[Union[Path, str]], period: str, out_dir: Optional[Union[Path, str]] = None,
                         today: Optional[date] = None, charts_root: Optional[Union[Path, str]] = None,
-                        inputs_root: Optional[Union[Path, str]] = None) -> Path:
-    """Write the week's approved report and return its path.  ExportNotAllowed unless every section is approved."""
-    reviews = require_all_approved(weekly_reviews(db_path, period, today))
+                        inputs_root: Optional[Union[Path, str]] = None, live: Optional[dict[str, str]] = None,
+                        section: Optional[str] = None) -> Path:
+    """Write the week's sections whose drafts are finished, approved or not, and return the path.  With ``section``
+    (a slug) only that section is written, under its own file name.  ExportNotAllowed when nothing (or not that
+    section) is finished; the message names why."""
+    reviews = weekly_reviews(db_path, period, today)
+    kept, left_out = exportable(reviews, live)
+    if section is not None:
+        spec = next((s for s, _ in reviews if s.slug == section), None)
+        if spec is None:
+            raise ExportNotAllowed(f"There is no weekly section called {section!r}.")
+        kept = [(s, r) for s, r in kept if s.slug == section]
+        if not kept:
+            why = next(o for o in left_out if o.startswith(f"{spec.title} ("))
+            raise ExportNotAllowed(f"This section cannot be downloaded yet: {why}.")
+        name = section_file_name(spec, period, reviews, today)
+    elif not kept:
+        raise ExportNotAllowed(NONE_FINISHED)
+    else:
+        name = file_name(period, focus_title(kept, typed_first=True))
     folder = export_dir(out_dir)
     folder.mkdir(parents=True, exist_ok=True)
-    path = folder / file_name(period, focus_title(reviews, typed_first=True))
-    build_weekly_document(reviews, period, charts_root, inputs_root).save(str(path))
+    path = folder / name
+    build_weekly_document(kept, period, charts_root, inputs_root, summary=section is None).save(str(path))
     return path
+
+
+def section_file_name(spec: SectionSpec, period: str, reviews, today: Optional[date] = None) -> str:
+    """"Cytonn-Weekly-<Section>-<week ending>.docx", e.g. Cytonn-Weekly-Fixed-Income-2026-11-20.docx."""
+    return f"Cytonn-Weekly-{spec.title.replace(' ', '-')}-{export_week(period, reviews, today).ending.isoformat()}.docx"

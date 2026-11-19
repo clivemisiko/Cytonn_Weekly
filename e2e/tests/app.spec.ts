@@ -86,9 +86,9 @@ test("T03 overview lists the five weekly sections, the dev mark and the export g
   // Dev mode: the ribbon under the top bar and the notice in the page.
   await expect(page.getByRole("status").filter({ hasText: "DEV MODE DRAFT (local model): NOT FOR PUBLICATION OR CIRCULATION" })).toBeVisible();
   await expect(page.getByRole("alert").filter({ hasText: "Development Mode Active (Local Model)" })).toBeVisible();
-  // Export: there, and off until every section is approved.
+  // Export: there, and off until a section's draft is finished, with the reason.
   await expect(page.getByRole("heading", { name: "Export weekly report" })).toBeVisible();
-  await expect(page.getByText("Available once every section is approved: 5 of 5 still to go.")).toBeVisible();
+  await expect(page.getByText("No section has a finished draft for this week yet. Draft a section, then export.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Export weekly report" })).toBeDisabled();
   await expect(page.getByText("Fixed Income: Not drafted")).toBeVisible();
 });
@@ -326,7 +326,8 @@ test("T09 Digital Payments: run to done, open the review, one decision for the w
   await topbar(page).getByRole("button", { name: "Back to all sections" }).click();
   await expect(card(page, "Digital Payments")).toContainText("Approved");
   await expect(card(page, "Digital Payments").getByRole("button", { name: "View review" })).toBeVisible();
-  await expect(page.getByText("Available once every section is approved: 4 of 5 still to go.")).toBeVisible();
+  // One finished draft is enough: the export no longer waits for approval.
+  await expect(page.getByRole("button", { name: "Export weekly report" })).toBeEnabled();
 });
 
 test("T10 the sticky status bar stays under the top bar while a review scrolls", async ({ page }) => {
@@ -439,19 +440,18 @@ test("T13 Equities: run to done and its review opens with items", async ({ page 
   await expect(page.getByRole("button", { name: "Reject", exact: true })).toBeEnabled();
 });
 
-test("T14 Word export: off until every section is approved; when the API says ready, the file downloads under its name", async ({ page }) => {
-  await openOverview(page);
-  await expect(page.getByRole("button", { name: "Export weekly report" })).toBeDisabled();
-  await expect(page.getByText("Available once every section is approved: 4 of 5 still to go.")).toBeVisible();
-
-  // Approving all five sections needs live sources the test instance does not have, so the API's two export answers
-  // are stood in for here; what is under test is what the page does with them.
+test("T14 Word export: on once a draft is finished; the file downloads under its name and the page names what was left out", async ({ page }) => {
+  // The API's two export answers are stood in for here; what is under test is what the page does with them.
   const cors = { "access-control-allow-origin": "*", "access-control-expose-headers": "Content-Disposition" };
   const sections = ["Fixed Income", "Equities", "Real Estate", "Digital Payments", "Focus of the Week"];
   await page.route(/\/api\/export\/weekly/, async (route) => {
     if (route.request().method() === "GET") {
       await route.fulfill({
-        json: { period: PERIOD, ready: true, is_dev_draft: false, dev_mode_label: "", dev_sections: [], sections: sections.map((title) => ({ slug: title, title, state: "approved", run_id: 1 })) },
+        json: {
+          period: PERIOD, ready: true, reason: null, all_approved: false, is_dev_draft: false, dev_mode_label: "", dev_sections: [],
+          left_out: ["Real Estate (still drafting)", "Focus of the Week (not started)"],
+          sections: sections.map((title) => ({ slug: title, title, state: "in_review", run_id: 1, left_out_reason: null, file_name: "x.docx" })),
+        },
         headers: cors,
       });
     } else {
@@ -462,12 +462,13 @@ test("T14 Word export: off until every section is approved; when the API says re
       });
     }
   });
-  await page.reload();
-  await expect(page.getByText("Every section is approved.", { exact: false })).toBeVisible();
+  await openOverview(page);
+  await expect(page.getByText("every section whose draft is finished, approved or not", { exact: false })).toBeVisible();
   const button = page.getByRole("button", { name: "Export weekly report" });
   await expect(button).toBeEnabled();
   const [download] = await Promise.all([page.waitForEvent("download"), button.click()]);
   expect(download.suggestedFilename()).toBe("Cytonn-Weekly-e2e.docx");
+  await expect(page.getByText("Not included: Real Estate (still drafting), Focus of the Week (not started).")).toBeVisible();
   await expect(button).toBeEnabled();
 });
 
