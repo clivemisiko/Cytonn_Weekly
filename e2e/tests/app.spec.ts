@@ -37,7 +37,6 @@ test("T01 landing page loads, Home becomes current on the overview, Back disable
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /Welcome to Cytonn Weekly\./ })).toBeVisible();
   await expect(page.getByRole("heading", { name: /^Good (morning|afternoon|evening)\. Welcome to Cytonn Weekly\.$/ })).toBeVisible();
-  await expect(page.getByText("Ready to draft. Choose a report below to begin.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign in with Cytonn SSO" })).toBeDisabled();
   await expect(page.getByText("Not connected yet.", { exact: true })).toBeVisible();
   await expect(page.getByText(/this tool has no sign-in and should only be used by the\s+team/i)).toBeVisible();

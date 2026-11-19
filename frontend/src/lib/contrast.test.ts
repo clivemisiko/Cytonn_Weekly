@@ -67,6 +67,19 @@ export const PAIRS: Pair[] = [
   { what: "problem outline on page", fg: T("attention"), bg: T("background"), min: EDGE },
   { what: "problem outline on the muted fill", fg: T("attention"), bg: T("muted"), min: EDGE },
   { what: "problem outline on the flag tint", fg: T("attention"), bg: tint("flag"), min: EDGE },
+  // The landing and chat skin (.cw-skin).
+  { what: "skin heading teal on card", fg: T("cw-accent"), bg: T("card"), min: TEXT },
+  { what: "skin heading teal on page", fg: T("cw-accent"), bg: T("background"), min: TEXT },
+  { what: "skin button label on the button teal", fg: T("cw-button-fg"), bg: T("cw-button"), min: TEXT },
+  { what: "skin button teal edge on page", fg: T("cw-button"), bg: T("background"), min: EDGE },
+  { what: "skin wordmark on card", fg: T("cw-brand"), bg: T("card"), min: TEXT },
+  { what: "skin wordmark on page", fg: T("cw-brand"), bg: T("background"), min: TEXT },
+  { what: "ink on the skin bubble", fg: T("foreground"), bg: T("cw-bubble"), min: TEXT },
+  { what: "muted text on the skin bubble", fg: T("muted-foreground"), bg: T("cw-bubble"), min: TEXT },
+  { what: "selected section text on the skin bubble", fg: T("cw-selected-fg"), bg: T("cw-bubble"), min: TEXT },
+  { what: "selected section edge on the skin bubble", fg: T("cw-button"), bg: T("cw-bubble"), min: EDGE },
+  { what: "ink on the skin chip", fg: T("foreground"), bg: T("cw-chip"), min: TEXT },
+  { what: "control edge on the skin chip", fg: T("input"), bg: T("cw-chip"), min: EDGE },
 ];
 
 describe("colour contrast of the tokens in styles.css (WCAG)", () => {
