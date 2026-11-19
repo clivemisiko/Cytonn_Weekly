@@ -188,6 +188,55 @@
   color-scheme: dark;
 }
 
+/* The landing and chat skin (2026-11-19, from the Weekly-Landing and Weekly-Chat artboards). Defined only on .cw-skin, which
+   only LandingPage and ChatPage carry, so the bg-cw-* utilities resolve to nothing anywhere else. AA pairs in contrast.test.ts. */
+.cw-skin {
+  --cw-page: light-dark(#ffffff, #0b0d10); /* the design's white page; dark keeps the app's page */
+  --cw-hairline: light-dark(#ececec, #1c2027); /* the quieter card edge: decorative, like --border */
+  --cw-accent: light-dark(#17757b, #5fc4c9); /* headings: 5.4 on card, 4.9 on page */
+  --cw-button: light-dark(#13707a, #5fc4c9);
+  --cw-button-fg: light-dark(#ffffff, #000000);
+  --cw-brand: light-dark(#0b6b4f, #4fc79a); /* the wordmark */
+  --cw-bubble: light-dark(#eef8f6, #12292a); /* the user's messages, the selected section, the landing notice */
+  --cw-assistant: light-dark(#f6f7f7, #171a20); /* the assistant's messages and the typing indicator */
+  --cw-selected-fg: light-dark(#0e5a62, #8fdade);
+  --cw-chip: light-dark(#f1f1f1, #1c2027);
+  --cw-dots: light-dark(#5c9a1f, #8fd14f); /* decorative only: always beside text that says the same */
+  /* The placeholder logo's arcs (CytonnMark.vue): replace with Cytonn's official file. */
+  --cw-logo-red: #e8432b;
+  --cw-logo-green: #8cc63f;
+  --cw-logo-purple: #8e44ad;
+  --cw-logo-blue: #29a8e0;
+}
+/* Quieter chat cards: the saved cards, the live cards and the export bar inside them. Unlayered, so it beats the utilities. */
+.cw-skin [data-card]:not([data-card="live"]),
+.cw-skin [data-card="live"] > .border {
+  border-color: var(--cw-hairline);
+  background: var(--cw-page);
+  box-shadow: none;
+}
+.typing-dot {
+  animation: typing-dot 1s ease-in-out infinite;
+}
+@keyframes typing-dot {
+  50% { transform: translateY(-4px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .typing-dot { animation: none; }
+}
+@theme inline {
+  --color-cw-page: var(--cw-page);
+  --color-cw-accent: var(--cw-accent);
+  --color-cw-button: var(--cw-button);
+  --color-cw-button-fg: var(--cw-button-fg);
+  --color-cw-brand: var(--cw-brand);
+  --color-cw-bubble: var(--cw-bubble);
+  --color-cw-assistant: var(--cw-assistant);
+  --color-cw-selected-fg: var(--cw-selected-fg);
+  --color-cw-chip: var(--cw-chip);
+  --color-cw-dots: var(--cw-dots);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
