@@ -18,7 +18,7 @@ import { parseReadiness, parseReviewSnapshot } from "@/lib/chatcards";
 import { draftingFor, draftingList } from "@/lib/drafting";
 import { friendlyDate } from "@/lib/format";
 import { BACK_NONE, type BackTarget, useBack } from "@/lib/nav";
-import { weekChoiceLabel } from "@/lib/previous";
+import { openingWeek, weekChoiceLabel } from "@/lib/previous";
 import { MARKS } from "@/lib/railmarks";
 import { shell, useShellActions, useShellHere, useShellRibbon } from "@/lib/shell";
 import type { AppConfig, Overview, ReportChoice, WeekChoice } from "@/lib/types";
@@ -80,7 +80,8 @@ async function load() {
       config.value = c;
       shell.config.value = c;
       choices.value = weeks.choices ?? [];
-      defaultPeriod.value = api.weekPeriod(weeks.default_week_ending);
+      // Settled before the overview below is read, so the Week select never shows one week then another.
+      if (!WEEK.test(first(route.query.period))) defaultPeriod.value = await openingWeek(weeks, () => api.getOverview());
     }
     overview.value = await api.getOverview(report.value);
     shell.setOverview(overview.value); // the rail takes the same payload

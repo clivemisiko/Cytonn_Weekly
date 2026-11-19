@@ -55,18 +55,9 @@ describe("the approved-week banner", () => {
 describe("the overview's default week", () => {
   const weeks = { weeks: [], next_week_ending: null, default_week_ending: "2026-10-16", choices: [] };
 
-  it("is the API's default week, labelled, when this browser chose none", async () => {
+  it("is the API default week, labelled, only when there are no choices", async () => {
     expect(defaultReport("2026-10-16")).toEqual({ type: "weekly", period: "Week ending 2026-10-16", kind: null });
-    expect(await openingReport(() => Promise.resolve(weeks), null)).toEqual({ type: "weekly", period: "Week ending 2026-10-16", kind: null });
-  });
-
-  it("is the week this browser last chose, without reading the route", async () => {
-    const read = () => Promise.reject(new Error("must not be read"));
-    expect(await openingReport(read, "Week ending 2026-10-09")).toEqual({ type: "weekly", period: "Week ending 2026-10-09", kind: null });
-  });
-
-  it("falls back to the unlabelled weekly report when the route cannot be read", async () => {
-    expect(await openingReport(() => Promise.reject(new Error("unreachable")), null)).toEqual({ type: "weekly", period: "", kind: null });
+    expect(await openingReport(() => Promise.resolve(weeks), () => Promise.reject(new Error("no overview")))).toEqual({ type: "weekly", period: "Week ending 2026-10-16", kind: null });
   });
 
   it("remembers a chosen week and ignores anything that is not one, or storage that throws", () => {
