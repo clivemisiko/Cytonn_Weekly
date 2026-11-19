@@ -10,8 +10,19 @@ import { draftAnyway } from "./helpers";
 const WEEK = "2026-10-09";
 const PERIOD = `Week ending ${WEEK}`;
 const OVERVIEW = `/overview?report=weekly&period=${encodeURIComponent(PERIOD)}`;
-// Where a bare /overview lands: the API's default week, always labelled, written into the address.
-const DEFAULT_WEEK = /\/overview\?report=weekly&period=Week(%20|\+)ending(%20|\+)\d{4}-\d{2}-\d{2}$/;
+// A bare /overview opens on the default week (defaultWeek). The choices are pinned so the week does not depend on what
+// earlier specs left drafted: the newest choice is midway, and no live draft can beat the newest midway week.
+const DEFAULT_WEEK = new RegExp(`/overview\\?report=weekly&period=Week(%20|\\+)ending(%20|\\+)${WEEK}$`);
+async function pinWeeks(page: Page) {
+  await page.route("**/api/previous/weekly", (route) =>
+    route.fulfill({
+      json: {
+        weeks: [], next_week_ending: null, default_week_ending: "2000-01-07",
+        choices: [{ week_ending: WEEK, period: PERIOD, status: "in_progress", approved: 0, total: 5 }],
+      },
+    }),
+  );
+}
 const DRAFT = `Draft the ${PERIOD} section`;
 const RUN_TIMEOUT = 8 * 60_000;
 
@@ -34,6 +45,7 @@ test.skip(!!process.env.E2E_VARIANT, "runs on the default test backend");
 test.describe.configure({ mode: "serial" });
 
 test("T01 landing page loads, Home becomes current on the overview, Back disabled", async ({ page }) => {
+  await pinWeeks(page);
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /Welcome to Cytonn Weekly\./ })).toBeVisible();
   await expect(page.getByRole("heading", { name: /^Good (morning|afternoon|evening)\. Welcome to Cytonn Weekly\.$/ })).toBeVisible();
@@ -145,6 +157,7 @@ test("T05 theme toggle: Light, Dark, System, kept after a reload and applied bef
 });
 
 test("T06 top bar stays in view after scrolling; Back goes to the section list, Home to /", async ({ page }) => {
+  await pinWeeks(page);
   await openStart(page, "Fixed Income");
   await expect(page.getByRole("heading", { name: "Weekly analyst inputs" })).toBeVisible();
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
@@ -459,6 +472,7 @@ test("T14 Word export: off until every section is approved; when the API says re
 });
 
 test("T15 a run the API no longer has says so and links to the overview", async ({ page }) => {
+  await pinWeeks(page);
   await page.goto("/runs/not-a-run");
   await expect(page.getByRole("heading", { name: "Draft run", level: 1 })).toBeVisible();
   await expect(page.getByText(/This run is no longer available\. The tool was restarted, which stops a draft/)).toBeVisible();
