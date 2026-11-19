@@ -140,8 +140,8 @@ const set = (next: Phase) => {
 
 onMounted(async () => {
   let wanted = reportFromUrl();
-  // No report in the address bar: open on the API's labelled default week (the unlabelled report if it cannot be read).
-  if (route.query.report === undefined) wanted = await openingReport(api.getPreviousWeeks);
+  // No report in the address bar: open on the default week (defaultWeek); the unlabelled report if the weeks cannot be read.
+  if (route.query.report === undefined) wanted = await openingReport(api.getPreviousWeeks, () => api.getOverview());
   const reviewId = reviewFromUrl();
   const sectionSlug = sectionFromUrl();
   // The review named in the address bar, or the overview if it cannot be read. Closing it goes to its own report.
