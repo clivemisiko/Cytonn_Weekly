@@ -107,6 +107,12 @@ export const FORM_ONLY = ["mmf", "mmf_published", "mmf_source", "large_caps"];
 /** A form field or table the chat can take: the field gets a box and Save, the table the form's own editor. */
 export const isInline = (e: ReadinessEntry) => (e.kind === "field" || e.kind === "table") && !FORM_ONLY.includes(e.key);
 
+/** The card's steps are the inline lines missing when it first appears; later reads never add, drop or reorder them. */
+export const captureSteps = (prev: ReadinessEntry[] | null, inline: ReadinessEntry[]) => prev ?? (inline.length ? inline : null);
+/** Indexes of the steps not saved yet (skipped, or not reached), in step order. */
+export const unsavedSteps = (steps: ReadinessEntry[], saved: Record<string, string>) =>
+  steps.flatMap((s, i) => (s.key in saved ? [] : [i]));
+
 /** Checked before the save is sent; every other check is the API's, in its own words (a blank would clear the value). */
 export const typedProblem = (text: string) => (text.trim() ? null : "Type a value before saving.");
 

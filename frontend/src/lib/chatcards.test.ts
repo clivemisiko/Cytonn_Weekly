@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FOCUS_ON_OLD_PAGE, GROUPS, NOT_JUDGED, draftCard, flaggedOf, hasNeeds, needsYou, parseReadiness, parseReviewSnapshot, snipLine, sourcesLine, typedProblem, weekOf } from "./chatcards";
+import { FOCUS_ON_OLD_PAGE, GROUPS, NOT_JUDGED, draftCard, flaggedOf, hasNeeds, needsYou, parseReadiness, parseReviewSnapshot, snipLine, sourcesLine, typedProblem, captureSteps, unsavedSteps, weekOf } from "./chatcards";
 import type { AppConfig, Drafting, Review, SectionSummary } from "./types";
 
 const entry = (key: string, over: Record<string, unknown> = {}) => ({ kind: "upload", key, label: key.toUpperCase(), why: "not uploaded", ...over });
@@ -100,6 +100,18 @@ describe("the needs you card", () => {
     expect(n.inline.map((e) => e.key)).toEqual(["placements", "eurobond_issues"]);
     expect(n.typed.map((e) => e.key)).toEqual(["mmf", "mmf_published", "mmf_source", "large_caps"]);
     expect(hasNeeds({ uploads: [], fetch: [], inline: [entry("placements", { kind: "field" })], typed: [], confirm: [] })).toBe(true);
+  });
+
+  it("captures the steps once and keeps them in place when lines are saved", () => {
+    const a = entry("placements", { kind: "field" });
+    const b = entry("eurobond_issues", { kind: "table" });
+    const c = entry("borrowing_redemptions", { kind: "table" });
+    expect(captureSteps(null, [])).toBeNull();
+    const steps = captureSteps(null, [a, b, c])!;
+    expect(captureSteps(steps, [c])).toBe(steps); // a and b saved: still steps 1 and 2
+    expect(captureSteps(steps, [])).toBe(steps);
+    expect(unsavedSteps(steps, { eurobond_issues: "3 rows" })).toEqual([0, 2]);
+    expect(unsavedSteps(steps, { placements: "1", eurobond_issues: "x", borrowing_redemptions: "y" })).toEqual([]);
   });
 
   it("refuses a blank value before saving and leaves every other check to the API", () => {
