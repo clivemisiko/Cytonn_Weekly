@@ -333,7 +333,7 @@ const mark = computed(() => MARKS[props.state ?? "unknown"]);
           <!-- A Real Estate sector: the old start screen's own snip markup, from the one snip store on this page. -->
           <div v-else-if="step.kind === 'snips' && sectorOf(step.key)" class="space-y-3" data-snip>
             <Notice v-if="snips.error.value" role="alert" class="font-medium">{{ snips.error.value }}</Notice>
-            <SnipSector :sec="sectorOf(step.key)!" :snips="snips" :week="week" :disabled="false" />
+            <SnipSector :sec="sectorOf(step.key)!" :snips="snips" :week="week" :disabled="false" compact />
           </div>
           <!-- The fund table: the chat's own card, as it stands. -->
           <FundSnipCard v-else-if="step.kind === 'fund'" :week="week" :section="section.slug" @changed="done" />

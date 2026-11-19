@@ -19,6 +19,20 @@ const SECTIONS = [
   { slug: "focus", title: "Focus of the Week", friday: "2027-04-02" },
 ];
 
+/** The links rule: no link to an old form, the overview or previous reports; a link to a /sources/{id} record only, opening
+ *  in a new tab with rel noopener; anything else stays inside the chat. */
+async function linksFollowTheRule(where: ReturnType<Page["locator"]>) {
+  const links = await where.locator("a[href]").evaluateAll((as) => as.map((a) => ({ href: a.getAttribute("href") ?? "", target: a.getAttribute("target"), rel: a.getAttribute("rel") ?? "" })));
+  for (const l of links) {
+    expect(l.href, l.href).not.toMatch(/^\/(overview|previous)/);
+    if (l.href.startsWith("/sources")) {
+      expect(l.href, l.href).toMatch(/^\/sources\/[^/?]+(\?|$)/);
+      expect([l.target, l.rel.includes("noopener")], l.href).toEqual(["_blank", true]);
+    } else if (l.href.startsWith("/")) expect(l.href, l.href).toMatch(/^\/chat\?/);
+  }
+  return links;
+}
+
 /** Stand in for the API's config as Bedrock, so the sources step shows; the backend itself stays in dev mode. */
 async function asBedrock(page: Page) {
   await page.route("**/api/config", async (route) => {
@@ -28,7 +42,7 @@ async function asBedrock(page: Page) {
 }
 
 for (const s of SECTIONS) {
-  test(`T140 ${s.title}: the same page as every section, three numbered cards and no way to an old page`, async ({ page }) => {
+  test(`T140 ${s.title}: the same page as every section, three numbered cards, and links only to /sources/{id} records in a new tab, never to an old form, the overview or previous reports`, async ({ page }) => {
     await page.setViewportSize({ width: 1366, height: 900 });
     const opened: string[] = [];
     page.on("request", (r) => r.method() === "POST" && r.url().endsWith("/api/jobs") && opened.push(r.url()));
@@ -42,7 +56,7 @@ for (const s of SECTIONS) {
     await expect(p.getByRole("heading", { level: 3, name: /^\d/ })).toHaveText(["1Source documents", "2Report inputs", "3Create draft"]);
     await expect(p.getByRole("button", { name: /Create draft/ })).toBeVisible();
     await expect(p.locator("[data-caption]")).toHaveText(/still missing$|^Everything required is in place$|^Still needed: /);
-    for (const href of await p.locator("a[href]").evaluateAll((as) => as.map((a) => a.getAttribute("href") ?? ""))) expect(href).not.toMatch(/^\/(overview|sources|previous)/);
+    await linksFollowTheRule(p);
     await expect(page.getByRole("log", { name: "Conversation" })).toHaveCount(0);
     expect(opened).toEqual([]); // the page opened no conversation
   });
@@ -238,4 +252,30 @@ test("T149 the prepare page offers the conversation when one already holds more 
   await expect(link).toHaveAttribute("href", /view=conversation/);
   await link.click();
   await expect(page.getByRole("log", { name: "Conversation" })).toBeVisible();
+});
+
+test("T150 a saved source is a link to its /sources/{id} record in a new tab, on the prepare page and in the conversation view; nothing else leaves the chat", async ({ page, request }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  const period = "Week ending 2027-06-04";
+  const titles = "Fake section one";
+  const q = new URLSearchParams({ report_type: "weekly", period, section: "focus", sections: titles });
+  const listing = await (await request.get(`${API}/api/sources?${q}`)).json();
+  const subject = listing.pieces[0].subject as string;
+  const added = await request.post(`${API}/api/sources`, {
+    data: { section: "focus", subject, report_type: "weekly", period, sections: titles, url: "https://example.com/fake-record", date: "2027-06-02", title: "A fake record", text: "An invented sentence for the test, about nothing real." },
+  });
+  expect(added.ok(), await added.text()).toBeTruthy();
+
+  // The titles the page keeps for the visit name the piece the source was saved under.
+  await page.addInitScript(([key, value]) => sessionStorage.setItem(key, value), [`cw-focus:${period}:focus`, JSON.stringify({ topic: "A fake topic", titles })]);
+  await asBedrock(page);
+  await page.goto(url("focus", "2027-06-04", "&step=sources"));
+  await expect(inputs(page).locator('a[href^="/sources/"]').first()).toBeVisible();
+  const onPrepare = await linksFollowTheRule(prepare(page));
+  expect(onPrepare.some((l) => l.href.startsWith("/sources/"))).toBe(true); // the rule was checked against a real record link
+
+  await page.goto(url("focus", "2027-06-04", "&view=conversation"));
+  await expect(page.getByRole("log", { name: "Conversation" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "What you can do now" }).getByText(/^1 saved/)).toBeVisible();
+  await linksFollowTheRule(page.getByRole("main"));
 });

@@ -257,7 +257,7 @@
   background: none;
 }
 /* The snip controls are small on the old page; on the prepare page every control is at least 44px tall. */
-.cw-skin [data-card="prepare"] [data-snip] :is(button, select, input[type="date"]) {
+.cw-skin [data-card="prepare"] :is([data-snip], [data-card="fund_snip"]) :is(button, select, input[type="date"]) {
   min-height: 2.75rem;
 }
 .typing-dot {

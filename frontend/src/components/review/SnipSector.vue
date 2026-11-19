@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { PhUploadSimple } from "@phosphor-icons/vue";
 import Button from "@/components/ui/Button.vue";
+import { buttonVariants } from "@/components/ui/button";
 import Textarea from "@/components/ui/Textarea.vue";
 import * as api from "@/lib/api";
 import { friendlyTime } from "@/lib/format";
@@ -8,7 +10,19 @@ import { hashPrefix } from "@/lib/sources";
 import type { SnipMeta } from "@/lib/types";
 import type { Snips } from "@/lib/usesnips";
 
-const props = defineProps<{ sec: { id: string; label: string; snips: SnipMeta[] }; snips: Snips; week: string; disabled: boolean }>();
+const props = defineProps<{
+  sec: { id: string; label: string; snips: SnipMeta[] };
+  snips: Snips;
+  week: string;
+  disabled: boolean;
+  /** The prepare page's compact upload button around the same input; the old panel leaves it off and keeps the native picker. */
+  compact?: boolean;
+}>();
+const full = () => props.disabled || uploading.value || props.sec.snips.length >= (listing.value?.max_per_sector ?? 6);
+function chosen(e: Event) {
+  const t = e.target as HTMLInputElement;
+  void upload(props.sec.id, t.files).then(() => (t.value = ""));
+}
 // The page's one snip store: its refs are unwrapped here so the markup reads as it did in SnipsPanel.
 const { listing, drafts, busy, uploading, upload, read, move, setDate, confirm, remove } = props.snips;
 </script>
@@ -18,7 +32,23 @@ const { listing, drafts, busy, uploading, upload, read, move, setDate, confirm, 
       <h3 class="text-sm font-semibold">{{ sec.label }}</h3>
       <span class="font-mono text-xs text-muted-foreground">{{ sec.snips.length }} of {{ listing?.max_per_sector }}</span>
     </div>
-    <div>
+    <label
+      v-if="compact"
+      :class="[buttonVariants({ variant: 'outline' }), 'min-h-11 w-fit cursor-pointer has-[:focus-visible]:ring-3 has-[:focus-visible]:ring-ring/50 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50']"
+    >
+      <input
+        type="file"
+        multiple
+        accept="image/png,image/jpeg,image/webp,application/pdf"
+        :disabled="full()"
+        :aria-label="`Add a snip or a PDF for ${sec.label}`"
+        class="sr-only"
+        @change="chosen"
+      />
+      <PhUploadSimple weight="bold" data-icon="inline-start" aria-hidden="true" />
+      <span aria-hidden="true">{{ uploading ? "Uploading…" : "Choose file" }}</span>
+    </label>
+    <div v-else>
       <label :for="`snip-file-${sec.id}`" class="text-xs text-muted-foreground">Add a snip or a PDF for {{ sec.label }}</label>
       <input
         :id="`snip-file-${sec.id}`"
