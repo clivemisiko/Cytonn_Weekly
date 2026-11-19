@@ -1468,7 +1468,8 @@ class Analyst:
                 companies.append(row)
             typed_names = {_key(r["company"]) for r in rows}
             companies += [c for k, c in theirs.items() if k not in typed_names]
-            return {"companies": companies, "month_end": month_end.day if month_end is not None else None, "typed": True}
+            return {"companies": companies, "month_end": month_end.day if month_end is not None else None, "typed": True,
+                    "warnings": wb["warnings"] if wb else []}
 
         def load() -> Optional[dict[str, Any]]:
             data = build()
