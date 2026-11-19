@@ -5,6 +5,7 @@ from tests.route_helpers import every_route
 
 ROUTES = [
     "DELETE /api/inputs/weekly/{week_ending}/charts/{key}",
+    "DELETE /api/inputs/weekly/{week_ending}/fund-snip",
     "DELETE /api/inputs/weekly/{week_ending}/{stored_name}",
     "DELETE /api/notable/{section}/decisions/{suggestion_id}",
     "DELETE /api/snips/{week_ending}/{h}",
@@ -16,12 +17,15 @@ ROUTES = [
     "GET /api/inputs/weekly/{week_ending}",
     "GET /api/inputs/weekly/{week_ending}/analyst",
     "GET /api/inputs/weekly/{week_ending}/charts/{key}/image",
+    "GET /api/inputs/weekly/{week_ending}/fund-snip",
+    "GET /api/inputs/weekly/{week_ending}/fund-snip/image",
     "GET /api/jobs/{job_id}",
     "GET /api/jobs/{job_id}/messages",
     "GET /api/jobs/{job_id}/readiness",
     "GET /api/notable/{section}",
     "GET /api/previous/weekly",
     "GET /api/report-types",
+    "GET /api/settings/fund-list",
     "GET /api/reviews/latest",
     "GET /api/reviews/{run_id}",
     "GET /api/reviews/{run_id}/charts/{chart_id}.png",
@@ -40,8 +44,12 @@ ROUTES = [
     "POST /api/export/weekly",
     "POST /api/export/weekly-rows/{week_ending}",
     "POST /api/inputs/weekly/{week_ending}/analyst/carry",
+    "POST /api/inputs/weekly/{week_ending}/analyst/fetch/{key}",
     "POST /api/inputs/weekly/{week_ending}/analyst/suggest/{field}",
     "POST /api/inputs/weekly/{week_ending}/cbk_bulletin/fetch",
+    "POST /api/inputs/weekly/{week_ending}/fund-snip/confirm",
+    "POST /api/inputs/weekly/{week_ending}/fund-snip/read",
+    "POST /api/settings/fund-list/decide",
     "POST /api/jobs",
     "POST /api/jobs/{job_id}/messages",
     "POST /api/jobs/{job_id}/raise-budget",
@@ -63,9 +71,12 @@ ROUTES = [
     "PUT /api/inputs/weekly/{week_ending}/charts/{key}",
     "PUT /api/inputs/weekly/{week_ending}/charts/{key}/lead-in",
     "PUT /api/inputs/weekly/{week_ending}/charts/{key}/source",
+    "PUT /api/inputs/weekly/{week_ending}/fund-snip",
+    "PUT /api/inputs/weekly/{week_ending}/fund-snip/edits",
     "PUT /api/inputs/weekly/{week_ending}/notes",
     "PUT /api/inputs/weekly/{week_ending}/{slot}",
     "PUT /api/reviews/{run_id}/charts/{chart_id}/team-chart",
+    "PUT /api/settings/fund-list",
     "PUT /api/snips/{week_ending}/{sector}",
 ]
 
@@ -89,5 +100,7 @@ def test_where_two_patterns_can_match_one_path_the_specific_one_comes_first(tmp_
         ("GET /api/reviews/latest", "GET /api/reviews/{run_id}"),
         ("PUT /api/inputs/weekly/{week_ending}/notes", "PUT /api/inputs/weekly/{week_ending}/{slot}"),
         ("PUT /api/inputs/weekly/{week_ending}/analyst", "PUT /api/inputs/weekly/{week_ending}/{slot}"),
+        ("PUT /api/inputs/weekly/{week_ending}/fund-snip", "PUT /api/inputs/weekly/{week_ending}/{slot}"),
+        ("DELETE /api/inputs/weekly/{week_ending}/fund-snip", "DELETE /api/inputs/weekly/{week_ending}/{stored_name}"),
     ]:
         assert order.index(first) < order.index(second), (first, second)

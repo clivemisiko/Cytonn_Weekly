@@ -359,6 +359,39 @@ const analystPath = (weekEnding: string, section: string) =>
 /** The "Weekly analyst inputs" form for one section of one report week. */
 export const getAnalystInputs = (weekEnding: string, section: string) => request<AnalystForm>(analystPath(weekEnding, section));
 
+/** Have the API fetch one form table from CBK and keep it on the form, marked fetched. */
+export const fetchAnalystTable = (weekEnding: string, section: string, key: string) =>
+  request<AnalystForm>(`${inputsPath(weekEnding)}/analyst/fetch/${encodeURIComponent(key)}?section=${encodeURIComponent(section)}`, { method: "POST" }, UPLOAD_TIMEOUT_MS);
+
+const fundSnipPath = (weekEnding: string) => `${inputsPath(weekEnding)}/fund-snip`;
+const json = (body: unknown) => ({ method: "PUT", body: JSON.stringify(body) });
+
+/** The week's Daily Nation fund page as the card shows it. Answers are checked whole by lib/fundsnip.ts. */
+export const getFundSnip = (weekEnding: string) => request<unknown>(fundSnipPath(weekEnding));
+
+export const uploadFundSnip = (weekEnding: string, file: File) =>
+  request<unknown>(fundSnipPath(weekEnding), { method: "PUT", body: file, headers: { "Content-Type": "application/octet-stream" } }, UPLOAD_TIMEOUT_MS);
+
+export const deleteFundSnip = (weekEnding: string) => request<unknown>(fundSnipPath(weekEnding), { method: "DELETE" });
+
+/** Read the page (OCR: about a minute). Nothing reaches the form until the analyst confirms. */
+export const readFundSnip = (weekEnding: string) => request<unknown>(`${fundSnipPath(weekEnding)}/read`, { method: "POST" }, 600_000);
+
+export const saveFundSnipEdits = (weekEnding: string, edits: { fixes: Record<string, unknown>; typed: { fund: string; rate: string }[] }) =>
+  request<unknown>(`${fundSnipPath(weekEnding)}/edits`, json(edits));
+
+/** Keep the corrected table on the form as the analyst's own; the answer is the form, as after any save. */
+export const confirmFundSnip = (weekEnding: string, section: string, published: string) =>
+  request<AnalystForm>(`${fundSnipPath(weekEnding)}/confirm?section=${encodeURIComponent(section)}`, { method: "POST", body: JSON.stringify({ published }) });
+
+export const fundSnipImageUrl = (weekEnding: string, version: string) => `${API_BASE}${fundSnipPath(weekEnding)}/image?v=${encodeURIComponent(version)}`;
+
+export const saveFundList = (include: string[]) => request<unknown>("/api/settings/fund-list", json({ include }));
+
+/** One page fund: put it on the list (include), leave it out (exclude), or say it is a list fund under another name (alias, `to`). */
+export const decideFund = (pageName: string, decision: "include" | "exclude" | "alias", to?: string) =>
+  request<unknown>("/api/settings/fund-list/decide", { method: "POST", body: JSON.stringify({ page_name: pageName, decision, ...(to ? { to } : {}) }) });
+
 export interface AnalystChanges {
   /** A field left out is kept; null clears it. */
   fields?: Record<string, string | null>;

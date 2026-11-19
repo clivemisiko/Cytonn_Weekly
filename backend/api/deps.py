@@ -137,7 +137,8 @@ class Deps:
     roots the weekly inputs, sources, snips, charts and exports are kept under, and the injected fetchers (create_app builds it)."""
 
     def __init__(self, db_path, *, draft_stale_after, clock, run_keepalive, inputs_root, fetch_bulletin, export_root,
-                 fetch_usd_rates, notable_registry, charts_root, sources_root, fetch_source, search_sources, chat_agent=None):
+                 fetch_usd_rates, notable_registry, charts_root, sources_root, fetch_source, search_sources, chat_agent=None,
+                 fetch_items=None, read_fund_snip=None):
         self.db_path = db_path
         self.draft_stale_after = draft_stale_after
         self.clock = clock
@@ -145,6 +146,8 @@ class Deps:
         self.fetch_bulletin = fetch_bulletin
         self.export_root = export_root
         self.fetch_usd_rates = fetch_usd_rates
+        self.fetch_items = fetch_items
+        self.read_fund_snip = read_fund_snip
         self.charts_root = charts_root
         self.fetch_source = fetch_source
         self.search_sources = search_sources

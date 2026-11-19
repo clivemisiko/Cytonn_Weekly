@@ -100,6 +100,8 @@ UNIVERSE_CARRIED = ("company", "year_open", "target", "dps", "shares_bn", "tbv_b
 # Running totals: never carried (last week's total is not this week's); a suggestion is worked out instead.
 SUGGESTED_FIELDS = ("turnover_ytd", "foreign_ytd")
 SUGGESTED = "suggested"
+FETCHED = "fetched"
+SNIP = "snip"   # a fund table read from a Daily Nation snip and confirmed by the analyst (weekly/fund_snip.py)
 
 # The names the Universe of Coverage uses and the tickers KCB IB's weekly report lists them under.  Checked against
 # the report and the workbook of 2 October 2026: the report's price equals the workbook's for all thirteen.
@@ -227,7 +229,7 @@ TABLE_LIST = (
           "Paste the rows as the paper prints them: rank, fund, rate. Any number of funds. The Top 5 average is worked out "
           "from this week's five highest rates; it is never typed.",
           example="1  Cytonn Money Market Fund  11.01%"),
-    Table("interbank", FI, "liquidity", "Daily interbank rates", "Central Bank of Kenya, interbank rates", "Liquidity",
+    Table("interbank", FI, "liquidity", "Daily interbank rates", "Central Bank of Kenya, KESONIA", "Liquidity",
           (Column("date", "Date", DATE), Column("rate", "Interbank rate", **_PCT)),
           "One day a line, for the two weeks the paragraph compares (Friday to Thursday, twice). Without them the paragraph "
           "gives the bulletin's KESONIA average and no change.",
@@ -594,9 +596,10 @@ def _check_table(table: Table, rows: list[dict[str, str]], week: Week, errors: l
 
     if table.key == "mmf":
         for n, r in enumerate(rows, 1):
-            if int(r["rank"]) != n:
+            tied = n > 1 and r.get("rate") == rows[n - 2].get("rate") and int(r["rank"]) == int(rows[n - 2]["rank"])   # equal rates may share a rank (mmf.rank_mmf_yields)
+            if int(r["rank"]) != n and not tied:
                 errors.append(f"{name}: row {n} ({r['fund']}) has rank {r['rank']}; ranks must run 1, 2, 3 in order with none "
-                              "skipped or repeated")
+                              "skipped (equal rates may share a rank)")
                 break
         unique("fund", "fund")
         if len(rows) < MIN_FUNDS:
@@ -926,6 +929,56 @@ def _row_problems(table: Table, row: dict[str, str], week: Week) -> list[str]:
     problems: list[str] = []
     _check_table(table, [row], week, problems)
     return problems
+
+
+@_synced
+def fetched(week: Week, key: str, rows: list[dict[str, Any]], note: str, root: Optional[Path] = None,
+            db_path: Optional[Path] = None) -> dict[str, Any]:
+    """Keep a table the tool fetched, as rows on the form marked "fetched" with ``note`` (source, address, day, sha256).
+
+    It never replaces rows someone typed or confirmed: those must be cleared first.  The rows are checked as typed ones are.
+    """
+    table = TABLES[key]
+    form = read_form(week, root)
+    untouched = form["carried"].get(key, {}).get("value") == form["tables"].get(key)   # still what was carried, suggested or fetched
+    if key in form["tables"] and not untouched:
+        raise InputError(f"{table.label} is already typed for this week. Clear it first to have it fetched.")
+    errors: list[str] = []
+    clean = _clean_rows(table, rows, errors)
+    if not errors:
+        _check_table(table, clean, week, errors)
+    if errors or not clean:
+        raise InputError("\n".join(errors[:12]) or f"{table.label}: nothing was fetched")
+    form["tables"][key] = clean
+    form["carried"][key] = {"from": FETCHED, "value": clean, "note": note}
+    form["unconfirmed"] = [k for k in form["unconfirmed"] if k != key]
+    return _write(week, root, form, db_path)
+
+
+@_synced
+def fund_snip(week: Week, rows: list[dict[str, Any]], published: str, note: str, typed: list[str], root: Optional[Path] = None,
+              db_path: Optional[Path] = None) -> dict[str, Any]:
+    """Keep the money market fund table the analyst confirmed from a Daily Nation snip, and the date it was published.
+
+    It is the analyst's own, so it replaces what was typed.  ``note`` (the image's hash) is the source of its points in the
+    store; the funds in ``typed`` (fund_key) were typed beside the snip and say so.  The rows are checked as typed ones are.
+    """
+    table, form, errors = TABLES["mmf"], read_form(week, root), []
+    clean = _clean_rows(table, rows, errors)
+    if not errors:
+        _check_table(table, clean, week, errors)
+    try:
+        day = clean_field(FIELDS["mmf_published"], published, week)
+    except InputError as exc:
+        errors.append(str(exc))
+    if errors or not clean:
+        raise InputError("\n".join(errors[:12]) or f"{table.label}: no fund to keep")
+    form["tables"]["mmf"], form["fields"]["mmf_published"] = clean, day
+    form["carried"]["mmf"] = {"from": SNIP, "value": clean, "note": note, "typed": [fund_key(t) for t in typed]}
+    form["unconfirmed"] = [k for k in form["unconfirmed"] if k not in ("mmf", "mmf_published")]
+    return _write(week, root, form, db_path)
+
+
 
 
 @_synced

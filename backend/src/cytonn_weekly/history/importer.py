@@ -33,6 +33,8 @@ CATALOG = {
     "fi.placements": ("pct", "week", "fixed_income", "3-month bank placements", 1),
     "fi.mmf.rate": ("pct", "week", "fixed_income", "Money market fund yield, by fund", 1),
     "fi.kesonia": ("pct", "day", "fixed_income", "KESONIA", 1),
+    "fi.remittances.total": ("usd_mn", "month", "fixed_income", "Diaspora remittances, total", 1),
+    "fi.remittances.north_america": ("usd_mn", "month", "fixed_income", "Diaspora remittances, North America", 1),
 }
 
 

@@ -7,6 +7,7 @@ import type { Job } from "@/lib/chat";
 import { draftCard, hasNeeds, needsYou, parseReadiness, type Readiness } from "@/lib/chatcards";
 import type { AppConfig, Drafting, ReportChoice, Review, SectionSummary } from "@/lib/types";
 import DraftCard from "./DraftCard.vue";
+import FundSnipCard from "./FundSnipCard.vue";
 import LiveReviewCard from "./LiveReviewCard.vue";
 import NeedsYouCard from "./NeedsYouCard.vue";
 import SourcesCard from "./SourcesCard.vue";
@@ -87,7 +88,8 @@ const done = () => {
     <Notice v-if="readinessProblem" tone="warn" role="alert">{{ readinessProblem }}</Notice>
     <p v-else-if="needs && !hasNeeds(needs)" class="text-sm text-muted-foreground">Nothing is missing for this section.</p>
 
-    <NeedsYouCard v-if="needs && hasNeeds(needs)" :needs="needs" :week="week" :form-to="oldPage" @changed="done" />
+    <NeedsYouCard v-if="needs && hasNeeds(needs)" :needs="needs" :week="week" :section="section.slug" :form-to="oldPage" @changed="done" />
+    <FundSnipCard v-if="weekly && section.slug === 'fixed_income'" :week="week" :section="section.slug" @changed="done" />
     <SourcesCard v-if="readiness && counted" :readiness="readiness" :old-page="oldPage" />
     <DraftCard v-if="draft.kind !== 'none'" :section="section" :card="draft" :report="report" :config="config" :old-page="oldPage" @changed="done" @ended="ended" />
     <LiveReviewCard v-if="review" :key="review.run_id" :initial="review" @full="(id, i) => emit('full', id, i)" @decided="done" @close="emit('close')" />

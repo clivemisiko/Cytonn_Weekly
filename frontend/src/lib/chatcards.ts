@@ -72,9 +72,14 @@ export const sourcesLine = (s: SourceCount) => `${s.total} saved, ${s.inWeek} da
 /** The one input the tool can fetch itself; the bulletin route is the only fetch route there is. */
 export const FETCHABLE = ["cbk_bulletin"];
 
+/** Form tables the tool fetches from CBK (POST .../analyst/fetch/{key}), with the words on their buttons. */
+export const FETCHABLE_ITEMS: Record<string, string> = { interbank: "Fetch interbank rates from CBK", remittances: "Fetch remittances from CBK", eurobond_yields: "Fetch Eurobond openings from CBK" };
+
 export interface NeedsYou {
   /** Files to upload (and, for the bulletin, to fetch). */
   uploads: (ReadinessEntry & { fetchable: boolean })[];
+  /** Form tables the tool can fetch, still empty (needed or optional): a button each. */
+  fetch: ReadinessEntry[];
   /** Form values with nothing typed: they are typed on the inputs form. */
   typed: ReadinessEntry[];
   /** Form values carried or suggested: they need confirming on the inputs form. */
@@ -84,13 +89,15 @@ export interface NeedsYou {
 /** What the "needs you" card offers: only what is missing or unconfirmed, split by the button each one takes. */
 export function needsYou(r: Readiness): NeedsYou {
   const open = r.groups.needs_analyst;
+  const fetchable = (e: ReadinessEntry) => e.kind === "table" && e.key in FETCHABLE_ITEMS;
   return {
     uploads: open.filter((e) => e.kind === "upload").map((e) => ({ ...e, fetchable: FETCHABLE.includes(e.key) })),
-    typed: open.filter((e) => e.kind !== "upload"),
+    fetch: [...open, ...r.groups.optional].filter(fetchable),
+    typed: open.filter((e) => e.kind !== "upload" && !fetchable(e)),
     confirm: r.groups.carried_or_suggested,
   };
 }
-export const hasNeeds = (n: NeedsYou) => n.uploads.length + n.typed.length + n.confirm.length > 0;
+export const hasNeeds = (n: NeedsYou) => n.uploads.length + n.fetch.length + n.typed.length + n.confirm.length > 0;
 
 // ---- The review summary the code saves when a draft finishes ----
 

@@ -23,6 +23,7 @@ export const PLACEMENT = {
   analyst_suggestion_unavailable: "inline",
   bulletin_not_published: "inline",
   bulletin_fetch_failed: "inline",
+  item_fetch_failed: "inline",
   draft_section_unavailable: "dialog",
   draft_topic_missing: "inline",
   draft_topic_invalid: "inline",

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import logging
+from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Optional, Union
 
 from cytonn_weekly.history import store
-from cytonn_weekly.history.importer import CATALOG
+from cytonn_weekly.history.importer import CATALOG, friday_of
 from cytonn_weekly.weekly import analyst, fi_workbook
 from cytonn_weekly.weekly.week import Week
 
@@ -15,7 +16,8 @@ log = logging.getLogger(__name__)
 # Form field -> the series it feeds.  The averages, the settings (large caps, targets, dates) and the typed text are not series.
 FIELD_SERIES = {"pe": "eq.pe", "dividend_yield": "eq.dividend_yield", "turnover_ytd": "eq.turnover.ytd", "foreign_ytd": "eq.foreign.ytd",
                 "placements": "fi.placements"}
-TABLE_SERIES = ("mmf", "interbank", "eurobond_yields", "foreign_history", "universe")
+TABLE_SERIES = ("mmf", "interbank", "eurobond_yields", "foreign_history", "universe", "remittances")
+TYPED_BESIDE = {"origin": "typed", "source_kind": "form_field", "source_ref": "mmf, typed beside the Daily Nation snip", "confirmed_by": store.FORM}
 _ISSUES = tuple(spec[0] for spec in fi_workbook.EUROBOND_ISSUES)
 
 _failed = 0
@@ -57,6 +59,11 @@ def _points(week: Week, key: str, value: Any, form: dict[str, Any]) -> list[dict
         elif key == "universe":
             if r.get("price"):   # last Friday's price is last week's point, already stored
                 out.append(_spec("eq.price", analyst._key(r["company"]), this, week, r["price"]))
+        elif key == "remittances":
+            day = date(int(r["month"][:4]), int(r["month"][5:]), 1)
+            end = (day.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+            out += [_spec(series, "", end.isoformat(), week, r[col]) for col, series in
+                    (("total", "fi.remittances.total"), ("north_america", "fi.remittances.north_america")) if r.get(col)]
         elif key == "eurobond_yields" and r.get("date"):
             out += [_spec("fi.eurobond.yield", issue, r["date"], week, r[issue]) for issue in _ISSUES if r.get(issue)]
     return out
@@ -66,6 +73,8 @@ def _how(form: dict[str, Any], key: str, value: Any) -> dict[str, Any]:
     """Where the item's value came from, and whether it counts yet: a carried or suggested weekly item waits for confirmation."""
     mark = form["carried"].get(key)
     came = (mark or {}).get("from")
+    if came == analyst.SNIP and mark.get("value") == value:   # confirmed by the analyst from the image: typed, with the image as the source
+        return {"origin": "typed", "source_kind": "source", "source_ref": mark["note"], "confirmed_by": store.FORM}
     if key in form["unconfirmed"]:
         if came == analyst.SUGGESTED:
             return {"origin": "worked_out", "source_kind": "working", "source_ref": mark.get("note") or key}
@@ -90,11 +99,27 @@ def sync(week: Week, before: dict[str, Any], after: dict[str, Any], db_path: Opt
             value = now.get(key)
             if value is None or (value == was.get(key) and (key in after["unconfirmed"]) == (key in before["unconfirmed"])):
                 continue
+            mark = after["carried"].get(key) or {}
+            if mark.get("from") == analyst.FETCHED and mark.get("value") == value:
+                continue   # record_fetch wrote these, once, with the source
             how = _how(after, key, value)
-            items += [{**p, **how} for p in _points(week, key, value, after)]
+            typed = set(mark.get("typed") or []) if mark.get("from") == analyst.SNIP else set()   # rows typed beside a snip
+            items += [{**p, **(TYPED_BESIDE if p["subject"] in typed else how)} for p in _points(week, key, value, after)]
         if items:
             store.record_many(db_path, items)
     except Exception as exc:  # noqa: BLE001 - the store must never fail a save
+        _fail(items, exc)
+
+
+def record_fetch(week: Week, key: str, rows: list[dict[str, Any]], note: str, db_path: Optional[Union[Path, str]] = None) -> None:
+    """Write the points of a fetched table, one per series and date, never over a point already held.  Never raises."""
+    items: list[dict[str, Any]] = []
+    try:
+        how = {"origin": "fetched", "source_kind": "source", "source_ref": note, "confirmed_by": store.FETCHED}
+        items = [{**p, **how, "week_ending": friday_of(date.fromisoformat(p["as_of"])).isoformat()} for p in _points(week, key, rows, {"fields": {}})]
+        if items:
+            store.record_many(db_path, items, only_new=True)
+    except Exception as exc:  # noqa: BLE001 - the store must never fail a fetch
         _fail(items, exc)
 
 
