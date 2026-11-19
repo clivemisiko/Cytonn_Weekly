@@ -1,22 +1,12 @@
 <script setup lang="ts">
-import {
-  PhCaretDown,
-  PhCheckCircle,
-  PhCircle,
-  PhCircleDashed,
-  PhCircleHalf,
-  PhCircleNotch,
-  PhHourglass,
-  PhLockSimple,
-  PhSidebarSimple,
-  PhWarningCircle,
-} from "@phosphor-icons/vue";
+import { PhCaretDown, PhChatCircle, PhHouse, PhSidebarSimple } from "@phosphor-icons/vue";
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "reka-ui";
 import { computed, nextTick, ref, useTemplateRef, watch } from "vue";
-import { useRouter } from "vue-router";
+import { RouterLink, useRouter } from "vue-router";
 import { reportName } from "@/lib/format";
 import { chatHref, mayLeave } from "@/lib/nav";
-import { type RailSection, type RailState, shell } from "@/lib/shell";
+import { MARKS } from "@/lib/railmarks";
+import { type RailSection, shell } from "@/lib/shell";
 
 const router = useRouter();
 const open = ref(true); // expanded on every load; a collapse lasts for the visit only
@@ -30,16 +20,6 @@ watch(menu, async (on) => {
   else if (navEl.value?.contains(document.activeElement)) document.querySelector<HTMLElement>("[aria-label='Menu']")?.focus();
 });
 
-const MARKS: Record<RailState | "unknown", { label: string; icon: typeof PhCircle; tone: string }> = {
-  approved: { label: "Approved", icon: PhCheckCircle, tone: "text-ok-fg" },
-  rejected: { label: "Rejected", icon: PhWarningCircle, tone: "text-flag-fg" },
-  in_review: { label: "In review", icon: PhCircleHalf, tone: "text-foreground" },
-  not_drafted: { label: "Not drafted", icon: PhCircle, tone: "text-muted-foreground" },
-  unavailable: { label: "Not available yet", icon: PhLockSimple, tone: "text-muted-foreground" },
-  drafting: { label: "Being drafted", icon: PhCircleNotch, tone: "text-foreground" },
-  queued: { label: "Queued", icon: PhHourglass, tone: "text-muted-foreground" },
-  unknown: { label: "State not known", icon: PhCircleDashed, tone: "text-muted-foreground" },
-};
 const markOf = (s: RailSection) => MARKS[s.state ?? "unknown"];
 
 // Labels show from 1366px, or while the narrow strip is expanded; otherwise they are read by a screen reader only.
@@ -82,6 +62,11 @@ const mode = computed(() => {
 const showProgress = computed(() => shell.held.value !== null && !atOverview.value);
 
 // The current item is a green-tinted pill with an accent bar (and bold, and aria-current); an item that does nothing is dimmed and has no hover.
+// Only pages that exist; the chat's own sections stay in the list below.
+const PAGES = [
+  { to: "/", name: "Home", icon: PhHouse },
+  { to: "/chat", name: "Chat", icon: PhChatCircle },
+];
 const ITEM =
   "flex w-full items-center gap-3 rounded-md px-2 py-1.5 text-left text-sm outline-none transition-colors duration-150 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring aria-disabled:cursor-default aria-disabled:opacity-60 aria-disabled:hover:bg-transparent aria-[current=page]:bg-accent aria-[current=page]:font-semibold aria-[current=page]:text-accent-foreground aria-[current=page]:hover:bg-accent aria-[current=page]:shadow-[inset_3px_0_0_var(--primary)]";
 </script>
@@ -117,6 +102,23 @@ const ITEM =
         <p class="text-sm font-semibold tracking-tight text-foreground">{{ reportName(shell.report.value.title, shell.report.value.period) }}</p>
         <p v-if="mode" class="text-xs text-muted-foreground">{{ mode }}</p>
       </div>
+
+      <ul class="space-y-1 border-b pb-3">
+        <li v-for="p in PAGES" :key="p.to">
+          <RouterLink v-slot="{ href, navigate, isExactActive }" :to="p.to" custom>
+            <a
+              :href="href"
+              :class="ITEM"
+              :aria-current="isExactActive ? 'page' : undefined"
+              :title="p.name"
+              @click="(event) => (mayLeave() ? ((menu = false), navigate(event)) : event.preventDefault())"
+            >
+              <component :is="p.icon" weight="bold" class="size-5 shrink-0" aria-hidden="true" />
+              <span :class="[label, 'min-w-0 truncate']">{{ p.name }}</span>
+            </a>
+          </RouterLink>
+        </li>
+      </ul>
 
       <CollapsibleRoot v-model:open="groupOpen" class="space-y-1">
         <CollapsibleTrigger class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">
