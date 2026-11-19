@@ -340,3 +340,26 @@ test("T130 the fund snip card: upload, list, read, decide, type a cell and a fun
   expect(table.carried.from).toBe("snip");
   await expect(page.getByRole("region", { name: "Needs you" }).getByText(/Money market fund table/)).toHaveCount(0);
 });
+
+test("T131 a typed value is saved from the chat: a refusal keeps the text under the API's words, a save takes the line off", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(chatUrl("fixed_income", "Week ending 2026-08-14"));
+  const card = page.getByRole("region", { name: "Type these here" });
+  const box = card.getByLabel("3-month bank placements");
+  await expect(box).toBeVisible();
+  await expect(page.getByRole("region", { name: "Needs you" }).getByText(/3-month bank placements/)).toHaveCount(0);
+
+  const save = card.getByRole("button", { name: /^Save\s*: 3-month bank placements$/ });
+  await save.click();
+  await expect(card.getByText("Type a value before saving.")).toBeVisible();
+
+  await box.fill("not a figure");
+  await save.click();
+  await expect(card.getByText(/is not a number/)).toBeVisible();
+  await expect(box).toHaveValue("not a figure");
+
+  await box.fill("5.55");
+  await box.press("Enter");
+  await expect(card.getByLabel("3-month bank placements")).toHaveCount(0);
+  await expect(live(page).getByText(/3-month bank placements/)).toHaveCount(0); // the saved snapshot above keeps it, by design
+});

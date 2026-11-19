@@ -80,7 +80,9 @@ export interface NeedsYou {
   uploads: (ReadinessEntry & { fetchable: boolean })[];
   /** Form tables the tool can fetch, still empty (needed or optional): a button each. */
   fetch: ReadinessEntry[];
-  /** Form values with nothing typed: they are typed on the inputs form. */
+  /** Form values with nothing typed that the chat takes inline (the "Type these here" card). */
+  inline: ReadinessEntry[];
+  /** Form values with nothing typed that are still typed on the inputs form. */
   typed: ReadinessEntry[];
   /** Form values carried or suggested: they need confirming on the inputs form. */
   confirm: ReadinessEntry[];
@@ -93,11 +95,20 @@ export function needsYou(r: Readiness): NeedsYou {
   return {
     uploads: open.filter((e) => e.kind === "upload").map((e) => ({ ...e, fetchable: FETCHABLE.includes(e.key) })),
     fetch: [...open, ...r.groups.optional].filter(fetchable),
-    typed: open.filter((e) => e.kind !== "upload" && !fetchable(e)),
+    inline: open.filter((e) => !fetchable(e) && isInline(e)),
+    typed: open.filter((e) => e.kind !== "upload" && !fetchable(e) && !isInline(e)),
     confirm: r.groups.carried_or_suggested,
   };
 }
-export const hasNeeds = (n: NeedsYou) => n.uploads.length + n.fetch.length + n.typed.length + n.confirm.length > 0;
+export const hasNeeds = (n: NeedsYou) => n.uploads.length + n.fetch.length + n.inline.length + n.typed.length + n.confirm.length > 0;
+
+/** Stay on the inputs form: the fund table and its two lines belong to the fund table card, the large-cap list is a names box. */
+export const FORM_ONLY = ["mmf", "mmf_published", "mmf_source", "large_caps"];
+/** A form field or table the chat can take: the field gets a box and Save, the table the form's own editor. */
+export const isInline = (e: ReadinessEntry) => (e.kind === "field" || e.kind === "table") && !FORM_ONLY.includes(e.key);
+
+/** Checked before the save is sent; every other check is the API's, in its own words (a blank would clear the value). */
+export const typedProblem = (text: string) => (text.trim() ? null : "Type a value before saving.");
 
 // ---- The review summary the code saves when a draft finishes ----
 

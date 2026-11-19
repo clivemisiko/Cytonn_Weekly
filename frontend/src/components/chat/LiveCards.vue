@@ -11,6 +11,7 @@ import FundSnipCard from "./FundSnipCard.vue";
 import LiveReviewCard from "./LiveReviewCard.vue";
 import NeedsYouCard from "./NeedsYouCard.vue";
 import SourcesCard from "./SourcesCard.vue";
+import TypedInputsCard from "./TypedInputsCard.vue";
 
 const props = defineProps<{
   job: Job;
@@ -67,6 +68,7 @@ watch(() => [props.tick, props.job.job_id, props.section.latest?.run_id, props.s
 onUnmounted(() => generation++);
 
 const needs = computed(() => (readiness.value ? needsYou(readiness.value) : null));
+const formNeeds = computed(() => !!needs.value && hasNeeds({ ...needs.value, inline: [] }));
 const draft = computed(() => draftCard(props.section, props.drafting, props.config));
 const counted = computed(() => readiness.value !== null && (readiness.value.snips !== null || readiness.value.sources !== null));
 const weekly = computed(() => props.report.type === "weekly" && !!props.report.period);
@@ -88,7 +90,8 @@ const done = () => {
     <Notice v-if="readinessProblem" tone="warn" role="alert">{{ readinessProblem }}</Notice>
     <p v-else-if="needs && !hasNeeds(needs)" class="text-sm text-muted-foreground">Nothing is missing for this section.</p>
 
-    <NeedsYouCard v-if="needs && hasNeeds(needs)" :needs="needs" :week="week" :section="section.slug" :form-to="oldPage" @changed="done" />
+    <NeedsYouCard v-if="needs && formNeeds" :needs="needs" :week="week" :section="section.slug" :form-to="oldPage" @changed="done" />
+    <TypedInputsCard v-if="weekly && needs?.inline.length" :entries="needs.inline" :week="week" :section="section.slug" @changed="done" />
     <FundSnipCard v-if="weekly && section.slug === 'fixed_income'" :week="week" :section="section.slug" @changed="done" />
     <SourcesCard v-if="readiness && counted" :readiness="readiness" :old-page="oldPage" />
     <DraftCard v-if="draft.kind !== 'none'" :section="section" :card="draft" :report="report" :config="config" :old-page="oldPage" @changed="done" @ended="ended" />
