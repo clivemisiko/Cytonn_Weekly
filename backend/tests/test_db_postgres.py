@@ -17,10 +17,12 @@ from psycopg import errors as pg_errors
 from psycopg.conninfo import conninfo_to_dict
 from psycopg.rows import dict_row
 
-from api.main import create_app, failure_message
+from api.deps import failure_message
+from api.main import create_app
 from cytonn_weekly import db as database
 from cytonn_weekly.common import run_events as ev
-from cytonn_weekly.digital_payments import review_run, review_store
+from cytonn_weekly.digital_payments import review_run
+from cytonn_weekly.review import store as review_store
 from cytonn_weekly.paths import BACKEND_ROOT
 from tests.test_runs_api import WEEKLY_DP, finished, start
 
@@ -289,7 +291,8 @@ def test_every_table_has_row_level_security_enabled_with_no_policy_and_not_force
     text = re.sub(r"--[^\n]*", "", schema_text())
     tables = re.findall(r"CREATE TABLE IF NOT EXISTS (\w+)", text)
     secured = re.findall(r"ALTER TABLE (\w+)\s+ENABLE ROW LEVEL SECURITY;", text)
-    assert sorted(tables) == sorted(secured) == ["coordinator_reviews", "sections", "suggestion_decisions"]
+    assert sorted(tables) == sorted(secured) == ["coordinator_reviews", "draft_runs", "draft_usage", "job_messages", "report_jobs",
+                                                 "run_events", "sections", "series", "series_points", "suggestion_decisions"]
     assert "CREATE POLICY" not in text.upper() and "FORCE" not in text.upper()   # the app is the owner and must keep its access
 
 
@@ -303,7 +306,7 @@ def test_the_schema_file_makes_the_schema_the_only_place_tables_go():
     text = re.sub(r"--[^\n]*", "", schema_text())
     assert text.count("{schema}") == 1 and "CREATE SCHEMA IF NOT EXISTS {schema};" in text
     assert "public" not in text and "ON CONFLICT (name) DO NOTHING" in text
-    assert text.count("CREATE TABLE IF NOT EXISTS") == 3 and text.count("CREATE INDEX IF NOT EXISTS") == 2
+    assert text.count("CREATE TABLE IF NOT EXISTS") == 10 and text.count("CREATE INDEX IF NOT EXISTS") == 3
 
 
 # --- nothing secret in an error, a log line, an event or a response ---------------------------------------------------------

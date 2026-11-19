@@ -1,7 +1,7 @@
 import type { Decision, ReportType } from "./types";
 
 /**
- * What a coordinator is told before a section that already has a review is drafted again. The API allows it (nothing in
+ * What an analyst is told before a section that already has a review is drafted again. The API allows it (nothing in
  * the backend refuses a new draft over a decided one); the new run becomes the section's latest, and the weekly export
  * and the Executive Summary read the latest run, so an approval does not carry over to it.
  */

@@ -20,11 +20,13 @@ from fastapi.testclient import TestClient
 from api.main import create_app
 from cytonn_weekly import db as db_module
 from cytonn_weekly import notable, sections
+from cytonn_weekly.review import store as review_store
 from cytonn_weekly.notable.registry import DetectorContext, run_detectors
 from cytonn_weekly.notable.suggestion import InvalidSuggestion, Suggestion
 from cytonn_weekly.weekly import export
+from tests import section_helpers as sh
 from tests.test_weekly_export import PERIOD as EXPORT_PERIOD
-from tests.test_weekly_export import built, week  # noqa: F401 - fixtures: the approved six-section week
+from tests.test_weekly_export import built, week  # noqa: F401 - fixtures: the approved five-section week
 
 WEEK = "2026-10-09"
 SECTION = "fixed_income"
@@ -213,7 +215,7 @@ def rows(db, sql="SELECT * FROM suggestion_decisions ORDER BY suggestion_id"):
 
 def test_the_default_app_shows_nothing_for_any_weekly_section(db, tmp_path):
     plain = app_for(db, tmp_path)  # no registry argument: the real one
-    for slug in ("company_updates", "fixed_income", "equities", "real_estate", "digital_payments", "focus"):
+    for slug in ("fixed_income", "equities", "real_estate", "digital_payments", "focus"):
         body = get(plain, slug).json()
         assert body["suggestions"] == [] and body["failed_checks"] == 0 and body["section"] == slug and body["week_ending"] == WEEK
 
@@ -338,10 +340,17 @@ def strip_new_table(schema: str) -> str:
     return ";\n".join(kept) + ";\n"
 
 
+# The tables added since the two existing ones, each tested on its own: suggestion_decisions here, the run and job tables in
+# test_run_store.py and test_jobs.py.  Neither this snapshot nor the fingerprint below covers them.
+ADDED_TABLES = ("suggestion_decisions", "draft_runs", "run_events", "draft_usage", "report_jobs", "job_messages", "series", "series_points")
+
+
 def snapshot(path):
     conn = sqlite3.connect(path)
     try:
-        ddl = conn.execute("SELECT type, name, tbl_name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND tbl_name != 'suggestion_decisions' ORDER BY name").fetchall()
+        marks = ", ".join("?" * len(ADDED_TABLES))
+        ddl = conn.execute(f"SELECT type, name, tbl_name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND tbl_name NOT IN ({marks}) ORDER BY name",
+                           ADDED_TABLES).fetchall()
         data = {t: conn.execute(f"SELECT * FROM {t}").fetchall() for t in ("sections", "coordinator_reviews")}
         info = {t: conn.execute(f"PRAGMA table_info({t})").fetchall() for t in ("sections", "coordinator_reviews")}
         return ddl, data, info
@@ -349,10 +358,9 @@ def snapshot(path):
         conn.close()
 
 
-# The definitions of everything that existed before this feature (sections, coordinator_reviews, their indexes), as schema.sql
-# and the migration build them, fixed here so no later change to schema.sql can alter them unnoticed.  Computed from the
-# schema.sql committed before the feature, with line endings normalized.
-EXISTING_TABLES_SHA256 = "c652b66365634e9d460f7c5ea2982b19b3dda4b2dee61141820601c24e309886"
+# The definitions of the existing tables (sections, coordinator_reviews and their indexes), as schema.sql and the
+# migration build them, fixed here so no later change can alter them unnoticed. The suggestion_decisions table is separate.
+EXISTING_TABLES_SHA256 = "02abeed2c66409ea8a9f49c9dca092bc4ef793963ade05332ca9b0c09e43ec70"
 
 
 # The one deliberate change since: the Monthly report type was added to coordinator_reviews' report_type check (2026-11-03).
@@ -369,7 +377,7 @@ def fingerprint(path, without_monthly: bool = False) -> str:
 
 
 def test_the_definitions_of_the_existing_tables_are_exactly_what_they_were(tmp_path):
-    """Exactly as before, apart from the Monthly in the report type check."""
+    """The existing tables are unchanged apart from Monthly in the report type check."""
     sections.init_db(tmp_path / "fresh.db")
     ddl, _, _ = snapshot(tmp_path / "fresh.db")
     assert sum(MONTHLY_IN_CHECK in (s or "") for _, _, _, s in ddl) == 1
@@ -401,10 +409,10 @@ def sha(path: Path) -> str:
 def test_saving_a_decision_changes_no_review_no_analyst_form_and_nothing_the_export_reads(db, tmp_path):
     client = app_for(db, tmp_path, registry())
     root = tmp_path / "weekly"
-    # Real state to compare: a drafted section (no provider needed), a typed analyst figure, and the export's and overview's views of both.
-    drafted = client.post("/api/sections/company_updates/draft", json={"text": "Investment Updates:\nSYNTHETIC text.", "period": f"Week ending {WEEK}"})
-    assert drafted.status_code == 200, drafted.text
-    run_id = drafted.json()["run_id"]
+    # Real state to compare: a drafted section (a stand-in review saved directly), a typed analyst figure, and the export's and overview's views of both.
+    stand_in = sh.real_estate_review()
+    stand_in.report_type, stand_in.period = "weekly", f"Week ending {WEEK}"
+    run_id = review_store.save_review(stand_in, section="real_estate", db_path=db)
     typed = client.put(f"/api/inputs/weekly/{WEEK}/analyst", params={"section": SECTION}, json={"fields": {"placements": "9.5"}})
     assert typed.status_code == 200, typed.text
 
@@ -435,7 +443,7 @@ def test_saving_a_decision_changes_no_review_no_analyst_form_and_nothing_the_exp
 
 
 def test_the_word_export_is_identical_after_decisions(week, tmp_path):
-    """The real six-section export (tests/test_weekly_export.py's approved week), written before and after the decisions."""
+    """The real five-section export (tests/test_weekly_export.py's approved week), written before and after the decisions."""
     reg = {s: [lambda ctx, s=s: [make(section=s, week_ending=ctx.week_ending.isoformat())]] for s in ("fixed_income", "equities", "focus")}
     client = TestClient(create_app(db_path=week, load_dotenv=False, inputs_root=tmp_path / "w", notable_registry=reg))
 

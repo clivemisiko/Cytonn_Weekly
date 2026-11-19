@@ -12,16 +12,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from typing import Optional
 
 from cytonn_weekly.weekly.equities_workbook import VALUATION_SHEET
 
 # The "Average = x" the team puts on these charts is the mean of every point from here on, not just
 # the years the picture shows.  It is a named constant so it is one line to change.
 AVERAGE_FROM = date(2009, 1, 1)
-# The window the picture shows, back from the newest point.  What is known: Ryan said the team usually shows five years, but
-# the published October 2026 charts start at Oct-19, which is seven.  The window rule is being changed on its own branch;
-# until then the value stays 5.
-NASI_WINDOW_YEARS = 5
+# The window the picture shows (Ryan, 3 Nov 2026): it follows the month the report is in and is fixed within that month,
+# starting on the first of that month this many years earlier.  The October 2026 published charts start at Oct-19.
+NASI_WINDOW_YEARS = 7
 
 
 @dataclass(frozen=True)
@@ -32,11 +32,14 @@ class ChartSpec:
     sheet: str                      # verbatim from the workbook (some end in a space)
     header: str                     # the label above the dates; the values are in the next column
     unit: str                       # "multiple" (10.0x), or "pct": stored as a fraction and formatted as a percentage
-    window_years: int               # how many years back from the newest point the picture shows
+    window_years: int               # the picture starts on the first of the week's month, this many years earlier
     newest_not_before_days: int     # freshness: the newest point is dated this many days after the week's Friday or later
     ceiling_days: int               # no point is dated later than this many days after the Friday
     quoted: tuple[tuple[str, str], ...]   # (what the draft quotes, its figure key in the section): ("point", "pe")
     decimals: int = 1               # display precision of the quoted figures, as the report prints them
+    name: str = ""                  # the published chart's own name, after "Cytonn Report: "
+    y_top: Optional[int] = None     # the y axis runs from 0 to this; None: the next multiple of y_step above the data
+    y_step: int = 2
     min_points: int = 52            # a year of weekly points; fewer is not a chart
 
     @property
@@ -52,6 +55,7 @@ NASI_PE = ChartSpec(
     sheet=VALUATION_SHEET, header="Price to Earnings", unit="multiple", window_years=NASI_WINDOW_YEARS,
     newest_not_before_days=0, ceiling_days=0,
     quoted=(("point", "pe"), ("average", "pe_average")),
+    name="NASI P/E", y_top=19,
 )
 NASI_YIELD = ChartSpec(
     id="nasi_yield",
@@ -60,6 +64,7 @@ NASI_YIELD = ChartSpec(
     sheet=VALUATION_SHEET, header="Dividend Yield", unit="pct", window_years=NASI_WINDOW_YEARS,
     newest_not_before_days=0, ceiling_days=0,
     quoted=(("point", "dividend_yield"), ("average", "dividend_yield_average")),
+    name="NASI Dividend Yield",
 )
 
 SPECS = {s.id: s for s in (NASI_PE, NASI_YIELD)}

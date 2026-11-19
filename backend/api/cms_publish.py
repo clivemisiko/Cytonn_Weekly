@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Any, Iterator, Sequence
 
-from cytonn_weekly.digital_payments.coordinator_review import APPROVED, CoordinatorReview
+from cytonn_weekly.review.model import APPROVED, CoordinatorReview
 from cytonn_weekly.report_sections import section_slug
 
 DEV_PREFIX = "local:"
@@ -83,10 +83,10 @@ def publish_report(report_type: str, period: str, reviews: Sequence[CoordinatorR
                 f"the section {section_slug(review)!r} (review run {review.run_id}) is {state}, not approved; "
                 "only approved sections are published"
             )
-        if not review.is_approvable:  # a decision field alone is not proof; every item must really be accepted
+        if not review.is_approvable:  # a decision field alone is not proof; there must be a draft
             raise PublishNotAllowed(
-                f"the section {section_slug(review)!r} (review run {review.run_id}) is marked approved but not "
-                "every item is resolved and accepted"
+                f"the section {section_slug(review)!r} (review run {review.run_id}) is marked approved but holds "
+                "no draft"
             )
     # TODO: needs everything in UNBLOCK before any of this can be written without guessing.
     raise NotImplementedError(f"{BLOCKED_REASON} To unblock: {UNBLOCK}")

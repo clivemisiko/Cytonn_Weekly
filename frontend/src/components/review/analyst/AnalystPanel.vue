@@ -48,7 +48,7 @@ const waiting = computed(() => form.value?.unconfirmed ?? []);
 const unsaved = computed(() => Object.values(dirty.value).some(Boolean));
 const pending = computed(() => busy.value || unsaved.value || waiting.value.length > 0);
 // Home and Back on the top bar ask before leaving while something typed here is not saved.
-useLeaveGuard(unsaved, 'Something typed under "Weekly analyst inputs" is not saved yet. Leave this page and lose it?');
+useLeaveGuard(unsaved, 'You have unsaved changes in Weekly Analyst Inputs. Are you sure you want to leave without saving?');
 watch(pending, (now) => emit("pending", now), { immediate: true });
 onUnmounted(() => emit("pending", false));
 
@@ -98,17 +98,14 @@ const hasBook = computed(() => form.value?.workbooks[props.section] ?? false);
     <div class="space-y-1 border-b pb-4">
       <h2 id="analyst-title" class="text-lg font-semibold">Weekly analyst inputs</h2>
       <p class="max-w-[72ch] text-sm text-muted-foreground">
-        The figures only the analysts hold, for the week ending <span class="font-mono">{{ friendlyDate(week) }}</span>. Type them
-        here when no workbook is sent. Every value is carried into the draft as an analyst input for you to check. Nothing
-        is filled in by itself: a value copied from last week or suggested by a button waits for you to confirm it, and
-        anything left empty is marked as missing in the draft.
+        Weekly proprietary metrics for the week ending <span class="font-mono">{{ friendlyDate(week) }}</span>. Carried values and system suggestions require your confirmation before drafting. Unentered fields will be noted as pending in the draft.
       </p>
       <template v-if="form">
         <p class="text-xs text-muted-foreground">
           {{
             hasBook
-              ? "A workbook is uploaded for this week: its values are shown and used wherever you type nothing."
-              : "No workbook is uploaded for this week: the draft uses only what is typed here."
+              ? "A workbook is uploaded for this week: its values are used wherever manual inputs are omitted."
+              : "No workbook is uploaded for this week: the draft relies solely on the figures entered below."
           }}{{ form.saved_at ? ` Last saved ${friendlyTime(form.saved_at)}.` : "" }}
         </p>
         <div class="flex flex-wrap items-center gap-x-3 gap-y-2 pt-2">
@@ -119,8 +116,8 @@ const hasBook = computed(() => form.value?.workbooks[props.section] ?? false);
           <p class="max-w-[60ch] text-xs text-muted-foreground">
             {{
               form.can_carry
-                ? `Copies what was saved for the week ending ${friendlyDate(form.previous_week)} into every item still empty here, each marked as carried. Figures that change every week then wait for you to confirm them.`
-                : `Nothing confirmed is saved for the week ending ${friendlyDate(form.previous_week)} to start from.`
+                ? `Populates empty fields with confirmed values from the week ending ${friendlyDate(form.previous_week)}. Weekly changing figures will require your confirmation.`
+                : `No confirmed records found for the week ending ${friendlyDate(form.previous_week)} to carry forward.`
             }}
           </p>
         </div>

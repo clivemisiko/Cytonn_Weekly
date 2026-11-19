@@ -3,7 +3,7 @@ import { VARIANT, startRun } from "./helpers";
 
 /**
  * The run view's layout: the steps and what came of the run in the feed, the run's facts in the panel beside it (below
- * the feed when the window is narrow), and nothing the coordinator has to see in the panel: the status, the failure and
+ * the feed when the window is narrow), and nothing the analyst has to see in the panel: the status, the failure and
  * the ways back to the overview stay in the feed. This file has its own run on a freshly restored test backend
  * (`playwright test runview`).
  */
@@ -19,7 +19,7 @@ test("T73 a finished run: its facts are in the panel beside the steps, the resul
   await expect(page.getByRole("heading", { name: "Draft ready for review", level: 2 })).toBeVisible({ timeout: 60_000 });
   const panel = facts(page);
   const steps = page.getByRole("log", { name: "Steps of this draft" });
-  await expect(panel.locator("dt")).toHaveText(["Section", "Report", "Started", "Finished"]);
+  await expect(panel.locator("dt")).toHaveText(["Section", "Report", "Started", "Finished", "Steps"]);
   await expect(panel.locator("dd").first()).toHaveText("Digital Payments");
   const feed = (await steps.boundingBox())!;
   expect((await panel.boundingBox())!.x).toBeGreaterThan(feed.x + feed.width); // beside the steps, on their right
@@ -51,9 +51,9 @@ test("T74 a stopped run: the failure and the way back are in the feed, and the p
   const run = await startRun(request, "real_estate"); // stops by design in the test API and saves nothing
   await page.goto(`/runs/${run}`);
   const panel = facts(page);
-  const alert = page.getByRole("alert").filter({ hasText: "The draft stopped." });
+  const alert = page.getByRole("alert").filter({ hasText: "Drafting could not be completed." });
   await expect(alert).toContainText("the Ibuka summary could not be fetched (a deliberate failure for the tests)");
-  await expect(panel.locator("dt")).toHaveText(["Section", "Report", "Started", "Stopped"]);
+  await expect(panel.locator("dt")).toHaveText(["Section", "Report", "Started", "Stopped", "Steps"]);
   const side = (await panel.boundingBox())!;
   for (const where of [alert, page.getByRole("link", { name: "Back to overview" }), page.getByText(/^Stopped .* EAT\.$/)]) {
     await expect(where).toBeVisible();

@@ -1,6 +1,6 @@
 import { computed, ref, shallowRef } from "vue";
 import * as api from "./api";
-import type { Decision, Resolution, Review } from "./types";
+import type { Decision, Review } from "./types";
 
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
@@ -44,16 +44,16 @@ export function useReviewSession(initial: Review) {
     return task;
   }
 
-  const resolve = (index: number, resolution: Resolution, note?: string) => send(() => api.resolveItem(runId, index, resolution, note));
-  const acceptClean = () => send(() => api.acceptClean(runId));
   const setTeamChart = (chartId: string, use: boolean) => send(() => api.setTeamChart(runId, chartId, use));
 
   async function decide(decision: Decision): Promise<boolean> {
     deciding.value = true;
     decisionError.value = null;
     try {
-      await tail; // let any in-flight resolution land first, so approvability is judged on it
-      review.value = await api.decide(runId, decision);
+      await tail; // let any in-flight write land first
+      // The count the approval dialog named: the flagged items of the review on screen.
+      const flagged = review.value.review_items.filter((i) => i.status === "flagged").length;
+      review.value = await api.decide(runId, decision, flagged);
       return true;
     } catch (err) {
       decisionError.value = messageOf(err);
@@ -68,5 +68,5 @@ export function useReviewSession(initial: Review) {
     }
   }
 
-  return { review, saving: computed(() => inFlight.value > 0), saveError, decisionError, deciding, resolve, acceptClean, setTeamChart, decide };
+  return { review, saving: computed(() => inFlight.value > 0), saveError, decisionError, deciding, setTeamChart, decide };
 }

@@ -41,6 +41,7 @@ TURNOVER_SHEET = "Equities Turnover"
 FOREIGN_SHEET = "Foreign Positions"
 VALUATION_SHEET = "NASI-PE & Dividend Yield"
 MARKET_PE_SHEET = "Market PE & Dividend Yield"
+GAINERS_SHEET = "Gainers & Losers"
 UNIVERSE_SHEET = "Universe of Coverage"
 
 INDEX_LABELS = {"nse_20": "nse 20", "nasi": "nasi", "nse_25": "nse 25", "nse_10": "nse 10"}
@@ -197,17 +198,17 @@ def _series_average(book: Workbook, sheet: Sheet, stated: Cell) -> Optional[tupl
 def read_valuation(book: Workbook, week: Week) -> dict[str, Any]:
     """The Friday's market P/E and dividend yield, their historical averages and the sheet's PEG."""
     sheet = book.sheet(VALUATION_SHEET)
-    row = sheet.row_for_date(week.ending, 1)
+    row = sheet.row_for_date(week.as_at, 1)
     if row is None:
-        raise not_updated(VALUATION_SHEET, week.ending)
+        raise not_updated(VALUATION_SHEET, week.as_at)
     avg = sheet.find("average", cols=range(1, 2), rows=range(1, row), what="'AVERAGE' row")
     out: dict[str, Any] = {
-        "pe": sheet.number(row, 2, f"market P/E for {week.ending.isoformat()}"),
-        "dividend_yield": sheet.number(row, 4, f"dividend yield for {week.ending.isoformat()}"),
+        "pe": sheet.number(row, 2, f"market P/E for {week.as_at.isoformat()}"),
+        "dividend_yield": sheet.number(row, 4, f"dividend yield for {week.as_at.isoformat()}"),
         "pe_average": sheet.number(avg.row, 2, "average P/E"),
         "dividend_yield_average": sheet.number(avg.row, 4, "average dividend yield"),
     }
-    prev = sheet.row_for_date(week.previous_friday, 1)
+    prev = sheet.row_for_date(week.previous_as_at, 1)
     out["previous_pe"] = sheet.cell(prev, 2) if prev else None
     out["pe_average_recomputed"] = _series_average(book, sheet, out["pe_average"])
     out["dividend_yield_average_recomputed"] = _series_average(book, sheet, out["dividend_yield_average"])
@@ -229,6 +230,35 @@ def read_large_caps(book: Workbook) -> list[Cell]:
     if not names:
         raise WorkbookError(f"'{MARKET_PE_SHEET}' lists no large caps beside its 'Year Open' column")
     return names
+
+
+def read_gainers_losers(book: Workbook, days: list[date]) -> list[tuple[str, dict[date, Cell]]]:
+    """[(ticker, {day: price cell})] in the sheet's row order, for each day asked for.
+
+    Each day's column is the one whose row-2 cell is that exact date.  The tickers are in the
+    nearest column left of the first day's column with text in row 3, read down to the first gap.
+    """
+    sheet = book.sheet(GAINERS_SHEET)
+    cols = {}
+    for day in days:
+        hits = [c for c in sheet.cells(rows=range(2, 3)) if c.day == day]
+        if not hits:
+            raise WorkbookError(f"'{GAINERS_SHEET}' has no column dated {day.isoformat()} in row 2: the workbook is not "
+                                "yet updated for this week")
+        if len(hits) > 1:
+            raise WorkbookError(f"'{GAINERS_SHEET}' has {len(hits)} columns dated {day.isoformat()} in row 2 "
+                                f"({', '.join(c.a1 for c in hits)}); keep one and upload the workbook again")
+        cols[day] = hits[0].col
+    names = next((c for c in range(cols[days[0]] - 1, 0, -1) if norm(sheet.value(3, c))), None)
+    if names is None:
+        raise WorkbookError(f"'{GAINERS_SHEET}' has no tickers in row 3 left of the column dated {days[0].isoformat()}")
+    out = []
+    for r in range(3, sheet.max_row + 1):
+        ticker = norm(sheet.value(r, names)).upper()
+        if not ticker:
+            break
+        out.append((ticker, {day: sheet.number(r, col, f"{ticker}'s price on {day.isoformat()}") for day, col in cols.items()}))
+    return out
 
 
 # ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 """The one place a database is opened.
 
-Every runtime SQL call goes through here (sections.py, digital_payments/review_store.py, notable/store.py and
+Every runtime SQL call goes through here (sections.py, review/store.py, notable/store.py and
 report_sections.py); no other file imports sqlite3 or psycopg or opens a connection.  This module owns the connection,
 rows by column name, the transaction, the schema run, the placeholder style and the id of an inserted row.
 
@@ -50,9 +50,9 @@ REQUIRE_POSTGRES = ("CYTONN_REQUIRE_POSTGRES=1 is set (the Docker app), but CYTO
 DEFAULT_SCHEMA = "cytonn"
 MIN_SQLITE = (3, 39, 0)  # IS NOT DISTINCT FROM; RETURNING needs 3.35 and ON CONFLICT 3.24
 
-# What a coordinator is told when PostgreSQL cannot be used, whatever the driver said.
+# What an analyst is told when PostgreSQL cannot be used, whatever the driver said.
 UNREACHABLE = "Could not reach the database. Check CYTONN_DATABASE_URL and the network."
-# What a coordinator is told when the server was reached and refused the request; no detail, the driver's words can name the host.
+# What an analyst is told when the server was reached and refused the request; no detail, the driver's words can name the host.
 REJECTED = "The database rejected the request. See the server log."
 # SQLSTATEs that mean the connection, not the request: class 08 (connection exception), 57P01 to 57P03 (shutdown, crash,
 # cannot connect now) and 53300 (too many connections).  Any other state on an OperationalError (deadlock, cancelled, disk full) is a rejection.
@@ -361,7 +361,7 @@ def _held_connection(url: str, schema: str):
 
 def _connect_postgres(url: str) -> Db:
     # ponytail: one connection per process, one caller at a time (all database work is serialised); a pool
-    # (psycopg_pool) is the upgrade if more than one coordinator ever works at once.
+    # (psycopg_pool) is the upgrade if more than one analyst ever works at once.
     schema = schema_name()
     url = _postgres_url(url)  # refused here, before the lock, if it is not usable
     if not _held_lock.acquire(timeout=LOCK_TIMEOUT_SECONDS):
@@ -463,6 +463,17 @@ _ADDED_REVIEW_COLUMNS = (
 )
 
 
+# Chat columns report_jobs and job_messages gained after their first release (the same clauses as schema.sql).
+_ADDED_JOB_COLUMNS = {
+    "report_jobs": (("status", "status TEXT NOT NULL DEFAULT 'idle'"), ("paused_reason", "paused_reason TEXT"),
+                    ("calls_used", "calls_used INTEGER NOT NULL DEFAULT 0"), ("input_tokens", "input_tokens INTEGER NOT NULL DEFAULT 0"),
+                    ("output_tokens", "output_tokens INTEGER NOT NULL DEFAULT 0"),
+                    ("budget_raises", "budget_raises INTEGER NOT NULL DEFAULT 0")),
+    "job_messages": (("tool_use_id", "tool_use_id TEXT"), ("tool_input", "tool_input TEXT"), ("usage", "usage TEXT"),
+                     ("cards", "cards TEXT")),
+}
+
+
 def _migrate(conn: Db) -> None:
     """Bring an existing SQLite database up to schema.sql.  Idempotent; changes no existing value.
 
@@ -474,6 +485,11 @@ def _migrate(conn: Db) -> None:
     for name, clause in _ADDED_REVIEW_COLUMNS:
         if name not in have:
             conn.execute(f"ALTER TABLE coordinator_reviews ADD COLUMN {clause}")
+    for table, columns in _ADDED_JOB_COLUMNS.items():
+        have = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+        for name, clause in columns:
+            if name not in have:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {clause}")
     _allow_monthly_sqlite(conn)
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_coordinator_reviews_report "

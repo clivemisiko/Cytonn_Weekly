@@ -1,6 +1,6 @@
-"""This week's inputs: the files a coordinator uploads for one report week, and where they are kept.
+"""This week's inputs: the files an analyst uploads for one report week, and where they are kept.
 
-Each Friday the analysts send their workbooks and the KCB IB reports; the coordinator
+Each Friday the analysts send their workbooks and the KCB IB reports; the analyst
 uploads them on the start screen.  They are kept under the data directory, never in the
 repository tree::
 
@@ -9,7 +9,7 @@ repository tree::
         kcb_daily_<date>.pdf     (one per trading day, named by the date printed in it)
         kcb_weekly.pdf           cbk_bulletin.pdf        nse_yield_curve.pdf
         manifest.json            (what each stored file is and the date read from it)
-        notes.json               (what the coordinator typed: the bidding range, the previous issue)
+        notes.json               (what the analyst typed: the bidding range, the previous issue)
 
 An upload is checked before it is stored: its size, that it is the kind of file its slot
 takes (a PDF or an Excel workbook, by its first bytes, not its name), and that it reads as
@@ -29,9 +29,11 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from cytonn_weekly import paths
+from cytonn_weekly.common import atomic
+from cytonn_weekly.digital_payments import workbook as dp_workbook
 from cytonn_weekly.weekly import cbk_bulletin, equities_workbook, fi_workbook, kcb, nse_yield_curve
 from cytonn_weekly.weekly.week import Week, day_text
-from cytonn_weekly.weekly.workbook import Workbook, WorkbookError
+from cytonn_weekly.weekly.workbook import Workbook, WorkbookError, read_title_date
 
 MAX_BYTES = 30 * 1024 * 1024
 PDF_MAGIC = b"%PDF"
@@ -39,17 +41,18 @@ XLSX_MAGIC = b"PK\x03\x04"
 
 EQUITIES_WORKBOOK = "equities_workbook"
 FI_WORKBOOK = "fi_workbook"
+DP_WORKBOOK = "dp_workbook"
 KCB_DAILY = "kcb_daily"
 KCB_WEEKLY = "kcb_weekly"
 CBK_BULLETIN = "cbk_bulletin"
 NSE_YIELD_CURVE = "nse_yield_curve"
 
-NOTE_KEYS = ("bidding_range", "previous_issue")
+NOTE_KEYS = ("bidding_range", "previous_issue", "as_at")
 MAX_NOTE = 2000
 
 
 class InputError(ValueError):
-    """An upload that is refused, with the reason shown to the coordinator."""
+    """An upload that is refused, with the reason shown to the analyst."""
 
 
 @dataclass(frozen=True)
@@ -61,23 +64,27 @@ class Slot:
     per_day: bool        # one file per trading day
     fetchable: bool      # the tool can fetch it itself
     help: str
+    sections: tuple[str, ...] = ()   # the weekly sections whose draft reads it (a test records the reads and checks this)
 
 
 SLOTS: tuple[Slot, ...] = (
     Slot(EQUITIES_WORKBOOK, "Equities workbook", "xlsx", False, False, False,
          "The equities team's workbook, updated for the Friday (index levels, turnover, foreign flows, "
-         "market P/E, Universe of Coverage)."),
+         "market P/E, Universe of Coverage).", sections=("equities",)),
     Slot(FI_WORKBOOK, "Fixed income workbook", "xlsx", False, False, False,
          "The fixed income mastersheet, updated for the week's auction (T-bills, money market funds, Eurobonds, "
-         "government borrowing)."),
+         "government borrowing).", sections=("fixed_income",)),
     Slot(KCB_DAILY, "KCB IB daily trading reports", "pdf", False, True, False,
-         "One per trading day, Monday to Friday. Each is filed under the date printed in it."),
+         "One per trading day, Monday to Friday. Each is filed under the date printed in it.", sections=("equities",)),
     Slot(KCB_WEEKLY, "KCB IB weekly trading report", "pdf", False, False, False,
-         "The Friday's weekly report: week-on-week moves and the daily foreign flows."),
+         "The Friday's weekly report: week-on-week moves and the daily foreign flows.", sections=("equities",)),
     Slot(CBK_BULLETIN, "CBK Weekly Bulletin", "pdf", False, False, True,
-         "The Friday's bulletin. It can be fetched from centralbank.go.ke, or uploaded."),
+         "The Friday's bulletin. It can be fetched from centralbank.go.ke, or uploaded.", sections=("fixed_income", "equities")),
     Slot(NSE_YIELD_CURVE, "NSE yield curve", "pdf", True, False, False,
-         "Optional. Shown beside the T-bond bidding range as context only."),
+         "Optional. Shown beside the T-bond bidding range as context only.", sections=("fixed_income",)),
+    Slot(DP_WORKBOOK, "Digital Payments workbook", "xlsx", True, False, False,
+         "Optional. Its P/Es are checked by company name and its Year Open against the first trading day's close; "
+         "differences show as warnings on the Digital Payments review.", sections=("digital_payments",)),
 )
 BY_SLUG = {s.slug: s for s in SLOTS}
 
@@ -113,9 +120,7 @@ def read_manifest(week: Week, root: Optional[Path] = None) -> dict[str, Any]:
 
 
 def _write_manifest(week: Week, root: Optional[Path], manifest: dict[str, Any]) -> None:
-    path = _manifest_path(week, root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(manifest, indent=1, sort_keys=True), encoding="utf-8")
+    atomic.write_atomic(_manifest_path(week, root), json.dumps(manifest, indent=1, sort_keys=True))
 
 
 # ---------------------------------------------------------------------------
@@ -149,12 +154,8 @@ def fi_workbook_date(book: Workbook) -> Optional[date]:
     """The date the workbook's money market fund table is "as published on"."""
     sheet = book.sheet(fi_workbook.MMF_SHEET)
     for c in sheet.find_all(lambda s: s.startswith("money market fund yield for fund managers as published on")):
-        m = fi_workbook._PUBLISHED.search(" ".join(str(c.value).split()).lower())
-        if m:
-            try:
-                return datetime.strptime(f"{m.group(1)} {m.group(2)} {m.group(3)}", "%d %B %Y").date()
-            except ValueError:
-                return None
+        if day := read_title_date(c.value):
+            return day
     return None
 
 
@@ -165,11 +166,15 @@ def identify(slot: Slot, data: bytes, week: Week) -> dict[str, Any]:
         if slot.slug == EQUITIES_WORKBOOK:
             read = equities_workbook_date(equities_workbook.open_equities_workbook(data, slot.title))
             # its date: the newest Friday its P/E series has a row for
-            return _found(read, read == week.ending, "equities_workbook.xlsx", "")
+            return _found(read, read in week.report_dates, "equities_workbook.xlsx", "")
         if slot.slug == FI_WORKBOOK:
             read = fi_workbook_date(fi_workbook.open_fi_workbook(data, slot.title))
             # its date: the date its money market fund table is published on
             return _found(read, read == week.ending, "fi_workbook.xlsx", "")
+        if slot.slug == DP_WORKBOOK:
+            read = dp_workbook.read_dp_workbook(dp_workbook.open_dp_workbook(data, slot.title)).price_date
+            # its date: the date of the newest price column
+            return _found(read, read == week.ending, "dp_workbook.xlsx", "")
         if slot.slug in (KCB_DAILY, KCB_WEEKLY):
             report = kcb.parse_kcb_pdf(data)
             wanted = kcb.DAILY if slot.slug == KCB_DAILY else kcb.WEEKLY
@@ -180,18 +185,18 @@ def identify(slot: Slot, data: bytes, week: Week) -> dict[str, Any]:
             if slot.slug == KCB_DAILY:
                 if report.report_date not in week.trading_days:
                     raise InputError(f"{slot.title}: the report itself prints the date {day_text(report.report_date)}. This week "
-                                     f"needs reports for {day_text(week.monday)} to {day_text(week.ending)}. The date is "
+                                     f"needs reports for {day_text(week.monday)} to {day_text(week.as_at)}. The date is "
                                      "read from inside the report, not from the file name, so renaming the file does "
                                      "not change it. Upload the reports for those days, or choose the week this "
                                      "report belongs to.")
                 return _found(report.report_date, True, f"kcb_daily_{report.report_date.isoformat()}.pdf",
                               "; ".join(report.problems))
-            return _found(report.report_date, report.report_date == week.ending, "kcb_weekly.pdf",
-                          "; ".join(report.problems))
+            return {**_found(report.report_date, report.report_date in week.report_dates, "kcb_weekly.pdf", "; ".join(report.problems)),
+                    "parsed": report}
         if slot.slug == CBK_BULLETIN:
             bulletin = cbk_bulletin.parse_bulletin(data)
-            return _found(bulletin.issue_date, bulletin.issue_date == week.ending, "cbk_bulletin.pdf",
-                          "; ".join(bulletin.problems), bulletin.notices)
+            return {**_found(bulletin.issue_date, bulletin.issue_date in week.report_dates, "cbk_bulletin.pdf",
+                             "; ".join(bulletin.problems), bulletin.notices), "parsed": bulletin}
         if slot.slug == NSE_YIELD_CURVE:
             curve = nse_yield_curve.parse_yield_curve(data)
             return _found(curve.curve_date, week.monday <= curve.curve_date <= week.ending, "nse_yield_curve.pdf", "")
@@ -220,27 +225,32 @@ _SAFE_NAME = re.compile(r"[^A-Za-z0-9 ._()'&,-]")
 
 
 def store(week: Week, slug: str, data: bytes, filename: str = "", root: Optional[Path] = None,
-          fetched_from: Optional[str] = None) -> dict[str, Any]:
+          fetched_from: Optional[str] = None, db_path: Optional[Path] = None, record: bool = True) -> dict[str, Any]:
     """Check and keep one upload; returns its manifest entry.  InputError (nothing stored) if it is refused."""
     slot = BY_SLUG.get(slug)
     if slot is None:
         raise InputError(f"unknown input {slug!r}")
     found = identify(slot, data, week)
     folder = week_dir(week, root)
-    folder.mkdir(parents=True, exist_ok=True)
-    (folder / found["stored_name"]).write_bytes(data)
     entry = {
         "slot": slug, "stored_name": found["stored_name"], "read_date": found["read_date"], "matches": found["matches"],
         "note": found["note"], "notices": found["notices"], "size": len(data), "sha256": hashlib.sha256(data).hexdigest(),
         "original_name": _SAFE_NAME.sub("_", filename or "")[:160], "received_at": _now(),
         "fetched_from": fetched_from,
     }
-    manifest = read_manifest(week, root)
-    manifest[found["stored_name"]] = entry
-    _write_manifest(week, root, manifest)
+    with atomic.GUARD:   # two uploads at once (five KCB days) must not each write a manifest without the other's entry
+        atomic.write_atomic(folder / found["stored_name"], data)
+        manifest = read_manifest(week, root)
+        manifest[found["stored_name"]] = entry
+        _write_manifest(week, root, manifest)
+    if record and found.get("parsed") is not None:
+        from cytonn_weekly.history import weekly as history   # imported here: history imports the analyst form, which imports this module
+
+        history.record_upload(week, slug, found["parsed"], entry, db_path)   # published figures, once per series and date; never raises
     return entry
 
 
+@atomic.locked
 def remove(week: Week, stored_name: str, root: Optional[Path] = None) -> bool:
     manifest = read_manifest(week, root)
     if stored_name not in manifest:
@@ -264,12 +274,19 @@ def read_notes(week: Week, root: Optional[Path] = None) -> dict[str, str]:
     return {k: str(v) for k, v in data.items() if k in NOTE_KEYS and isinstance(v, str) and v.strip()}
 
 
+@atomic.locked
 def write_notes(week: Week, notes: dict[str, Optional[str]], root: Optional[Path] = None) -> dict[str, str]:
     kept = read_notes(week, root)
     for key, value in notes.items():
         if key not in NOTE_KEYS:
             raise InputError(f"unknown note {key!r}")
         text = " ".join((value or "").split())
+        if key == "as_at" and text:
+            try:
+                Week(week.ending, date.fromisoformat(text))
+            except ValueError as exc:
+                raise InputError(str(exc) if "weekday" in str(exc) or "holiday" in str(exc)
+                                 else "As-at date: type it as YYYY-MM-DD, e.g. 2026-12-24.")
         if len(text) > MAX_NOTE:
             raise InputError(f"{key.replace('_', ' ').capitalize()}: {len(text)} characters typed and the limit is {MAX_NOTE}. "
                              f"Shorten it by {len(text) - MAX_NOTE}.")
@@ -277,9 +294,7 @@ def write_notes(week: Week, notes: dict[str, Optional[str]], root: Optional[Path
             kept[key] = text
         else:
             kept.pop(key, None)
-    folder = week_dir(week, root)
-    folder.mkdir(parents=True, exist_ok=True)
-    (folder / "notes.json").write_text(json.dumps(kept, indent=1, sort_keys=True), encoding="utf-8")
+    atomic.write_atomic(week_dir(week, root) / "notes.json", json.dumps(kept, indent=1, sort_keys=True))
     return kept
 
 
@@ -290,6 +305,8 @@ def _file_view(entry: dict[str, Any]) -> dict[str, Any]:
 
 def status(week: Week, root: Optional[Path] = None) -> dict[str, Any]:
     """What the panel shows: per slot, what was received, the date read from it, and whether it is this week's."""
+    notes = read_notes(week, root)
+    week = week.with_as_at(date.fromisoformat(notes["as_at"]) if "as_at" in notes else None)
     manifest = read_manifest(week, root)
     folder = week_dir(week, root)
     present = {name: e for name, e in manifest.items() if (folder / name).is_file()}
@@ -297,7 +314,7 @@ def status(week: Week, root: Optional[Path] = None) -> dict[str, Any]:
     for slot in SLOTS:
         files = sorted((e for e in present.values() if e.get("slot") == slot.slug), key=lambda e: e["stored_name"])
         view: dict[str, Any] = {"slug": slot.slug, "title": slot.title, "kind": slot.kind, "optional": slot.optional,
-                                "per_day": slot.per_day, "fetchable": slot.fetchable, "help": slot.help}
+                                "per_day": slot.per_day, "fetchable": slot.fetchable, "help": slot.help, "sections": list(slot.sections)}
         if slot.per_day:
             by_day = {e["read_date"]: e for e in files}
             view["days"] = [{"date": d.isoformat(), "weekday": d.strftime("%A"), "received": d.isoformat() in by_day,
@@ -312,7 +329,8 @@ def status(week: Week, root: Optional[Path] = None) -> dict[str, Any]:
         slots.append(view)
     from cytonn_weekly.weekly import chart_uploads
     return {"week_ending": week.ending.isoformat(), "monday": week.monday.isoformat(),
-            "previous_friday": week.previous_friday.isoformat(), "slots": slots, "notes": read_notes(week, root),
+            "previous_friday": week.previous_friday.isoformat(), "as_at": week.as_at.isoformat(),
+            "previous_as_at": week.previous_as_at.isoformat(), "holiday_note": week.holiday_note, "slots": slots, "notes": notes,
             "max_bytes": MAX_BYTES, "charts": chart_uploads.status(week, root), "chart_max_bytes": chart_uploads.MAX_BYTES}
 
 
@@ -327,6 +345,9 @@ class WeeklyInputs:
         self.week = week
         self.root = root
         self._cache: dict[str, Any] = {}
+        typed = self.notes.get("as_at")   # the as-at date the analyst set for the week, if any
+        if typed:
+            self.week = week.with_as_at(date.fromisoformat(typed))
 
     def _path(self, name: str) -> Optional[Path]:
         path = week_dir(self.week, self.root) / name
@@ -351,6 +372,14 @@ class WeeklyInputs:
     @property
     def fi_book(self) -> Optional[Workbook]:
         return self._parsed("fi", "fi_workbook.xlsx", lambda b: fi_workbook.open_fi_workbook(b))
+
+    def hidden_sheet_lines(self) -> list[str]:
+        """A warning for each hidden sheet a draft read a value from, in the equities and fixed income workbooks it has opened."""
+        return [line for key in ("eq", "fi") if (book := self._cache.get(key)) is not None for line in book.hidden_lines()]
+
+    @property
+    def dp_book(self) -> Optional[Workbook]:
+        return self._parsed("dp", "dp_workbook.xlsx", lambda b: dp_workbook.open_dp_workbook(b))
 
     @property
     def kcb_weekly(self) -> Optional[kcb.KcbReport]:

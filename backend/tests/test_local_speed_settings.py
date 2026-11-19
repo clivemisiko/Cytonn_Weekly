@@ -14,9 +14,9 @@ from pathlib import Path
 import httpx
 import pytest
 
-from cytonn_weekly.digital_payments.providers import local_provider as lp
-from cytonn_weekly.narrative.base import NarrativeBrief
-from cytonn_weekly.narrative.local_provider import LocalNarrativeProvider
+from cytonn_weekly.drafting import local as lp
+from cytonn_weekly.drafting.base import NarrativeBrief
+from cytonn_weekly.drafting.local_narrative import LocalNarrativeProvider
 
 BEFORE = json.loads((Path(__file__).parent / "fixtures" / "local_provider_requests_before.json").read_text("ascii"))
 INPUTS = BEFORE["inputs"]

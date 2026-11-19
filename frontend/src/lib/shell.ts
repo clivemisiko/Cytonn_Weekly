@@ -1,10 +1,16 @@
 import { type MaybeRefOrGetter, computed, onUnmounted, ref, shallowRef, toValue, watchEffect } from "vue";
 import * as api from "./api";
-import { type SectionState, isDraftingThis, stateOf } from "./drafting";
-import type { AppConfig, Overview, ReportChoice, ReportType } from "./types";
+import { type SectionState, draftingFor, draftingList, isLive, stateOf } from "./drafting";
+import type { AppConfig, Overview, ReportChoice, ReportType, SectionSummary } from "./types";
 
 /** What the side rail shows for a section: its state on the overview, "drafting" while it is being drafted, or null (unknown). */
-export type RailState = SectionState | "drafting";
+export type RailState = SectionState | "drafting" | "queued";
+
+function railState(overview: Overview, s: SectionSummary, report: ReportChoice): RailState {
+  const mine = draftingFor(draftingList(overview), s.slug, report);
+  if (isLive(mine)) return mine.state === "queued" ? "queued" : "drafting";
+  return stateOf(s);
+}
 
 export interface RailSection {
   slug: string;
@@ -35,10 +41,9 @@ export function createShell(load: (report: ReportChoice) => Promise<Overview>) {
   const config = shallowRef<AppConfig | null>(null);
   const here = shallowRef<Here>(null);
   const ribbon = ref<string | null>(null);
+  const menu = ref(false); // the phone's drawer; never stored
   /** Opens a section on the page that owns the sections (the overview page); null where nothing can (the run view). */
   const opener = shallowRef<((slug: string) => void) | null>(null);
-  /** Goes to the overview's list of sections from within the overview page; null elsewhere. */
-  const toOverview = shallowRef<(() => void) | null>(null);
   let latest = 0;
 
   /** Take the payload a page has just read. It is the newest, so any read still in flight is dropped. */
@@ -81,7 +86,7 @@ export function createShell(load: (report: ReportChoice) => Promise<Overview>) {
     return overview.sections.map((s) => ({
       slug: s.slug,
       title: s.title,
-      state: !known.value ? null : isDraftingThis(overview.drafting, s.slug, report) ? "drafting" : stateOf(s),
+      state: !known.value ? null : railState(overview, s, report),
     }));
   });
   /** How many sections are approved, counted as the overview's own tally counts them; null when not known. */
@@ -89,7 +94,7 @@ export function createShell(load: (report: ReportChoice) => Promise<Overview>) {
   const total = computed(() => held.value?.sections.length ?? null);
   const report = computed(() => (held.value ? { ...reportOf(held.value), title: held.value.report.title } : null));
 
-  return { held, known, config, here, ribbon, opener, toOverview, sections, approved, total, report, setOverview, invalidate, refresh, refreshFor };
+  return { held, known, config, here, ribbon, menu, opener, sections, approved, total, report, setOverview, invalidate, refresh, refreshFor };
 }
 
 /** The app's one rail store, fed by the API's overview call. */
@@ -114,11 +119,9 @@ export const useShellRibbon = (label: MaybeRefOrGetter<string | null>) => useShe
 export const useShellHere = (here: MaybeRefOrGetter<Here>) => useShellValue(shell.here, here, null);
 
 /** What the rail's items do on the overview page. Cleared when the page goes away, so the rail is inactive elsewhere. */
-export function useShellActions(actions: { openSection: (slug: string) => void; toOverview: () => void }) {
+export function useShellActions(actions: { openSection: (slug: string) => void }) {
   shell.opener.value = actions.openSection;
-  shell.toOverview.value = actions.toOverview;
   onUnmounted(() => {
     if (shell.opener.value === actions.openSection) shell.opener.value = null;
-    if (shell.toOverview.value === actions.toOverview) shell.toOverview.value = null;
   });
 }

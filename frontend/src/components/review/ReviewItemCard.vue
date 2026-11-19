@@ -1,14 +1,14 @@
 <script setup lang="ts">
-import { PhArrowSquareOut, PhCaretDown, PhPencilSimple } from "@phosphor-icons/vue";
+import { PhArrowSquareOut, PhCaretDown, PhPencilSimple, PhWarning } from "@phosphor-icons/vue";
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "reka-ui";
-import { computed, inject, ref, watch } from "vue";
-import Textarea from "@/components/ui/Textarea.vue";
-import { KIND_LABELS, friendlyTime, pyRepr, resolutionKey } from "@/lib/format";
+import { computed, inject } from "vue";
+import { KIND_LABELS, friendlyTime, pyRepr } from "@/lib/format";
 import { READ_ONLY } from "@/lib/previous";
-import type { Flag, Resolution, Review, ReviewItem } from "@/lib/types";
+import { ADDED_BY_ANALYST, NEWS_SITE, TEXT_FROM_SEARCH, claimSource, sourcePageHref } from "@/lib/sources";
+import type { Flag, Review, ReviewItem } from "@/lib/types";
 import EditSentence from "./EditSentence.vue";
 import FixFromFile from "./FixFromFile.vue";
-import ResolutionControl from "./ResolutionControl.vue";
+import RemoveFinding from "./RemoveFinding.vue";
 import SeverityPill from "./SeverityPill.vue";
 import TextWithIds from "./TextWithIds.vue";
 
@@ -16,61 +16,30 @@ const props = defineProps<{
   item: ReviewItem;
   /** The review the item is in: the fix-from-a-file control needs its week, run and decision. */
   review: Review;
-  locked: boolean;
-  onResolve: (index: number, resolution: Resolution, note?: string) => Promise<boolean>;
 }>();
 
-// Collapsed: the evidence (what the checker found, the quote, the working) is hidden; the title, pill, a one-line summary and
-// the resolution controls stay, so triage needs no expansion.  ItemsPane's Expand all / Collapse all drive this.
+// Collapsed: the evidence (what the checker found, the quote, the working) is hidden; the title, pill and a one-line summary
+// stay, so triage needs no expansion.  ItemsPane's Expand all / Collapse all drive this.
 const open = defineModel<boolean>("open", { default: false });
-const serverNote = computed(() => props.item.resolution_note ?? "");
 const readOnly = inject(READ_ONLY, false);
-
-// What the control shows while its write is in flight, so a click answers at once.  Writes are
-// queued in order; only the newest write's completion clears this, so rapid clicks do not flicker.
-const pending = ref<Resolution | undefined>(undefined);
-let latest = 0;
-const shown = computed(() => (pending.value !== undefined ? pending.value : props.item.resolution));
-
-// The note box is the coordinator's own until it is committed; a server refresh must not overwrite typing.
-const note = ref(serverNote.value);
-const dirty = ref(false);
-watch(serverNote, (next) => {
-  if (!dirty.value) note.value = next;
+// A review saved before the resolve controls were removed may hold a mark or a note: shown read-only, only when there is one.
+const oldMark = computed(() => {
+  const mark = props.item.resolution === "accept" ? "Accepted" : props.item.resolution === "fix_needed" ? "Fix needed" : "";
+  const note = (props.item.resolution_note ?? "").trim();
+  return mark || note ? `${mark ? `Marked ${mark}` : ""}${mark && note ? ". " : ""}${note ? `Note: ${note}` : ""}` : "";
 });
-watch(dirty, (now, _before, onCleanup) => {
-  if (!now) return;
-  const warn = (e: BeforeUnloadEvent) => e.preventDefault(); // a typed note is only saved when the box is left
-  window.addEventListener("beforeunload", warn);
-  onCleanup(() => window.removeEventListener("beforeunload", warn));
-});
-
-function send(next: Resolution, withNote?: string) {
-  const mine = ++latest;
-  pending.value = next;
-  void props.onResolve(props.item.index, next, withNote).finally(() => {
-    if (latest === mine) pending.value = undefined;
-  });
-}
-
-function commitNote() {
-  if (!dirty.value) return;
-  dirty.value = false;
-  if (note.value.trim() === serverNote.value.trim()) return;
-  send(shown.value, note.value);
-}
-
-function noteKey(event: KeyboardEvent) {
-  if (event.key === "Enter" && !event.shiftKey) {
-    event.preventDefault();
-    (event.currentTarget as HTMLTextAreaElement).blur(); // commit through blur
-  }
-}
-
-const chipKey = computed(() => resolutionKey(shown.value));
 const ctx = computed(() => props.item.context);
+// A claim quoted from a supplied source: the host, the date and the verified quote are shown, and so is a host off the approved list.
+const source = computed(() => claimSource(ctx.value));
 const hasDetail = computed(() => props.item.status === "flagged" || props.item.status === "not_auto_verified" || Object.keys(ctx.value).length > 0);
 const safeUrl = computed(() => (ctx.value.url && /^https?:\/\//.test(ctx.value.url) ? ctx.value.url : null));
+const sourceHost = computed(() => {
+  try {
+    return safeUrl.value ? new URL(safeUrl.value).host : null;
+  } catch {
+    return null;
+  }
+});
 const flags = computed<Flag[]>(() => (props.item.status === "flagged" && Array.isArray(props.item.detail) ? props.item.detail : []));
 const summary = computed(() => {
   const first = flags.value[0]?.message ?? (typeof props.item.detail === "string" ? props.item.detail : "") ?? "";
@@ -91,14 +60,27 @@ const cells = (flag: Flag): [string, string][] => [
       <SeverityPill :kind="item.status" />
       <span class="text-sm font-semibold">{{ item.ref }}</span>
       <span class="text-xs text-muted-foreground">{{ KIND_LABELS[item.kind] ?? item.kind }}</span>
+      <span v-if="source?.offList" class="inline-flex items-center gap-1 text-xs font-medium text-warn-fg">
+        <PhWarning weight="bold" class="size-3.5" aria-hidden="true" />Unverified Source Domain
+      </span>
+      <span v-if="source?.textFromSearch" class="inline-flex items-center gap-1 text-xs font-medium text-warn-fg">
+        <PhWarning weight="bold" class="size-3.5" aria-hidden="true" />{{ TEXT_FROM_SEARCH }}
+      </span>
+      <span v-if="source?.newsSite" class="inline-flex items-center gap-1 text-xs font-medium text-warn-fg">
+        <PhWarning weight="bold" class="size-3.5" aria-hidden="true" />{{ NEWS_SITE }}
+      </span>
+      <span v-if="source?.addedByAnalyst" class="text-xs font-medium text-muted-foreground">{{ ADDED_BY_ANALYST }}</span>
       <span v-if="ctx.edited_at" class="inline-flex items-center gap-1 text-xs font-medium">
         <PhPencilSimple weight="bold" class="size-3.5" aria-hidden="true" />Edited by you, {{ friendlyTime(ctx.edited_at) }}
       </span>
       <span v-else-if="ctx.removed_at" class="inline-flex items-center gap-1 text-xs font-medium">
         <PhPencilSimple weight="bold" class="size-3.5" aria-hidden="true" />Removed by you, {{ friendlyTime(ctx.removed_at) }}
       </span>
-      <span class="ml-auto"><SeverityPill :kind="chipKey" /></span>
     </div>
+    <!-- Where the claim comes from, visible while the details are folded; the quote and the saved copy are inside. -->
+    <p v-if="source || sourceHost" class="text-xs text-muted-foreground [overflow-wrap:anywhere]">
+      Cites <span class="font-mono text-foreground">{{ source?.host ?? sourceHost }}</span><template v-if="source?.date"> · {{ source.date }}</template>
+    </p>
 
     <CollapsibleRoot v-if="hasDetail" v-model:open="open">
       <CollapsibleTrigger class="flex w-full items-center gap-2 rounded-sm text-left text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
@@ -140,7 +122,7 @@ const cells = (flag: Flag): [string, string][] => [
       </div>
       <blockquote v-if="ctx.text" class="border-l-2 border-input pl-3 text-sm text-foreground/85">{{ ctx.text }}</blockquote>
       <p v-if="ctx.edited_at" class="text-xs text-muted-foreground [overflow-wrap:anywhere]">
-        Your wording replaced: "{{ ctx.was }}". The source below was cited for the earlier wording, so read it to check that it supports yours.
+        Original text: "{{ ctx.was }}". Please verify that the cited source below accurately supports your revised wording.
       </p>
       <p v-if="safeUrl" class="text-sm">
         Source:
@@ -148,7 +130,24 @@ const cells = (flag: Flag): [string, string][] => [
           {{ ctx.title || safeUrl }}<PhArrowSquareOut weight="bold" class="ml-1 inline size-4 align-[-3px]" aria-hidden="true" />
         </a>
       </p>
-      <p v-if="ctx.cited_text" class="text-xs text-muted-foreground">Cited text: “{{ ctx.cited_text }}”</p>
+      <dl v-if="source" data-testid="claim-source" class="grid gap-x-3 gap-y-1 text-sm @min-[28rem]:grid-cols-[6rem_1fr]">
+        <dt class="eyebrow">Source</dt>
+        <dd class="min-w-0 [overflow-wrap:anywhere]">
+          <span class="font-mono">{{ source.host }}</span> · {{ source.date }}
+          <span v-if="source.offList" class="font-medium text-warn-fg"> · Unverified Source Domain</span>
+          <span v-if="source.textFromSearch" class="font-medium text-warn-fg"> · {{ TEXT_FROM_SEARCH }}</span>
+          <span v-if="source.newsSite" class="font-medium text-warn-fg"> · {{ NEWS_SITE }}</span>
+          <span v-if="source.addedByAnalyst" class="font-medium"> · {{ ADDED_BY_ANALYST }}</span>
+        </dd>
+        <dt class="eyebrow">Quote</dt>
+        <dd class="min-w-0 [overflow-wrap:anywhere]">“{{ source.quote }}” <span class="text-xs text-muted-foreground">(verified word-for-word against the saved document)</span></dd>
+        <dt class="eyebrow">Saved copy</dt>
+        <dd class="min-w-0 text-xs text-muted-foreground [overflow-wrap:anywhere]">
+          {{ source.origin === "found" ? "Found automatically" : source.origin === "fetched" ? "Fetched" : "Pasted" }} {{ source.savedAt }} · fingerprint <span class="font-mono">{{ source.fingerprint }}</span> ·
+          <a :href="sourcePageHref(source.id, source.quote, review.run_id)" target="_blank" rel="noopener noreferrer" class="text-link underline decoration-link/40 underline-offset-2 hover:decoration-link">View saved text</a>
+        </dd>
+      </dl>
+      <p v-else-if="ctx.cited_text" class="text-xs text-muted-foreground">Cited text: “{{ ctx.cited_text }}”</p>
       <div v-if="inputs.length > 0" class="space-y-1">
         <p class="eyebrow">Worked out from</p>
         <ul class="space-y-1 text-xs">
@@ -157,7 +156,7 @@ const cells = (flag: Flag): [string, string][] => [
               {{ input.origin === "ocr" ? "read by OCR from " : "" }}{{ input.source }}{{ input.second ? `; also ${String(input.second.value)} in ${input.second.source}` : "" }}
             </span>
           </li>
-          <li v-if="inputs.length > 12" class="text-muted-foreground">and {{ inputs.length - 12 }} more inputs of the same kind.</li>
+          <li v-if="inputs.length > 12" class="text-muted-foreground">and {{ inputs.length - 12 }} additional inputs of this type.</li>
         </ul>
       </div>
       <p v-if="ctx.note && ctx.note !== detailText" data-testid="item-note" class="text-xs whitespace-pre-line text-muted-foreground [overflow-wrap:anywhere]">{{ ctx.note }}</p>
@@ -166,29 +165,11 @@ const cells = (flag: Flag): [string, string][] => [
       </CollapsibleContent>
     </CollapsibleRoot>
 
-    <p v-if="readOnly" class="text-xs text-muted-foreground [overflow-wrap:anywhere]">
-      <span class="font-semibold text-foreground">{{ item.resolution === "accept" ? "Accepted" : item.resolution === "fix_needed" ? "Fix needed" : "Unresolved" }}</span
-      ><template v-if="serverNote">. Note: {{ serverNote }}</template>
-    </p>
-    <div v-else class="flex flex-wrap items-center gap-2">
-      <ResolutionControl :label="item.ref" :value="shown" :disabled="locked" @change="(next) => send(next)" />
+    <p v-if="oldMark" class="text-xs text-muted-foreground [overflow-wrap:anywhere]">{{ oldMark }}</p>
+    <div v-if="!readOnly && (item.fix_slots?.length || item.edit_sentence || item.edit_paragraph || item.remove_finding)" class="flex flex-wrap items-center gap-2">
       <FixFromFile :review="review" :item="item" />
       <EditSentence :review="review" :item="item" />
-      <Textarea
-        v-model="note"
-        rows="1"
-        :name="`note-${item.index}`"
-        autocomplete="off"
-        :readonly="locked"
-        :aria-label="`Note for ${item.ref}`"
-        placeholder="Add a note (optional)…"
-        maxlength="2000"
-        class="min-w-48 flex-1 resize-none text-sm"
-        :class="locked && 'bg-muted text-muted-foreground'"
-        @input="dirty = true"
-        @blur="commitNote"
-        @keydown="noteKey"
-      />
+      <RemoveFinding :review="review" :item="item" />
     </div>
   </li>
 </template>

@@ -1,8 +1,8 @@
 """Manual review: run the real Digital Payments highlights drafter against live data.
 
-Not part of pytest.  Calls the live Anthropic API (web search + tokens, a few
-cents) and Yahoo Finance.  Needs ANTHROPIC_API_KEY set (in the shell or in the
-repo-root .env, which is loaded automatically).  Run from backend/:
+Not part of pytest.  Calls Amazon Bedrock (tokens, a few cents) and Yahoo Finance.  Needs
+CYTONN_LLM_PROVIDER=bedrock and the AWS settings (in the shell or in the repo-root .env, which
+is loaded automatically).  Run from backend/:
     PYTHONPATH=src python scripts/check_digital_payments_highlights_live.py
 
 To draft with the local dev provider instead (phi4-mini via Ollama + Exa, needs

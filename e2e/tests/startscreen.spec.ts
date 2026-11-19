@@ -13,7 +13,7 @@ const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
 test("T71 the start screen's inputs panel is beside the form and never folds, above it on a narrow window, and its day grid follows its own width", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 768 });
-  await openStart(page, "Fixed Income");
+  await openStart(page, "Equities");
   const panel = page.getByRole("complementary", { name: "Inputs and steps" });
   const analyst = page.locator("section", { has: page.getByRole("heading", { name: "Weekly analyst inputs" }) }).first();
   await expect(panel.getByRole("heading", { name: "This week’s inputs" })).toBeVisible();

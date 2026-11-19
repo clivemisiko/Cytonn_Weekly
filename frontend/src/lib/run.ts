@@ -23,7 +23,7 @@ const stop = (label: string) => (/[.!?…]$/.test(label) ? label : `${label}.`);
 const then = (detail: string | null) => (detail ? ` ${detail}` : "");
 
 /** The fixed wording of each event kind. Every word after the template comes from the event itself. */
-function textOf(e: RunEvent): string {
+export function textOf(e: Pick<RunEvent, "kind" | "label" | "detail"> & { counts?: RunEvent["counts"] }): string {
   switch (e.kind) {
     case "run_started":
       return "Starting the draft.";
@@ -49,6 +49,16 @@ function textOf(e: RunEvent): string {
       return "Draft ready for review.";
     case "run_failed":
       return `The draft stopped.${then(e.detail)}`;
+    case "sources_looking":
+      return `Looking for sources for ${stop(e.label)}`;
+    case "sources_found":
+      return `Found ${e.detail ?? "0 pages"} for ${stop(e.label)}`;
+    case "sources_search_unavailable":
+      return `Did not look for sources.${then(e.detail)}`;
+    case "retrying":
+      return `${stop(e.label)}${then(e.detail)}`;
+    case "source_left_out":
+      return `Left out the source ${e.label}.${then(e.detail)}`;
   }
 }
 
@@ -60,8 +70,9 @@ const CLOSES: Partial<Record<RunEventKind, { opens: RunEventKind; mark: StepMark
   // A stub part is skipped outright; a piece whose search found nothing closes its own "Drafting" line the same way.
   part_skipped: { opens: "piece_started", mark: "skipped" },
   check_finished: { opens: "check_started", mark: "done" },
+  sources_found: { opens: "sources_looking", mark: "done" },
 };
-const OPENS: RunEventKind[] = ["source_started", "piece_started", "check_started"];
+const OPENS: RunEventKind[] = ["source_started", "piece_started", "check_started", "sources_looking"];
 
 /**
  * The step list: one line per event, in arrival order, except that a step's closing event replaces its own
@@ -92,7 +103,13 @@ export function stepLines(events: RunEvent[]): StepLine[] {
     lines.push({
       key: e.seq,
       text: textOf(e),
-      mark: opening ? "working" : e.kind === "run_failed" || e.kind === "source_failed" ? "failed" : closes?.mark ?? "done",
+      mark: opening
+        ? "working"
+        : e.kind === "run_failed" || e.kind === "source_failed"
+          ? "failed"
+          : e.kind === "sources_search_unavailable" || e.kind === "retrying" || e.kind === "source_left_out"
+            ? "skipped"
+            : closes?.mark ?? "done",
       active: false,
     });
     if (opening) open.set(`${e.kind}|${e.label}`, lines.length - 1);

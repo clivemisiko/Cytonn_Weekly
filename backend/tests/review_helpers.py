@@ -7,13 +7,13 @@ drafting provider and fixed price rows, so tests get a genuine CoordinatorReview
 
 from datetime import date
 
-from cytonn_weekly.checkers.digital_payments import check_digital_payments
-from cytonn_weekly.digital_payments import coordinator_review as cr
+from cytonn_weekly.digital_payments.checks import check_digital_payments
+from cytonn_weekly.review import model as cr
+from cytonn_weekly.digital_payments.review_run import build_coordinator_review
 from cytonn_weekly.digital_payments.fetcher import format_table_rows
 from cytonn_weekly.digital_payments.highlights import compose_section, draft_highlights, draft_outlook
-from cytonn_weekly.digital_payments.providers.base import (
-    SCOPE_IR, DraftingProvider, HighlightResult, OutlookResult,
-)
+from cytonn_weekly.drafting.results import SCOPE_IR, HighlightResult, OutlookResult
+from cytonn_weekly.drafting.highlight_contract import DraftingProvider
 
 TODAY = date(2026, 9, 30)
 
@@ -61,4 +61,4 @@ def make_review(provider=None, tamper=False):
     report = check_digital_payments(
         rows, drafted_rows=drafted, drafted_outlook_stats=outlook["stats"], highlights=draft["highlights"],
     )
-    return cr.build_coordinator_review(section, report)
+    return build_coordinator_review(section, report)

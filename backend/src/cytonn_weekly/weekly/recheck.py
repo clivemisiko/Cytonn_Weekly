@@ -25,8 +25,8 @@ from pathlib import Path
 from typing import Any, Optional
 
 from cytonn_weekly.charts import store as chart_store
-from cytonn_weekly.common.review import COMPUTED_FIGURE, UNAVAILABLE_PART, build_review, check_section, numbered
-from cytonn_weekly.digital_payments.coordinator_review import TABLE_ROW, CoordinatorReview, ReviewItem
+from cytonn_weekly.review.blocks import COMPUTED_FIGURE, UNAVAILABLE_PART, build_review, check_section, numbered
+from cytonn_weekly.review.model import TABLE_ROW, CoordinatorReview, ReviewItem
 from cytonn_weekly.weekly import inputs as wi
 from cytonn_weekly.weekly.week import Week
 
@@ -210,7 +210,7 @@ def recheck(old: CoordinatorReview, slot: str, data: bytes, filename: str, root:
         for w in (week, week.previous):
             if (base / w.ending.isoformat()).is_dir():
                 shutil.copytree(base / w.ending.isoformat(), sandbox / w.ending.isoformat())
-        wi.store(week, slot, data, filename, sandbox)
+        wi.store(week, slot, data, filename, sandbox, record=False)   # a trial copy: nothing of it goes to the history store
         rebuilt = _rebuild(section, week, sandbox)
     blocks = _merge(section, slot, old.section["blocks"], rebuilt.section["blocks"])
     content = {**old.section, "blocks": numbered(blocks)}

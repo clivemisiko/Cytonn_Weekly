@@ -17,8 +17,8 @@ import pytest
 from cytonn_weekly import db as database
 from cytonn_weekly import sections
 from cytonn_weekly.charts import store as chart_store
-from cytonn_weekly.digital_payments import coordinator_review as cr
-from cytonn_weekly.digital_payments import review_store as rs
+from cytonn_weekly.review import model as cr
+from cytonn_weekly.review import store as rs
 from cytonn_weekly.paths import BACKEND_ROOT, REPO_ROOT
 from tests.review_helpers import make_review
 from tests.test_charts_store_api import chart_review
@@ -44,7 +44,7 @@ def decided(review, how=cr.APPROVED):
     for i in review.review_items:
         if i.resolution is None:
             i.resolve(cr.ACCEPT)
-    review.decide(how)
+    review.decide(how, review.flagged_count)
     return review
 
 
@@ -228,7 +228,7 @@ def test_the_old_sql_forms_are_gone_from_the_code_and_the_schema():
             if p != THE_MODULE}
     assert [p.name for p, t in text.items() if re.search(r"INSERT\s+OR\s+(IGNORE|REPLACE)", t, re.I)] == []
     assert [p.name for p, t in text.items() if re.search(r"\bIS\s+\?", t)] == []
-    assert "IS NOT DISTINCT FROM" in text[BACKEND_ROOT / "src" / "cytonn_weekly" / "digital_payments" / "review_store.py"]
+    assert "IS NOT DISTINCT FROM" in text[BACKEND_ROOT / "src" / "cytonn_weekly" / "review" / "store.py"]
     assert "ON CONFLICT (name) DO NOTHING" in text[BACKEND_ROOT / "src" / "cytonn_weekly" / "schema.sql"]
 
 

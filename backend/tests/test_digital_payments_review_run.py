@@ -7,7 +7,7 @@ accept_all_clean / claim context are what the web screen shows.  No network, no 
 
 from review_helpers import ROWS, TODAY, FakeProvider, make_review
 
-from cytonn_weekly.digital_payments import coordinator_review as cr
+from cytonn_weekly.review import model as cr
 from cytonn_weekly.digital_payments import review_run
 
 
@@ -27,6 +27,17 @@ def test_build_digital_payments_review_runs_the_pipeline_into_a_review():
     assert not review.by_status(cr.FLAGGED)
     assert {i.status for i in review.review_items if i.kind != cr.HIGHLIGHT_CLAIM} == {cr.CLEAN}
     assert review.section["week_end"] == TODAY.isoformat()
+
+
+def test_the_table_is_fetched_as_at_the_given_day_and_otherwise_as_of_today():
+    from datetime import timedelta
+
+    asked = []
+    fetch = lambda day: asked.append(day) or ROWS
+    other = TODAY - timedelta(days=1)
+    review_run.build_digital_payments_review(provider=FakeProvider(), today=TODAY, as_at=other, fetch_table=fetch)
+    review_run.build_digital_payments_review(provider=FakeProvider(), today=TODAY, fetch_table=fetch)
+    assert asked == [other, TODAY]
 
 
 def test_accept_all_clean_resolves_only_unresolved_clean_items():
