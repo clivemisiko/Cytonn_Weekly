@@ -7,7 +7,7 @@ files (charts/store.py).  The checks are run when the block is made, while the s
 and kept on the block as flags, so ``check_section`` and ``build_review`` work from the block alone.
 
 A chart has one of three states.  ``drawn`` and ``not_drawn`` are above.  ``no_workbook`` means no equities
-workbook was uploaded, so nothing was read: it is information for the coordinator, not a finding, and it makes
+workbook was uploaded, so nothing was read: it is information for the analyst, not a finding, and it makes
 no review item, so it never holds up approval (the Word file keeps the placeholder for the chart to be added by
 hand).  A workbook that was uploaded but cannot give the chart is ``not_drawn`` and does hold the section up.
 
@@ -18,7 +18,7 @@ from ("from the analyst workbook, not verified").  A chart that is not drawn bec
 item for its defects, and one for its freshness when that is what stopped it.  Nothing about a
 chart is ever clean except a freshness or a row check that found nothing.
 
-The coordinator may set the tool's chart aside for the team's own (``set_team_chart``): every item of that
+The analyst may set the tool's chart aside for the team's own (``set_team_chart``): every item of that
 chart is accepted with a note saying so, and the chart then counts as chosen (``team_chart_chosen``).  The Word
 file keeps its placeholder for it.  The choice lives in the items, because a saved review's draft content is
 written once and never changed while its items are rewritten on every save; so it is saved with the review, and
@@ -35,10 +35,10 @@ from typing import Any, Iterable, Optional
 from cytonn_weekly.charts.series import ChartSeries, average, check_quoted, compare_average, read_series, windowed
 from cytonn_weekly.charts.specs import AVERAGE_FROM, SPECS, ChartSpec
 from cytonn_weekly.charts.store import sha256
-from cytonn_weekly.checkers.digital_payments import Flag
+from cytonn_weekly.review.figures import Flag
 from cytonn_weekly.common.formatting import MULTIPLE, PCT, fmt_value
 from cytonn_weekly.common.run_events import PART_SKIPPED, PIECE_FINISHED, PIECE_STARTED, Observer, emit, fetch_source
-from cytonn_weekly.digital_payments.coordinator_review import CLEAN, FLAGGED, NOT_AUTO_VERIFIED
+from cytonn_weekly.review.model import CLEAN, FLAGGED, NOT_AUTO_VERIFIED
 from cytonn_weekly.notable.suggestion import FIXED_LABELS
 from cytonn_weekly.weekly.workbook import Workbook
 

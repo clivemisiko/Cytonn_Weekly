@@ -1,4 +1,4 @@
-"""Tests for cytonn_weekly.digital_payments.review_store, against a real SQLite file.
+"""Tests for cytonn_weekly.review.store, against a real SQLite file.
 
 Every test writes to its own temp database built from the project's actual
 cytonn_weekly/schema.sql (via sections.init_db), not a mock.  The reviews come from the real
@@ -12,8 +12,8 @@ from datetime import date
 import pytest
 from review_helpers import make_review
 
-from cytonn_weekly.digital_payments import coordinator_review as cr
-from cytonn_weekly.digital_payments import review_store as rs
+from cytonn_weekly.review import model as cr
+from cytonn_weekly.review import store as rs
 
 
 @pytest.fixture
@@ -91,12 +91,12 @@ def test_round_trip_with_mixed_resolutions_reloads_identically(db):
     assert loaded.review_items[1].resolution_note == "price looks stale; check Yahoo"
     flagged = loaded.by_status(cr.FLAGGED)
     assert flagged and all(isinstance(f, cr.Flag) for i in flagged for f in i.detail)
-    assert loaded.is_approvable == review.is_approvable is False
+    assert loaded.is_approvable == review.is_approvable is True
 
 
 def test_round_trip_after_a_decision_keeps_decision_and_timestamp(db):
     review = accept_everything(make_review())
-    review.decide("approved")
+    review.decide("approved", review.flagged_count)
     assert review.decided_at
 
     run_id = rs.save_review(review, db_path=db)
@@ -122,7 +122,7 @@ def test_a_reloaded_review_behaves_like_the_original(db):
     accept_everything(loaded)
     loaded.review_items[1].resolve(cr.ACCEPT)  # the fix_needed one
     assert loaded.is_approvable
-    loaded.decide("approved")
+    loaded.decide("approved", loaded.flagged_count)
 
 
 def test_content_is_stored_as_json_and_survives_float_and_none_values(db):
@@ -186,7 +186,7 @@ def test_a_stale_copy_cannot_reopen_a_decided_review(db):
     stale = rs.load_review(run_id, db_path=db)  # e.g. a second browser tab
 
     accept_everything(review)
-    review.decide("approved")
+    review.decide("approved", review.flagged_count)
     rs.save_review(review, db_path=db)
 
     stale.review_items[0].resolve(cr.FIX_NEEDED, "late edit")
@@ -241,7 +241,7 @@ def test_load_latest_can_be_limited_to_a_run_date(db):
 
 def test_decided_reviews_are_returned_too_so_later_tasks_can_find_them(db):
     review = accept_everything(make_review())
-    review.decide("approved")
+    review.decide("approved", review.flagged_count)
     rs.save_review(review, db_path=db)
     assert rs.load_latest_review(db_path=db).decision == cr.APPROVED
 

@@ -17,6 +17,9 @@ workbook (v6) on 2026-10-09; every item is found by label or date:
   both series; the cell under the "PEG" label is the P/E divided by a fixed 8.
 * 'Market PE & Dividend Yield': the large-cap list sits in the column left of the
   "Year Open" header.
+* 'Gainers & Losers': the twelve large caps' tickers in one column from row 3 and, to their
+  right, one price column per date (the date in row 2).  A 2016 block sits at B2:C17 and an
+  older date sits further right, so a column is found by its exact date only.
 * 'Universe of Coverage': row 2 heads the columns; the weekly "Price as at dd/mm/yyyy"
   columns are found by their dates and the inputs by their header text, taking the first
   one to the right of the week's price column (older blocks repeat the headers further left).
@@ -39,6 +42,7 @@ TURNOVER_SHEET = "Equities Turnover"
 FOREIGN_SHEET = "Foreign Positions"
 VALUATION_SHEET = "NASI-PE & Dividend Yield"
 MARKET_PE_SHEET = "Market PE & Dividend Yield"
+GAINERS_SHEET = "Gainers & Losers"
 UNIVERSE_SHEET = "Universe of Coverage"
 
 INDEX_LABELS = {"nse_20": "nse 20", "nasi": "nasi", "nse_25": "nse 25", "nse_10": "nse 10"}
@@ -195,17 +199,17 @@ def _series_average(book: Workbook, sheet: Sheet, stated: Cell) -> Optional[tupl
 def read_valuation(book: Workbook, week: Week) -> dict[str, Any]:
     """The Friday's market P/E and dividend yield, their historical averages and the sheet's PEG."""
     sheet = book.sheet(VALUATION_SHEET)
-    row = sheet.row_for_date(week.ending, 1)
+    row = sheet.row_for_date(week.as_at, 1)
     if row is None:
-        raise not_updated(VALUATION_SHEET, week.ending)
+        raise not_updated(VALUATION_SHEET, week.as_at)
     avg = sheet.find("average", cols=range(1, 2), rows=range(1, row), what="'AVERAGE' row")
     out: dict[str, Any] = {
-        "pe": sheet.number(row, 2, f"market P/E for {week.ending.isoformat()}"),
-        "dividend_yield": sheet.number(row, 4, f"dividend yield for {week.ending.isoformat()}"),
+        "pe": sheet.number(row, 2, f"market P/E for {week.as_at.isoformat()}"),
+        "dividend_yield": sheet.number(row, 4, f"dividend yield for {week.as_at.isoformat()}"),
         "pe_average": sheet.number(avg.row, 2, "average P/E"),
         "dividend_yield_average": sheet.number(avg.row, 4, "average dividend yield"),
     }
-    prev = sheet.row_for_date(week.previous_friday, 1)
+    prev = sheet.row_for_date(week.previous_as_at, 1)
     out["previous_pe"] = sheet.cell(prev, 2) if prev else None
     out["pe_average_recomputed"] = _series_average(book, sheet, out["pe_average"])
     out["dividend_yield_average_recomputed"] = _series_average(book, sheet, out["dividend_yield_average"])
@@ -227,6 +231,35 @@ def read_large_caps(book: Workbook) -> list[Cell]:
     if not names:
         raise WorkbookError(f"'{MARKET_PE_SHEET}' lists no large caps beside its 'Year Open' column")
     return names
+
+
+def read_gainers_losers(book: Workbook, days: list[date]) -> list[tuple[str, dict[date, Cell]]]:
+    """[(ticker, {day: price cell})] in the sheet's row order, for each day asked for.
+
+    Each day's column is the one whose row-2 cell is that exact date.  The tickers are in the
+    nearest column left of the first day's column with text in row 3, read down to the first gap.
+    """
+    sheet = book.sheet(GAINERS_SHEET)
+    cols = {}
+    for day in days:
+        hits = [c for c in sheet.cells(rows=range(2, 3)) if c.day == day]
+        if not hits:
+            raise WorkbookError(f"'{GAINERS_SHEET}' has no column dated {day.isoformat()} in row 2: the workbook is not "
+                                "yet updated for this week")
+        if len(hits) > 1:
+            raise WorkbookError(f"'{GAINERS_SHEET}' has {len(hits)} columns dated {day.isoformat()} in row 2 "
+                                f"({', '.join(c.a1 for c in hits)}); keep one and upload the workbook again")
+        cols[day] = hits[0].col
+    names = next((c for c in range(cols[days[0]] - 1, 0, -1) if norm(sheet.value(3, c))), None)
+    if names is None:
+        raise WorkbookError(f"'{GAINERS_SHEET}' has no tickers in row 3 left of the column dated {days[0].isoformat()}")
+    out = []
+    for r in range(3, sheet.max_row + 1):
+        ticker = norm(sheet.value(r, names)).upper()
+        if not ticker:
+            break
+        out.append((ticker, {day: sheet.number(r, col, f"{ticker}'s price on {day.isoformat()}") for day, col in cols.items()}))
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -258,17 +291,17 @@ def read_universe(book: Workbook, week: Week) -> dict[str, Any]:
     """
     sheet = book.sheet(UNIVERSE_SHEET)
     prices = _price_columns(sheet)
-    if week.ending not in prices:
-        raise WorkbookError(f"'{UNIVERSE_SHEET}' has no 'Price as at {week.ending.strftime('%d/%m/%Y')}' column: "
+    if week.as_at not in prices:
+        raise WorkbookError(f"'{UNIVERSE_SHEET}' has no 'Price as at {week.as_at.strftime('%d/%m/%Y')}' column: "
                             "workbook not yet updated for this week")
-    if week.previous_friday not in prices:
-        raise WorkbookError(f"'{UNIVERSE_SHEET}' has no 'Price as at {week.previous_friday.strftime('%d/%m/%Y')}' column")
-    month_start = week.ending.replace(day=1)
+    if week.previous_as_at not in prices:
+        raise WorkbookError(f"'{UNIVERSE_SHEET}' has no 'Price as at {week.previous_as_at.strftime('%d/%m/%Y')}' column")
+    month_start = week.as_at.replace(day=1)
     earlier = [d for d in prices if d < month_start]
     if not earlier:
         raise WorkbookError(f"'{UNIVERSE_SHEET}' has no price column before {month_start.isoformat()} for the m/m change")
     month_end = max(earlier)
-    this_col = prices[week.ending]
+    this_col = prices[week.as_at]
 
     def right_of(label_test, what: str) -> int:
         found = [c for c in sheet.find_all(label_test, rows=range(HEADER_ROW, HEADER_ROW + 1)) if c.col > this_col]
@@ -276,7 +309,7 @@ def read_universe(book: Workbook, week: Week) -> dict[str, Any]:
             raise WorkbookError(f"'{UNIVERSE_SHEET}' has no {what} column to the right of the week's price column")
         return min(found, key=lambda c: c.col).col
 
-    year = week.ending.year
+    year = week.as_at.year
     cols = {
         "year_open": right_of(f"year open {year}", f"'Year Open {year}'"),
         "target": right_of(lambda s: s.startswith("target price"), "'Target Price'"),
@@ -291,11 +324,11 @@ def read_universe(book: Workbook, week: Week) -> dict[str, Any]:
         if not isinstance(name, str) or not name.strip():
             break
         row = {"company": sheet.cell(r, company_col), "price": sheet.cell(r, this_col),
-               "last_price": sheet.cell(r, prices[week.previous_friday]), "month_end_price": sheet.cell(r, prices[month_end])}
+               "last_price": sheet.cell(r, prices[week.previous_as_at]), "month_end_price": sheet.cell(r, prices[month_end])}
         row.update({key: sheet.cell(r, col) for key, col in cols.items()})
         companies.append(row)
     if not companies:
         raise WorkbookError(f"'{UNIVERSE_SHEET}' lists no companies under its 'Company' header")
     return {"companies": companies, "month_end": month_end, "week_ending": week.ending,
-            "previous_friday": week.previous_friday,
+            "previous_friday": week.previous_friday, "as_at": week.as_at, "previous_as_at": week.previous_as_at,
             "month_end_cell": Cell(month_end, sheet.name, HEADER_ROW, prices[month_end])}

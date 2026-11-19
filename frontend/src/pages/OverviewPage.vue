@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, shallowRef } from "vue";
-import { type LocationQuery, useRoute, useRouter } from "vue-router";
+import { type LocationQuery, RouterLink, useRoute, useRouter } from "vue-router";
 import Masthead from "@/components/review/Masthead.vue";
 import Notice from "@/components/review/Notice.vue";
 import OverviewScreen from "@/components/review/OverviewScreen.vue";
@@ -11,16 +11,18 @@ import StartScreen from "@/components/review/StartScreen.vue";
 import StartSkeleton from "@/components/review/StartSkeleton.vue";
 import Button from "@/components/ui/Button.vue";
 import * as api from "@/lib/api";
-import { BACK_HOME, type BackTarget, useBack } from "@/lib/nav";
-import { openingReport } from "@/lib/previous";
+import { draftingList } from "@/lib/drafting";
+import { LINK } from "@/components/ui/button";
+import { BACK_NONE, type BackTarget, chatHref, useBack } from "@/lib/nav";
+import { openingReport, rememberWeek } from "@/lib/previous";
 import { shell, useShellActions, useShellHere } from "@/lib/shell";
-import { type AppConfig, type Drafting, type Overview, REPORT_TYPES, type ReportChoice, type ReportType, type Review, type SectionSummary } from "@/lib/types";
+import { type AppConfig, type Drafting, type Overview, REPORT_TYPES, type ReportChoice, type ReportType, type Review, type SectionSummary, type WeekChoice } from "@/lib/types";
 
 type Phase =
   | { name: "booting"; target?: "overview" | "review" | "start" }
   | { name: "unreachable"; message: string }
   | { name: "overview"; config: AppConfig; overview: Overview }
-  | { name: "start"; config: AppConfig; section: SectionSummary; saved: Review | null; drafting: Drafting | null; week: string | null }
+  | { name: "start"; config: AppConfig; section: SectionSummary; saved: Review | null; drafting: Drafting[]; week: string | null }
   | { name: "review"; review: Review };
 
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -71,6 +73,17 @@ function reportToUrl(next: ReportChoice, reviewId: number | null = null, section
   void router.replace({ path: route.path, query });
 }
 
+/** The weeks the selector lists, read with every overview shown; empty when the route cannot be read. */
+const weekChoices = shallowRef<WeekChoice[]>([]);
+async function loadWeekChoices() {
+  try {
+    const next = (await api.getPreviousWeeks()).choices ?? [];
+    if (live) weekChoices.value = next;
+  } catch {
+    if (live) weekChoices.value = [];
+  }
+}
+
 /** The report as the API normalized it ("q3 2026" comes back as "Q3'2026"). */
 const normalized = (overview: Overview): ReportChoice => ({ type: overview.report.type, period: overview.report.period, kind: overview.report.kind });
 
@@ -95,6 +108,7 @@ function show(next: Phase) {
   if (next.name === "overview") {
     report.value = normalized(next.overview);
     reportToUrl(report.value);
+    void loadWeekChoices();
     shell.config.value = next.config;
     shell.setOverview(next.overview); // the rail takes the very payload the cards are built from
   }
@@ -113,7 +127,7 @@ async function fetchStart(slug: string, known?: Overview): Promise<Phase> {
     const saved = run && (run.current ?? run.this_week) ? await api.getReview(run.run_id) : null;
     // The weekly report's week: the Friday its period names, else the latest Friday (what an unlabelled draft uses).
     const week = overview.report.type === "weekly" ? (overview.report.week_ending ?? overview.report.suggested_week_ending ?? null) : null;
-    return { name: "start", config, section, saved, drafting: overview.drafting, week };
+    return { name: "start", config, section, saved, drafting: draftingList(overview), week };
   } catch (err) {
     return { name: "unreachable", message: messageOf(err) };
   }
@@ -164,10 +178,19 @@ function home() {
   void fetchOverview(report.value).then(show);
 }
 
-// The top bar's Back: from a section's start screen or an open review, to this report's list of sections (as the
-// masthead's own back link did before the bar); from the list itself, Home.
+// The top bar's Back: from a section's start screen or an open review, to this report's list of sections.
+// From the list of sections itself, Back is disabled as overview is the top-level workspace.
 const TO_SECTIONS: BackTarget = { kind: "go", to: "all sections", go: home };
-useBack(() => (phase.value.name === "start" || phase.value.name === "review" ? TO_SECTIONS : BACK_HOME));
+// Opened from a chat button (?from=chat, read once: the page rewrites its address as it moves between screens).
+const fromChat = route.query.from === "chat";
+const chatBack = computed(() => {
+  const p = phase.value;
+  const slug = p.name === "start" ? p.section.slug : p.name === "review" ? p.review.section_slug : sectionFromUrl();
+  return chatHref(report.value.period || (one(route.query.period) ?? ""), slug);
+});
+useBack((): BackTarget =>
+  fromChat ? { kind: "href", to: "chat", href: chatBack.value } : phase.value.name === "start" || phase.value.name === "review" ? TO_SECTIONS : BACK_NONE,
+);
 
 /** Switch the overview to another report. A period the API rejects stays in the picker with the API's reason. */
 async function chooseReport(next: ReportChoice): Promise<string | null> {
@@ -175,6 +198,7 @@ async function chooseReport(next: ReportChoice): Promise<string | null> {
   if (now.name !== "overview") return null;
   try {
     show({ ...now, overview: await api.getOverview(next) });
+    rememberWeek(report.value.type === "weekly" ? report.value.period : "");
     return null;
   } catch (err) {
     return messageOf(err);
@@ -235,7 +259,7 @@ async function goToSection(slug: string) {
 }
 
 // What the rail's items do while this page is on screen, and which of its screens the rail marks.
-useShellActions({ openSection: goToSection, toOverview: home });
+useShellActions({ openSection: goToSection });
 useShellHere(() => {
   const p = phase.value;
   if (p.name === "overview") return { view: "overview" };
@@ -247,6 +271,7 @@ useShellHere(() => {
 /** On a start screen, switch the weekly report to the week ending on another Friday and show that week's section. */
 async function chooseWeek(slug: string, weekEnding: string) {
   report.value = { type: "weekly", period: api.weekPeriod(weekEnding), kind: null };
+  rememberWeek(report.value.period);
   reportToUrl(report.value, null, slug);
   set(await fetchStart(slug));
 }
@@ -275,6 +300,9 @@ const key = computed(() => {
 <template>
   <Transition name="phase" mode="out-in">
     <main id="main" :key="key" tabindex="-1">
+      <p v-if="fromChat" class="mx-auto w-full max-w-275 px-4 pt-4 sm:px-6">
+        <RouterLink :to="chatBack" :class="['text-sm font-semibold', LINK]">Back to chat</RouterLink>
+      </p>
       <template v-if="phase.name === 'booting'">
         <ReviewSkeleton v-if="phase.target === 'review'" />
         <StartSkeleton v-else-if="phase.target === 'start'" />
@@ -282,14 +310,13 @@ const key = computed(() => {
       </template>
 
       <template v-else-if="phase.name === 'unreachable'">
-        <Masthead title="Coordinator review" />
+        <Masthead title="Analyst review" />
         <div class="mx-auto w-full max-w-275 px-4 py-8 sm:px-6">
           <div class="max-w-xl">
-            <h2 class="text-lg font-semibold">The review API is not reachable</h2>
+            <h2 class="text-lg font-semibold">Unable to connect to the report review service</h2>
             <Notice role="alert" class="mt-4 font-medium">{{ phase.message }}</Notice>
             <p class="mt-4 text-sm text-muted-foreground">
-              Start it from the repo root with <code class="rounded-sm bg-muted px-1 py-0.5 font-mono text-xs">uvicorn api.main:app --port 8000</code>.
-              To point this app at another address, set <code class="rounded-sm bg-muted px-1 py-0.5 font-mono text-xs">VITE_API_TARGET</code>.
+              Please check your network connection or verify that the backend server is running. If this issue persists, please contact your system administrator.
             </p>
             <Button class="mt-6" size="lg" @click="home">Try again</Button>
           </div>
@@ -301,6 +328,7 @@ const key = computed(() => {
         :overview="phase.overview"
         :config="phase.config"
         :report="report"
+        :weeks="weekChoices"
         :on-report="chooseReport"
         @open="openSection"
         @redraft="(slug) => openSection(slug, false)"

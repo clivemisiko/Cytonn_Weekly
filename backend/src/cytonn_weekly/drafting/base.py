@@ -1,0 +1,107 @@
+"""The drafting-provider contract for narrative pieces in any section.
+
+Digital Payments' ``DraftingProvider`` (drafting/highlight_contract.py) is
+company-shaped: one company, its investor relations domain, one highlight.  The
+other sections draft from a *brief* instead - a theme to search for this week
+(Real Estate: "mortgage lending"), or the analyst's chosen topic (Focus).
+``NarrativeProvider`` is that same contract with a brief in place of a company:
+
+* it returns the existing ``HighlightResult`` unchanged (``company`` holds the
+  brief's label, ``ir_domain`` its preferred domains), so claims, links,
+  ``drafted_by`` and warnings mean exactly what they mean for Digital Payments;
+* the search is preferred-domains-first, then the open web, the same two-pass
+  shape as IR-first-then-web;
+* ``NO_STORY`` is still a legitimate answer, and is never padded.
+
+The local provider subclasses the Digital Payments one's building blocks
+(LocalProvider's Ollama/Exa calls) rather than re-implementing them.
+"""
+
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from datetime import date
+from typing import Optional
+
+from cytonn_weekly.drafting.results import HighlightResult
+
+
+@dataclass(frozen=True)
+class NarrativeBrief:
+    """What to search for and how to write it up.
+
+    ``label``: short name shown to the analyst ("Residential and mortgage lending").
+    ``focus``: what qualifies, in a sentence the model is given verbatim.
+    ``preferred_domains``: searched first; the open web only if they yield nothing.
+    ``blocked_domains``: never searched in the open-web pass (the preferred pass is limited to its own list).
+    ``opener``: required first words of the paragraph (None for free-form, e.g. Focus).
+    ``report``: the kind of report, as the prompt names it ("weekly", "quarterly markets
+    review"); ``window``: what the search window is called ("report week", "report
+    period").  The defaults are the weekly report's, word for word, so the weekly prompts
+    are unchanged; the quarterly, half-year and annual reviews set both.
+    """
+
+    id: str
+    section: str
+    label: str
+    focus: str
+    words: tuple[int, int] = (100, 180)
+    opener: Optional[str] = "During the week,"
+    preferred_domains: tuple[str, ...] = field(default_factory=tuple)
+    blocked_domains: tuple[str, ...] = field(default_factory=tuple)
+    max_searches: int = 5
+    report: str = "weekly"
+    window: str = "report week"
+    # Focus of the Week sections: ``headed`` False asks for body paragraphs only (no "### headline"), ``context`` adds
+    # lines to the prompt (the report's section list) and ``max_tokens`` caps the call's output.  The defaults leave
+    # every other prompt and call as it was.
+    headed: bool = True
+    context: str = ""
+    max_tokens: Optional[int] = None
+    # True: a source with no date is left out (and said so) instead of kept with the "No date on this source" flag.
+    dated_only: bool = False
+    # True (Focus of the Week): the model returns findings only, each a claim with its verified quote and source, and no
+    # paragraph; the tool writes no Focus prose.
+    findings: bool = False
+    # True (an industry report): a short report title, one introductory sentence ending "The following are the key take-outs
+    # from the report:", then take-outs numbered i., ii., iii., each its own paragraph, and no closing paragraph.
+    takeouts: bool = False
+    # Non-empty: only these saved sources (by id) are shown to the model, so a piece is written from one report alone.
+    source_ids: tuple[str, ...] = ()
+
+
+class SnipReadError(RuntimeError):
+    """Written for the analyst and shown as it stands."""
+
+
+class NothingDrafted(LookupError):
+    """No piece of a section was drafted; the message, written for the analyst, says why and is shown as it stands."""
+
+
+class NarrativeProvider(ABC):
+    """Swappable backend for brief-driven narrative drafting (Bedrock or local)."""
+
+    drafted_by: str
+
+    def read_snip(self, image: bytes, media_type: str) -> str:
+        """The text printed in one uploaded image, as the model transcribes it.  Only the Bedrock provider reads images."""
+        raise SnipReadError("Reading snips needs the production model (Amazon Bedrock). This server is not using it.")
+
+    def read_pdf_passages(self, sector: str, chunk: str) -> list[dict]:
+        """The passages about ``sector`` in one page-labelled chunk of a PDF's text, each {page, quote}, as the model
+        returns them (the caller checks every quote against its page).  Only the Bedrock provider reads PDFs."""
+        raise SnipReadError("Reading PDFs needs the production model (Amazon Bedrock). This server is not using it.")
+
+    def complete(self, system: str, prompt: str, *, max_tokens: int) -> str:
+        """One plain model call with no web search: text in, text out (the Focus outline, conclusion and lead)."""
+        raise NotImplementedError(f"{type(self).__name__} cannot make a plain text call")
+
+    @abstractmethod
+    def draft_piece(self, brief: NarrativeBrief, *, start: date, end: date, today: date) -> HighlightResult:
+        """Find and draft one piece for ``brief`` from the report week ``start``..``end``.
+
+        Returns ``no_story=True`` when nothing in the week qualifies.  Every factual
+        claim must carry the URL (and, where the provider has one, the cited span)
+        it was drafted from.
+        """

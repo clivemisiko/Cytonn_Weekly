@@ -8,11 +8,14 @@ Ibuka PDF and CBK's results PDFs on 2026-10-02.
 
 from datetime import date
 
-from cytonn_weekly.digital_payments.providers.base import SCOPE_WEB, HighlightResult
+from cytonn_weekly.drafting.results import SCOPE_WEB, HighlightResult
 from cytonn_weekly.equities.review_run import build_equities_review
 from cytonn_weekly.focus.review_run import build_focus_review
-from cytonn_weekly.narrative.base import NarrativeProvider
+from cytonn_weekly.drafting.base import NarrativeProvider
+from cytonn_weekly.common import sources as source_store
+from cytonn_weekly.real_estate import snips
 from cytonn_weekly.real_estate.review_run import build_real_estate_review
+from cytonn_weekly.weekly.previous_issue import Issue
 
 TODAY = date(2026, 10, 2)
 
@@ -32,9 +35,25 @@ class FakeNarrativeProvider(NarrativeProvider):
         self.bad_figure = bad_figure
         self.cited = cited
         self.calls = []
+        self.requests = 0   # what the Bedrock provider counts: one per model request
+        self.completions = []   # (system, prompt, max_tokens) of each plain completion
+        self.replies = {}   # a reply to give a plain completion, by the system prompt's first words
+
+    def complete(self, system, prompt, *, max_tokens):
+        self.requests += 1
+        self.completions.append((system, prompt, max_tokens))
+        for marker, reply in self.replies.items():
+            if marker in system:
+                return reply
+        if "propose the section titles" in system:
+            return "Overview of the topic\nMarket performance\nRisks\nRecommendations and Conclusion"
+        if "closing part" in system:
+            return "The sections show steady demand. Investors may weigh these points against their own mandate."
+        return "This report covers the market and its risks."
 
     def draft_piece(self, brief, *, start, end, today):
         self.calls.append(brief.id)
+        self.requests += 1
         if brief.id in self.no_story:
             return HighlightResult(company=brief.label, search_scope=None, ir_domain="", drafted_by=self.drafted_by,
                                    no_story=True)
@@ -46,6 +65,9 @@ class FakeNarrativeProvider(NarrativeProvider):
             {"text": second, "url": url, "title": brief.label,
              "cited_text": "Lending rose to Sh30.1bn this quarter." if self.cited else ""},
         ]
+        if brief.findings:   # findings only: the claims, no paragraph
+            return HighlightResult(company=brief.label, search_scope=SCOPE_WEB, ir_domain="", drafted_by=self.drafted_by,
+                                   headline=brief.label, paragraph="", paragraph_md="", claims=claims)
         body = " ".join(c["text"] for c in claims)
         return HighlightResult(
             company=brief.label, search_scope=SCOPE_WEB, ir_domain="", drafted_by=self.drafted_by,
@@ -90,9 +112,9 @@ def market(shares=None, as_of="2026-10-02T13:00:00+00:00"):
 def reits(warnings=()):
     """The real Ibuka figures of 25 Sept 2026 (prices unchanged from the 18 Sept summary)."""
     rows = [
-        {"reit": "ACORN_D", "name": "Acorn D-REIT", "price": 29.65, "inception_gain_pct": 48.5, "prior_price": 29.65,
+        {"reit": "ACORN_D", "name": "Acorn D-REIT", "price": 29.65, "inception_gain_pct": 48.25, "prior_price": 29.65,
          "ytd_base_price": 25.0, "wow_pct": 0.0, "ytd_pct": 18.6, "market_cap_kes_bn": 8.674903573, "error": None},
-        {"reit": "ACORN_I", "name": "Acorn I-REIT", "price": 24.44, "inception_gain_pct": 22.0, "prior_price": 23.75,
+        {"reit": "ACORN_I", "name": "Acorn I-REIT", "price": 24.44, "inception_gain_pct": 22.2, "prior_price": 23.75,
          "ytd_base_price": 22.0, "wow_pct": 2.905263157894737, "ytd_pct": 11.09, "market_cap_kes_bn": 9.898749704,
          "error": None},
         {"reit": "FAHARI", "name": "ILAM Fahari I-REIT", "price": 13.8, "inception_gain_pct": -31.0, "prior_price": 13.8,
@@ -113,10 +135,42 @@ def equities_review(provider=None, on_event=None):
                                  today=TODAY, fetch_market=market, on_event=on_event)
 
 
+def confirm_snips(sectors=("industry", "residential", "land", "hospitality")):
+    """A confirmed snip saved as a source for each of these sectors, as the confirm route leaves it."""
+    for sid in sectors:
+        label = snips.LABELS[sid]
+        source_store.from_snip(f"image-{sid}".encode(), ".png", f"{label} figures.", label, TODAY, TODAY.isoformat(), f"{sid}.png")
+
+
 def real_estate_review(provider=None, on_event=None):
+    confirm_snips()
     return build_real_estate_review(provider=provider or FakeNarrativeProvider(no_story={"hospitality"}),
                                     today=TODAY, fetch_reits=lambda _today: reits(), on_event=on_event)
 
 
-def focus_review(provider=None, topic="SSA Eurobonds performance", on_event=None):
-    return build_focus_review(topic, provider=provider or FakeNarrativeProvider(), today=TODAY, on_event=on_event)
+PREVIOUS_FOCUS = {"focus-of-the-week": {"name": "Focus of the Week", "body": "<p>Body.</p><p>Disclaimer: Past performance is not a guide.</p>"}}
+
+
+def previous_issue(sections=None):
+    return lambda _day: Issue(issue_id=894, published=date(2026, 10, 25), sections=sections or PREVIOUS_FOCUS)
+
+
+def focus_review(provider=None, topic="SSA Eurobonds performance", on_event=None, sections=None, previous=None):
+    return build_focus_review(topic, provider=provider or FakeNarrativeProvider(), today=TODAY, on_event=on_event,
+                              sections=sections, previous_issue=previous or previous_issue())
+
+
+def old_focus_review(provider=None, topic="SSA Eurobonds performance", on_event=None):
+    """A Focus as it was saved before the structure existed: one cited piece, a headline and a body, no roles."""
+    from cytonn_weekly.review.blocks import build_review, check_section, narrative_block, numbered
+    from cytonn_weekly.drafting.base import NarrativeBrief
+    from cytonn_weekly.drafting.drafter import draft_pieces
+
+    brief = NarrativeBrief(id="focus", section="Focus of the Week", label=topic, focus=f"recent, sourced data on: {topic}",
+                           words=(400, 700), opener=None, max_searches=8)
+    draft = draft_pieces([brief], 1, provider=provider or FakeNarrativeProvider(), today=TODAY, on_event=on_event)
+    content = {"section": "focus", "title": "Focus of the Week", "topic": topic, "week_start": draft["week_start"],
+               "week_end": draft["week_end"], "blocks": numbered([narrative_block("focus", p) for p in draft["pieces"]]),
+               "pieces_found": len(draft["pieces"]), "pieces_expected": 1, "shortfall": draft["shortfall"],
+               "warnings": list(draft["warnings"])}
+    return build_review(content, check_section(content, on_event))

@@ -1,4 +1,4 @@
-"""Tests for cytonn_weekly.digital_payments.summary (the Edwin/Liz Word-doc summary).
+"""Tests for cytonn_weekly.digital_payments.summary (the Word-doc summary).
 
 Reviews are real CoordinatorReviews built by the real pipeline code on fake edges
 (review_helpers), saved to and reloaded from a real temp SQLite file, as the real
@@ -11,10 +11,10 @@ from docx import Document
 from docx.table import Table
 from review_helpers import LocalFakeProvider, make_review
 
-from cytonn_weekly.digital_payments import coordinator_review as cr
-from cytonn_weekly.digital_payments import review_store as rs
+from cytonn_weekly.review import model as cr
+from cytonn_weekly.review import store as rs
 from cytonn_weekly.digital_payments import summary as sm
-from cytonn_weekly.digital_payments.providers.base import LINK_RE
+from cytonn_weekly.drafting.results import LINK_RE
 
 VISA_LINKED = (
     "During the week, Visa [announced a thing](https://investor.visa.com/a) and "
@@ -32,7 +32,7 @@ def approve(review):
     for i in review.review_items:
         if i.resolution is None:
             i.resolve(cr.ACCEPT)
-    review.decide("approved")
+    review.decide("approved", review.flagged_count)
     return review
 
 
@@ -101,11 +101,9 @@ def test_rejected_review_raises(db, tmp_path):
 
 def test_a_decision_field_alone_is_not_enough(tmp_path):
     review = make_review()
+    review.review_items = []  # no draft to approve
     review.decision, review.decided_at = cr.APPROVED, "2026-10-01T09:00:00+00:00"  # bypassing decide()
-    with pytest.raises(sm.SummaryNotAllowed, match="not every item is resolved"):
-        sm.write_summary(review, tmp_path / "out.docx")
-    review.review_items[0].resolve(cr.FIX_NEEDED)
-    with pytest.raises(sm.SummaryNotAllowed):
+    with pytest.raises(sm.SummaryNotAllowed, match="marked approved but holds no draft"):
         sm.write_summary(review, tmp_path / "out.docx")
     assert not (tmp_path / "out.docx").exists()
 
@@ -127,7 +125,7 @@ def test_header_names_the_week_and_the_approval_date(db, tmp_path):
     assert lines[0] == "Digital Payments: weekly insight summary"
     assert "Report week 24 Sep 2026 to 30 Sep 2026" in lines
     approved_on = sm._fmt_date(review.decided_at)
-    assert any(f"approved by the coordinator on {approved_on}" in ln for ln in lines)
+    assert any(f"approved by the analyst on {approved_on}" in ln for ln in lines)
 
 
 def test_four_highlights_in_order_with_numerals_headlines_and_paragraphs(db, tmp_path):
@@ -210,7 +208,7 @@ def test_shortfall_is_stated_when_fewer_than_four_highlights(db, tmp_path):
 
 
 def test_none_of_the_review_mechanics_leak_into_the_document(db, tmp_path):
-    review = make_review(tamper=True)  # flagged items exist, and the coordinator accepted them
+    review = make_review(tamper=True)  # flagged items exist, and the analyst accepted them
     review.review_items[0].resolve(cr.ACCEPT, "SECRET-NOTE")
     approve(review)
     rs.save_review(review, db_path=db)

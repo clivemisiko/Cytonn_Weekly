@@ -243,7 +243,7 @@ def suggested_period(report_type: str, today: date) -> str:
     """The most recent period of this type that has ended by ``today`` ("" for weekly-issue labels).
 
     A Markets Review goes out in the first Sunday slot after its period ends (Q3'2026 on
-    4 Oct 2026), so the period just ended is the one a coordinator is most likely drafting.
+    4 Oct 2026), so the period just ended is the one an analyst is most likely drafting.
     """
     year = today.year
     if report_type == QUARTERLY:

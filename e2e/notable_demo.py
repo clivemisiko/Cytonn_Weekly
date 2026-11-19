@@ -76,10 +76,10 @@ def equities(ctx):
     return found
 
 
-def company_updates(ctx):
-    w, kw = ctx.week_ending, dict(section="company_updates", week_ending=ctx.week_ending)
-    found = streak(series("Invented hospitality items named", "count", ["1", "2", "3", "4", "5"], w), **kw)
-    found += trailing_compare(series("Invented update text length", "count",
+def digital_payments(ctx):
+    w, kw = ctx.week_ending, dict(section="digital_payments", week_ending=ctx.week_ending)
+    found = streak(series("Invented highlights drafted", "count", ["1", "2", "3", "4", "5"], w), **kw)
+    found += trailing_compare(series("Invented highlight text length", "count",
                                      ["300", "310", "290", "305", "295", "315", "300", "310", "290", "305", "300", "295", "420"], w),
                               threshold="20", **kw)
     return found
@@ -89,9 +89,9 @@ def _broken(ctx):
     raise RuntimeError("E2E: a deliberate detector failure for the tests (C:/private/path/history.csv)")
 
 
-# Real Estate, Digital Payments and Focus have none: they show the empty state.
+# Real Estate and Focus have none: they show the empty state.
 REGISTRY = {
     "fixed_income": [fixed_income],
     "equities": [equities, _broken],
-    "company_updates": [company_updates],
+    "digital_payments": [digital_payments],
 }

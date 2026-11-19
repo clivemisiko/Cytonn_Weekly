@@ -23,10 +23,10 @@ export const PLACEMENT = {
   analyst_suggestion_unavailable: "inline",
   bulletin_not_published: "inline",
   bulletin_fetch_failed: "inline",
+  item_fetch_failed: "inline",
   draft_section_unavailable: "dialog",
   draft_topic_missing: "inline",
   draft_topic_invalid: "inline",
-  draft_text_missing: "inline",
   drafting_off: "dialog",
   draft_busy: "dialog",
   draft_already_running: "dialog",
@@ -34,6 +34,7 @@ export const PLACEMENT = {
   draft_discarded: "dialog",
   draft_sections_not_approved: "dialog",
   draft_input_invalid: "inline",
+  draft_sections_required: "inline",
   draft_failed: "dialog",
   review_already_decided: "dialog",
   review_not_decidable: "dialog",
@@ -49,6 +50,9 @@ export const PLACEMENT = {
   edit_paragraph_not_possible: "dialog",
   edit_text_refused: "inline",
   edit_save_failed: "dialog",
+  finding_not_possible: "dialog",
+  finding_not_found: "dialog",
+  finding_save_failed: "dialog",
 } as const satisfies Record<string, "dialog" | "inline" | "none">;
 
 export type ProblemCode = keyof typeof PLACEMENT;

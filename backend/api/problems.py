@@ -29,10 +29,10 @@ PROBLEMS: dict[str, tuple[str, Optional[str]]] = {
     "analyst_suggestion_unavailable": ("No suggestion could be made", "analyst-form"),
     "bulletin_not_published": ("The bulletin is not published yet", "inputs-panel"),
     "bulletin_fetch_failed": ("The bulletin could not be fetched", "inputs-panel"),
+    "item_fetch_failed": ("The figures could not be fetched", "analyst-form"),
     "draft_section_unavailable": ("This section cannot be drafted yet", "start-draft"),
     "draft_topic_missing": ("Type the topic before you start the draft", "start-draft"),
     "draft_topic_invalid": ("The topic is too long", "start-draft"),
-    "draft_text_missing": ("Paste the text before you start the draft", "start-draft"),
     "drafting_off": ("Drafting is switched off", "start-draft"),
     "draft_busy": ("Another draft is running", "start-draft"),
     "draft_already_running": ("This section is already being drafted", "start-draft"),
@@ -40,6 +40,7 @@ PROBLEMS: dict[str, tuple[str, Optional[str]]] = {
     "draft_discarded": ("The draft was replaced", "start-draft"),
     "draft_sections_not_approved": ("Other sections are not approved yet", "start-draft"),
     "draft_input_invalid": ("This input cannot be drafted: check what you typed", "start-draft"),
+    "draft_sections_required": ("Type the section titles before you start the draft", "start-draft"),
     "draft_failed": ("The draft stopped", "start-draft"),
     "review_already_decided": ("This section was already decided", "review-status-bar"),
     "review_not_decidable": ("The decision was not recorded", "review-status-bar"),
@@ -55,6 +56,9 @@ PROBLEMS: dict[str, tuple[str, Optional[str]]] = {
     "edit_paragraph_not_possible": ("This paragraph cannot be changed here", None),
     "edit_text_refused": ("The new sentence was not saved", None),
     "edit_save_failed": ("The new version could not be saved", None),
+    "finding_not_possible": ("This finding cannot be removed here", None),
+    "finding_not_found": ("The finding was not found in the draft", None),
+    "finding_save_failed": ("The finding was not removed", None),
 }
 
 

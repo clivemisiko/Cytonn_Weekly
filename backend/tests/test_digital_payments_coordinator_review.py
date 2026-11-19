@@ -1,4 +1,4 @@
-"""Unit tests for cytonn_weekly.digital_payments.coordinator_review (backlog task 8).
+"""Unit tests for cytonn_weekly.review.model and the Digital Payments builder (backlog task 8).
 
 compose_section() output is mocked; the CheckReport is the real checker's, run
 on small source/drafted rows with deliberate errors, so these tests also pin
@@ -9,9 +9,11 @@ import copy
 
 import pytest
 
-from cytonn_weekly.checkers import digital_payments as ck
-from cytonn_weekly.checkers.digital_payments import CheckReport, Flag
-from cytonn_weekly.digital_payments import coordinator_review as cr
+from cytonn_weekly.digital_payments import checks as ck
+from cytonn_weekly.review import figures as fg
+from cytonn_weekly.review.figures import CheckReport, Flag
+from cytonn_weekly.review import model as cr
+from cytonn_weekly.digital_payments.review_run import build_coordinator_review
 from cytonn_weekly.digital_payments.fetcher import format_table_rows
 from cytonn_weekly.digital_payments.highlights import table_stats
 
@@ -66,7 +68,7 @@ def mixed():
 
 def approvable_review():
     section = compose()
-    review = cr.build_coordinator_review(section, run_checker(section))
+    review = build_coordinator_review(section, run_checker(section))
     return review
 
 
@@ -86,7 +88,7 @@ def by_ref(review, fragment):
 
 def test_items_cover_every_row_stat_and_claim_with_mixed_statuses():
     section, report = mixed()
-    review = cr.build_coordinator_review(section, report)
+    review = build_coordinator_review(section, report)
 
     kinds = [i.kind for i in review.review_items]
     assert kinds.count(cr.TABLE_ROW) == 3
@@ -102,13 +104,13 @@ def test_items_cover_every_row_stat_and_claim_with_mixed_statuses():
 
 def test_flagged_row_carries_the_checkers_flag_objects_and_clean_has_no_detail():
     section, report = mixed()
-    review = cr.build_coordinator_review(section, report)
+    review = build_coordinator_review(section, report)
 
     ma = by_ref(review, "(MA)")
-    assert [f.kind for f in ma.detail] == [ck.MISMATCH]
+    assert [f.kind for f in ma.detail] == [fg.MISMATCH]
     assert ma.detail[0] in report.flags  # the same object, not a copy
     assert ma.detail[0].field == "current_price"
-    assert [f.kind for f in by_ref(review, "(AXP)").detail] == [ck.MISSING]
+    assert [f.kind for f in by_ref(review, "(AXP)").detail] == [fg.MISSING]
     assert by_ref(review, "(V)").detail is None
 
 
@@ -117,13 +119,13 @@ def test_row_with_several_flagged_figures_gets_all_of_them():
     drafted = format_table_rows(ROWS)
     drafted[0]["current_price"] = "1.0"
     drafted[0]["wow_pct"] = "9.9%"
-    review = cr.build_coordinator_review(section, run_checker(section, drafted))
+    review = build_coordinator_review(section, run_checker(section, drafted))
     assert sorted(f.field for f in by_ref(review, "(V)").detail) == ["current_price", "wow_pct"]
 
 
 def test_every_highlight_claim_is_not_auto_verified_with_the_fixed_note():
     section, report = mixed()
-    review = cr.build_coordinator_review(section, report)
+    review = build_coordinator_review(section, report)
     claims = [i for i in review.review_items if i.kind == cr.HIGHLIGHT_CLAIM]
     assert {i.status for i in claims} == {cr.NOT_AUTO_VERIFIED}
     assert {i.detail for i in claims} == {cr.NOT_AUTO_VERIFIED_NOTE}
@@ -132,22 +134,22 @@ def test_every_highlight_claim_is_not_auto_verified_with_the_fixed_note():
 
 def test_not_implemented_placeholder_flags_do_not_become_flagged_items():
     section, report = mixed()
-    assert report.by_kind(ck.NOT_IMPLEMENTED)  # the checker does emit them, per highlight
-    review = cr.build_coordinator_review(section, report)
+    assert report.by_kind(fg.NOT_IMPLEMENTED)  # the checker does emit them, per highlight
+    review = build_coordinator_review(section, report)
     assert not [i for i in review.by_status(cr.FLAGGED) if i.kind == cr.HIGHLIGHT_CLAIM]
 
 
 def test_claim_ref_names_the_highlight_and_truncates_long_claim_text():
     long_claim = "word " * 60
     section = compose(highlights=[highlight("I", "Visa", "H", [long_claim])])
-    review = cr.build_coordinator_review(section, run_checker(section))
+    review = build_coordinator_review(section, run_checker(section))
     ref = by_ref(review, "Highlight I (Visa)").ref
     assert ref.endswith("…") and len(ref) < 120
 
 
 def test_highlight_without_claims_is_still_listed_once():
     section = compose(highlights=[highlight("I", "Visa", "H", [])])
-    review = cr.build_coordinator_review(section, run_checker(section))
+    review = build_coordinator_review(section, run_checker(section))
     (item,) = [i for i in review.review_items if i.kind == cr.HIGHLIGHT_CLAIM]
     assert item.status == cr.NOT_AUTO_VERIFIED
 
@@ -156,20 +158,20 @@ def test_stat_missing_from_the_draft_still_gets_an_item():
     stats = table_stats(ROWS)
     del stats["avg_forward_pe"]
     section = compose(stats=stats)
-    review = cr.build_coordinator_review(section, run_checker(section))
+    review = build_coordinator_review(section, run_checker(section))
     item = by_ref(review, "avg_forward_pe")
-    assert item.status == cr.FLAGGED and item.detail[0].kind == ck.MISSING
+    assert item.status == cr.FLAGGED and item.detail[0].kind == fg.MISSING
 
 
 def test_no_flag_is_dropped_even_when_it_points_outside_the_section():
     section = compose()
     drafted = [*format_table_rows(ROWS), {**format_table_rows([src("ZZ", "Zed")])[0]}]  # drafted row, no source
     report = run_checker(section, drafted)
-    stray = Flag(kind=ck.MISMATCH, scope="highlight", subject="No such headline", field=None, message="x")
+    stray = Flag(kind=fg.MISMATCH, scope="highlight", subject="No such headline", field=None, message="x")
     report.flags.append(stray)
 
-    review = cr.build_coordinator_review(section, report)
-    expected = [f for f in report.flags if f.kind != ck.NOT_IMPLEMENTED]
+    review = build_coordinator_review(section, report)
+    expected = [f for f in report.flags if f.kind != fg.NOT_IMPLEMENTED]
     landed = [f for i in review.review_items if i.status == cr.FLAGGED for f in i.detail]
     assert len(expected) == len(landed) == 2
     assert all(any(f is g for g in landed) for f in expected)
@@ -178,9 +180,9 @@ def test_no_flag_is_dropped_even_when_it_points_outside_the_section():
 def test_future_highlight_flag_marks_that_highlights_claims_flagged():
     section = compose()
     report = run_checker(section)
-    flag = Flag(kind=ck.MISMATCH, scope="highlight", subject="Visa does a thing", field=None, message="x")
+    flag = Flag(kind=fg.MISMATCH, scope="highlight", subject="Visa does a thing", field=None, message="x")
     report.flags.append(flag)
-    review = cr.build_coordinator_review(section, report)
+    review = build_coordinator_review(section, report)
     visa = [i for i in review.review_items if i.ref.startswith("Highlight I (")]
     assert len(visa) == 2 and all(i.status == cr.FLAGGED and i.detail == [flag] for i in visa)
     assert by_ref(review, "Highlight II").status == cr.NOT_AUTO_VERIFIED
@@ -189,20 +191,20 @@ def test_future_highlight_flag_marks_that_highlights_claims_flagged():
 def test_unrecognised_flag_scope_raises_rather_than_dropping_it():
     section = compose()
     report = run_checker(section)
-    report.flags.append(Flag(kind=ck.MISMATCH, scope="weird", subject="s", field=None, message="x"))
+    report.flags.append(Flag(kind=fg.MISMATCH, scope="weird", subject="s", field=None, message="x"))
     with pytest.raises(ValueError, match="unrecognised scope"):
-        cr.build_coordinator_review(section, report)
+        build_coordinator_review(section, report)
 
 
 def test_report_that_compared_nothing_is_rejected_instead_of_reading_all_clean():
     with pytest.raises(ValueError, match="compared no figures"):
-        cr.build_coordinator_review(compose(), CheckReport())
+        build_coordinator_review(compose(), CheckReport())
 
 
 def test_compose_output_is_wrapped_unchanged():
     section, report = mixed()
     before = copy.deepcopy(section)
-    review = cr.build_coordinator_review(section, report)
+    review = build_coordinator_review(section, report)
     assert review.section is section
     assert section == before
 
@@ -211,38 +213,24 @@ def test_compose_output_is_wrapped_unchanged():
 # is_approvable
 # ---------------------------------------------------------------------------
 
-def test_not_approvable_until_every_item_is_resolved():
+def test_approvable_as_soon_as_there_is_a_draft():
     review = approvable_review()
-    assert review.review_items and not review.is_approvable  # nothing resolved yet
-    items = review.review_items
-    for item in items[:-1]:
+    assert review.review_items and review.is_approvable  # nothing resolved, still approvable
+    for item in review.review_items:
         item.resolve(cr.ACCEPT)
-        assert not review.is_approvable
-    items[-1].resolve(cr.ACCEPT)
-    assert review.is_approvable
+        assert review.is_approvable
 
 
-def test_clean_and_unverified_items_need_a_resolution_too():
+def test_a_fix_needed_mark_does_not_block_approval():
     review = approvable_review()
-    assert {i.status for i in review.review_items} == {cr.CLEAN, cr.NOT_AUTO_VERIFIED}
-    resolve_all(review)
-    review.review_items[0].resolve(None)
-    assert not review.is_approvable
-
-
-def test_not_approvable_if_any_item_is_fix_needed():
-    review = approvable_review()
-    resolve_all(review)
     review.review_items[3].resolve(cr.FIX_NEEDED, "figure looks wrong")
-    assert not review.is_approvable
-    assert review.review_items[3].resolution_note == "figure looks wrong"
-    review.review_items[3].resolve(cr.ACCEPT)
     assert review.is_approvable
+    assert review.review_items[3].resolution_note == "figure looks wrong"
 
 
 def test_resolving_a_flagged_item_as_accept_is_allowed():
     section, report = mixed()
-    review = cr.build_coordinator_review(section, report)
+    review = build_coordinator_review(section, report)
     resolve_all(review)
     assert review.by_status(cr.FLAGGED) and review.is_approvable
 
@@ -261,20 +249,21 @@ def test_resolve_rejects_unknown_resolution():
 # decide
 # ---------------------------------------------------------------------------
 
-def test_decide_approved_raises_while_unresolved():
+def test_decide_approved_succeeds_while_items_are_unresolved():
     review = approvable_review()
-    with pytest.raises(ValueError, match="cannot approve"):
-        review.decide("approved")
-    assert review.decision is None
+    review.decide("approved")
+    assert review.decision == cr.APPROVED
+    empty = cr.CoordinatorReview(section={})
+    with pytest.raises(ValueError, match="cannot approve: the review has no items"):
+        empty.decide("approved")
+    assert empty.decision is None
 
 
-def test_decide_approved_raises_while_any_fix_needed():
+def test_decide_approved_succeeds_with_a_fix_needed_mark():
     review = approvable_review()
-    resolve_all(review)
     review.review_items[0].resolve(cr.FIX_NEEDED)
-    with pytest.raises(ValueError, match="1 marked fix_needed"):
-        review.decide("approved")
-    assert review.decision is None
+    review.decide("approved")
+    assert review.decision == cr.APPROVED
 
 
 def test_decide_approved_succeeds_once_approvable():
@@ -282,6 +271,62 @@ def test_decide_approved_succeeds_once_approvable():
     resolve_all(review)
     review.decide("approved")
     assert review.decision == cr.APPROVED
+
+
+def flagged_review():
+    section, report = mixed()
+    review = build_coordinator_review(section, report)
+    assert review.flagged_count >= 2
+    return review
+
+
+@pytest.mark.parametrize("sent", [None, 0, "wrong"])
+def test_approving_flagged_items_needs_their_exact_count(sent):
+    review = flagged_review()
+    if sent == "wrong":
+        sent = review.flagged_count + 1
+    with pytest.raises(cr.FlaggedNotAcknowledged, match="flagged item"):
+        review.decide("approved", sent)
+    assert review.decision is None and review.decided_at is None
+    assert all(i.resolution is None for i in review.review_items)       # a refused approval changes nothing
+    assert review.accepted_on_approval() == 0
+
+
+def test_a_count_one_too_low_is_refused_too():
+    review = flagged_review()
+    with pytest.raises(cr.FlaggedNotAcknowledged):
+        review.decide("approved", review.flagged_count - 1)
+
+
+def test_the_right_count_approves_and_accepts_each_flagged_item_with_a_dated_note():
+    review = flagged_review()
+    by_hand = review.by_status(cr.FLAGGED)[0]
+    by_hand.resolve(cr.FIX_NEEDED, "the analyst's own call")
+    clean_item = review.by_status(cr.CLEAN)[0] if review.by_status(cr.CLEAN) else None
+    n = review.flagged_count
+    review.decide("approved", n)
+    assert review.decision == cr.APPROVED
+    assert (by_hand.resolution, by_hand.resolution_note) == (cr.FIX_NEEDED, "the analyst's own call")   # left alone
+    taken = [i for i in review.by_status(cr.FLAGGED) if i is not by_hand]
+    assert taken and all(i.resolution == cr.ACCEPT for i in taken)
+    assert all(i.resolution_note == f"{cr.ACCEPTED_ON_APPROVAL} {review.decided_at}." for i in taken)
+    assert review.accepted_on_approval() == n - 1
+    if clean_item is not None:
+        assert clean_item.resolution is None
+
+
+def test_no_count_is_needed_when_nothing_is_flagged():
+    review = approvable_review()
+    assert review.flagged_count == 0
+    review.decide("approved")
+    assert review.decision == cr.APPROVED and review.accepted_on_approval() == 0
+
+
+def test_rejecting_flagged_items_needs_no_count():
+    review = flagged_review()
+    review.decide("rejected")
+    assert review.decision == cr.REJECTED and review.accepted_on_approval() == 0
+    assert all(i.resolution is None for i in review.review_items)
 
 
 def test_decide_rejected_works_even_though_fix_needed_makes_it_unapprovable():

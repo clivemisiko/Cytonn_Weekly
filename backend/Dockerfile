@@ -8,10 +8,11 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# The one pair of system packages: OpenCV (pulled in by rapidocr-onnxruntime, which reads the scanned
-# NSE daily price list) loads libGL and GLib even though nothing is ever displayed.
+# The system packages: OpenCV (pulled in by rapidocr-onnxruntime, which reads the scanned NSE daily price
+# list) loads libGL and GLib even though nothing is ever displayed; Carlito, with Calibri's metrics, is the
+# font the charts are drawn in here, as the image has no Calibri.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 \
+    && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 fonts-crosextra-carlito \
     && rm -rf /var/lib/apt/lists/*
 
 # Dependencies first, from pyproject alone, so this layer is rebuilt only when it changes.

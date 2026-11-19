@@ -6,17 +6,17 @@ Economic Outlook), Global Commodities Market Performance (the World Bank commodi
 indices, as a chart), Global Equities Market Performance (as a chart).  There is no table.
 
 All three are drafted with citations, preferring the World Bank and IMF for growth and
-commodities.  The charts are listed for the coordinator; the tool does not draw them.
+commodities.  The charts are listed for the analyst; the tool does not draw them.
 """
 
 from __future__ import annotations
 
 from typing import Optional
 
-from cytonn_weekly.common.review import build_review, check_section, narrative_block
+from cytonn_weekly.review.blocks import build_review, check_section, narrative_block
 from cytonn_weekly.common.run_events import Observer, report_blocks
-from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview
-from cytonn_weekly.narrative.base import NarrativeProvider
+from cytonn_weekly.review.model import CoordinatorReview
+from cytonn_weekly.drafting.base import NarrativeProvider
 from cytonn_weekly.periodic.common import PeriodContext, compose, draft_period, period_brief
 from cytonn_weekly.report_types import ANNUAL, HALF_YEAR, QUARTERLY
 
