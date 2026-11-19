@@ -37,6 +37,8 @@ services:
       CYTONN_LOCAL_NUM_PREDICT: ${CYTONN_LOCAL_NUM_PREDICT:-}
       # The search service that gathers sources for a Bedrock draft, and its limits (see .env.example). Names only: a
       # value is taken from the environment or .env when one is set, and nothing is passed when it is not.
+      # The history store's read switch (off, compare or on; see .env.example). Name only: nothing is passed when it is not set.
+      CYTONN_HISTORY_READS:
       EXA_API_KEY:
       CYTONN_SOURCES_ENOUGH:
       CYTONN_SOURCES_MAX_QUERIES:
@@ -45,8 +47,14 @@ services:
       CYTONN_SOURCES_MARKET:
       CYTONN_BEDROCK_RETRIES:
       CYTONN_BEDROCK_RETRY_BASE_SECONDS:
+      CYTONN_BEDROCK_MAX_CALLS_PER_DRAFT:
       CYTONN_DRAFT_CONCURRENCY:
       CYTONN_DRAFT_QUEUE_MAX:
+      CYTONN_JOB_MAX_TOOL_CALLS:
+      CYTONN_JOB_CALL_BUDGET:
+      CYTONN_JOB_TOKEN_BUDGET:
+      CYTONN_CHAT_MODEL_ID:
+      CYTONN_CHAT_CONCURRENCY:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

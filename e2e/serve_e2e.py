@@ -26,7 +26,7 @@ What differs from the real API, all of it set here and nothing in the backend ch
   create_app() as its notable_registry. The real app passes none, so its registry is empty and it shows nothing.
 
 E2E_VARIANT starts it in another state, for the tests that need one:
-- "no-key": the provider is "anthropic" with no API key, so every drafting section shows a provider problem;
+- "no-key": the provider is "bedrock" with no AWS region or credentials, so every drafting section shows a provider problem;
 - "stale":  one drafting seat (CYTONN_DRAFT_CONCURRENCY=1), and a draft that has held it for six seconds counts as stuck;
 - "bedrock": the provider is "bedrock" with invented AWS settings, so the screens show the Sources panel. Narrative drafting
   runs the real Bedrock provider over a fake client (no AWS call) that quotes the first sentence of the first saved source
@@ -135,12 +135,14 @@ def main() -> None:
 
     os.environ["CYTONN_DATA_DIR"] = str(DATA)
     os.environ["CYTONN_WEB_ORIGINS"] = os.environ.get("E2E_WEB_ORIGINS", "http://127.0.0.1:5183")
-    os.environ["CYTONN_LLM_PROVIDER"] = {"no-key": "anthropic", "bedrock": "bedrock"}.get(VARIANT, "local")
+    os.environ["CYTONN_LLM_PROVIDER"] = {"no-key": "bedrock", "bedrock": "bedrock"}.get(VARIANT, "local")
+    if VARIANT == "no-key":   # set and empty: the environment beats .env, so no real AWS setting is ever read
+        for name in ("AWS_REGION", "AWS_DEFAULT_REGION", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_BEARER_TOKEN_BEDROCK"):
+            os.environ[name] = ""
     if VARIANT == "bedrock":   # invented settings, with spaces so they can never be a real credential; no AWS call is ever made
         os.environ.update(AWS_REGION="us-east-1", AWS_ACCESS_KEY_ID="e2e not a key id", AWS_SECRET_ACCESS_KEY="e2e not a secret")
         for name in ("BEDROCK_MODEL_ID", "AWS_DEFAULT_REGION", "AWS_SESSION_TOKEN", "AWS_BEARER_TOKEN_BEDROCK"):
             os.environ.pop(name, None)
-    os.environ["ANTHROPIC_API_KEY"] = ""  # set and empty: the environment beats .env, so no real key is ever read
     os.environ["EXA_API_KEY"] = "e2e"  # the fake provider never searches
     sys.path.insert(0, str(BACKEND))
 
@@ -148,7 +150,7 @@ def main() -> None:
     from api.main import create_app  # noqa: E402
     from cytonn_weekly import paths  # noqa: E402
     from cytonn_weekly.digital_payments import review_run as digital_payments  # noqa: E402
-    from cytonn_weekly.narrative import drafter  # noqa: E402
+    from cytonn_weekly.drafting import drafter
     import chart_demo  # noqa: E402 - e2e/chart_demo.py, beside this file
     import notable_demo  # noqa: E402 - e2e/notable_demo.py, beside this file
     from cytonn_weekly.real_estate import review_run as real_estate  # noqa: E402
@@ -165,7 +167,7 @@ def main() -> None:
 
     from cytonn_weekly.common import sources as source_store  # noqa: E402
     from cytonn_weekly.common.http import Reply  # noqa: E402
-    from cytonn_weekly.narrative import bedrock_provider  # noqa: E402
+    from cytonn_weekly.drafting import bedrock as bedrock_provider
 
     narrative_provider = (lambda: bedrock_provider.BedrockNarrativeProvider(client=BedrockClient())) if VARIANT == "bedrock" else (
         lambda: _E2EProvider())
@@ -197,8 +199,14 @@ def main() -> None:
     chart_demo.offline_equities()
 
     _real_dp = digital_payments.build_digital_payments_review
-    digital_payments.build_digital_payments_review = lambda today=None, on_event=None, **_: _real_dp(
-        provider=review_helpers.FakeProvider(), today=today, fetch_table=lambda _today: review_helpers.ROWS, on_event=on_event)
+    TAMPERED_FRIDAY = date(2027, 1, 8)   # chat card tests (T123): this one week's draft has flagged items (a wrong price, a missing row)
+
+    def _dp(today=None, on_event=None, **_):
+        if today == TAMPERED_FRIDAY:
+            return review_helpers.make_review(tamper=True)
+        return _real_dp(provider=review_helpers.FakeProvider(), today=today, fetch_table=lambda _today: review_helpers.ROWS, on_event=on_event)
+
+    digital_payments.build_digital_payments_review = _dp
 
     # Markets Review sections: the test suite's own builders, which hold the real ones and feed them captured sources.
     for _slug, _helper in periodic_helpers.BUILDERS.items():
@@ -212,10 +220,19 @@ def main() -> None:
             raise LookupError(f"E2E: no bulletin is saved for {issue_date.isoformat()}")
         return saved.read_bytes(), f"https://e2e.invalid/uploads/weekly_bulletin/{saved.name}"
 
+    def read_fund_snip(_image: bytes) -> list[dict]:
+        """Invented fund rows: the OCR is never run in the end-to-end tests."""
+        def row(n: int, name: str, currency: str = "KES", rate: str | None = "9.0") -> dict:
+            return {"id": n, "name": name, "currency": currency, "rate": rate, "once": False, "unresolved": [] if rate else ["rate"]}
+        return [row(0, "Alpha Money Market Fund", rate="10.5"), row(1, "BetaMMF", rate="10.5"), row(2, "Gamma Money Market Fund"),
+                row(3, "Delta Money Market Fund", rate="8.0"), row(4, "Zeta Fixed Income Fund", rate="12.0"), row(5, "Zeta Money Market Fund", rate="7.5"),
+                row(6, "Alpha Dollar Fund", "USD", None), row(7, "Eta Money Market Fund", rate=None)]
+
     print(f"E2E instance: data folder {paths.DATA_DIR}, port {PORT}, variant {VARIANT or 'default'}", flush=True)
     if VARIANT == "stale":
         os.environ["CYTONN_DRAFT_CONCURRENCY"] = "1"   # one seat, so the next draft has to take the stuck one's over
     app = create_app(DB_PATH, load_dotenv=False, fetch_bulletin=fetch_bulletin, notable_registry=notable_demo.REGISTRY, fetch_source=fetch_source,
+                     read_fund_snip=read_fund_snip,
                      **({"draft_stale_after": 6} if VARIANT == "stale" else {}))
     verify_isolated(DB_PATH, DATA)  # fail closed, before anything is served
     uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="warning")

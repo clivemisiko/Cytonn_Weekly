@@ -7,10 +7,10 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Callable, Optional, Sequence, Union
 
-from cytonn_weekly.common.review import numbered, unavailable_block
+from cytonn_weekly.review.blocks import numbered, unavailable_block
 from cytonn_weekly.common.run_events import Observer
-from cytonn_weekly.narrative.base import NarrativeBrief, NarrativeProvider
-from cytonn_weekly.narrative.drafter import draft_pieces
+from cytonn_weekly.drafting.base import NarrativeBrief, NarrativeProvider
+from cytonn_weekly.drafting.drafter import draft_pieces
 from cytonn_weekly.report_types import (
     ANNUAL,
     HALF_YEAR,
@@ -142,7 +142,7 @@ def no_draft() -> dict[str, Any]:
 def compose(slug: str, title: str, ctx: PeriodContext, blocks: list[dict[str, Any]], *,
             draft: Optional[dict[str, Any]] = None, expected: int = 0, warnings: Sequence[str] = (),
             charts: Optional[dict[str, tuple[str, ...]]] = None) -> dict[str, Any]:
-    """The section content every Markets Review section stores (common/review.py's shape, plus the period).
+    """The section content every Markets Review section stores (review/blocks.py's shape, plus the period).
 
     ``week_start``/``week_end`` carry the period too, so a screen written for the weekly
     report still shows a date range; ``period_start``/``period_end`` say what it is.

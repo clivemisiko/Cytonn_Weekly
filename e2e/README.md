@@ -60,6 +60,7 @@ What the test API does so that these tests need no outside service (all in `serv
 
 - while the file `backend/data/demo-e2e/data/e2e-hold` exists, the weekly Real Estate draft waits before it fails, so a
   test can keep the one draft slot held (T24, T27);
+- the weekly Equities start screen lists the 15 banks and insurers with their website status (all "to confirm" in `companies.json`), so no company is searched and the Equities review always holds the "Listed banks and insurers" notes block; no test covers the list;
 - the weekly Digital Payments draft runs the real pipeline on the unit tests' fixed price rows and fake provider (T22),
   and every Markets Review section runs on the unit tests' captured sources (T25);
 - "Fetch from CBK" is answered from the bulletin saved in `backend/tests/fixtures/sources` (T17);
@@ -70,7 +71,7 @@ What the test API does so that these tests need no outside service (all in `serv
   library, each item marked "invented demo item"), passed to
   `create_app()` as `notable_registry`; the real app passes none, so it shows nothing (T47 to T58). Each of those tests uses its own Friday,
   because a decision belongs to its week;
-- `no-key` sets the provider to `anthropic` with an empty key (a provider problem, T26); `stale` counts a draft as
+- `no-key` sets the provider to `bedrock` with empty AWS settings (a provider problem, T26); `stale` counts a draft as
   stuck after six seconds (T27).
 
 `E2E_BASE_URL` with `E2E_NO_WEB=1` runs the suite against an app you started yourself; the API must then allow that

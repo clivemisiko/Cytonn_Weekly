@@ -83,9 +83,153 @@ CREATE TABLE IF NOT EXISTS suggestion_decisions (
 );
 
 -- ---------------------------------------------------------------------------
+-- draft_runs, run_events, draft_usage: every draft run started with POST /api/runs (api/runs.py writes through to them on each
+-- status change and event, run_store.py), so a restart or an old run dropped from memory loses nothing.  run_id is the registry's
+-- own id (a uuid in hex), not coordinator_reviews.run_id; review_id is that one.  period is the week or period the draft is for.
+-- A run that was queued or running when the process stopped is marked 'interrupted' at the next start.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS draft_runs (
+    run_id          TEXT    PRIMARY KEY,
+    report_type     TEXT    NOT NULL,
+    period          TEXT    NOT NULL DEFAULT '',
+    section         TEXT    NOT NULL,
+    section_title   TEXT    NOT NULL,
+    report_title    TEXT    NOT NULL,
+    status          TEXT    NOT NULL CHECK (status IN ('queued', 'running', 'finished', 'failed', 'interrupted')),
+    started_at      TEXT    NOT NULL,   -- ISO-8601 UTC; for a queued run, when it joined the queue
+    finished_at     TEXT,               -- ISO-8601 UTC; set exactly when the run has ended
+    error           TEXT,               -- the failure or interruption sentence the run showed
+    review_id       BIGINT,             -- the saved review, once finished
+    is_dev_draft    INTEGER CHECK (is_dev_draft IN (0, 1) OR is_dev_draft IS NULL),
+    dev_mode_label  TEXT,
+    CHECK ((status IN ('queued', 'running')) = (finished_at IS NULL))
+);
+
+-- The events the run's screen and stream show, in order (common/run_events.py).  counts_json is the three review counts, or NULL.
+CREATE TABLE IF NOT EXISTS run_events (
+    run_id       TEXT    NOT NULL,
+    seq          INTEGER NOT NULL,
+    kind         TEXT    NOT NULL,
+    label        TEXT    NOT NULL,
+    detail       TEXT,
+    counts_json  TEXT,
+    event_at     TEXT    NOT NULL,   -- ISO-8601 UTC
+    PRIMARY KEY (run_id, seq)
+);
+
+-- What a finished draft spent on Amazon Bedrock (the "usage" saved with its review): tokens and calls only.  A draft with no
+-- Bedrock call has no row.
+CREATE TABLE IF NOT EXISTS draft_usage (
+    run_id                      TEXT    PRIMARY KEY,
+    model                       TEXT    NOT NULL,
+    calls                       INTEGER NOT NULL,
+    input_tokens                INTEGER NOT NULL,
+    output_tokens               INTEGER NOT NULL,
+    calls_without_token_counts  INTEGER NOT NULL DEFAULT 0,
+    saved_at                    TEXT    NOT NULL   -- ISO-8601 UTC
+);
+
+-- ---------------------------------------------------------------------------
+-- report_jobs, job_messages (jobs.py): one job per report type, period and section, and its messages in order.  The three limits
+-- are the values in force when the job was opened (CYTONN_JOB_*); agent/loop.py enforces them.  job_messages.job_id refers to
+-- report_jobs.job_id (jobs.py checks it; no foreign key, as nowhere else in this schema).
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS report_jobs (
+    job_id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    report_type     TEXT    NOT NULL,
+    period          TEXT    NOT NULL DEFAULT '',
+    section         TEXT    NOT NULL,
+    max_tool_calls  INTEGER NOT NULL,   -- per message
+    call_budget     INTEGER NOT NULL,   -- model calls over the whole job
+    token_budget    INTEGER NOT NULL,   -- input and output tokens over the whole job
+    created_at      TEXT    NOT NULL,   -- ISO-8601 UTC
+    status          TEXT    NOT NULL DEFAULT 'idle',
+    paused_reason   TEXT,
+    calls_used      INTEGER NOT NULL DEFAULT 0,
+    input_tokens    INTEGER NOT NULL DEFAULT 0,
+    output_tokens   INTEGER NOT NULL DEFAULT 0,
+    budget_raises   INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (report_type, period, section)
+);
+
+CREATE TABLE IF NOT EXISTS job_messages (
+    job_id       BIGINT NOT NULL,
+    seq          INTEGER NOT NULL,   -- 1, 2, 3, ... within one job
+    role         TEXT    NOT NULL CHECK (role IN ('user', 'assistant', 'tool')),
+    content      TEXT    NOT NULL,
+    tool_name    TEXT,               -- a tool turn: which tool
+    tool_result  TEXT,               -- a tool turn: what it returned
+    created_at   TEXT    NOT NULL,   -- ISO-8601 UTC
+    tool_use_id  TEXT,
+    tool_input   TEXT,
+    usage        TEXT,
+    cards        TEXT,
+    PRIMARY KEY (job_id, seq)
+);
+
+-- ---------------------------------------------------------------------------
+-- series, series_points (history/store.py): the weekly history the tool keeps itself, one current point per series and date.
+-- A series is a key ('eq.pe', 'fi.mmf.rate') and a subject (a fund or company; '' when it has none) with one unit, fixed for good.
+-- A point's value is decimal text.  A correction is a new row: the old one's superseded_by is set to it in the same transaction
+-- and the old row is kept.  superseded_by NULL means current.  confirmed_at NULL means the point is not yet used by any reader.
+-- source_ref is a source id, a form field or table key, or "<sheet>!<cell>"; for a worked-out point, the working.
+-- Confidential series (the P/E series, the fund table, placements) live here and in the data folder only.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS series (
+    series_id   BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    key         TEXT NOT NULL,
+    subject     TEXT NOT NULL DEFAULT '',
+    unit        TEXT NOT NULL,
+    section     TEXT NOT NULL,
+    cadence     TEXT NOT NULL CHECK (cadence IN ('day', 'week', 'month')),
+    label       TEXT NOT NULL,
+    created_at  TEXT NOT NULL,   -- ISO-8601 UTC
+    UNIQUE (key, subject)
+);
+
+CREATE TABLE IF NOT EXISTS series_points (
+    point_id       BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    series_id      BIGINT NOT NULL,
+    as_of          TEXT   NOT NULL,   -- the point's own date (YYYY-MM-DD)
+    week_ending    TEXT   NOT NULL,   -- the report Friday it belongs to
+    value          TEXT   NOT NULL,   -- decimal text
+    origin         TEXT   NOT NULL CHECK (origin IN ('fetched', 'typed', 'worked_out', 'carried', 'workbook_import')),
+    source_kind    TEXT   NOT NULL CHECK (source_kind IN ('source', 'form_field', 'workbook_cell', 'working')),
+    source_ref     TEXT   NOT NULL,
+    superseded_by  BIGINT,
+    confirmed_by   TEXT,
+    confirmed_at   TEXT,
+    created_at     TEXT   NOT NULL,   -- ISO-8601 UTC
+    CHECK ((confirmed_by IS NULL) = (confirmed_at IS NULL))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_series_points_current ON series_points (series_id, as_of) WHERE superseded_by IS NULL;
+CREATE INDEX IF NOT EXISTS idx_series_points_week ON series_points (week_ending);
+
+-- A database made before the chat columns existed gets them here (a no-op on a new one).  Same columns and meanings as schema.sql.
+ALTER TABLE report_jobs
+    ADD COLUMN IF NOT EXISTS status        TEXT    NOT NULL DEFAULT 'idle',
+    ADD COLUMN IF NOT EXISTS paused_reason TEXT,
+    ADD COLUMN IF NOT EXISTS calls_used    INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS input_tokens  INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS output_tokens INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS budget_raises INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE job_messages
+    ADD COLUMN IF NOT EXISTS tool_use_id TEXT,
+    ADD COLUMN IF NOT EXISTS tool_input  TEXT,
+    ADD COLUMN IF NOT EXISTS usage       TEXT,
+    ADD COLUMN IF NOT EXISTS cards       TEXT;
+
+-- ---------------------------------------------------------------------------
 -- Row level security on, with no policies: Supabase's web API roles (anon, authenticated) see and change nothing here.
 -- The app connects as the tables' owner, which row level security does not apply to (so no FORCE).
 -- ---------------------------------------------------------------------------
 ALTER TABLE sections             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE coordinator_reviews  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE suggestion_decisions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE draft_runs           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE run_events           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE draft_usage          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE report_jobs          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE job_messages         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE series               ENABLE ROW LEVEL SECURITY;
+ALTER TABLE series_points        ENABLE ROW LEVEL SECURITY;

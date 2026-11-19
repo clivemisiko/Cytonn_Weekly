@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 import pytest
 
 from api import serialize, sso
-from cytonn_weekly.checkers import digital_payments as dp_checks
+from cytonn_weekly.digital_payments import checks as dp_checks
 from cytonn_weekly.common import run_events as ev
 from cytonn_weekly.digital_payments.review_run import build_digital_payments_review
 from cytonn_weekly.equities import stubs as eq_stubs
@@ -68,10 +68,11 @@ def test_an_event_log_numbers_from_one_and_stamps_utc_time():
         assert datetime.fromisoformat(e.at).tzinfo == timezone.utc
 
 
-def test_only_the_fifteen_kinds_exist():
+def test_only_the_eighteen_kinds_exist():
     assert set(ev.KINDS) == {"run_started", "source_started", "source_finished", "source_failed", "piece_started",
                              "piece_finished", "part_skipped", "check_started", "check_finished", "run_finished",
-                             "run_failed", "sources_looking", "sources_found", "sources_search_unavailable", "retrying"}
+                             "run_failed", "sources_looking", "sources_found", "sources_search_unavailable", "retrying",
+                             "source_left_out", "tool_called", "budget_raised"}
     with pytest.raises(ValueError):
         ev.EventLog()("progress_estimated", "42%")
 
@@ -162,8 +163,9 @@ def test_the_checks_counts_add_up_to_the_reviews_own_items(name):
             total[k] += v
     # What no check event covers: an unavailable or carried part is one flagged item, supplied text one unverified item.
     blocks = review.section.get("blocks", [])
-    total["flagged"] += sum(1 for b in blocks if b["kind"] == "unavailable" or b["kind"] == "carried")   # a carried paragraph is one flagged item
-    total["not_auto_verified"] += sum(1 for b in blocks if b["kind"] == "supplied")
+    total["flagged"] += sum(1 for b in blocks if b["kind"] in ("unavailable", "carried") and not b.get("guide"))   # a carried paragraph is one flagged item
+    # a Focus's unavailable section is one unverified item; its carried disclaimer has no item (it is never exported)
+    total["not_auto_verified"] += sum(1 for b in blocks if b["kind"] == "supplied" or (b["kind"] == "unavailable" and b.get("guide")))
     assert total == ev.review_counts(review)
     assert sum(total.values()) == len(review.review_items)
 
@@ -214,12 +216,11 @@ def test_a_blocked_stub_part_is_skipped_with_its_real_blocked_reason():
 def test_a_theme_with_nothing_to_draft_closes_as_skipped_never_as_drafted():
     log = ev.EventLog()
     review = sh.real_estate_review(on_event=log)  # the helper's provider finds no hospitality story
-    quiet = [e for e in log.events if e.label == "Hospitality and tourism"]
-    assert [e.kind for e in quiet] == [ev.PIECE_STARTED, ev.PART_SKIPPED]
+    quiet = [e for e in log.events if e.label == "Hospitality and Tourism"]
+    # the drafter closes the piece as skipped; the part it leaves behind ("not included") is reported once more
+    assert [e.kind for e in quiet] == [ev.PIECE_STARTED, ev.PART_SKIPPED, ev.PART_SKIPPED]
     assert quiet[1].detail == "Nothing qualifying found for the week."
-    assert "Hospitality and tourism" not in [b.get("topic") for b in review.section["blocks"]]
-    # a brief never searched (its target was already met) reports nothing at all
-    assert not [e for e in log.events if e.label == "Land"]
+    assert "Hospitality and Tourism" not in [b.get("topic") for b in review.section["blocks"]]
 
 
 def test_a_source_that_fails_outright_is_reported_and_the_error_still_propagates():
@@ -263,9 +264,9 @@ def test_afx_down_is_reported_and_the_equities_draft_goes_on_without_its_tables(
     assert not [b for b in review.section["blocks"] if b["kind"] == "table"]
     assert [b for b in review.section["blocks"] if b["kind"] == "narrative"]
     assert any("could not be reached" in w for w in review.section["warnings"])
-    # each missing table is a flagged item the analyst has to acknowledge
+    # each missing table is a flagged item for the analyst to read
     assert sum(1 for i in review.review_items if i.status == "flagged") >= len(TABLE_TITLES)
-    assert not review.is_approvable
+    assert review.is_approvable
 
 
 def test_afx_down_leaves_the_markets_review_index_table_out_and_the_draft_goes_on():

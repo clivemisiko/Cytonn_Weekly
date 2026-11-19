@@ -11,10 +11,10 @@ from docx import Document
 from docx.table import Table
 from review_helpers import LocalFakeProvider, make_review
 
-from cytonn_weekly.digital_payments import coordinator_review as cr
-from cytonn_weekly.digital_payments import review_store as rs
+from cytonn_weekly.review import model as cr
+from cytonn_weekly.review import store as rs
 from cytonn_weekly.digital_payments import summary as sm
-from cytonn_weekly.digital_payments.providers.base import LINK_RE
+from cytonn_weekly.drafting.results import LINK_RE
 
 VISA_LINKED = (
     "During the week, Visa [announced a thing](https://investor.visa.com/a) and "
@@ -32,7 +32,7 @@ def approve(review):
     for i in review.review_items:
         if i.resolution is None:
             i.resolve(cr.ACCEPT)
-    review.decide("approved")
+    review.decide("approved", review.flagged_count)
     return review
 
 
@@ -101,11 +101,9 @@ def test_rejected_review_raises(db, tmp_path):
 
 def test_a_decision_field_alone_is_not_enough(tmp_path):
     review = make_review()
+    review.review_items = []  # no draft to approve
     review.decision, review.decided_at = cr.APPROVED, "2026-10-01T09:00:00+00:00"  # bypassing decide()
-    with pytest.raises(sm.SummaryNotAllowed, match="not every item is resolved"):
-        sm.write_summary(review, tmp_path / "out.docx")
-    review.review_items[0].resolve(cr.FIX_NEEDED)
-    with pytest.raises(sm.SummaryNotAllowed):
+    with pytest.raises(sm.SummaryNotAllowed, match="marked approved but holds no draft"):
         sm.write_summary(review, tmp_path / "out.docx")
     assert not (tmp_path / "out.docx").exists()
 

@@ -35,23 +35,23 @@ test("T72 the review items are the panel beside the draft and never fold, the st
 
   // The three counts are one row in the draft's column; the table in the draft needs no sideways scroll at this width.
   const tiles = page.getByRole("group", { name: "Review items by status" });
-  const rows = new Set(await Promise.all([0, 1, 2].map(async (n) => Math.round((await tiles.locator(":scope > div").nth(n).boundingBox())!.y))));
-  expect(rows.size).toBe(1);
+  // Polled: the tiles rise in as the screen settles, so one early reading can catch them a pixel apart.
+  await expect
+    .poll(async () => new Set(await Promise.all([0, 1, 2].map(async (n) => Math.round((await tiles.locator(":scope > div").nth(n).boundingBox())!.y)))).size)
+    .toBe(1);
   const table = draft.getByRole("region", { name: /scrolls sideways on narrow screens$/ });
   await expect(table).toBeVisible();
   expect(await table.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
 
-  // In the panel's width the three options of each item (Unresolved, Accept, Fix needed) stay whole: no word is broken and
-  // no option is clipped by the control's frame. Checked at 1366px and again at 1100px, where the panel is at its narrowest.
-  const options = items.getByRole("radio");
-  expect(await options.count()).toBeGreaterThanOrEqual(6);
-  const damaged = async () =>
-    (await options.evaluateAll((all) => all.filter((el) => el.scrollWidth > el.clientWidth || el.scrollHeight > el.clientHeight).length)) +
-    (await items.getByRole("radiogroup").evaluateAll((all) => all.filter((el) => el.scrollWidth > el.clientWidth).length));
+  // In the panel's width each item card stays whole: nothing in it is clipped or runs past its frame.
+  // Checked at 1366px and again at 1100px, where the panel is at its narrowest.
+  const cards = items.locator("li[data-status]");
+  expect(await cards.count()).toBeGreaterThan(0);
+  const damaged = () => cards.evaluateAll((all) => all.filter((el) => el.scrollWidth > el.clientWidth).length);
   expect(await damaged()).toBe(0);
 
   // The status bar spans both columns and, once the page has scrolled, is still directly under the top bar.
-  const bar = page.locator("div.sticky", { has: page.getByRole("progressbar", { name: "Items resolved" }) });
+  const bar = page.locator('[data-attention="review-status-bar"]');
   const b = (await bar.boundingBox())!;
   expect(b.x + b.width).toBeGreaterThanOrEqual(i.x + i.width);
   await page.evaluate(() => window.scrollTo(0, 600));

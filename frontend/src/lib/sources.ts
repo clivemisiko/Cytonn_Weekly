@@ -56,8 +56,12 @@ export const charsLabel = (n: number) => `${n.toLocaleString("en-GB")} character
 /** The text_from_search flag the API puts on a found source whose page could not be read: the search service's text was kept instead. */
 export const TEXT_FROM_SEARCH = "Text supplied by the search service";
 
+/** The news_site and added_by_analyst flags (backend common/sources.py), shown in these words on the source card and the review item. */
+export const NEWS_SITE = "News site: may back highlights and prose, never a table figure";
+export const ADDED_BY_ANALYST = "Added by analyst";
+
 /** How a source came to be saved, in the words of its facts line and the review. */
-export const ORIGIN_WORDS = { fetched: "fetched", pasted: "pasted", found: "found automatically" } as const;
+export const ORIGIN_WORDS = { fetched: "fetched", pasted: "pasted", found: "found automatically",   snip: "uploaded as a snip", } as const;
 
 /** Where a saved source is read as a styled page; `quote` is highlighted and `review` is the run the Back button returns to. */
 export function sourcePageHref(id: string, quote?: string, review?: number): string {
@@ -132,6 +136,8 @@ export interface ClaimSource {
   flags: string[];
   offList: boolean;
   textFromSearch: boolean;
+  newsSite: boolean;
+  addedByAnalyst: boolean;
 }
 
 export function claimSource(ctx: ClaimContext): ClaimSource | null {
@@ -148,6 +154,8 @@ export function claimSource(ctx: ClaimContext): ClaimSource | null {
     flags,
     offList: flags.includes(NOT_ON_LIST),
     textFromSearch: flags.includes(TEXT_FROM_SEARCH),
+    newsSite: flags.includes(NEWS_SITE),
+    addedByAnalyst: flags.includes(ADDED_BY_ANALYST),
   };
 }
 

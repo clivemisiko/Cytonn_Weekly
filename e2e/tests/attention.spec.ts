@@ -83,7 +83,7 @@ test("T90 a refused value saved from a field: no dialog; the form disables its f
   await expect(page.getByRole("alertdialog")).toHaveCount(0);
 });
 
-test("T91 a review change the API refuses as already decided: the dialog, then Show me goes to the status bar's notice", async ({ page }) => {
+test("T91 a decision the API refuses as already made: the dialog, then Show me goes to the status bar's notice", async ({ page }) => {
   await openStart(page, "Digital Payments");
   await page.getByRole("button", { name: DRAFT }).click();
   await expect(page.getByRole("heading", { name: "Draft ready for review", level: 2 })).toBeVisible();
@@ -91,10 +91,11 @@ test("T91 a review change the API refuses as already decided: the dialog, then S
   await expect(page.getByRole("heading", { name: "Digital Payments: analyst review", level: 1 })).toBeVisible();
 
   const decided = "This section was already approved (review 1), so it cannot be changed. Reload the page to see the decision.";
-  await page.route("**/api/reviews/*/items/*", (route) =>
+  await page.route("**/api/reviews/*/decide", (route) =>
     route.fulfill({ status: 409, json: { detail: decided, problems: [{ code: "review_already_decided", headline: "This section was already decided", target: "review-status-bar" }] } }),
   );
-  await page.getByRole("radio", { name: "Accept", exact: true }).first().click();
+  await page.getByRole("button", { name: "Reject", exact: true }).click();
+  await page.getByRole("dialog", { name: "Reject this section?" }).getByRole("button", { name: "Reject", exact: true }).click();
   const open = dialog(page, "This section was already decided");
   await expect(open).toBeVisible();
   await open.getByRole("button", { name: "Show me" }).click();

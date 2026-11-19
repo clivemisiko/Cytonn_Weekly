@@ -20,7 +20,7 @@ from fastapi.testclient import TestClient
 from api.main import create_app
 from cytonn_weekly import db as db_module
 from cytonn_weekly import notable, sections
-from cytonn_weekly.digital_payments import review_store
+from cytonn_weekly.review import store as review_store
 from cytonn_weekly.notable.registry import DetectorContext, run_detectors
 from cytonn_weekly.notable.suggestion import InvalidSuggestion, Suggestion
 from cytonn_weekly.weekly import export
@@ -340,10 +340,17 @@ def strip_new_table(schema: str) -> str:
     return ";\n".join(kept) + ";\n"
 
 
+# The tables added since the two existing ones, each tested on its own: suggestion_decisions here, the run and job tables in
+# test_run_store.py and test_jobs.py.  Neither this snapshot nor the fingerprint below covers them.
+ADDED_TABLES = ("suggestion_decisions", "draft_runs", "run_events", "draft_usage", "report_jobs", "job_messages", "series", "series_points")
+
+
 def snapshot(path):
     conn = sqlite3.connect(path)
     try:
-        ddl = conn.execute("SELECT type, name, tbl_name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND tbl_name != 'suggestion_decisions' ORDER BY name").fetchall()
+        marks = ", ".join("?" * len(ADDED_TABLES))
+        ddl = conn.execute(f"SELECT type, name, tbl_name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND tbl_name NOT IN ({marks}) ORDER BY name",
+                           ADDED_TABLES).fetchall()
         data = {t: conn.execute(f"SELECT * FROM {t}").fetchall() for t in ("sections", "coordinator_reviews")}
         info = {t: conn.execute(f"PRAGMA table_info({t})").fetchall() for t in ("sections", "coordinator_reviews")}
         return ddl, data, info

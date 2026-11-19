@@ -15,9 +15,9 @@ import pytest
 from docx import Document
 from review_helpers import LocalFakeProvider, make_review
 
-from cytonn_weekly.digital_payments import coordinator_review as cr
+from cytonn_weekly.review import model as cr
 from cytonn_weekly.digital_payments import delivery as dl
-from cytonn_weekly.digital_payments import review_store as rs
+from cytonn_weekly.review import store as rs
 from cytonn_weekly.digital_payments import summary as sm
 
 FIRST, SECOND = "first@example.com", "second@example.com"
@@ -60,7 +60,7 @@ def approve(review):
     for i in review.review_items:
         if i.resolution is None:
             i.resolve(cr.ACCEPT)
-    review.decide("approved")
+    review.decide("approved", review.flagged_count)
     return review
 
 

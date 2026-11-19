@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
-from typing import Optional, Sequence
+from typing import Any, Optional, Sequence
 
 from cytonn_weekly.report_types import ANNUAL, HALF_YEAR, QUARTERLY, WEEKLY, normalize_period, week_ending_of
 from cytonn_weekly.weekly.week import latest_friday
@@ -22,6 +22,10 @@ class Piece:
     start: Optional[date] = field(default=None, compare=False)        # first day of the piece's window; None is the six days up to ``end`` (a weekly piece)
     domains: tuple[str, ...] = field(default=(), compare=False)       # the brief's preferred domains, which the gather step tries first
     market: bool = field(default=True, compare=False)                 # False for a global company: the gather step adds no market name to its query
+    only_domains: bool = field(default=False, compare=False)          # True: one search on ``domains`` and no open-web pass (a company's own website)
+    max_pages: Optional[int] = field(default=None, compare=False)     # saved pages per gather; None is the global limit
+    site: Any = field(default=None, compare=False)                    # a company whose own website is read before any search (equities/companies.py)
+    section: str = field(default="", compare=False)                   # the section's slug, which the source policy is read by (equities/source_policy.json)
 
     @property
     def window(self) -> tuple[date, date]:
@@ -35,6 +39,12 @@ _PERIODIC = {"global_markets": "global_markets", "ssa": "ssa", "kenya_macro": "k
 
 def pieces_for(report_type: str, period: str, slug: str, *, sections: Sequence[str] = (),
                today: Optional[date] = None) -> Optional[list[Piece]]:
+    pieces = _pieces_for(report_type, period, slug, sections=sections, today=today)
+    return None if pieces is None else [replace(p, section=slug) for p in pieces]
+
+
+def _pieces_for(report_type: str, period: str, slug: str, *, sections: Sequence[str] = (),
+                today: Optional[date] = None) -> Optional[list[Piece]]:
     """The pieces a section's draft will ask the provider about, with the day each is asked as of.
 
     None: the section calls no provider (the Executive Summary) or is not drafted yet. An empty list: the
@@ -51,11 +61,12 @@ def pieces_for(report_type: str, period: str, slug: str, *, sections: Sequence[s
             from cytonn_weekly.fixed_income.weekly import BRIEFS
             return [Piece(b.label, friday, domains=tuple(b.preferred_domains)) for b in BRIEFS]
         if slug == "equities":
+            from cytonn_weekly.equities import companies
             from cytonn_weekly.equities.review_run import BRIEFS
-            return [Piece(b.label, friday, domains=tuple(b.preferred_domains)) for b in BRIEFS]
+            return [Piece(b.label, friday, domains=tuple(b.preferred_domains)) for b in BRIEFS] + companies.pieces(friday)
         if slug == "real_estate":
-            from cytonn_weekly.real_estate.review_run import BRIEFS
-            return [Piece(b.label, friday, domains=tuple(b.preferred_domains)) for b in BRIEFS]
+            from cytonn_weekly.real_estate.review_run import SECTOR_BRIEFS
+            return [Piece(b.label, friday, market=False) for b in SECTOR_BRIEFS]
         if slug == "digital_payments":
             from cytonn_weekly.digital_payments.highlights import HIGHLIGHT_COMPANIES
             return [Piece(c["name"], friday, domains=(c["ir_domain"],), market=False) for c in HIGHLIGHT_COMPANIES]

@@ -60,12 +60,12 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from cytonn_weekly.checkers.digital_payments import MISSING
+from cytonn_weekly.review.figures import MISSING
 from cytonn_weekly.common import atomic
 from cytonn_weekly.common.computed import ANALYST, SOURCE, an_input
 from cytonn_weekly.common.formatting import NUMBER, TEXT
 from cytonn_weekly.common.http import http_get, http_head
-from cytonn_weekly.common.review import table_block
+from cytonn_weekly.review.blocks import table_block
 from cytonn_weekly.fixed_income import bond_issues, cbk_auctions
 
 SOURCE_NAME = "CBK Treasury bill and bond auction results"

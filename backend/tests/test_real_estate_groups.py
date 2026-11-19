@@ -10,7 +10,7 @@ import io
 from docx import Document
 
 from api.serialize import serialize_review
-from cytonn_weekly.common.review import ROMAN, grouped, letter, numbered
+from cytonn_weekly.review.blocks import ROMAN, grouped, letter, numbered
 from cytonn_weekly.real_estate.review_run import GROUPS, REITS_GROUP, group_of, layout
 from cytonn_weekly.report_sections import BY_SLUG
 from cytonn_weekly.weekly import export
@@ -19,10 +19,12 @@ from tests import section_helpers as sh
 
 PERIOD = "Week ending 2026-09-25"
 RESIDENTIAL, INFRASTRUCTURE, COMMERCIAL = "Residential Sector", "Infrastructure Sector", "Commercial Sector"
+INDUSTRY, RES_SECTOR, LAND, HOSPITALITY, REITS = ("Industry reports", "Residential sector", "Land", "Hospitality and Tourism",
+                                                  "REITs")
 
 
 def _review():
-    """residential, affordable_housing, infrastructure, commercial, then the REITs table (hospitality has no story)."""
+    """industry, residential, land, then hospitality (no story, so not included), the REITs table, standing text and outlook."""
     review = sh.real_estate_review()
     review.report_type, review.period = "weekly", PERIOD
     return review
@@ -61,11 +63,15 @@ def test_the_weekly_layout_numbers_groups_and_letters_stories_with_reits_last():
     stored = copy.deepcopy(review.section)
     out = layout(review.section, "weekly")
     assert [(b["id"], b["numeral"], b.get("group_heading")) for b in out] == [
-        ("subsection_residential", "a", f"I. {RESIDENTIAL}"),
-        ("subsection_affordable_housing", "b", None),
-        ("subsection_infrastructure", "a", f"II. {INFRASTRUCTURE}"),
-        ("subsection_commercial", "a", f"III. {COMMERCIAL}"),
-        ("reits", "a", f"IV. {REITS_GROUP}"),
+        ("sector_industry", "a", f"I. {INDUSTRY}"),
+        ("industry_closing", "b", None),
+        ("sector_residential", "a", f"II. {RES_SECTOR}"),
+        ("sector_land", "a", f"III. {LAND}"),
+        ("sector_hospitality", "a", f"IV. {HOSPITALITY}"),
+        ("reits_prices", "a", f"V. {REITS}"),
+        ("reits", "b", None),
+        ("standing", "c", None),
+        ("outlook_reits", "d", None),
     ]
     assert review.section == stored   # derived when shown: nothing saved changes
     assert section_summary(review.section) == section_summary(stored)
@@ -80,28 +86,31 @@ def test_markets_reviews_and_other_sections_are_left_as_they_are():
 
 def test_the_review_screen_gets_group_headings_and_letters():
     blocks = serialize_review(_review())["section"]["blocks"]
-    assert [b["numeral"] for b in blocks] == ["a", "b", "a", "a", "a"]
-    assert [b.get("group_heading") for b in blocks] == [f"I. {RESIDENTIAL}", None, f"II. {INFRASTRUCTURE}",
-                                                        f"III. {COMMERCIAL}", f"IV. {REITS_GROUP}"]
-    assert blocks[1]["group"] == RESIDENTIAL
+    assert [b["numeral"] for b in blocks] == ["a", "b", "a", "a", "a", "a", "b", "c", "d"]
+    assert [b.get("group_heading") for b in blocks] == [f"I. {INDUSTRY}", None, f"II. {RES_SECTOR}", f"III. {LAND}",
+                                                        f"IV. {HOSPITALITY}", f"V. {REITS}", None, None, None]
+    assert blocks[2]["group"] == RES_SECTOR
 
 
 def _old_review():
     """A review saved before pieces carried their brief id: its stories have no group."""
     review = _review()
+    review.section["blocks"] = numbered([b for b in review.section["blocks"] if b["kind"] in ("narrative", "table")])   # as compose numbered them then
     for b in review.section["blocks"]:
         b.pop("brief_id", None)
+        b.pop("sector", None)
+        b.pop("export", None)   # saved before the table was left out of the Word file
     return review
 
 
 def test_a_review_without_brief_ids_still_shows_and_exports_its_stories_flat():
     review = _old_review()
     blocks = serialize_review(review)["section"]["blocks"]
-    assert [b["numeral"] for b in blocks] == ["I", "II", "III", "IV", "a"]
-    assert [b.get("group_heading") for b in blocks] == [None, None, None, None, f"I. {REITS_GROUP}"]
+    assert [b["numeral"] for b in blocks] == ["I", "II", "III", "a"]
+    assert [b.get("group_heading") for b in blocks] == [None, None, None, f"I. {REITS_GROUP}"]
     doc = export.build_weekly_document([(BY_SLUG["real_estate"], review)], PERIOD)
     h2 = [p.text for p in doc.paragraphs if p.style.name == "Heading 2"]
-    assert h2[-1] == f"I. {REITS_GROUP}" and "Residential and mortgage lending: a development" in h2
+    assert h2[-1] == f"I. {REITS_GROUP}" and "Residential sector: a development" in h2
 
 
 def _paragraphs(review):
@@ -114,14 +123,13 @@ def test_the_export_prints_groups_as_heading_2_and_lettered_stories_as_heading_3
     paras = _paragraphs(_review())
     h2 = [p.text for p in paras if p.style.name == "Heading 2"]
     h3 = [p.text for p in paras if p.style.name == "Heading 3"]
-    assert h2 == [f"I. {RESIDENTIAL}", f"II. {INFRASTRUCTURE}", f"III. {COMMERCIAL}", f"IV. {REITS_GROUP}"]
-    assert h3 == ["a. Residential and mortgage lending: a development", "b. Affordable housing: a development",
-                  "a. Infrastructure: a development", "a. Commercial office, retail and industrial: a development"]
+    assert h2 == [f"I. {INDUSTRY}", f"II. {RES_SECTOR}", f"III. {LAND}", f"IV. {HOSPITALITY}", f"V. {REITS}"]
+    assert h3 == ["a. Industry reports: a development", "a. Residential sector: a development", "a. Land: a development"]
     text = [p.text for p in paras]
-    reits = text.index(f"IV. {REITS_GROUP}")
-    assert text[reits + 1].startswith("Source: ")      # the table, its title in its own first row, then its source line
-    table = paras[reits]._parent.tables[-1]
-    assert table.rows[0].cells[0].text == "REITs weekly performance" and len({c._tc for c in table.rows[0].cells}) == 1
+    reits = text.index(f"V. {REITS}")
+    assert text[reits + 1].startswith("Acorn D-REIT closed at Kshs 29.7 per unit, representing a 48.3% gain")   # the paragraph, no table
+    assert text[reits + 2].startswith("Source: ") and "REITs weekly performance" not in [p.text for p in paras if p.style.name == "Heading 2"]
+    assert not paras[reits]._parent.tables   # the price table is the review screen's, not the Word file's
     assert reits > max(text.index(h) for h in h3)
 
 

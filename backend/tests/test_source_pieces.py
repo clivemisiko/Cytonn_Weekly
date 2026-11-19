@@ -6,11 +6,12 @@ import pytest
 from cytonn_weekly import source_pieces
 from cytonn_weekly.digital_payments import review_run as dp_run
 from cytonn_weekly.digital_payments.highlights import HIGHLIGHT_COMPANIES
+from cytonn_weekly.equities import companies
 from cytonn_weekly.equities import weekly as equities_weekly
 from cytonn_weekly.equities.review_run import BRIEFS as EQUITIES_BRIEFS
 from cytonn_weekly.fixed_income import weekly as fi_weekly
 from cytonn_weekly.fixed_income.weekly import BRIEFS as FI_BRIEFS
-from cytonn_weekly.real_estate.review_run import BRIEFS as RE_BRIEFS
+from cytonn_weekly.real_estate.review_run import SECTOR_BRIEFS as RE_BRIEFS
 from cytonn_weekly.source_pieces import Piece, pieces_for
 from tests import periodic_helpers as ph
 from tests import section_helpers as sh
@@ -47,7 +48,20 @@ class RecordingHighlights(FakeProvider):
 
 @pytest.mark.parametrize("slug,briefs", [("fixed_income", FI_BRIEFS), ("equities", EQUITIES_BRIEFS), ("real_estate", RE_BRIEFS)])
 def test_a_weekly_section_has_one_piece_per_brief_on_the_weeks_friday(slug, briefs):
-    assert pieces_for("weekly", PERIOD, slug) == [Piece(b.label, FRIDAY) for b in briefs]
+    pieces = pieces_for("weekly", PERIOD, slug)
+    assert pieces[:len(briefs)] == [Piece(b.label, FRIDAY) for b in briefs]
+    # Equities then has one piece per listed bank and insurer with a website, after its briefs; the others have nothing more.
+    expected_rest = [Piece(c.name, FRIDAY) for c in companies.load() if c.domain] if slug == "equities" else []
+    assert pieces[len(briefs):] == expected_rest
+
+
+def test_every_piece_carries_its_sections_slug_for_the_source_policy():
+    for slug in ("fixed_income", "equities", "real_estate", "digital_payments"):
+        assert {p.section for p in pieces_for("weekly", PERIOD, slug)} == {slug}, slug
+    assert {p.section for p in pieces_for("weekly", PERIOD, "focus", sections=TITLES)} == {"focus"}
+    for slug in ("global_markets", "ssa", "kenya_macro", "fixed_income", "equities", "real_estate"):
+        assert {p.section for p in pieces_for("quarterly", "Q3'2026", slug, today=ph.TODAY)} == {slug}, slug
+    assert Piece("Visa", FRIDAY, section="a") == Piece("Visa", FRIDAY, section="b")   # the slug is not part of a piece's identity
 
 
 def test_weekly_digital_payments_has_its_five_companies():

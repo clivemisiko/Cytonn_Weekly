@@ -46,18 +46,17 @@ flowchart TB
         FETCH["Table fetchers and input readers<br/>CBK, KCB, NSE OCR, workbooks"]
         GATHER["Source gathering<br/>common/gather.py, common/sources.py"]
         SRC[("Saved source texts<br/>data folder")]
-        PROV["Narrative provider<br/>narrative/"]
-        CHECK["Checking layer<br/>common/checks.py, checkers/"]
-        STORE[("review_store<br/>SQLite or PostgreSQL")]
+        PROV["Narrative provider<br/>drafting/"]
+        CHECK["Checking layer<br/>review/checks.py, review/figures.py, digital_payments/checks.py"]
+        STORE[("review/store.py<br/>SQLite or PostgreSQL")]
         FILES[("Data folder<br/>inputs, charts, exports, caches")]
         DOCX["Word export<br/>weekly/export.py"]
     end
     subgraph External
         PUB["CBK, NSE, KNBS, Yahoo Finance,<br/>afx, cytonnreport.com"]
         EXA["Exa search service<br/>EXA_API_KEY"]
-        SITES["Any public web page<br/>fetched by code"]
+        SITES["Pages on hosts the source policy allows<br/>(and any page an analyst adds), fetched by code"]
         BR["Amazon Bedrock<br/>production"]
-        AN["Anthropic API<br/>web search by the model"]
         OL["Ollama<br/>development only"]
     end
     UI -->|"/api proxy"| API
@@ -69,7 +68,6 @@ flowchart TB
     GATHER --> SRC
     SRC --> PROV
     PROV --> BR
-    PROV -.alternative.-> AN
     PROV -.dev mode.-> OL
     FETCH --> CHECK
     PROV --> CHECK
@@ -88,19 +86,18 @@ flowchart TB
 | Input readers | `backend/src/cytonn_weekly/weekly/` | Upload store, readers for the analysts' workbooks, KCB IB reports, the CBK Weekly Bulletin, the NSE price list (OCR) and yield curve, the analyst inputs form, the charts and the Word export. |
 | Table fetchers | `<section>/` packages | Per-section fetchers (Yahoo Finance, CBK result files, Ibuka REIT summary and so on). Tables and computed paragraphs need no model. |
 | Source gathering | `common/gather.py`, `common/sources.py` | Finds and saves the pages a Bedrock draft is written from. See below. |
-| Narrative providers | `narrative/`, `digital_payments/providers/` | Write the cited narrative. `CYTONN_LLM_PROVIDER` picks one. See below. |
-| Checking layer | `common/checks.py`, `checkers/` | Exact-match of every table figure against its normalized source (rounding half up), a check of every claim's figures against its cited text, and a flag for every missing part. |
-| Review model | `digital_payments/coordinator_review.py`, `review_store.py` | `CoordinatorReview` with one item per figure, claim or missing part. Status (machine) is separate from resolution (analyst). A decided review is frozen. |
+| Narrative providers | `drafting/` | Write the cited narrative. `CYTONN_LLM_PROVIDER` picks one. See below. |
+| Checking layer | `review/checks.py`, `review/figures.py`, `digital_payments/checks.py` | Exact-match of every table figure against its normalized source (rounding half up), a check of every claim's figures against its cited text, and a flag for every missing part. |
+| Review model | `review/model.py`, `review/store.py` | `CoordinatorReview` with one item per figure, claim or missing part. Status (machine) is separate from resolution (analyst). A decided review is frozen. |
 | Storage | `db.py`, `schema.sql`, `schema_postgres.sql` | SQLite by default, PostgreSQL (Supabase) when `CYTONN_DATABASE_URL` is set. Uploads, saved sources, charts and exports are files under the data folder. |
 
 ### Drafting providers
 
-`CYTONN_LLM_PROVIDER` selects who writes the narrative (the Weekly Highlights, Real Estate themes, Focus of the Week and the outlooks). Unset means `anthropic`.
+`CYTONN_LLM_PROVIDER` selects who writes the narrative (the Weekly Highlights, Real Estate themes, Focus of the Week and the outlooks). It must be set: unset or blank means "not configured", and no draft starts until it is `bedrock` or `local`. The direct `anthropic` provider was removed and is refused with a sentence saying so.
 
 | Value | What it is | Use |
 | --- | --- | --- |
 | `bedrock` | Claude on Amazon Bedrock through the `AnthropicBedrock` client (`anthropic[bedrock]`). The reply is forced into JSON through a client-side `submit_draft` function call. The model is `BEDROCK_MODEL_ID` (default `us.anthropic.claude-sonnet-4-6`); AWS region and credentials come from the `AWS_*` variables. | Production. |
-| `anthropic` | The Anthropic API with Anthropic's server-side web search, model set by `CYTONN_LLM_MODEL`, key `ANTHROPIC_API_KEY`. | Default when the variable is unset. Kept in the code. |
 | `local` | Ollama (default model `phi4-mini`) with Exa for search. Every piece is marked `drafted_by: local:<model>`, the screen and Word file carry a DEV MODE mark, and email and export refuse to send. | Development only. |
 
 Bedrock has no search or fetch tool the code can use, and the model is given none. It writes only from source text that code hands it.
@@ -115,6 +112,8 @@ Bedrock has no search or fetch tool the code can use, and the model is given non
 6. Bedrock is given the saved texts and returns claims, each with a quote and a source. A claim is kept only if the source is one that was supplied, the quote is in that source's saved text word for word (after normalizing whitespace and quote marks), and every number in the claim appears in the quote. Anything else is dropped with a warning. The wording around the numbers is not verified, so a kept claim is still marked not auto-verified for the analyst.
 7. With no `EXA_API_KEY` nothing is searched and the run says so; drafting goes on with the sources already saved. A piece with no sources is reported as having none and Bedrock is not called for it.
 
+The listed banks and insurers of the weekly Equities are the exception to step 1: each company's own website is read first for news and results dated in the report week (Kenyan pages only, robots.txt respected, a few companies at a time), and only when a site cannot be read, or gives no dated page, is a search limited to that site used. The notes of the part say which route each company took. The gather's time limit is set per section (Equities has the longest).
+
 Focus of the Week on Bedrock needs the analyst to type the section titles, since there is nothing to search for a proposed outline.
 
 ### The weekly sections
@@ -122,7 +121,7 @@ Focus of the Week on Bedrock needs the analyst to type the section titles, since
 Fixed Income, Equities, Real Estate, Digital Payments and Focus of the Week, in that order. Company Updates is written by the CT team after the exported document is received and before publishing, so the tool does not draft it.
 
 - **Fixed Income and Equities** are worked out from the week's inputs: the CBK Weekly Bulletin, CBK's auction results and daily rates, KCB IB's trading reports, the NSE daily price list, and the analysts' own figures. Narrative highlights are cited.
-- **Real Estate**: rotating themed subsections plus the Ibuka REITs table.
+- **Real Estate**: rotating themed subsections plus the Ibuka REITs table. The weekly is written from the snips the analyst uploads per sector, and a PDF can be uploaded the same way: the model picks out the passages about that sector, each quoted word for word with its page and checked against the page's text, and the analyst confirms them like a snip.
 - **Digital Payments**: a Yahoo Finance stock table, up to four highlights, the outlook and an exact-match check of the table. An optional Digital Payments workbook can be uploaded; it changes no printed figure and only adds reviewer warnings and review items.
 - **Focus of the Week**: the analyst types the topic (and optionally the section titles). The tool drafts the lead, numbered sections and conclusion, and carries the disclaimer from the previous issue. Cytonn's own tables and charts are the analyst's.
 
@@ -138,7 +137,7 @@ The analyst picks the week on the overview ("Week to draft": the coming Friday a
 
 ### Concurrency
 
-Several analysts can draft at once. `CYTONN_DRAFT_CONCURRENCY` (default 3, 1 to 6) is how many drafts that call the model run at the same time; more wait in a queue of up to `CYTONN_DRAFT_QUEUE_MAX` (default 20, then a draft is refused). One section of one report and period runs at a time. The seats, queue and run list are in the memory of one API process, so the API must run as one process and a restart loses runs in progress (saved reviews are kept). Bedrock throttling is retried with a growing wait (`CYTONN_BEDROCK_RETRIES`, `CYTONN_BEDROCK_RETRY_BASE_SECONDS`).
+Several analysts can draft at once. `CYTONN_DRAFT_CONCURRENCY` (default 3, 1 to 6) is how many drafts that call the model run at the same time; more wait in a queue of up to `CYTONN_DRAFT_QUEUE_MAX` (default 20, then a draft is refused). One section of one report and period runs at a time. The seats, queue and run list are in the memory of one API process, so the API must run as one process. A restart stops the drafts in progress: each shows as interrupted afterwards, and saved reviews are kept. Bedrock throttling is retried with a growing wait (`CYTONN_BEDROCK_RETRIES`, `CYTONN_BEDROCK_RETRY_BASE_SECONDS`). One draft may make at most `CYTONN_BEDROCK_MAX_CALLS_PER_DRAFT` Bedrock calls (default 60); at the limit it stops and saves nothing, and every saved Bedrock draft records its calls and tokens under `usage`.
 
 ### Report types
 
@@ -188,7 +187,7 @@ Frontend, from `frontend/`: `npm ci`, then `npm run dev`, `npm run lint`, `npm r
 
 ## Run the app
 
-A FastAPI layer (`backend/api/`) over `review_store` and the section builders, and a Vue app (`frontend/`) that talks to it:
+A FastAPI layer (`backend/api/`) over `review/store.py` and the section builders, and a Vue app (`frontend/`) that talks to it:
 
 ```sh
 cd backend

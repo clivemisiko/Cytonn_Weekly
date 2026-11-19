@@ -44,7 +44,7 @@ from cytonn_weekly.common.formatting import MULTIPLE, PCT, PRICE, TEXT, round_ha
 from cytonn_weekly.common.http import http_get
 from cytonn_weekly.charts.block import chart_blocks
 from cytonn_weekly.charts.store import attach as attach_chart_files
-from cytonn_weekly.common.review import (
+from cytonn_weekly.review.blocks import (
     build_review,
     check_section,
     narrative_block,
@@ -53,12 +53,15 @@ from cytonn_weekly.common.review import (
     unavailable_block,
 )
 from cytonn_weekly.common.run_events import Observer, report_blocks
-from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview
+from cytonn_weekly.review.model import CoordinatorReview
+from cytonn_weekly.equities import companies
 from cytonn_weekly.equities import fetcher as afx
 from cytonn_weekly.equities.review_run import BRIEFS
+from cytonn_weekly.history import reads as history_reads
+from cytonn_weekly.history import weekly as history_weekly
 from cytonn_weekly.fixed_income.weekly import _carried
-from cytonn_weekly.narrative.base import NarrativeProvider
-from cytonn_weekly.narrative.drafter import draft_pieces
+from cytonn_weekly.drafting.base import NarrativeProvider
+from cytonn_weekly.drafting.drafter import draft_pieces
 from cytonn_weekly.weekly import analyst, cbk_bulletin, cbk_rates, equities_workbook, fi_workbook, kcb, nse_price_list, previous_issue
 from cytonn_weekly.weekly.inputs import WeeklyInputs
 from cytonn_weekly.weekly.prose import (
@@ -85,7 +88,7 @@ TITLE = "Equities"
 N_HIGHLIGHTS = 3
 WB = equities_workbook.SOURCE_NAME
 
-SUBSECTIONS = ("Market Performance:", "Universe of Coverage:", "Weekly highlights")
+SUBSECTIONS = ("Market Performance:", "Universe of Coverage:", "Weekly highlights", "Listed banks and insurers")
 CHARTS = ("The charts below indicate the historical P/E and dividend yields of the market (P/E chart)",
           "The charts below indicate the historical P/E and dividend yields of the market (dividend yield chart)")
 CHART_REFERENCE = "Cytonn Weekly #38.2026"
@@ -551,16 +554,34 @@ def _day_turnover(m: Market, day: date) -> Optional[dict[str, Any]]:
     return None
 
 
-def _usd_week(m: Market, week: Week, kes_for: Callable[[date], Optional[dict[str, Any]]], prefix: str
-              ) -> tuple[Optional[dict[str, dict]], Optional[list], list[date]]:
-    """(inputs, the expression for the week's USD mn total, the days with no figure) for one week."""
+def _rate_on(m: Market, day: date) -> tuple[Optional[dict[str, Any]], Optional[date]]:
+    """The day's own CBK rate, else the last one published before it (never a later one); with the date of the rate used."""
+    if day in m.rates:
+        return m.rates[day], day
+    earlier = [d for d in m.rates if d < day]
+    if not earlier:
+        return None, None
+    used = max(earlier)
+    rate = m.rates[used]
+    return {**rate, "source": f"{rate['source']}, rate of {used.isoformat()}, the last published before {day.isoformat()}"}, used
+
+
+def _usd_week(m: Market, week: Week, kes_for: Callable[[date], Optional[dict[str, Any]]], prefix: str,
+              notes: Optional[list[str]] = None) -> tuple[Optional[dict[str, dict]], Optional[list], list[date]]:
+    """(inputs, the expression for the week's USD mn total, the days with no figure) for one week.
+
+    A day with no CBK rate of its own uses the last rate published before it, and says so in ``notes``."""
     inputs: dict[str, dict] = {}
     terms, missing = [], []
     for n, day in enumerate(week.trading_days):
-        kes, rate = kes_for(day), m.rates.get(day)
+        kes = kes_for(day)
+        rate, used = _rate_on(m, day) if kes is not None else (None, None)
         if kes is None or rate is None:
             missing.append(day)
             continue
+        if used != day and notes is not None:
+            notes.append(f"CBK published no rate for {day.isoformat()}; that day's figure is converted at the rate of "
+                         f"{used.isoformat()}, the last published before it.")
         inputs[f"{prefix}kes_{n}"], inputs[f"{prefix}rate_{n}"] = kes, rate
         terms.append(["div", f"{prefix}kes_{n}", f"{prefix}rate_{n}"])
     if missing or not terms:
@@ -575,7 +596,8 @@ def _days(days: list[date]) -> str:
 def turnover_block(m: Market) -> dict[str, Any]:
     title = "Market Performance: equities turnover"
     week = m.week
-    inputs, expr, missing = _usd_week(m, week, lambda d: _day_turnover(m, d), "")
+    rate_notes: list[str] = []
+    inputs, expr, missing = _usd_week(m, week, lambda d: _day_turnover(m, d), "", rate_notes)
     if inputs is None:
         need_rate = [d for d in missing if m.rates.get(d) is None and _day_turnover(m, d) is not None]
         why = (f"The CBK rate for {_days(need_rate)} was not found." if need_rate else
@@ -590,7 +612,7 @@ def turnover_block(m: Market) -> dict[str, Any]:
     if series is not None and series.total is not None:
         figs.items[-1]["second"] = {"value": series.total.number, "source": f"analyst input from {WB} {series.total.ref}", "decimals": 1}
     text = f"During the week, equities turnover stood at USD {now} mn"
-    p_inputs, p_expr, p_missing = _usd_week(m, week.previous, lambda d: _day_turnover(m, d), "last_")
+    p_inputs, p_expr, p_missing = _usd_week(m, week.previous, lambda d: _day_turnover(m, d), "last_", rate_notes)
     if p_inputs is None and series is not None and len(series.history) >= 2 and series.history[-2][0] in week.previous.report_dates:
         # The previous week's own days are not all in this week's inputs: its typed weekly row is used instead.
         row = equities_workbook.read_turnover(book, week.previous).total
@@ -608,7 +630,7 @@ def turnover_block(m: Market) -> dict[str, Any]:
         ytd = figs.add("turnover_ytd", "Year-to-date equities turnover (USD mn)", PLAIN, 1, {"ytd": typed(running, WB)})
         text += f", taking the YTD total turnover to USD {ytd} mn"
     text += "."
-    notes = [f"Each day's equities turnover in KES is divided by that day's CBK rate; {week.days_note()}."]
+    notes = [f"Each day's equities turnover in KES is divided by that day's CBK rate; {week.days_note()}.", *rate_notes]
     if running is None:
         notes.append(f"The year-to-date total is left out: it is the analysts' running total, which is neither typed under "
                      f"\"{analyst.FORM}\" nor in an {WB.lower()} updated for this week.")
@@ -653,7 +675,8 @@ def _count_word(n: int) -> str:
 def foreign_block(m: Market) -> dict[str, Any]:
     title = "Market Performance: foreign investors"
     week = m.week
-    inputs, expr, missing = _usd_week(m, week, lambda d: _day_flow(m, d), "")
+    rate_notes: list[str] = []
+    inputs, expr, missing = _usd_week(m, week, lambda d: _day_flow(m, d), "", rate_notes)
     if inputs is None:
         need_rate = [d for d in missing if m.rates.get(d) is None and _day_flow(m, d) is not None]
         why = (f"The CBK rate for {_days(need_rate)} was not found." if need_rate else
@@ -667,7 +690,7 @@ def foreign_block(m: Market) -> dict[str, Any]:
     if series is not None and series.total is not None:
         figs.items[-1]["second"] = {"value": series.total.number, "source": f"analyst input from {WB} {series.total.ref}", "decimals": 1}
     value = figs.value("net_flow")
-    notes = [f"Each day's net foreign flow in KES is divided by that day's CBK rate; {week.days_note()}."]
+    notes = [f"Each day's net foreign flow in KES is divided by that day's CBK rate; {week.days_note()}.", *rate_notes]
     earlier = form.foreign_history()   # the analysts' weekly sums before this week: (the Friday, USD mn, its cell)
     on_form = any(analyst.is_typed(c) for _, _, c in earlier)
     previous = earlier[-1] if earlier and earlier[-1][0] in week.previous.report_dates else None
@@ -886,7 +909,7 @@ def universe_block(m: Market, warnings: list[str]) -> dict[str, Any]:
 # Suggested running totals (a prefill for the weekly analyst inputs form; never used unconfirmed)
 # ---------------------------------------------------------------------------
 
-def running_total_suggestions(inputs: WeeklyInputs, usd_rates: Callable[[], dict[date, float]]) -> dict[str, dict[str, str]]:
+def running_total_suggestions(inputs: WeeklyInputs, usd_rates: Callable[[], dict[date, float]], db_path: Optional[Any] = None) -> dict[str, dict[str, str]]:
     """For the year-to-date turnover and foreign net position: last week's saved total plus this week's figure.
 
     This week's figure is the one the section itself works out (each day's KES figure from KCB
@@ -910,7 +933,7 @@ def running_total_suggestions(inputs: WeeklyInputs, usd_rates: Callable[[], dict
             out[key] = {"reason": f"{label}: the running total restarts with the year, so last week's is not carried into it. "
                                   "Type this week's total, the year so far, yourself."}
             continue
-        before = last_week.analyst.field(key)
+        before = history_reads.running_before(week, history_weekly.FIELD_SERIES[key], last_week.analyst.field(key), db_path)
         if before is None or before.number is None:
             held = key in analyst.read_form(week.previous, inputs.root)["fields"]   # there, but carried or suggested and never confirmed
             out[key] = {"reason": f"{label}: no total is saved for the week ending {stamp} to add this week's figure to. " + (
@@ -943,7 +966,7 @@ def equities_outlook_text(paragraphs: list[str]) -> Optional[str]:
 
 def compose_summary(blocks: list[dict[str, Any]], limit: int = 3000) -> str:
     lead = [b["body_md"] for b in blocks if b["kind"] == "computed" and b["id"] in ("indices", "large_caps", "banking")]
-    first_piece = next((b for b in blocks if b["kind"] == "narrative"), None)
+    first_piece = next((b for b in blocks if b["kind"] == "narrative" and not b.get("part")), None)
     if first_piece is not None:
         lead.append(first_piece.get("body_md", "").split("\n\n")[0])
     out: list[str] = []
@@ -1024,8 +1047,12 @@ def build_equities_weekly_review(
                                     universe_block(market, warnings)]
     notices += fallback_notices(market.fallbacks)
     drafted = (draft or draft_pieces)(BRIEFS, N_HIGHLIGHTS, provider=provider, today=today,
-                                      window=(week.ending - timedelta(days=6), week.ending), on_event=on_event)
+                                      window=(week.ending - timedelta(days=6), week.ending), on_event=on_event,
+                                      earlier=previous_issue.digest(issue, "equities"))
     blocks += [narrative_block(f"highlight_{p['brief_id']}", p) for p in drafted["pieces"]]
+    company_blocks, company_warnings = companies.part(week.ending, (week.ending - timedelta(days=6), week.ending), today,
+                                                      provider, drafted["pieces"], on_event)
+    blocks += company_blocks
     blocks.append(_carried(issue, "outlook", "Equities outlook (closing paragraph)", equities_outlook_text, ("equities",)))
 
     content = {
@@ -1033,7 +1060,7 @@ def build_equities_weekly_review(
         "week_start": drafted["week_start"], "week_end": drafted["week_end"],
         "blocks": numbered(blocks), "pieces_found": len(drafted["pieces"]), "pieces_expected": N_HIGHLIGHTS,
         "shortfall": drafted["shortfall"],
-        "warnings": list(drafted["warnings"]) + warnings + inputs.analyst.difference_lines() + problems,
+        "warnings": list(drafted["warnings"]) + company_warnings + warnings + inputs.hidden_sheet_lines() + inputs.analyst.difference_lines() + problems,
         "notices": notices,
         "chart_notes": list(CHARTS), "chart_reference": CHART_REFERENCE, "chart_after": CHART_AFTER,
         "summary": compose_summary(blocks),

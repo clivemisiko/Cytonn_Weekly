@@ -42,8 +42,9 @@ from email.message import EmailMessage
 from pathlib import Path
 from typing import Optional, Union
 
-from cytonn_weekly.digital_payments import review_store, summary
-from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview
+from cytonn_weekly.digital_payments import summary
+from cytonn_weekly.review import store as review_store
+from cytonn_weekly.review.model import CoordinatorReview
 from cytonn_weekly.report_types import WEEKLY
 
 DEFAULT_SMTP_PORT = 587

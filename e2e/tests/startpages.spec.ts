@@ -18,7 +18,6 @@ test("T76 the start page is one centred card holding what it always said, and no
   await expect(page.getByRole("heading", { name: /^Good (morning|afternoon|evening)\. Welcome to Cytonn Weekly\.$/, level: 2 })).toBeVisible();
   const card = page.locator("main > div");
   for (const part of [
-    page.getByText("Ready to draft. Choose a report below to begin."),
     page.getByRole("button", { name: "Sign in with Cytonn SSO" }),
     page.getByText("Not connected yet.", { exact: true }),
     page.getByRole("link", { name: "Continue without signing in" }),
@@ -27,9 +26,7 @@ test("T76 the start page is one centred card holding what it always said, and no
     await expect(card.locator(part)).toBeVisible(); // everything is inside the one card
   }
   await expect(card.getByRole("heading", { name: "Report generator", level: 1 })).toBeVisible(); // the title block is in the card too
-  const looks = await card.evaluate((el) => ({ border: getComputedStyle(el).borderTopWidth, card: getComputedStyle(el).backgroundColor, page: getComputedStyle(document.body).backgroundColor }));
-  expect(looks.border).toBe("1px"); // a bordered white card on the pale page, not bare text
-  expect(looks.card).not.toBe(looks.page);
+  await expect(page.getByText("Ready to draft", { exact: false })).toHaveCount(0); // no status line: the page reads no state
   await expect(page.getByRole("navigation", { name: "Report sections" })).toHaveCount(0); // the start page stands alone, no rail
   const box = (await card.boundingBox())!;
   expect(Math.abs(box.x + box.width / 2 - (await middleOfWindow(page)))).toBeLessThan(2);
@@ -45,11 +42,11 @@ test("T77 an address the app does not have shows a card in the shell's frame, ce
   await page.setViewportSize({ width: 1366, height: 768 });
   await page.goto("/no-such-page");
   await expect(page.getByRole("heading", { name: "Page not found", level: 1 })).toBeVisible();
-  const text = page.getByText("We couldn't find the page you're looking for. Please check the web address or return to the overview to continue.");
+  const text = page.getByText("We couldn't find the page you're looking for. Please check the web address or return to the chat to continue.");
   await expect(text).toBeVisible();
   const rail = page.getByRole("navigation", { name: "Report sections" });
   await expect(rail).toBeVisible();
-  await expect(rail.getByText("Open the overview to list this report’s sections.")).toBeVisible(); // no section state is guessed
+  await expect(rail.getByText("Open the chat to list this report’s sections.")).toBeVisible(); // no section state is guessed
   const card = page.locator("main > div > div", { has: text }).first();
   const railBox = (await rail.boundingBox())!;
   const box = (await card.boundingBox())!;

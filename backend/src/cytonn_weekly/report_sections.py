@@ -33,7 +33,7 @@ from typing import Any, Callable, Optional, Union
 
 from cytonn_weekly import db
 from cytonn_weekly.common.run_events import Observer
-from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview
+from cytonn_weekly.review.model import CoordinatorReview
 from cytonn_weekly.report_types import ANNUAL, COMPANION, HALF_YEAR, MONTHLY, QUARTERLY, WEEKLY
 
 
@@ -138,7 +138,7 @@ def _equities(ctx: DraftContext) -> CoordinatorReview:
 def _real_estate(ctx: DraftContext) -> CoordinatorReview:
     from cytonn_weekly.real_estate.review_run import build_real_estate_review
 
-    return build_real_estate_review(**_as_of(ctx), **_observer(ctx))
+    return build_real_estate_review(**_as_of(ctx), **_observer(ctx), db_path=ctx.db_path)
 
 
 def _focus(ctx: DraftContext) -> CoordinatorReview:
@@ -164,7 +164,7 @@ _FI_CHARTS = (
     "The chart below shows the interbank rates in the market over the years",
     "The chart below summarizes the evolution of Kenya's months of import cover over the last two years",
 )
-_EQ_SUBSECTIONS = ("Market Performance:", "Universe of Coverage:", "Weekly highlights")
+_EQ_SUBSECTIONS = ("Market Performance:", "Universe of Coverage:", "Weekly highlights", "Listed banks and insurers")
 _EQ_CHARTS = ("The charts below indicate the historical P/E and dividend yields of the market (P/E chart)",
               "The charts below indicate the historical P/E and dividend yields of the market (dividend yield chart)")
 
@@ -194,16 +194,25 @@ SECTIONS: tuple[SectionSpec, ...] = (
                       "NSE 10 and the Banking index), and CBK's daily US dollar rates."),
             ("Work out", "Index moves, large-cap movers, turnover and foreign flows in USD, valuation, and the Universe "
                          "of Coverage table."),
-            ("Draft highlights", "Up to three NSE company, banking and regulatory stories from the week, each with its source."),
+            ("Draft highlights", "Up to three NSE company and regulatory stories from the week, each with its source."),
+            ("Listed banks and insurers", "With the production model, each company with a website set in equities/companies.json is "
+                                          "searched on that site alone for the week (one search, two pages at most) and written up "
+                                          "from its own pages. A company with no website set is listed as not searched, and one "
+                                          "with nothing this week is only named in the notes."),
             _INPUTS_CHECK, _YOUR_REVIEW,
         ),
     ),
     SectionSpec(
         slug="real_estate", title="Real Estate", available=True, build=_real_estate,
+        subsections=("Industry reports", "Residential sector", "Land", "Hospitality and Tourism", "REITs"),
         steps=(
-            ("Draft subsections", "Up to four of this week's housing, mortgage, hospitality, infrastructure and other stories."),
-            ("Fetch REITs", "Acorn D-REIT, Acorn I-REIT and ILAM Fahari prices from the NSE Ibuka weekly PDF."),
-            ("Check", "REIT figures exact-matched to the PDF; every claim's figures matched to its cited text."),
+            ("Your snips", "You upload magazine snips under Industry reports, Residential sector, Land, Hospitality and Tourism "
+                           "and REITs, read each, fix its text and confirm it. Nothing is searched for this section."),
+            ("Draft sectors", "Each sector with a confirmed snip is written from that sector's snips alone; one without is left out and named."),
+            ("Fetch REITs", "Acorn D-REIT, Acorn I-REIT and ILAM Fahari prices from the NSE Ibuka weekly PDF; the standing REITs "
+                            "text is carried from the last saved review."),
+            ("Check", "REIT figures exact-matched to the PDF; every claim's quote found word for word in its snip; every outlook "
+                      "sentence must rest on a claim."),
             _YOUR_REVIEW,
         ),
     ),
@@ -220,8 +229,8 @@ SECTIONS: tuple[SectionSpec, ...] = (
         slug="focus", title="Focus of the Week", available=True, needs_topic=True, build=_focus,
         steps=(
             ("Your topic", "You choose this week's theme; the tool never picks it."),
-            ("Research and draft", "One long-form piece written only from what the search returned, every claim cited."),
-            ("Check", "Each claim's figures matched to the text it cites."),
+            ("Research", "Research notes for each section, only findings with a quote from a supplied source. The tool writes no Focus text; you write it."),
+            ("Check", "Each finding's figures matched to the text it cites."),
             _YOUR_REVIEW,
         ),
     ),

@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any, Callable, Optional
 
-from cytonn_weekly.common.review import (
+from cytonn_weekly.review.blocks import (
     build_review,
     check_section,
     narrative_block,
@@ -22,10 +22,10 @@ from cytonn_weekly.common.review import (
     unavailable_block,
 )
 from cytonn_weekly.common.run_events import Observer, fetch_source, report_blocks, report_failed_rows
-from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview
+from cytonn_weekly.review.model import CoordinatorReview
 from cytonn_weekly.equities import fetcher, stubs
-from cytonn_weekly.narrative.base import NarrativeBrief, NarrativeProvider
-from cytonn_weekly.narrative.drafter import draft_pieces
+from cytonn_weekly.drafting.base import NarrativeBrief, NarrativeProvider
+from cytonn_weekly.drafting.drafter import draft_pieces
 
 SECTION = "equities"
 TITLE = "Equities"
@@ -44,15 +44,11 @@ BRIEFS: list[NarrativeBrief] = [
                "involving a Nairobi Securities Exchange-listed company"),
     ),
     NarrativeBrief(
-        id="banking", section=TITLE, label="Listed banks",
-        focus=("a development specific to a Kenyan listed bank or the banking sector as a whole (capital, "
-               "regulation by the Central Bank of Kenya, asset quality, a major lending or funding deal)"),
-        preferred_domains=("centralbank.go.ke",),
-    ),
-    NarrativeBrief(
         id="market_regulation", section=TITLE, label="Capital markets regulation",
-        focus=("a policy, rule or market-structure change announced by the Capital Markets Authority or the "
-               "Nairobi Securities Exchange"),
+        focus=("a rule or market-structure change announced by the Capital Markets Authority or the Nairobi "
+               "Securities Exchange that applies to listed companies or to trading on the exchange, such as listing, "
+               "disclosure, trading, settlement or market-conduct rules; a consultation or rule on another topic does "
+               "not qualify"),
         preferred_domains=("cma.or.ke", "nse.co.ke"),
     ),
 ]

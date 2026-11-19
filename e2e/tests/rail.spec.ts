@@ -16,15 +16,9 @@ const rail = (page: Page) => page.getByRole("navigation", { name: "Report sectio
 const heading = (title: string) => ({ name: `${title}: analyst review`, level: 1 }) as const;
 
 /** Digital Payments drafted through the API for that week; with `accept`, every item is accepted too. Left undecided. */
-async function draftPayments(request: APIRequestContext, period: string, accept = false) {
+async function draftPayments(request: APIRequestContext, period: string) {
   const res = await request.post(`${API}/api/sections/digital_payments/draft`, { headers: json, data: { report_type: "weekly", period }, timeout: 120_000 });
   expect(res.status(), await res.text()).toBe(200);
-  if (!accept) return;
-  const review = await res.json();
-  for (const item of review.review_items) {
-    const patched = await request.patch(`${API}/api/reviews/${review.run_id}/items/${item.index}`, { headers: json, data: { resolution: "accept" } });
-    expect(patched.ok()).toBe(true);
-  }
 }
 
 /** From the overview of that week, open Digital Payments' review and wait for the screen. */
@@ -41,7 +35,7 @@ test("T59 the rail lists the five sections with their state; it is a full rail, 
   await page.goto(overviewUrl());
   const nav = rail(page);
   for (const title of TITLES) await expect(nav.getByRole("button", { name: `${title}, Not drafted` })).toBeVisible();
-  await expect(nav.getByRole("button", { name: "Overview", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(nav.getByRole("button", { name: "Overview", exact: true })).toHaveCount(0); // the old pages are hidden from the rail
   await expect(nav.getByRole("progressbar")).toHaveCount(0); // the overview shows the tally itself
   expect((await nav.boundingBox())?.width).toBe(224);
   expect((await nav.getByRole("button", { name: /^Fixed Income, / }).boundingBox())!.width).toBeGreaterThan(150); // its label shows
@@ -59,29 +53,35 @@ test("T59 the rail lists the five sections with their state; it is a full rail, 
   await expect(nav.getByRole("button", { name: "Focus of the Week, Not drafted" })).toBeInViewport();
   await page.evaluate(() => window.scrollTo(0, 0));
 
-  // From 768px it is a narrow strip of icons that a button expands over the page; Escape folds it again.
+  // From 768px it is expanded on every load; a button folds it to a strip of icons for the visit, and Escape does the same.
   await page.setViewportSize({ width: 1280, height: 720 });
-  expect((await nav.boundingBox())?.width).toBe(56);
-  expect((await nav.getByRole("button", { name: /^Fixed Income, / }).boundingBox())!.width).toBeLessThan(60);
-  await nav.getByRole("button", { name: "Expand the rail" }).click();
   expect((await nav.boundingBox())?.width).toBe(224);
   expect((await nav.getByRole("button", { name: /^Fixed Income, / }).boundingBox())!.width).toBeGreaterThan(150);
-  await page.keyboard.press("Escape");
-  await expect(nav.getByRole("button", { name: "Expand the rail" })).toBeVisible();
+  await nav.getByRole("button", { name: "Collapse the rail" }).click();
   expect((await nav.boundingBox())?.width).toBe(56);
+  expect((await nav.getByRole("button", { name: /^Fixed Income, / }).boundingBox())!.width).toBeLessThan(60);
+  await page.reload();
+  expect((await nav.boundingBox())?.width).toBe(224); // nothing is remembered
 
-  // On a phone there is no rail; the top bar's Home and Back are what there is, as before.
+  // On a phone the rail is a drawer that the top bar's Menu button opens; Home and Back are there as before.
   await page.setViewportSize({ width: 390, height: 844 });
+  await expect(nav).toBeHidden();
+  await topbar(page).getByRole("button", { name: "Menu" }).click();
+  await expect(nav).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(nav).toBeHidden();
   await expect(topbar(page).getByRole("link", { name: "Home" })).toBeVisible();
   await expect(topbar(page).getByRole("button", { name: "Back (this is the start screen)" })).toBeVisible();
 });
 
-test("T60 a section opens from the rail, from the overview and from another section, and the rail marks the one on screen", async ({ page }) => {
+const chatHeading = (title: string) => ({ name: title, level: 2 }) as const;
+
+test("T60 a section opens its chat from the rail, from the overview and from another section, and the rail marks the one on screen", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 768 });
   await page.goto(overviewUrl());
   await rail(page).getByRole("button", { name: "Digital Payments, Not drafted" }).click();
-  await expect(page.getByRole("heading", heading("Digital Payments"))).toBeVisible();
+  await expect(page).toHaveURL(/\/chat\?.*section=digital_payments/);
+  await expect(page.getByRole("heading", chatHeading("Digital Payments"))).toBeVisible();
   await expect(rail(page).getByRole("button", { name: "Digital Payments, Not drafted, this section is on screen" })).toHaveAttribute("aria-current", "page");
   await expect(rail(page).getByText("0 of 5 sections approved")).toBeVisible();
   await expect(rail(page).getByRole("progressbar", { name: "Sections approved" })).toHaveAttribute("aria-valuenow", "0");
@@ -89,14 +89,9 @@ test("T60 a section opens from the rail, from the overview and from another sect
   await expect(rail(page).getByText("Dev mode · local model")).toBeVisible();
 
   await rail(page).getByRole("button", { name: "Real Estate, Not drafted" }).click();
-  await expect(page.getByRole("heading", heading("Real Estate"))).toBeVisible();
+  await expect(page.getByRole("heading", chatHeading("Real Estate"))).toBeVisible();
   await expect(rail(page).getByRole("button", { name: /^Real Estate, Not drafted, this section is on screen$/ })).toHaveAttribute("aria-current", "page");
   await expect(rail(page).getByRole("button", { name: "Digital Payments, Not drafted" })).not.toHaveAttribute("aria-current", "page");
-
-  await rail(page).getByRole("button", { name: "Overview", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Analyst review", level: 1 })).toBeVisible();
-  await expect(rail(page).getByRole("button", { name: "Overview", exact: true })).toHaveAttribute("aria-current", "page");
-  await expect(rail(page).getByRole("progressbar")).toHaveCount(0);
 });
 
 test("T61 the rail asks first when something typed is unsaved, as Home and Back do", async ({ page }) => {
@@ -117,22 +112,17 @@ test("T61 the rail asks first when something typed is unsaved, as Home and Back 
 
   page.once("dialog", (d) => void d.accept());
   await rail(page).getByRole("button", { name: "Equities, Not drafted" }).click();
-  await expect(page.getByRole("heading", heading("Equities"))).toBeVisible();
+  await expect(page.getByRole("heading", chatHeading("Equities"))).toBeVisible();
 });
 
-test("T62 on the run view the rail's sections do nothing and say so; its Overview item goes back to the sections", async ({ page, request }) => {
+test("T62 on the run view the rail's sections open their chat, and the rail has no Overview item", async ({ page, request }) => {
   const run = await startRun(request, "real_estate"); // stops by design in the test API and saves nothing
   await page.goto(`/runs/${run}`);
   await expect(page.getByRole("heading", { name: "Real Estate: draft run", level: 1 })).toBeVisible();
-  const item = rail(page).getByRole("button", { name: "Fixed Income, Not drafted, open the overview first" });
-  await expect(item).toHaveAttribute("aria-disabled", "true");
-  await item.click({ force: true }); // Playwright waits forever to click an aria-disabled control; the point is that nothing happens
-  await expect(page).toHaveURL(/\/runs\//);
-  await expect(page.getByRole("heading", { name: "Real Estate: draft run", level: 1 })).toBeVisible();
-
-  await rail(page).getByRole("button", { name: "Overview", exact: true }).click();
-  await expect(page).toHaveURL(/\/overview/);
-  await expect(page.getByRole("heading", { name: "Analyst review", level: 1 })).toBeVisible();
+  await expect(rail(page).getByRole("button", { name: "Overview", exact: true })).toHaveCount(0);
+  await rail(page).getByRole("button", { name: /^Fixed Income, / }).click();
+  await expect(page).toHaveURL(/\/chat\?.*section=fixed_income/);
+  await expect(page.getByRole("heading", chatHeading("Fixed Income"))).toBeVisible();
 });
 
 test("T63 a rejection changes the rail's state at once and leaves the approved count where it was", async ({ page, request }) => {
@@ -154,10 +144,9 @@ test("T63 a rejection changes the rail's state at once and leaves the approved c
 
 test("T64 an approval changes the rail's state and its approved count", async ({ page, request }) => {
   const period = "Week ending 2026-11-20";
-  await draftPayments(request, period, true);
+  await draftPayments(request, period);
   await openReview(page, period);
-  await page.getByRole("button", { name: "Approve", exact: true }).click();
-  await page.getByRole("dialog", { name: "Approve this section?" }).getByRole("button", { name: "Approve", exact: true }).click();
+  await page.getByRole("button", { name: "Approve", exact: true }).click(); // nothing is flagged in this review, so there is nothing to confirm
   await expect(page.getByText("Approved and locked")).toBeVisible();
   await expect(rail(page).getByRole("button", { name: "Digital Payments, Approved, this section is on screen" })).toBeVisible();
   await expect(rail(page).getByText("1 of 5 sections approved")).toBeVisible();
@@ -166,15 +155,14 @@ test("T64 an approval changes the rail's state and its approved count", async ({
 
 test("T65 when the sections cannot be read again, every state is the neutral mark and the count is not known", async ({ page, request }) => {
   const period = "Week ending 2026-11-27";
-  await draftPayments(request, period, true);
+  await draftPayments(request, period);
   await openReview(page, period);
   await page.route(/\/api\/sections(\?|$)/, (route) => route.abort());
   await page.getByRole("button", { name: "Approve", exact: true }).click();
-  await page.getByRole("dialog", { name: "Approve this section?" }).getByRole("button", { name: "Approve", exact: true }).click();
   await expect(page.getByText("Approved and locked")).toBeVisible(); // the decision itself went through
   // The rail does not go on saying "In review": it says it does not know.
   await expect(rail(page).getByRole("button", { name: "Digital Payments, State not known, this section is on screen" })).toBeVisible();
-  await expect(rail(page).getByRole("button", { name: "Fixed Income, State not known, open the overview first" })).toHaveCount(0); // the overview page is still here, so it is not inert
+  await expect(rail(page).getByRole("button", { name: "Fixed Income, State not known, not open here" })).toHaveCount(0); // a weekly section always opens its chat, so it is not inert
   await expect(rail(page).getByRole("button", { name: "Fixed Income, State not known" })).toBeVisible();
   await expect(rail(page).getByText("Approved count not known")).toBeVisible();
   await expect(rail(page).getByRole("progressbar")).toHaveCount(0);
@@ -211,6 +199,6 @@ test("T69 the dev ribbon is the shell's: on the overview, a start screen and a r
   expect(Math.round((await reviewRibbon.boundingBox())!.y)).toBe(44);
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(50);
-  const bar = page.locator("div.sticky", { has: page.getByRole("progressbar", { name: "Items resolved" }) });
+  const bar = page.locator('[data-attention="review-status-bar"]');
   await expect.poll(async () => Math.round((await bar.boundingBox())?.y ?? -1)).toBe(72); // 44px top bar, then the ribbon's 28px
 });

@@ -1,7 +1,11 @@
 import { type MaybeRefOrGetter, onUnmounted, shallowRef, toValue, watchEffect } from "vue";
 
-/** The workspace home: where the top bar's Home button goes, and the primary dashboard. */
-export const HOME = "/overview";
+/** The workspace home: where the top bar's Home button goes. The old pages are hidden from navigation (see frontend/CLAUDE.md). */
+export const HOME = "/chat";
+
+/** The chat for one week, and one section of it: where an old page opened from a chat button goes back to. */
+export const chatHref = (period: string, section: string | null) =>
+  `/chat?${new URLSearchParams({ period, ...(section ? { section } : {}) }).toString()}`;
 
 /**
  * Where the top bar's Back button goes from the page on screen. Each page says so itself (useBack), because most of

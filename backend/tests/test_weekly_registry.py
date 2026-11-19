@@ -47,7 +47,7 @@ def test_every_weekly_section_has_a_summary_composed_from_its_own_text():
     dp = make_review().section                       # the weekly Digital Payments shape: highlights as items
     highlights = [i for i in dp["items"] if i["kind"] == "highlight"]
     assert section_summary(dp).split("\n\n")[0] == " ".join(highlights[0]["body_md"].split("\n\n")[0].split())
-    assert section_summary(sh.focus_review(topic="SSA Eurobonds").section)
+    assert section_summary(sh.focus_review(topic="SSA Eurobonds").section) == ""   # the analyst writes the Focus: no summary
     assert section_summary({"blocks": [], "summary": "Already composed."}) == "Already composed."
     assert section_summary({"blocks": [{"kind": "unavailable", "id": "x", "title": "X", "reason": "r", "unblock": "u"}]}) == ""
     # never cut inside a paragraph: a paragraph that does not fit is left out whole
@@ -154,8 +154,10 @@ def test_the_older_sections_are_drafted_for_the_named_week_too(tmp_path, monkeyp
     monkeypatch.setattr(dp_run, "build_digital_payments_review", lambda **kw: (seen.__setitem__("digital_payments", kw), make_review())[1])
     monkeypatch.setattr(focus_run, "build_focus_review", lambda topic, **kw: (seen.__setitem__("focus", kw), sh.focus_review(topic=topic))[1])
     client = TestClient(create_app(db_path=tmp_path / "app.db", load_dotenv=False))
-    for slug, body in (("real_estate", {}), ("digital_payments", {}), ("focus", {"topic": "SSA Eurobonds"})):
+    for slug, body in (("real_estate", {}), ("digital_payments", {}), ("focus", {"topic": "SSA Eurobonds", "sections": "Overview"})):   # Bedrock needs typed titles for a Focus
         assert client.post(f"/api/sections/{slug}/draft", json={**body, "period": "2026-10-02"}).status_code == 200
-        assert seen.pop(slug) == {"today": date(2026, 10, 2)}
+        got = seen.pop(slug)
+        assert got["today"] == date(2026, 10, 2)
+        assert set(got) <= {"today", "db_path", "sections"}
         assert client.post(f"/api/sections/{slug}/draft", json=body).status_code == 200   # no week named: as before
-        assert seen.pop(slug) == {}
+        assert set(seen.pop(slug)) <= {"db_path", "sections"}

@@ -20,8 +20,8 @@ from fastapi.testclient import TestClient
 
 from api.main import create_app
 from cytonn_weekly.charts.specs import SPECS
-from cytonn_weekly.checkers.digital_payments import SOURCES_DISAGREE
-from cytonn_weekly.weekly import analyst, inputs
+from cytonn_weekly.review.figures import SOURCES_DISAGREE
+from cytonn_weekly.weekly import analyst, inputs, previous_issue
 from cytonn_weekly.weekly.inputs import InputError
 from cytonn_weekly.weekly.week import Week
 from tests import test_weekly_equities as eq
@@ -341,7 +341,7 @@ def test_every_typed_value_is_an_analyst_input_never_clean(typed_week):
                                      "source: Cytonn analyst estimates and company filings; prices from the NSE). The changes, yield")
     # the checker still works every figure out again: a derived figure cannot be typed, and a tampered one is caught
     assert blocks(equities)["universe_of_coverage"]["source"]["name"] == "Weekly analyst inputs, Universe of Coverage"
-    assert not review.is_approvable and not equities.is_approvable
+    assert review.is_approvable and equities.is_approvable
 
 
 def test_the_model_is_handed_nothing_from_the_form(typed_week):
@@ -353,7 +353,9 @@ def test_the_model_is_handed_nothing_from_the_form(typed_week):
 
     fi.fiw.build_fixed_income_review(WEEK.ending, inputs=inputs.WeeklyInputs(WEEK, typed_week), fetchers=fi.fetchers(), draft=drafting)
     briefs, target, kwargs = seen[0]
-    assert set(kwargs) == {"provider", "today", "window", "on_event"} and briefs is fi.fiw.BRIEFS
+    assert set(kwargs) == {"provider", "today", "window", "on_event", "earlier"} and briefs is fi.fiw.BRIEFS
+    # "earlier" is the previous issue's own section and nothing else, so no form value (liquidity_driver included) can travel in it
+    assert kwargs["earlier"] == previous_issue.digest(fi.ISSUE, "fixed-income")
     typed = json.dumps(analyst.read_form(WEEK, typed_week))
     assert "10.8" in typed and not any("10.8" in str(b) for b in briefs)   # no typed figure is in what the drafter is given
 
@@ -827,7 +829,7 @@ def test_kcbs_friday_price_equals_the_workbooks_for_all_thirteen_companies(tmp_p
 
 
 def checked(table):
-    from cytonn_weekly.common.review import check_section, numbered
+    from cytonn_weekly.review.blocks import check_section, numbered
 
     content = {"section": "equities", "blocks": numbered([table])}
     return content, check_section(content)
@@ -900,3 +902,20 @@ def test_the_label_carries_forward_and_is_used_at_once(tmp_path):
     assert "mmf_source" in done["carried"] and "mmf_source" not in done["unconfirmed"]
     assert source_label(tmp_path, NEXT) == "Invented Paper"
     assert analyst.status(NEXT, tmp_path)["unconfirmed"] == []
+
+
+def test_the_liquidity_driver_is_the_teams_own_words_printed_and_marked_as_analyst_input(typed_week):
+    clause = "partly attributable to tax payments that offset government payments"
+    assert clause not in blocks(fi.build(typed_week))["liquidity"]["body_md"]     # nothing is written by the tool
+    save(typed_week, {"liquidity_driver": f"  {clause}. "})
+    block = blocks(fi.build(typed_week))["liquidity"]
+    assert f", {clause}." in block["body_md"] and ".." not in block["body_md"]
+    assert any(clause in n and "analyst input typed on the weekly form" in n for n in block["notes"])
+    assert analyst.read_form(WEEK, typed_week)["fields"]["liquidity_driver"] == f"{clause}."   # trimmed; kept as typed
+
+
+def test_the_liquidity_driver_is_one_line_of_at_most_200_characters_and_is_not_carried_forward(tmp_path):
+    save(tmp_path, {"liquidity_driver": "x" * 200})
+    assert "at most 200 characters" in refused(tmp_path, {"liquidity_driver": "x" * 201})
+    assert "one line" in refused(tmp_path, {"liquidity_driver": "one\ntwo"})
+    assert "liquidity_driver" not in analyst.SLOW_FIELDS + analyst.WEEKLY_FIELDS

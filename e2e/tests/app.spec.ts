@@ -33,20 +33,25 @@ async function openStart(page: Page, title: string, button: RegExp = /Draft sect
 test.skip(!!process.env.E2E_VARIANT, "runs on the default test backend");
 test.describe.configure({ mode: "serial" });
 
-test("T01 landing page loads, with Home current and Back disabled", async ({ page }) => {
+test("T01 landing page loads, Home becomes current on the overview, Back disabled", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /Welcome to Cytonn Weekly\./ })).toBeVisible();
   await expect(page.getByRole("heading", { name: /^Good (morning|afternoon|evening)\. Welcome to Cytonn Weekly\.$/ })).toBeVisible();
-  await expect(page.getByText("Ready to draft. Choose a report below to begin.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign in with Cytonn SSO" })).toBeDisabled();
   await expect(page.getByText("Not connected yet.", { exact: true })).toBeVisible();
   await expect(page.getByText(/this tool has no sign-in and should only be used by the\s+team/i)).toBeVisible();
   await expect(page).toHaveTitle("Cytonn Weekly review");
-  await expect(topbar(page).getByRole("link", { name: "Home" })).toHaveAttribute("aria-current", "page");
+  const home = topbar(page).getByRole("link", { name: "Home" });
+  await expect(home).not.toHaveAttribute("aria-current", /.*/); // Home is the chat, and this page is /
   await expect(topbar(page).getByRole("button", { name: "Back (this is the start screen)" })).toBeDisabled();
   await page.getByRole("link", { name: "Continue without signing in" }).click();
+  await expect(page).toHaveURL(/\/chat$/); // the chat's section picker is where the welcome page leads
+  await expect(page.getByRole("heading", { name: "Choose what to talk about" })).toBeVisible();
+  await expect(home).toHaveAttribute("aria-current", "page"); // Home is the chat
+  await page.goto("/overview"); // the overview is hidden from navigation but still opens by its address
   await expect(page).toHaveURL(DEFAULT_WEEK); // a bare /overview opens on a labelled week
   await expect(page.getByRole("heading", { name: "Analyst review", level: 1 })).toBeVisible();
+  await expect(home).not.toHaveAttribute("aria-current", /.*/);
 });
 
 test("T02 an old bookmark of a report at / goes to the overview with its query kept", async ({ page }) => {
@@ -116,7 +121,7 @@ test("T05 theme toggle: Light, Dark, System, kept after a reload and applied bef
   await expect(group).toHaveAccessibleName("Theme: Dark");
   await expect(page.getByRole("radio", { name: "Dark theme" })).toBeChecked();
   expect(await stored()).toBe("dark");
-  expect(await paper()).toBe("rgb(14, 14, 14)");
+  expect(await paper()).toBe("rgb(11, 13, 16)");
   await page.reload();
   expect(await firstFrame()).toBe("dark");
   await expect(page.getByRole("radio", { name: "Dark theme" })).toBeChecked();
@@ -133,7 +138,7 @@ test("T05 theme toggle: Light, Dark, System, kept after a reload and applied bef
   await page.getByRole("radio", { name: "System theme" }).click();
   await expect(page.locator("html")).not.toHaveAttribute("data-theme", /.*/);
   expect(await stored()).toBeNull();
-  expect(await paper()).toBe("rgb(14, 14, 14)"); // follows the (dark) device
+  expect(await paper()).toBe("rgb(11, 13, 16)"); // follows the (dark) device
   await page.reload();
   expect(await firstFrame()).toBe("system");
   await expect(group).toHaveAccessibleName("Theme: System");
@@ -151,13 +156,13 @@ test("T06 top bar stays in view after scrolling; Back goes to the section list, 
   expect(new URL(page.url()).searchParams.get("period")).toBe(PERIOD);
   await expect(card(page, "Equities")).toBeVisible();
 
-  // From a deep link to a run (one the API does not know): Back names the section list, Home goes to /overview.
+  // From a deep link to a run (one the API does not know): Back names the section list, Home goes to the chat.
   await page.goto("/runs/not-a-run");
   await topbar(page).getByRole("button", { name: "Back to all sections" }).click();
   await expect(page).toHaveURL(DEFAULT_WEEK); // a bare /overview opens on a labelled week
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   await topbar(page).getByRole("link", { name: "Home" }).click();
-  await expect(page).toHaveURL(/\/overview/);
+  await expect(page).toHaveURL(/\/chat$/);
 });
 
 test("T07 inputs panel: what was received, an upload refused with its reason, a week that is not a Friday", async ({ page }) => {
@@ -232,7 +237,7 @@ test("T08 analyst inputs: refusals listed, the draft button waits for unsaved ty
   });
   await topbar(page).getByRole("link", { name: "Home" }).click();
   expect(questions).toHaveLength(2);
-  await expect(page).toHaveURL(/\/overview/);
+  await expect(page).toHaveURL(/\/overview/); // dismissed: still on the form
 
   await panel.getByRole("button", { name: "Save table" }).and(page.locator(":enabled")).click(); // only the edited table can be saved
   const refusal = panel.getByRole("alert").filter({ hasText: "Money market fund table, line 1" });
@@ -250,7 +255,7 @@ test("T08 analyst inputs: refusals listed, the draft button waits for unsaved ty
   await table.fill("1 Alpha Fund 11.0");
   page.once("dialog", (d) => void d.accept());
   await topbar(page).getByRole("link", { name: "Home" }).click();
-  await expect(page).toHaveURL(/\/overview/);
+  await expect(page).toHaveURL(/\/chat$/);
   // Nothing was stored by any of it.
   await openStart(page, "Fixed Income");
   await expect(page.locator("#analyst-mmf")).toHaveValue("");
@@ -259,7 +264,7 @@ test("T08 analyst inputs: refusals listed, the draft button waits for unsaved ty
 
 let paymentsReview = "";
 
-test("T09 Digital Payments: run to done, open the review, Approve is gated, the decision is final", async ({ page }) => {
+test("T09 Digital Payments: run to done, open the review, one decision for the whole section (nothing is flagged, so Approve records at once), the decision is final", async ({ page }) => {
   await openStart(page, "Digital Payments");
   await page.getByRole("button", { name: DRAFT }).click();
 
@@ -274,45 +279,33 @@ test("T09 Digital Payments: run to done, open the review, Approve is gated, the 
   await expect(page.getByRole("heading", { name: "Digital Payments: analyst review", level: 1 })).toBeVisible();
   paymentsReview = new URL(page.url()).searchParams.get("review") ?? "";
   expect(paymentsReview).toMatch(/^\d+$/);
+  // One decision for the whole section, available on a drafted section with nothing to resolve first.
   const approve = page.getByRole("button", { name: "Approve", exact: true });
-  await expect(approve).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Reject", exact: true })).toBeEnabled();
-  await expect(page.getByText("Approve unlocks once every item is resolved and none needs a fix.").first()).toBeVisible();
-  const accepts = page.getByRole("radio", { name: "Accept", exact: true });
-  const items = await accepts.count();
-  expect(items).toBeGreaterThan(0);
-  await expect(page.getByText(/\d+ unresolved · 0 of \d+ resolved/)).toBeVisible();
-
-  // Fix needed blocks approval; clean items can be accepted together and the rest individually.
-  await page.getByRole("radio", { name: "Fix needed" }).first().click();
-  await expect(page.getByText("Not approvable yet: 1 marked fix needed.").first()).toBeVisible();
-  await expect(approve).toBeDisabled();
-  await page.getByRole("button", { name: /Mark all clean as accepted/ }).click();
-  for (let i = 0; i < items; i++) await accepts.nth(i).click();
-  await expect(page.getByText("Ready for approval: All review items have been resolved.")).toBeVisible();
-  await expect(page.getByText(/0 unresolved · \d+ of \d+ resolved/)).toBeVisible();
-  await expect(page.getByText(`Saved as run ${paymentsReview}`)).toBeVisible();
+  const reject = page.getByRole("button", { name: "Reject", exact: true });
   await expect(approve).toBeEnabled();
+  await expect(reject).toBeEnabled();
+  await expect(page.getByText("Ready for a decision: nothing is flagged.")).toBeVisible();
+  await expect(page.getByText(`Saved as run ${paymentsReview}`)).toBeVisible();
 
-  // The confirm dialog: Cancel and Escape close it without deciding.
-  await approve.click();
-  const dialog = page.getByRole("dialog", { name: "Approve this section?" });
-  await expect(dialog).toContainText("Every value is accepted as drafted. This is recorded once and cannot be changed.");
+  // Rejecting always asks first; Cancel and Escape close its dialog without deciding.
+  await reject.click();
+  const dialog = page.getByRole("dialog", { name: "Reject this section?" });
+  await expect(dialog).toContainText("locks the current draft as rejected");
   await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(dialog).toBeHidden();
-  await approve.click();
+  await reject.click();
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
   await expect(approve).toBeEnabled();
-  await approve.click();
-  await dialog.getByRole("button", { name: "Approve", exact: true }).click();
-  await expect(dialog).toBeHidden();
+  await expect(reject).toBeEnabled();
 
+  // Nothing is flagged, so Approve records the decision at once: there is no confirmation to answer.
+  await approve.click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByText("Approved and locked")).toBeVisible();
   await expect(page.getByText("Decision recorded: approved.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Approve", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("radio", { name: "Accept", exact: true }).first()).toBeDisabled();
-  await expect(page.getByLabel(/^Note for /).first()).toHaveAttribute("readonly", "");
+  await expect(page.getByRole("button", { name: "Reject", exact: true })).toHaveCount(0);
 
   // The review's own address opens it again; Back goes to its report's sections, where it now reads Approved.
   await page.goto(`/overview?report=weekly&period=${encodeURIComponent(PERIOD)}&review=${paymentsReview}`);
@@ -329,7 +322,7 @@ test("T10 the sticky status bar stays under the top bar while a review scrolls",
   await expect(page.getByText("Decision recorded: approved.")).toBeVisible();
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(100);
-  const bar = page.locator("div.sticky", { has: page.getByRole("progressbar", { name: "Items resolved" }) });
+  const bar = page.locator('[data-attention="review-status-bar"]');
   // 44px top bar, then the dev ribbon's 28px when the review is a dev draft (this one is not).
   await expect.poll(async () => Math.round((await bar.boundingBox())?.y ?? -1)).toBe(44); // once the screen has settled into place
   await expect(page.getByRole("button", { name: "Back to all sections" }).last()).toBeInViewport();
@@ -351,7 +344,7 @@ test("T11 a stopped run shows the error text and the way back", async ({ page })
   await expect(card(page, "Real Estate").getByText("Not drafted for w/e 9 Oct 2026")).toBeVisible();
 });
 
-test("T12 Fixed Income: run view steps to done, review lists the three statuses, accepting, notes, the leave prompt", async ({ page }) => {
+test("T12 Fixed Income: run view steps to done, review lists the three statuses, the section-level decision is open and asks first (reads CBK and cytonnreport.com; not run in the offline pass)", async ({ page }) => {
   test.setTimeout(RUN_TIMEOUT + 120_000);
   await openStart(page, "Fixed Income");
   await draftAnyway(page, DRAFT);
@@ -394,44 +387,24 @@ test("T12 Fixed Income: run view steps to done, review lists the three statuses,
   await expect(flagged.first()).toContainText("Flagged");
   await expect(unverified.first()).toContainText("Not auto-verified");
   await expect(clean.first()).toContainText("Clean");
-  // The scorecard's totals are the lists' lengths.
-  const total = (await flagged.count()) + (await unverified.count()) + (await clean.count());
-  await expect(page.getByText(new RegExp(`${total} unresolved · 0 of ${total} resolved`))).toBeVisible();
-  await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeDisabled();
+  // The status bar's totals are the lists' lengths.
+  const flaggedCount = await flagged.count();
+  const total = flaggedCount + (await unverified.count()) + (await clean.count());
+  expect(total).toBeGreaterThan(flaggedCount);
+  await expect(page.locator('[data-attention="review-status-bar"]')).toContainText(`${flaggedCount} flagged · ${await unverified.count()} not auto-verified · ${await clean.count()} clean`);
   // A dev draft carries its mark on the review too.
   await expect(page.getByRole("heading", { name: /^Drafted section: / })).toBeVisible();
 
-  // Accept one item: its chip changes at once and the count follows the server.
-  const first = unverified.first();
-  await expect(first.getByText("Unresolved", { exact: true }).first()).toBeVisible();
-  await first.getByRole("radio", { name: "Accept", exact: true }).click();
-  await expect(first.getByText("Accepted", { exact: true })).toBeVisible();
-  await expect(first.getByRole("radio", { name: "Accept", exact: true })).toBeChecked();
-  await expect(page.getByText(new RegExp(`${total - 1} unresolved · 1 of ${total} resolved`))).toBeVisible();
-
-  // Every clean item at once.
-  const cleanCount = await clean.count();
-  await page.getByRole("button", { name: `Mark all clean as accepted (${cleanCount} unresolved)` }).click();
-  await expect(page.getByRole("button", { name: "Mark all clean as accepted (0 unresolved)" })).toBeDisabled();
-  await expect(page.getByText(new RegExp(`${total - 1 - cleanCount} unresolved · ${1 + cleanCount} of ${total} resolved`))).toBeVisible();
-  await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeDisabled(); // flagged items are still open
-
-  // A note is saved when the box is left; until then the browser asks before the page is left.
-  const note = first.getByLabel(/^Note for /);
-  await note.fill("checked against the bulletin");
-  let asked = "";
-  page.once("dialog", (d) => {
-    asked = d.type();
-    void d.dismiss();
-  });
-  await page.evaluate(() => window.location.reload());
-  await expect.poll(() => asked).toBe("beforeunload");
-  await expect(note).toHaveValue("checked against the bulletin");
-  await note.press("Enter");
+  // Flagged items exist, so Approve is open but asks first, naming the count; Cancel records nothing.
+  const approve = page.getByRole("button", { name: "Approve", exact: true });
+  await expect(approve).toBeEnabled();
+  await approve.click();
+  const dialog = page.getByRole("dialog", { name: "Approve with flagged items?" });
+  await expect(dialog).toContainText(`This section has ${flaggedCount} flagged item${flaggedCount === 1 ? "" : "s"}:`);
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByText("Decision recorded")).toHaveCount(0);
   await expect(page.getByText(/^Saved as run \d+$/)).toBeVisible();
-  await page.reload(); // saved now: no prompt, and the note is the server's
-  await expect(page.locator('li[data-status="not_auto_verified"]').first().getByLabel(/^Note for /)).toHaveValue("checked against the bulletin");
-  await expect(page.locator('li[data-status="not_auto_verified"]').first().getByRole("radio", { name: "Accept", exact: true })).toBeChecked();
 
   // The overview now offers it for resuming.
   await topbar(page).getByRole("button", { name: "Back to all sections" }).click();
@@ -449,7 +422,7 @@ test("T13 Equities: run to done and its review opens with items", async ({ page 
   await expect(page.getByRole("heading", { name: "Equities: analyst review", level: 1 })).toBeVisible();
   expect(await page.locator("li[data-status]").count()).toBeGreaterThan(0);
   await expect(page.getByRole("button", { name: /Flagged by the checker \(\d+\)$/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeEnabled(); // one decision for the whole section, asked for once it is read
   await expect(page.getByRole("button", { name: "Reject", exact: true })).toBeEnabled();
 });
 

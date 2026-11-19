@@ -4,6 +4,7 @@ import re
 import ssl
 from datetime import date
 
+import httpx
 import pytest
 
 from cytonn_weekly.common import http
@@ -140,18 +141,18 @@ def test_a_page_is_filed_under_the_friday_on_or_before_the_day_given(tmp_path):
 def test_a_host_off_the_list_is_fetched_and_flagged_off_list(tmp_path):
     for url in ("https://blog.example.com/post", "https://centralbank.go.ke.evil.example/x"):
         one = fetch(Getter(reply(article())), url, root=tmp_path)
-        assert one.flags == [src.NOT_ON_LIST] and one.url == url
+        assert one.flags == [src.NOT_ON_LIST, src.ADDED_BY_ANALYST] and one.url == url
 
 
-def test_a_known_site_is_not_flagged(tmp_path):
-    assert fetch(Getter(reply(article())), root=tmp_path).flags == []
+def test_a_known_site_is_flagged_only_as_added_by_the_analyst(tmp_path):
+    assert fetch(Getter(reply(article())), root=tmp_path).flags == [src.ADDED_BY_ANALYST]
 
 
 def test_fetched_and_pasted_sources_share_the_off_list_rule(tmp_path):
     for host in ("www.centralbank.go.ke", "blog.example.com"):
         fetched = fetch(Getter(reply(article())), f"https://{host}/a", root=tmp_path)
         pasted = paste(tmp_path, url=f"https://{host}/b")
-        assert fetched.flags == pasted.flags == src.list_flags(host)
+        assert fetched.flags == pasted.flags == src.list_flags(host) + [src.ADDED_BY_ANALYST]
 
 
 @pytest.mark.parametrize("url", ["https://x.com/CBKKenya/status/1", "https://www.facebook.com/page/posts/2",
@@ -164,8 +165,8 @@ def test_social_media_is_refused_even_over_http(url, tmp_path):
 def test_an_http_page_is_fetched_and_flagged_insecure(tmp_path):
     url = "http://blog.example.com/x"
     one = fetch(Getter(reply(article())), url, root=tmp_path)
-    assert one.flags == [src.NOT_ON_LIST, src.INSECURE] and one.url == url
-    assert fetch(Getter(reply(article())), "http://www.centralbank.go.ke/x", root=tmp_path).flags == [src.INSECURE]
+    assert one.flags == [src.NOT_ON_LIST, src.ADDED_BY_ANALYST, src.INSECURE] and one.url == url
+    assert fetch(Getter(reply(article())), "http://www.centralbank.go.ke/x", root=tmp_path).flags == [src.ADDED_BY_ANALYST, src.INSECURE]
 
 
 def test_an_https_page_is_not_flagged_insecure(tmp_path):
@@ -198,7 +199,7 @@ def test_a_redirect_on_the_same_host_is_followed_and_the_final_address_is_kept(t
 def test_a_redirect_that_downgrades_to_http_is_followed_and_flagged_insecure(tmp_path):
     got = Getter(reply(status=302, location="http://www.centralbank.go.ke/press/final"), reply(article()))
     one = fetch(got, root=tmp_path)
-    assert one.url.startswith("http://") and one.flags == [src.INSECURE]
+    assert one.url.startswith("http://") and one.flags == [src.ADDED_BY_ANALYST, src.INSECURE]
 
 
 def test_a_redirect_to_a_private_address_is_refused_by_the_same_host_rule(tmp_path):
@@ -313,8 +314,122 @@ def test_an_error_status_is_a_plain_sentence(status, word, tmp_path):
 
 
 def test_a_network_error_is_a_plain_sentence_with_no_library_text(tmp_path):
-    why = refused(Getter(RuntimeError("secret internals /tmp/x.py line 9")), root=tmp_path)
-    assert "network error or a timeout" in why and "internals" not in why and "RuntimeError" not in why
+    why = refused(Getter(OSError("secret internals /tmp/x.py line 9")), root=tmp_path)
+    assert "(a network error)" in why and "internals" not in why and "OSError" not in why
+
+
+def test_a_timeout_has_its_own_sentence(tmp_path):
+    why = refused(Getter(httpx.ReadTimeout("slow")), root=tmp_path)
+    assert "did not answer in time" in why and "network error" not in why
+
+
+def test_a_429_has_its_own_sentence_and_is_logged_with_its_status(tmp_path, caplog):
+    caplog.set_level("WARNING", logger=src.log.name)
+    why = refused(Getter(reply(status=429)), root=tmp_path)
+    assert "slow down" in why and "HTTP 429" in why
+    assert "refused: HTTP 429" in caplog.text and "www.centralbank.go.ke" in caplog.text
+
+
+def test_an_unexpected_error_is_not_called_a_network_error_and_its_message_is_not_logged(tmp_path, monkeypatch, caplog):
+    caplog.set_level("WARNING", logger=src.log.name)
+
+    def explode(body, content_type=""):
+        raise KeyError("secret internals /tmp/x.py line 9")
+
+    monkeypatch.setattr(src, "read_html", explode)
+    why = refused(Getter(reply(article(), content_type="text/html")), url=OK_URL + "?token=abc123", root=tmp_path)
+    assert why == src.UNREADABLE.format(host="www.centralbank.go.ke")
+    assert "network error" not in why and "Paste its text instead" in why
+    line = next(r.getMessage() for r in caplog.records if "unexpectedly" in r.getMessage())
+    assert "www.centralbank.go.ke" in line and "KeyError" in line and "common/sources.py" in line and "_read_page" in line
+    assert "secret internals" not in caplog.text and "token=abc123" not in caplog.text and "text/html" not in caplog.text
+    assert src.list_all(FRIDAY, tmp_path) == []
+
+
+# --- replies with a missing or odd header ----------------------------------------------------------------------------------
+
+def test_a_reply_with_no_content_type_is_taken_for_a_page_when_its_body_is_html(tmp_path):
+    one = fetch(Getter(reply(article())), root=tmp_path)
+    assert one.chars > 0 and "8.75%" in one.text
+
+
+def test_a_reply_with_no_content_type_and_a_body_that_is_not_html_is_refused(tmp_path):
+    why = refused(Getter(reply(b"\x89PNG\r\n\x1a\n not a page at all")), root=tmp_path)
+    assert "web page or a PDF (no type stated)" in why
+
+
+def test_a_reply_with_no_content_type_and_a_pdf_body_is_read_as_a_pdf(tmp_path, monkeypatch):
+    monkeypatch.setattr(src, "read_pdf", lambda body: (PARAGRAPH * 3, "A PDF title"))
+    assert fetch(Getter(reply(b"%PDF-1.4 not really")), root=tmp_path).title == "A PDF title"
+
+
+def test_a_reply_with_an_empty_body_is_refused_as_empty(tmp_path):
+    assert "no readable text" in refused(Getter(reply(b"", content_type="text/html")), root=tmp_path)
+    assert "no readable text" in refused(Getter(reply(b"")), root=tmp_path)
+
+
+def test_a_reply_with_headers_in_any_casing_is_read(tmp_path):
+    odd = http.Reply(200, {"Content-Type": "text/html; charset=UTF-8", "CONTENT-LENGTH": "9"}, article())
+    assert "8.75%" in fetch(Getter(odd), root=tmp_path).text
+    pdf = http.Reply(200, {"CONTENT-TYPE": "image/png"}, b"x")
+    assert "web page or a PDF (image/png)" in refused(Getter(pdf), root=tmp_path)
+    moved = http.Reply(302, {"LOCATION": "/final"}, b"")
+    assert fetch(Getter(moved, reply(article())), root=tmp_path).url == "https://www.centralbank.go.ke/final"
+
+
+def test_a_reply_with_no_headers_at_all_does_not_raise(tmp_path):
+    assert "8.75%" in fetch(Getter(http.Reply(200, None, article())), root=tmp_path).text
+
+
+def test_a_redirect_with_no_location_is_refused_with_its_own_sentence(tmp_path):
+    for moved in (reply(status=302), reply(status=301, location=""), reply(status=307, location="   ")):
+        why = refused(Getter(moved), root=tmp_path)
+        assert "without saying where to" in why and "network error" not in why
+
+
+def test_a_redirect_to_a_relative_address_is_followed_on_the_same_host(tmp_path):
+    got = Getter(reply(status=301, location="final/page"), reply(status=302, location="../other"), reply(article()))
+    one = fetch(got, root=tmp_path)
+    assert got.asked == [OK_URL, "https://www.centralbank.go.ke/press/final/page", "https://www.centralbank.go.ke/press/other"]
+    assert one.url == "https://www.centralbank.go.ke/press/other"
+
+
+def test_a_status_that_is_neither_a_page_nor_a_redirect_is_refused(tmp_path):
+    for status in (100, 300, 304):
+        assert f"HTTP {status}" in refused(Getter(reply(article(), status=status)), root=tmp_path)
+    assert "no readable text" in refused(Getter(reply(b"", status=204)), root=tmp_path)
+
+
+def test_http_get_once_copes_with_a_reply_that_states_no_content_length(monkeypatch):
+    real = httpx.Client
+
+    def handler(request):
+        return httpx.Response(200, content=iter([b"<html><body>", b"<p>hello</p></body></html>"]),
+                              headers={"Content-Type": "text/html"})
+
+    monkeypatch.setattr(http.httpx, "Client", lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
+    got = http.http_get_once("https://example.org/news", max_bytes=1000)
+    assert "content-length" not in got.headers and got.status == 200 and got.body.endswith(b"</body></html>")
+    with pytest.raises(http.TooLarge):                 # the body's own length still counts without the header
+        http.http_get_once("https://example.org/news", max_bytes=10)
+
+
+def test_http_get_once_still_refuses_a_page_that_states_it_is_too_large(monkeypatch):
+    real = httpx.Client
+    monkeypatch.setattr(http.httpx, "Client", lambda **kw: real(transport=httpx.MockTransport(
+        lambda request: httpx.Response(200, content=b"x" * 50, headers={"Content-Length": "50"})), **kw))
+    with pytest.raises(http.TooLarge):
+        http.http_get_once("https://example.org/news", max_bytes=10)
+
+
+def test_a_saved_source_whose_list_entry_lacks_a_key_is_a_sentence_not_a_key_error(tmp_path):
+    fetch(Getter(reply(article())), root=tmp_path)
+    manifest = tmp_path / "2026-11-06" / "manifest.json"
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    del data["sources"][0]["host"]
+    manifest.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(src.SourceError, match="missing details"):
+        src.list_for("Mortgage lending", FRIDAY, tmp_path)
 
 
 def test_a_refused_fetch_keeps_nothing(tmp_path):
@@ -338,7 +453,7 @@ def paste(root, url="https://www.centralbank.go.ke/press/x", when="2026-11-05", 
 def test_pasted_text_is_kept_exactly_as_given(tmp_path):
     text = "  Line one with  two spaces\r\n\r\n“quoted” – and a non‑breaking space.\n  "
     one = paste(tmp_path, text=text, title="  My   title ")
-    assert one.text == text and one.origin == "pasted" and one.title == "My title" and one.flags == []
+    assert one.text == text and one.origin == "pasted" and one.title == "My title" and one.flags == [src.ADDED_BY_ANALYST]
     assert one.sha256 == src._sha(text.encode()) and one.chars == len(text)
     assert src.get(one.id, tmp_path).text == text           # read back byte for byte, line endings included
     assert not list((tmp_path / "2026-11-06").glob("*.html"))   # no raw file for pasted text
@@ -372,9 +487,9 @@ def test_a_paste_whose_address_is_not_a_web_address_is_refused(url, tmp_path):
 
 def test_a_paste_from_a_host_off_the_list_is_kept_with_a_flag(tmp_path):
     one = paste(tmp_path, url="https://blog.example.com/post")
-    assert one.flags == [src.NOT_ON_LIST] == ["host not on the approved list"]
-    assert src.list_for("Mortgage lending", FRIDAY, tmp_path)[0].flags == [src.NOT_ON_LIST]
-    assert paste(tmp_path, url="http://www.centralbank.go.ke/other").flags == []     # http is allowed for a paste
+    assert one.flags == [src.NOT_ON_LIST, src.ADDED_BY_ANALYST] and src.NOT_ON_LIST == "host not on the approved list"
+    assert src.list_for("Mortgage lending", FRIDAY, tmp_path)[0].flags == [src.NOT_ON_LIST, src.ADDED_BY_ANALYST]
+    assert paste(tmp_path, url="http://www.centralbank.go.ke/other").flags == [src.ADDED_BY_ANALYST]     # http is allowed for a paste
 
 
 def test_a_paste_over_the_limit_is_refused(tmp_path):
@@ -451,8 +566,10 @@ def test_as_result_has_the_search_result_shape_plus_what_the_check_needs(tmp_pat
     r = one.as_result()
     assert r == {"id": one.id, "url": one.url, "title": "T", "text": PARAGRAPH, "publishedDate": "2026-11-05",
                  "sha256": one.sha256, "fetched_at": "2026-11-06T09:00:00+00:00", "host": "www.centralbank.go.ke",
-                 "origin": "pasted", "flags": []}
+                 "origin": "pasted", "flags": [src.ADDED_BY_ANALYST]}
     assert "text" not in one.meta() and one.meta()["id"] == one.id
+    found = paste(tmp_path, url="https://www.knbs.or.ke/cpi", origin="found")   # a page the tool found itself: not "Added by analyst"
+    assert found.as_result()["flags"] == [] and found.as_result()["origin"] == "found"
 
 
 def test_the_default_folder_is_under_the_data_dir_and_the_test_fixture_redirects_it(tmp_path):

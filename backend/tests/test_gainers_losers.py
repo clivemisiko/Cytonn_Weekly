@@ -5,7 +5,7 @@ import pytest
 from openpyxl import Workbook as XlsxWorkbook
 from openpyxl import load_workbook
 
-from cytonn_weekly.checkers.digital_payments import SOURCES_DISAGREE
+from cytonn_weekly.review.figures import SOURCES_DISAGREE
 from cytonn_weekly.equities import weekly as eqw
 from cytonn_weekly.weekly import analyst, equities_workbook, inputs
 from cytonn_weekly.weekly.week import Week

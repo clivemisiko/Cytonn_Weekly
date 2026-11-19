@@ -1,13 +1,16 @@
-from types import SimpleNamespace as NS
+import json
 
 import pytest
 
-from cytonn_weekly.common.review import CLAIM, PIECE_CHECK
-from cytonn_weekly.digital_payments.coordinator_review import FLAGGED, NOT_AUTO_VERIFIED
+from dataclasses import replace
+
+from cytonn_weekly.review.blocks import CLAIM
+from cytonn_weekly.review.model import FLAGGED, NOT_AUTO_VERIFIED
 from cytonn_weekly.focus.review_run import (
-    JUDGEMENT, MAX_SECTION_TITLE, build_focus_review, clean_sections, clean_topic, parse_outline, section_brief,
+    GUIDE_NOTE, MAX_SECTION_TITLE, build_focus_review, clean_sections, clean_topic, parse_outline, section_brief,
 )
-from cytonn_weekly.narrative.anthropic_provider import parse_piece
+from cytonn_weekly.drafting.prompts import narrative_system
+from cytonn_weekly.drafting.replies import piece_from_reply
 from tests.section_helpers import TODAY, FakeNarrativeProvider, focus_review, previous_issue
 
 TYPED = "Overview\nSection 3: Yields\nRecommendations and Conclusion"
@@ -21,10 +24,6 @@ def said(item):
     return " ".join(f.message for f in item.detail)
 
 
-def piece_item(review, word):
-    return next(i for i in review.review_items if i.kind == PIECE_CHECK and word in i.ref)
-
-
 def test_topic_is_required_and_bounded():
     assert clean_topic("  SSA   Eurobonds ") == "SSA Eurobonds"
     with pytest.raises(ValueError, match="needs a topic"):
@@ -36,8 +35,8 @@ def test_topic_is_required_and_bounded():
 def test_typed_titles_are_used_as_typed_numbered_in_code_and_prefix_stripped():
     review = focus_review(sections=TYPED)
     assert review.section["outline"] == {"titles": ["Overview", "Yields", "Recommendations and Conclusion"], "source": "typed"}
-    assert [b["group_heading"] for b in blocks(review) if "group_heading" in b] == [
-        "Section I: Overview", "Section II: Yields", "Section III: Recommendations and Conclusion"]
+    assert [b["group_heading"] for b in blocks(review) if "group_heading" in b] == ["Section I: Overview", "Section II: Yields"]
+    assert blocks(review, "contents")[0]["body_md"].split("\n\n")[-1] == "Section III: Recommendations and Conclusion"
 
 
 def test_titles_beyond_the_limits_are_refused_with_a_sentence():
@@ -78,91 +77,115 @@ def test_parse_outline_strips_bullets_and_numbering():
         "Overview", "Yields", "Risks", "Recommendations and Conclusion"]
 
 
-def test_block_order_and_contents_equal_the_headings():
+def test_block_order_and_contents_list_every_title():
     review = focus_review(sections=TYPED)
-    assert [b.get("role") for b in blocks(review)] == ["lead", "contents", "section", "section", "conclusion", "disclaimer"]
-    contents = blocks(review, "contents")[0]["body_md"].split("\n\n")
-    assert contents == [b["group_heading"] for b in blocks(review) if "group_heading" in b]
+    assert [b.get("role") for b in blocks(review)] == ["contents", "findings", "findings", "disclaimer"]
+    assert blocks(review, "contents")[0]["body_md"].split("\n\n") == [
+        "Section I: Overview", "Section II: Yields", "Section III: Recommendations and Conclusion"]
 
 
-def test_each_section_is_its_own_cited_piece_and_the_conclusion_is_written_without_a_search():
+def test_each_section_is_findings_only_and_the_tool_writes_no_lead_or_conclusion():
     provider = FakeNarrativeProvider()
     review = focus_review(provider, sections=TYPED)
-    assert provider.calls == ["focus_section_1", "focus_section_2"]
-    assert [c[2] for c in provider.completions] == [2000, 600]
-    assert "Section I: Overview" in provider.completions[0][1] and "grew" in provider.completions[0][1]
-    assert review.section["model_calls"] == 4 and review.section["api_requests"] == 4
-    assert review.section["pieces_expected"] == 4 and review.section["pieces_found"] == 4
+    assert provider.calls == ["focus_section_1", "focus_section_2"] and provider.completions == []
+    assert review.section["model_calls"] == 2 and review.section["api_requests"] == 2
+    assert review.section["pieces_expected"] == 2 and review.section["pieces_found"] == 2
+    findings = blocks(review, "findings")
+    assert all(b["body"] == "" and b["body_md"] == "" and b["links"] == [] and len(b["claims"]) == 2 for b in findings)
+    assert not blocks(review, "lead") and not blocks(review, "conclusion")
     claims = [i for i in review.review_items if i.kind == CLAIM]
     assert len(claims) == 4 and all(i.status == NOT_AUTO_VERIFIED for i in claims)
 
 
-def test_section_briefs_carry_the_caps_and_the_title_list():
+def test_a_finding_whose_figure_is_not_in_its_quote_is_reported_but_never_flagged():
+    review = focus_review(FakeNarrativeProvider(bad_figure=True), sections=TYPED)
+    bad = [i for i in review.review_items if i.kind == CLAIM and "99.9" in i.ref]
+    assert bad and all(i.status == NOT_AUTO_VERIFIED and isinstance(i.detail, str) and "99.9" in i.detail for i in bad)
+
+
+def test_a_findings_focus_has_nothing_flagged_so_approving_needs_no_acknowledgement():
+    review = focus_review(FakeNarrativeProvider(bad_figure=True, no_story={"focus_section_2"}), sections=TYPED,
+                          previous=lambda _day: (_ for _ in ()).throw(OSError("site down")))   # a missing section and an unreadable disclaimer too
+    assert review.flagged_count == 0 and review.is_approvable
+    review.decide("approved")
+    assert review.decision == "approved"
+
+
+def test_a_finding_can_be_removed_but_not_edited():
+    from api.serialize import serialize_review
+
+    shown = serialize_review(focus_review(FakeNarrativeProvider(bad_figure=True), sections=TYPED))["review_items"]
+    claims = [i for i in shown if i["kind"] == "claim"]
+    assert claims and not any(i["edit_sentence"] for i in claims) and all(i["remove_finding"] for i in claims)
+
+
+def test_the_outline_is_still_one_model_call_and_counts_in_the_calls():
+    provider = FakeNarrativeProvider()
+    review = focus_review(provider)
+    assert [c[2] for c in provider.completions] == [300] and review.section["model_calls"] == 4
+
+
+def test_section_briefs_ask_for_findings_with_the_caps_and_the_title_list():
     provider = FakeNarrativeProvider()
     seen = []
     draft = provider.draft_piece
     provider.draft_piece = lambda brief, **kw: (seen.append(brief), draft(brief, **kw))[1]
     focus_review(provider, sections=TYPED)
-    assert all(b.max_searches == 5 and b.max_tokens == 2000 and b.words == (350, 650) and not b.headed for b in seen)
+    assert all(b.max_searches == 5 and b.max_tokens == 3000 and b.findings and not b.headed for b in seen)
     assert "Section III: Recommendations and Conclusion" in seen[0].context
+    system = narrative_system(seen[0])
+    assert "write no prose" in system and "words" not in system
 
 
 def test_titles_with_no_closing_part_are_all_drafted_with_a_search():
     provider = FakeNarrativeProvider()
     review = focus_review(provider, sections="Overview\nYields")
     assert provider.calls == ["focus_section_1", "focus_section_2"]
-    assert [b.get("role") for b in blocks(review)] == ["lead", "contents", "section", "section", "disclaimer"]
+    assert [b.get("role") for b in blocks(review)] == ["contents", "findings", "findings", "disclaimer"]
 
 
-def test_the_conclusion_is_always_flagged_for_the_analyst():
-    item = piece_item(focus_review(sections=TYPED), "Conclusion")
-    assert item.status == FLAGGED and JUDGEMENT in said(item)
-
-
-def test_a_capitalised_rating_is_flagged_and_a_lowercase_word_is_not():
-    provider = FakeNarrativeProvider()
-    provider.replies["closing part"] = "We rate the outlook NEUTRAL for the next quarter."
-    review = focus_review(provider, sections=TYPED)
-    assert "NEUTRAL" in said(piece_item(review, "Conclusion"))
-    provider.replies["closing part"] = "The outlook is neutral for the next quarter."
-    assert "NEUTRAL" not in said(piece_item(focus_review(provider, sections=TYPED), "Conclusion"))
-
-
-def test_a_lead_figure_that_no_section_holds_is_flagged_and_a_known_one_is_not():
-    provider = FakeNarrativeProvider()
-    provider.replies["opening paragraph"] = "The report covers yields of 8.75% and a surprise 42.5% rise."
-    lead = piece_item(focus_review(provider, sections=TYPED), "Lead")
-    assert lead.status == FLAGGED and "42.5" in said(lead) and "8.75" not in said(lead)
-    provider.replies["opening paragraph"] = "The report covers yields of 8.75%."
-    assert piece_item(focus_review(provider, sections=TYPED), "Lead").status == NOT_AUTO_VERIFIED
-
-
-def test_a_heading_the_model_adds_is_dropped_with_a_warning_and_never_cuts_the_piece():
+def test_a_findings_reply_keeps_the_claims_and_drops_any_paragraph():
     brief = section_brief("T", ["A", "B"], 0)
-    content = [NS(type="text", text="### x\nFirst paragraph here.\n\n# y\nSecond paragraph here.", citations=None)]
-    piece = parse_piece(content, brief)
-    assert piece["body"].count("paragraph") == 2 and "x" not in piece["body"].split()
-    assert piece["headline"] == "A" and any("removed 2 heading line(s)" in w for w in piece["warnings"])
+    url = "https://example.org/a"
+    reply = json.dumps({"is_genuine_announcement": True, "headline": "ignored", "paragraph": "Prose the model wrote anyway.",
+                        "claims": [{"claim": "Yields rose 1.2%.", "url": url}, {"claim": "unseen", "url": "https://x.org/z"}]})
+    warnings = []
+    piece = piece_from_reply(reply, brief, "web", [{"url": url, "title": "A"}], warnings, who="model", label="L", drafted_by="test")
+    assert piece.paragraph == "" and piece.paragraph_md == "" and piece.headline == "A" and piece.links == []
+    assert [c["text"] for c in piece.claims] == ["Yields rose 1.2%."]
+    none = json.dumps({"is_genuine_announcement": True, "paragraph": "Only prose.", "claims": []})
+    assert piece_from_reply(none, brief, "web", [], warnings, who="model", label="L", drafted_by="test") is None
+    assert any("returned no findings" in w for w in warnings)
+
+
+def test_a_heading_the_model_adds_to_a_prose_section_is_dropped_with_a_warning_and_never_cuts_the_piece():
+    brief = replace(section_brief("T", ["A", "B"], 0), findings=False, words=(1, 100))
+    reply = json.dumps({"is_genuine_announcement": True, "headline": "ignored", "claims": [],
+                        "paragraph": "### x\nFirst paragraph here.\n\n# y\nSecond paragraph here."})
+    warnings = []
+    piece = piece_from_reply(reply, brief, "web", [], warnings, who="model", label="L", drafted_by="test")
+    assert piece.paragraph.count("paragraph") == 2 and "x" not in piece.paragraph.split()
+    assert piece.headline == "A" and any("removed heading line(s)" in w for w in warnings)
 
 
 def test_nothing_found_raises_instead_of_saving_an_empty_review():
-    with pytest.raises(LookupError, match="no sourced material"):
+    with pytest.raises(LookupError, match=r"^No section produced a sourced draft, so nothing was saved\. 2 of 2 sections: "):
         build_focus_review("Obscure", provider=FakeNarrativeProvider(no_story={"focus_section_1", "focus_section_2"}),
                            today=TODAY, sections=TYPED, previous_issue=previous_issue())
 
 
 def test_a_section_with_nothing_found_is_an_unavailable_part_the_rest_still_drafts():
     review = focus_review(FakeNarrativeProvider(no_story={"focus_section_2"}), sections=TYPED)
-    section = blocks(review)[3]
+    section = blocks(review)[2]
     assert section["kind"] == "unavailable" and section["group_heading"] == "Section II: Yields"
-    assert review.section["pieces_found"] == 3 and review.section["shortfall"] == 1
+    assert review.section["pieces_found"] == 1 and review.section["shortfall"] == 1
 
 
-def test_disclaimer_is_carried_verbatim_and_flagged():
+def test_disclaimer_is_carried_verbatim_and_shown_but_needs_no_acknowledgement():
     review = focus_review(sections=TYPED)
     block = blocks(review, "disclaimer")[0]
     assert block["kind"] == "carried" and block["body_md"] == "Disclaimer: Past performance is not a guide."
-    assert any(i.status == FLAGGED and "carried forward" in said(i) for i in review.review_items)
+    assert not any("carried" in i.ref for i in review.review_items) and review.flagged_count == 0
 
 
 def test_disclaimer_unavailable_when_the_previous_issue_cannot_be_read_or_has_none():
@@ -175,6 +198,6 @@ def test_disclaimer_unavailable_when_the_previous_issue_cannot_be_read_or_has_no
     assert "no paragraph starting" in blocks(none, "disclaimer")[0]["reason"]
 
 
-def test_every_section_carries_the_analyst_note():
+def test_every_findings_section_says_it_is_research_notes_not_report_text():
     notes = [b["analyst_note"] for b in blocks(focus_review(sections=TYPED)) if b.get("analyst_note")]
-    assert notes == ["Analyst to add: Cytonn's own tables and charts for this section"] * 3
+    assert notes == [GUIDE_NOTE] * 2 and "not report text" in GUIDE_NOTE and "not exported" in GUIDE_NOTE

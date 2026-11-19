@@ -33,7 +33,7 @@ from cytonn_weekly.common import atomic
 from cytonn_weekly.digital_payments import workbook as dp_workbook
 from cytonn_weekly.weekly import cbk_bulletin, equities_workbook, fi_workbook, kcb, nse_yield_curve
 from cytonn_weekly.weekly.week import Week, day_text
-from cytonn_weekly.weekly.workbook import Workbook, WorkbookError
+from cytonn_weekly.weekly.workbook import Workbook, WorkbookError, read_title_date
 
 MAX_BYTES = 30 * 1024 * 1024
 PDF_MAGIC = b"%PDF"
@@ -64,26 +64,27 @@ class Slot:
     per_day: bool        # one file per trading day
     fetchable: bool      # the tool can fetch it itself
     help: str
+    sections: tuple[str, ...] = ()   # the weekly sections whose draft reads it (a test records the reads and checks this)
 
 
 SLOTS: tuple[Slot, ...] = (
     Slot(EQUITIES_WORKBOOK, "Equities workbook", "xlsx", False, False, False,
          "The equities team's workbook, updated for the Friday (index levels, turnover, foreign flows, "
-         "market P/E, Universe of Coverage)."),
+         "market P/E, Universe of Coverage).", sections=("equities",)),
     Slot(FI_WORKBOOK, "Fixed income workbook", "xlsx", False, False, False,
          "The fixed income mastersheet, updated for the week's auction (T-bills, money market funds, Eurobonds, "
-         "government borrowing)."),
+         "government borrowing).", sections=("fixed_income",)),
     Slot(KCB_DAILY, "KCB IB daily trading reports", "pdf", False, True, False,
-         "One per trading day, Monday to Friday. Each is filed under the date printed in it."),
+         "One per trading day, Monday to Friday. Each is filed under the date printed in it.", sections=("equities",)),
     Slot(KCB_WEEKLY, "KCB IB weekly trading report", "pdf", False, False, False,
-         "The Friday's weekly report: week-on-week moves and the daily foreign flows."),
+         "The Friday's weekly report: week-on-week moves and the daily foreign flows.", sections=("equities",)),
     Slot(CBK_BULLETIN, "CBK Weekly Bulletin", "pdf", False, False, True,
-         "The Friday's bulletin. It can be fetched from centralbank.go.ke, or uploaded."),
+         "The Friday's bulletin. It can be fetched from centralbank.go.ke, or uploaded.", sections=("fixed_income", "equities")),
     Slot(NSE_YIELD_CURVE, "NSE yield curve", "pdf", True, False, False,
-         "Optional. Shown beside the T-bond bidding range as context only."),
+         "Optional. Shown beside the T-bond bidding range as context only.", sections=("fixed_income",)),
     Slot(DP_WORKBOOK, "Digital Payments workbook", "xlsx", True, False, False,
          "Optional. Its P/Es are checked by company name and its Year Open against the first trading day's close; "
-         "differences show as warnings on the Digital Payments review."),
+         "differences show as warnings on the Digital Payments review.", sections=("digital_payments",)),
 )
 BY_SLUG = {s.slug: s for s in SLOTS}
 
@@ -153,12 +154,8 @@ def fi_workbook_date(book: Workbook) -> Optional[date]:
     """The date the workbook's money market fund table is "as published on"."""
     sheet = book.sheet(fi_workbook.MMF_SHEET)
     for c in sheet.find_all(lambda s: s.startswith("money market fund yield for fund managers as published on")):
-        m = fi_workbook._PUBLISHED.search(" ".join(str(c.value).split()).lower())
-        if m:
-            try:
-                return datetime.strptime(f"{m.group(1)} {m.group(2)} {m.group(3)}", "%d %B %Y").date()
-            except ValueError:
-                return None
+        if day := read_title_date(c.value):
+            return day
     return None
 
 
@@ -194,12 +191,12 @@ def identify(slot: Slot, data: bytes, week: Week) -> dict[str, Any]:
                                      "report belongs to.")
                 return _found(report.report_date, True, f"kcb_daily_{report.report_date.isoformat()}.pdf",
                               "; ".join(report.problems))
-            return _found(report.report_date, report.report_date in week.report_dates, "kcb_weekly.pdf",
-                          "; ".join(report.problems))
+            return {**_found(report.report_date, report.report_date in week.report_dates, "kcb_weekly.pdf", "; ".join(report.problems)),
+                    "parsed": report}
         if slot.slug == CBK_BULLETIN:
             bulletin = cbk_bulletin.parse_bulletin(data)
-            return _found(bulletin.issue_date, bulletin.issue_date in week.report_dates, "cbk_bulletin.pdf",
-                          "; ".join(bulletin.problems), bulletin.notices)
+            return {**_found(bulletin.issue_date, bulletin.issue_date in week.report_dates, "cbk_bulletin.pdf",
+                             "; ".join(bulletin.problems), bulletin.notices), "parsed": bulletin}
         if slot.slug == NSE_YIELD_CURVE:
             curve = nse_yield_curve.parse_yield_curve(data)
             return _found(curve.curve_date, week.monday <= curve.curve_date <= week.ending, "nse_yield_curve.pdf", "")
@@ -228,7 +225,7 @@ _SAFE_NAME = re.compile(r"[^A-Za-z0-9 ._()'&,-]")
 
 
 def store(week: Week, slug: str, data: bytes, filename: str = "", root: Optional[Path] = None,
-          fetched_from: Optional[str] = None) -> dict[str, Any]:
+          fetched_from: Optional[str] = None, db_path: Optional[Path] = None, record: bool = True) -> dict[str, Any]:
     """Check and keep one upload; returns its manifest entry.  InputError (nothing stored) if it is refused."""
     slot = BY_SLUG.get(slug)
     if slot is None:
@@ -246,6 +243,10 @@ def store(week: Week, slug: str, data: bytes, filename: str = "", root: Optional
         manifest = read_manifest(week, root)
         manifest[found["stored_name"]] = entry
         _write_manifest(week, root, manifest)
+    if record and found.get("parsed") is not None:
+        from cytonn_weekly.history import weekly as history   # imported here: history imports the analyst form, which imports this module
+
+        history.record_upload(week, slug, found["parsed"], entry, db_path)   # published figures, once per series and date; never raises
     return entry
 
 
@@ -313,7 +314,7 @@ def status(week: Week, root: Optional[Path] = None) -> dict[str, Any]:
     for slot in SLOTS:
         files = sorted((e for e in present.values() if e.get("slot") == slot.slug), key=lambda e: e["stored_name"])
         view: dict[str, Any] = {"slug": slot.slug, "title": slot.title, "kind": slot.kind, "optional": slot.optional,
-                                "per_day": slot.per_day, "fetchable": slot.fetchable, "help": slot.help}
+                                "per_day": slot.per_day, "fetchable": slot.fetchable, "help": slot.help, "sections": list(slot.sections)}
         if slot.per_day:
             by_day = {e["read_date"]: e for e in files}
             view["days"] = [{"date": d.isoformat(), "weekday": d.strftime("%A"), "received": d.isoformat() in by_day,
@@ -371,6 +372,10 @@ class WeeklyInputs:
     @property
     def fi_book(self) -> Optional[Workbook]:
         return self._parsed("fi", "fi_workbook.xlsx", lambda b: fi_workbook.open_fi_workbook(b))
+
+    def hidden_sheet_lines(self) -> list[str]:
+        """A warning for each hidden sheet a draft read a value from, in the equities and fixed income workbooks it has opened."""
+        return [line for key in ("eq", "fi") if (book := self._cache.get(key)) is not None for line in book.hidden_lines()]
 
     @property
     def dp_book(self) -> Optional[Workbook]:

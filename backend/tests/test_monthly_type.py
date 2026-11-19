@@ -7,7 +7,7 @@ from api.main import create_app
 from cytonn_weekly import db as db_module
 from cytonn_weekly import report_sections as rs
 from cytonn_weekly import report_types as rt
-from cytonn_weekly.digital_payments import review_store
+from cytonn_weekly.review import store as review_store
 from cytonn_weekly.report_types import (
     MONTHLY,
     PeriodError,
@@ -155,7 +155,7 @@ def test_an_approved_monthly_review_is_not_a_previous_weekly_report(client, db):
     review.report_type, review.period = "monthly", "Oct'2026"
     for item in review.review_items:
         item.resolve("accept")
-    review.decide("approved")
+    review.decide("approved", review.flagged_count)
     review_store.save_review(review, db_path=db)
     body = client.get("/api/previous/weekly").json()
     assert body["weeks"] == [] and "Oct'2026" not in str(body)

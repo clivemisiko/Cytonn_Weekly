@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { PhArrowRight, PhCheckCircle, PhFileDoc, PhFiles } from "@phosphor-icons/vue";
+import { PhArrowRight, PhListBullets } from "@phosphor-icons/vue";
 import { cn } from "cn";
 import { computed, onMounted, ref } from "vue";
 import { RouterLink } from "vue-router";
-import Notice from "@/components/review/Notice.vue";
+import CytonnMark from "@/components/brand/CytonnMark.vue";
 import Button from "@/components/ui/Button.vue";
 import { buttonVariants } from "@/components/ui/button";
 import { BACK_NONE, useBack } from "@/lib/nav";
@@ -29,76 +29,59 @@ const rise = (order: number) => ({ animationDelay: `${order * 60}ms` });
 </script>
 
 <template>
-  <main id="main" tabindex="-1" class="px-4 pt-10 pb-20 sm:px-6 sm:pt-16">
-    <!-- One card on the page, as every screen's content is a white card on the pale ground: the title block, the welcome, the
-         status, the two ways in and the notice that nothing here is protected. -->
-    <div class="mx-auto w-full max-w-xl space-y-6 rounded-xl border border-border bg-card p-6 shadow-sm sm:p-9 sm:space-y-7">
-      <div class="rise-slow" :style="rise(0)">
-        <p class="eyebrow flex items-center gap-2">
-          <span aria-hidden="true" class="brand-dot size-2 rounded-full bg-primary" />
-          Cytonn Weekly
-        </p>
-        <h1 class="mt-2 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">Report generator</h1>
+  <main id="main" tabindex="-1" class="cw-skin min-h-[calc(100dvh-var(--topbar-h))] bg-cw-page px-4 pt-6 pb-6 sm:px-6">
+    <!-- The wordmark (with the page's h1), then the centred welcome, what it does, the two ways in and the notice. -->
+    <div class="mx-auto flex w-full max-w-4xl flex-col items-center gap-6 text-center">
+      <div class="rise-slow flex items-center gap-2 self-start text-left text-cw-brand" :style="rise(0)">
+        <CytonnMark :size="44" />
+        <div class="leading-none">
+          <p class="text-2xl font-bold tracking-tight">Cytonn Weekly</p>
+          <h1 class="mt-1 text-xs italic">Report generator</h1>
+        </div>
       </div>
 
-      <div class="rise-slow border-t pt-6" :style="rise(1)">
-        <h2 class="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">{{ hello }}Welcome to Cytonn Weekly.</h2>
-      </div>
-
-      <div class="rise-slow" :style="rise(2)">
-        <p class="max-w-[60ch] text-base leading-relaxed text-muted-foreground">
+      <div class="rise-slow flex flex-col items-center gap-4 pt-6" :style="rise(1)">
+        <CytonnMark :size="96" />
+        <h2 class="text-2xl font-normal tracking-tight text-cw-accent">{{ hello }}Welcome to Cytonn Weekly.</h2>
+        <p class="max-w-[40rem] text-lg text-muted-foreground">
           Your drafting assistant for the weekly report. It gathers the figures, drafts each section, and checks every figure
           against its source before a person approves anything.
         </p>
-        <!-- Feature highlights capsule grid -->
-        <div class="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-3" aria-hidden="true">
-          <div class="flex items-center gap-2 rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-xs font-medium text-foreground">
-            <PhFiles class="size-4 shrink-0 text-muted-foreground" />
-            <span>5 Report sections</span>
-          </div>
-          <div class="flex items-center gap-2 rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-xs font-medium text-foreground">
-            <PhCheckCircle class="size-4 shrink-0 text-ok-fg" />
-            <span>Figures checked against the source</span>
-          </div>
-          <div class="flex items-center gap-2 rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-xs font-medium text-foreground">
-            <PhFileDoc class="size-4 shrink-0 text-muted-foreground" />
-            <span>Word .docx export</span>
-          </div>
+      </div>
+
+      <section class="rise-slow flex flex-col items-center gap-4" :style="rise(2)" aria-labelledby="landing-does">
+        <h3 id="landing-does" class="flex items-center gap-3 text-sm font-bold text-foreground">
+          <PhListBullets class="size-6" aria-hidden="true" />
+          What it does
+        </h3>
+        <ul class="flex flex-wrap justify-center gap-4">
+          <!-- Five: SECTIONS in backend/src/cytonn_weekly/report_sections.py (Company Updates is written by the CT team, not drafted). -->
+          <li class="flex min-h-16 items-center rounded-sm bg-cw-chip px-3 py-2 text-left text-sm text-foreground">5 weekly report sections</li>
+          <li class="flex min-h-16 items-center rounded-sm bg-cw-chip px-3 py-2 text-left text-sm text-foreground">Figures checked against the source</li>
+          <li class="flex min-h-16 items-center rounded-sm bg-cw-chip px-3 py-2 text-left text-sm text-foreground">Word .docx export</li>
+        </ul>
+      </section>
+
+      <div class="rise-slow flex flex-wrap items-start justify-center gap-4" :style="rise(3)">
+        <div class="flex flex-col items-center gap-1.5">
+          <Button size="lg" class="h-13 rounded-full px-7" :disabled="!SSO_ENABLED" :aria-describedby="SSO_ENABLED ? undefined : 'sso-state'">
+            Sign in with Cytonn SSO
+          </Button>
+          <p v-if="!SSO_ENABLED" id="sso-state" class="text-xs text-muted-foreground">Not connected yet.</p>
         </div>
-      </div>
-
-      <div class="rise-slow" :style="rise(3)">
-        <div class="flex items-center gap-3 rounded-lg border border-border/70 bg-muted/30 px-3.5 py-2.5">
-          <span class="ready-dot" aria-hidden="true" />
-          <p role="status" class="text-sm font-medium text-foreground">
-            Ready to draft. Choose a report below to begin.
-          </p>
-        </div>
-      </div>
-
-      <div class="rise-slow space-y-2 border-t pt-6" :style="rise(4)">
-        <Button size="lg" class="w-full sm:w-auto" :disabled="!SSO_ENABLED" :aria-describedby="SSO_ENABLED ? undefined : 'sso-state'">
-          Sign in with Cytonn SSO
-        </Button>
-        <p v-if="!SSO_ENABLED" id="sso-state" class="text-xs text-muted-foreground">Not connected yet.</p>
-      </div>
-
-      <div class="rise-slow" :style="rise(5)">
         <RouterLink
-          to="/overview"
+          to="/chat"
           data-slot="button"
-          :class="cn(buttonVariants({ size: 'lg', variant: 'outline' }), 'w-full gap-2 font-medium hover:border-foreground/30 sm:w-auto')"
+          :class="cn(buttonVariants({ size: 'lg' }), 'h-13 gap-2.5 rounded-full bg-cw-button px-7 font-semibold text-cw-button-fg hover:bg-cw-button hover:opacity-90')"
         >
           <span>Continue without signing in</span>
-          <PhArrowRight class="size-4" aria-hidden="true" />
+          <PhArrowRight class="size-4" weight="bold" aria-hidden="true" />
         </RouterLink>
       </div>
 
-      <div class="rise-slow" :style="rise(6)">
-        <Notice tone="info">
-          This tool has no sign-in and should only be used by the team. All generated drafts are preliminary and require human analyst review.
-        </Notice>
-      </div>
+      <p class="rise-slow mt-6 max-w-[47.5rem] rounded-3xl bg-cw-bubble px-5 py-3 text-xs text-foreground" :style="rise(4)">
+        This tool has no sign-in and should only be used by the team. All generated drafts are preliminary and require human analyst review.
+      </p>
     </div>
   </main>
 </template>

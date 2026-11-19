@@ -11,7 +11,7 @@ import Button from "@/components/ui/Button.vue";
 import { LINK, buttonVariants } from "@/components/ui/button";
 import * as api from "@/lib/api";
 import { queueText, useLiveElapsed } from "@/lib/drafting";
-import { STATUS_ORDER, elapsed, friendlyTime, reportName } from "@/lib/format";
+import { STATUS_ORDER, clockTime, elapsed, friendlyTime, reportName } from "@/lib/format";
 import { type BackTarget, useBack } from "@/lib/nav";
 import { isTerminal, mergeEvents, overviewHref, stepLines } from "@/lib/run";
 import { shell, useShellRibbon } from "@/lib/shell";
@@ -152,7 +152,18 @@ const seconds = useLiveElapsed(running);
 const stopped = computed(() => running.value?.stale === true && !final.value);
 
 const lines = computed(() => stepLines(events.value));
+const atOf = (seq: number) => {
+  const e = events.value.find((x) => x.seq === seq);
+  return e ? clockTime(e.at) : "";
+};
 const last = computed(() => events.value[events.value.length - 1]);
+const stepTally = computed(() =>
+  (["done", "working", "skipped", "failed"] as const)
+    .map((m) => [lines.value.filter((l) => l.mark === m).length, MARK_WORD[m].toLowerCase()] as const)
+    .filter(([n]) => n > 0)
+    .map(([n, w]) => `${n} ${w}`)
+    .join(", "),
+);
 const final = computed(() => events.value.find(isTerminal));
 
 // The rail's sections and states, read for this run's report once the run is known, and again when it ends (the draft it
@@ -214,10 +225,22 @@ const status = computed(() => {
       </div>
 
       <div v-else class="space-y-6">
-        <p role="status" class="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
-          <span class="font-semibold">{{ status }}</span>
-          <span v-if="!final && feed === 'poll'" class="text-muted-foreground">Live updates are off; checking every 2 seconds.</span>
-        </p>
+        <!-- The state at a glance: a word in a shaped badge (never colour alone), the status line, the live clock. -->
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border bg-card px-4 py-2.5">
+          <span
+            class="inline-flex items-center gap-1.5 rounded-sm border px-2 py-0.5 text-xs font-bold tracking-wide uppercase"
+            :class="failed ? 'state-flagged border-flag/40 bg-flag/10 text-flag-fg' : final ? 'state-clean border-ok/40 bg-ok/10 text-ok-fg' : stopped ? 'border-warn/40 bg-warn/10 text-warn-fg' : 'border-input text-foreground'"
+            aria-hidden="true"
+          >
+            <PhCircleNotch v-if="!final && !queued && !still && !stopped && last" weight="bold" class="size-3 animate-spin" />
+            {{ failed ? "Stopped" : final ? "Finished" : queued ? "Queued" : stopped ? "Stalled" : last ? "Running" : "Waiting" }}
+          </span>
+          <p role="status" class="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
+            <span class="font-semibold">{{ status }}</span>
+            <span v-if="!final && feed === 'poll'" class="text-muted-foreground">Live updates are off; checking every 2 seconds.</span>
+          </p>
+          <span v-if="lines.length" class="text-xs text-muted-foreground">{{ stepTally }}</span>
+        </div>
         <div v-if="queued" class="space-y-2">
           <p class="text-sm text-muted-foreground">All drafting seats are taken. This draft starts by itself when one is free; you can leave this page.</p>
           <Button variant="outline" :disabled="cancelling" @click="cancel">Cancel this draft</Button>
@@ -234,10 +257,22 @@ const status = computed(() => {
         </Notice>
 
         <section aria-labelledby="steps-title">
-          <h2 id="steps-title" class="eyebrow pb-2">Steps</h2>
-          <!-- Empty until the first event arrives: no placeholder moves while nothing has happened. -->
-          <ol role="log" aria-label="Steps of this draft" class="rounded-xl border border-border bg-card shadow-xs overflow-hidden" :class="lines.length === 0 && 'hidden'">
-            <li v-for="line in lines" :key="line.key" class="flex items-start gap-3 border-b border-border/60 px-4 py-3 last:border-b-0" :class="!reduced && 'rise-in'">
+          <h2 id="steps-title" class="panel-title pb-2">Steps</h2>
+          <!-- Empty until the first event arrives: no placeholder moves while nothing has happened. Each line's time is
+               when the event that opened it was reported. -->
+          <ol role="log" aria-label="Steps of this draft" class="overflow-hidden rounded-lg border bg-card" :class="lines.length === 0 && 'hidden'">
+            <li
+              v-for="line in lines"
+              :key="line.key"
+              class="flex items-start gap-3 border-b border-border/60 px-4 py-2 last:border-b-0"
+              :class="[!reduced && 'rise-in', line.active && 'bg-muted/50', line.mark === 'failed' && 'bg-flag/6']"
+            >
+              <!-- Drawn from an attribute, so the line's own text (what assistive tech and the tests read) stays the step. -->
+              <span
+                class="w-[4.5rem] shrink-0 pt-px font-mono text-xs text-muted-foreground tabular-nums before:content-[attr(data-at)]"
+                :data-at="atOf(line.key)"
+                aria-hidden="true"
+              />
               <span v-if="line.mark === 'failed'" class="state-flagged" aria-hidden="true"><span class="glyph">!</span></span>
               <span v-else-if="line.mark === 'skipped'" :class="[BOX, 'border border-dashed border-input text-muted-foreground']" aria-hidden="true">
                 <PhMinus weight="bold" class="size-3" />
@@ -261,7 +296,7 @@ const status = computed(() => {
         <section
           v-if="final?.kind === 'run_finished'"
           aria-labelledby="result-title"
-          class="space-y-4 rounded-xl border border-border border-t-[3px] border-t-primary bg-card p-6 shadow-sm"
+          class="space-y-4 rounded-lg border border-t-[3px] border-t-primary bg-card p-5"
           :class="!reduced && 'rise-in'"
         >
           <h2 id="result-title" class="text-lg font-semibold tracking-tight text-foreground">Draft ready for review</h2>
@@ -308,8 +343,13 @@ const status = computed(() => {
             <dt class="eyebrow">{{ failed ? "Stopped" : "Finished" }}</dt>
             <dd class="font-medium">{{ friendlyTime(final.at) }}</dd>
           </div>
+          <!-- Counted from the step lines above, which are the run's own events. -->
+          <div v-if="lines.length">
+            <dt class="eyebrow">Steps</dt>
+            <dd class="font-medium">{{ stepTally }}</dd>
+          </div>
         </dl>
-        <div v-else class="space-y-3.5 text-sm animate-pulse" aria-busy="true" aria-label="Loading draft details">
+        <dl v-else class="space-y-3.5 text-sm animate-pulse" aria-busy="true" aria-label="Loading draft details">
           <div>
             <dt class="eyebrow">Section</dt>
             <dd class="mt-1 h-4 w-32 rounded bg-border/60" />
@@ -322,7 +362,7 @@ const status = computed(() => {
             <dt class="eyebrow">Started</dt>
             <dd class="mt-1 h-4 w-24 rounded bg-border/40" />
           </div>
-        </div>
+        </dl>
       </template>
     </PageGrid>
   </main>

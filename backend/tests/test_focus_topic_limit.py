@@ -13,6 +13,7 @@ from cytonn_weekly.focus import review_run as focus_run
 from cytonn_weekly.focus.review_run import MAX_TOPIC_CHARS, clean_topic
 from tests import section_helpers as sh
 
+SECTIONS = "Overview\nRisks"   # Focus under Bedrock needs typed section titles; these tests are about the topic
 WORDS_300 = ("  Kenya's   public debt \n and the Eurobond buyback  " * 12)[:300]   # untidy whitespace, 300 characters
 
 
@@ -37,7 +38,7 @@ def client(tmp_path, monkeypatch, seen):
 
 
 def draft(client, topic):
-    return client.post("/api/sections/focus/draft", json={"topic": topic})
+    return client.post("/api/sections/focus/draft", json={"topic": topic, "sections": SECTIONS})
 
 
 def test_the_limit_is_500():
@@ -68,7 +69,7 @@ def test_501_characters_is_refused_by_both_in_the_same_words(client, seen):
     assert str(exc.value) == "the topic is 501 characters; the limit is 500"
     r = draft(client, topic)
     assert r.status_code == 422 and r.json()["detail"] == str(exc.value)
-    run = client.post("/api/runs", json={"section": "focus", "topic": topic})
+    run = client.post("/api/runs", json={"section": "focus", "topic": topic, "sections": SECTIONS})
     assert run.status_code == 422 and run.json()["detail"] == str(exc.value)
     assert seen == []                            # refused before any draft was started
     assert client.get("/api/sections").json()["drafting"] is None
@@ -101,7 +102,7 @@ def test_blank_and_missing_topics_are_refused_as_before(client, seen):
 def test_the_run_route_hands_the_builder_the_same_cleaned_topic(client, seen):
     import time
 
-    run_id = client.post("/api/runs", json={"section": "focus", "topic": WORDS_300}).json()["run_id"]
+    run_id = client.post("/api/runs", json={"section": "focus", "topic": WORDS_300, "sections": SECTIONS}).json()["run_id"]
     deadline = time.monotonic() + 20
     while client.get(f"/api/runs/{run_id}").json()["status"] == "running" and time.monotonic() < deadline:
         time.sleep(0.01)

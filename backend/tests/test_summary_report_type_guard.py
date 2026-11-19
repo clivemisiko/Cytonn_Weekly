@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from cytonn_weekly.digital_payments import delivery as dl
-from cytonn_weekly.digital_payments import review_store as rs
+from cytonn_weekly.review import store as rs
 from cytonn_weekly.digital_payments import summary as sm
 from tests import periodic_helpers as ph
 from tests.review_helpers import make_review
@@ -23,7 +23,7 @@ def approve(review):
         if item.status != "clean":
             item.resolve("accept", None)
     review.accept_all_clean()
-    review.decide("approved")
+    review.decide("approved", review.flagged_count)
     return review
 
 

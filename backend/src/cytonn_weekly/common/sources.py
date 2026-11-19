@@ -18,10 +18,18 @@ from typing import Any, Callable, Optional
 from urllib.parse import urljoin, urlsplit
 
 from cytonn_weekly import paths
-from cytonn_weekly.common import http
+from cytonn_weekly.common import http, source_policy
+from cytonn_weekly.equities import companies
 from cytonn_weekly.weekly.week import latest_friday
 
 log = logging.getLogger(__name__)
+
+def _company_domains() -> tuple[str, ...]:
+    try:
+        return companies.domains()
+    except (OSError, ValueError):
+        return ()   # a broken companies.json is reported by the draft that reads it, not by every import
+
 
 # The known sites: only a label. A fetch or a paste from any other host is kept too and flagged off_list, so the
 # reviewer sees it. A host matches when it is a listed name or a subdomain of one (knightfrank.com covers
@@ -40,13 +48,19 @@ APPROVED_SITES = (
     "imf.org", "worldbank.org",
     # The team's preferred news sites (real_estate.review_run.PREFERRED_SITES)
     "nation.africa", "businessdailyafrica.com", "standardmedia.co.ke", "bloomberg.com",
-)
+) + _company_domains()   # plus each listed bank's and insurer's own site, a label only (equities/companies.json)
 # Never a source, fetched or pasted (the same list as real_estate.review_run.SOCIAL_DOMAINS, which a test compares).
 SOCIAL_DOMAINS = ("x.com", "twitter.com", "facebook.com", "instagram.com", "tiktok.com")
 
 NOT_ON_LIST = "host not on the approved list"       # the off_list flag, on a fetched source and a pasted one
 INSECURE = "Not secure: the page could have been altered in transit"   # the insecure flag: fetched over http://
+NO_DATE_FLAG = "No date on this source"   # added when a draft reads a source whose date is empty, so its window could not be checked
 TEXT_FROM_SEARCH = "Text supplied by the search service"   # the text_from_search flag: the page itself could not be read
+NEWS_SITE = "News site: may back highlights and prose, never a table figure"   # the news_site flag (equities/source_policy.json)
+ADDED_BY_ANALYST = "Added by analyst"   # the added_by_analyst flag: fetched or pasted through the Sources panel, not found by the gather step
+TYPED_DATE = "Date typed by the analyst: {date}"   # a confirmed snip carries the date the analyst gave; the draft's date window does not judge it
+ANALYST_ORIGINS = ("fetched", "pasted")   # also what a source saved before the flag existed is judged by
+NEVER_READ = "{host} is never read by the tool. Paste the text with its date, or send a snip."
 MAX_BYTES = 5 * 1024 * 1024
 MAX_PASTE_CHARS = 200_000
 MIN_CHARS = 400        # shorter than this is a stub or an error page, not an article
@@ -68,11 +82,17 @@ NOT_FOUND = "No page was found at that address (HTTP {status}). Check the addres
 GATED = ("{host} asked for a login or a subscription (HTTP {status}), so the page could not be read. Paste the text with "
          "its address and date instead.")
 ERROR_STATUS = "{host} answered with an error (HTTP {status}), so nothing was kept."
-NETWORK = "The page at {host} could not be fetched (a network error or a timeout). Try again, or paste the text."
+NETWORK = "The page at {host} could not be fetched (a network error). Try again, or paste the text."
+TIMED_OUT = "The page at {host} could not be fetched (it did not answer in time). Try again, or paste the text."
+RATE_LIMITED = ("{host} turned the request away or asked the tool to slow down (HTTP {status}), so nothing was kept. Try again "
+                "later, or paste the text with its address and date.")
+NO_LOCATION = "{host} redirected (HTTP {status}) without saying where to, so nothing was fetched. Paste the text instead."
+UNREADABLE = "The page at {host} replied in a way the tool could not read. Paste its text instead, with its address and date."
 EMPTY = "The page at {host} has no readable text, so nothing was kept. Paste the text with its address and date instead."
 PAYWALL = ("The page at {host} shows a login or subscription prompt instead of the article, so nothing was kept. Paste the "
            "text with its address and date instead.")
 SHORT = "The page at {host} has only {n} characters of text, too short to be an article, so nothing was kept."
+OUT_OF_WINDOW = "The page at {host} is dated {day}, outside the report week, so nothing was kept."
 NO_SUBJECT = "Say which piece this source is for."
 NO_URL = "Give the address (URL) of the page the text came from."
 BAD_URL = "{url!r} is not a web address; it must start with http:// or https:// and name a site."
@@ -165,6 +185,11 @@ def _resolve(host: str) -> list[str]:
 def list_flags(host: str) -> list[str]:
     """The off_list flag: one rule for a fetched source and a pasted one."""
     return [] if is_approved(host) else [NOT_ON_LIST]
+
+
+def policy_flags(host: str, origin: str) -> list[str]:
+    """The news_site and added_by_analyst flags, set when a source is saved."""
+    return ([NEWS_SITE] if source_policy.is_news(host) else []) + ([ADDED_BY_ANALYST] if origin in ANALYST_ORIGINS else [])
 
 
 def _refuse_address(url: str, resolve: Callable[[str], list[str]]) -> str:
@@ -338,7 +363,7 @@ def _save(src: SourceText, raw: Optional[bytes], raw_name: str, root: Optional[P
     folder = _folder(date.fromisoformat(src.week_end), root)
     with _LOCK:
         listed = _read_manifest(folder)
-        same = next((m for m in listed if m["id"] == src.id), None)
+        same = next((m for m in listed if m.get("id") == src.id), None)
         if same:
             return _load(folder, same)
         folder.mkdir(parents=True, exist_ok=True)
@@ -360,10 +385,17 @@ def _load(folder: Path, meta: dict[str, Any]) -> SourceText:
     except OSError:
         raise SourceError(f"A saved source ({meta.get('host')}, {meta.get('id')}) is missing its file. Remove it and add it "
                           "again.") from None
+    except KeyError:
+        raise SourceError(f"A saved source ({meta.get('host')}, {meta.get('id')}) is missing details in the list of sources. "
+                          "Remove it and add it again.") from None
     expected = _sha(raw) if raw is not None else _sha(text.encode())
-    if _sha(text.encode()) != meta.get("text_sha256") or expected != meta["sha256"]:
-        raise SourceError(CHANGED.format(host=meta["host"], source_id=meta["id"]))
-    fields = {k: meta[k] for k in SourceText.__dataclass_fields__ if k != "text"}
+    if _sha(text.encode()) != meta.get("text_sha256") or expected != meta.get("sha256"):
+        raise SourceError(CHANGED.format(host=meta.get("host"), source_id=meta.get("id")))
+    try:
+        fields = {k: meta[k] for k in SourceText.__dataclass_fields__ if k != "text"}
+    except KeyError:
+        raise SourceError(f"A saved source ({meta.get('host')}, {meta.get('id')}) is missing details in the list of sources. "
+                          "Remove it and add it again.") from None
     return SourceText(text=text, **fields)
 
 
@@ -382,7 +414,7 @@ def _find(source_id: str, root: Optional[Path]) -> Optional[tuple[Path, dict[str
     base = sources_root(root)
     for folder in sorted(base.iterdir()) if base.is_dir() else []:
         for m in _read_manifest(folder):
-            if m["id"] == source_id:
+            if m.get("id") == source_id:
                 return folder, m
     return None
 
@@ -406,7 +438,7 @@ def dismissed(subject: str, week_end: date, root: Optional[Path] = None) -> set[
 
 
 def last_look(subject: str, week_end: date, root: Optional[Path] = None) -> Optional[dict[str, Any]]:
-    """The last time the gather step looked for this piece: {looked_at, found, searched}, or None when it never has.
+    """The last time the gather step looked for this piece: {looked_at, found, searched, route, note}, or None when it never has.
     ``searched`` is False when the search service was not set up, so nothing was searched. Only counts and a time are kept."""
     try:
         raw = json.loads((_folder(week_end, root) / "looks.json").read_text(encoding="utf-8")).get(subject_key(subject))
@@ -414,10 +446,12 @@ def last_look(subject: str, week_end: date, root: Optional[Path] = None) -> Opti
         return None
     if not isinstance(raw, dict):
         return None
-    return {"looked_at": raw.get("looked_at"), "found": int(raw.get("found") or 0), "searched": bool(raw.get("searched"))}
+    return {"looked_at": raw.get("looked_at"), "found": int(raw.get("found") or 0), "searched": bool(raw.get("searched")),
+            "route": str(raw.get("route") or ""), "note": str(raw.get("note") or "")}
 
 
-def record_look(subject: str, week_end: date, found: int, searched: bool, root: Optional[Path] = None) -> None:
+def record_look(subject: str, week_end: date, found: int, searched: bool, root: Optional[Path] = None, route: str = "",
+                note: str = "") -> None:
     """Keep the result of a look in looks.json beside the manifest; a failure to write it is logged and never raised."""
     folder = _folder(week_end, root)
     try:
@@ -426,7 +460,7 @@ def record_look(subject: str, week_end: date, found: int, searched: bool, root: 
                 looks = json.loads((folder / "looks.json").read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 looks = {}
-            looks[subject_key(subject)] = {"looked_at": _now(), "found": found, "searched": searched}
+            looks[subject_key(subject)] = {"looked_at": _now(), "found": found, "searched": searched, "route": route, "note": note}
             folder.mkdir(parents=True, exist_ok=True)
             tmp = folder / "looks.json.tmp"
             tmp.write_text(json.dumps(looks, indent=2), encoding="utf-8")
@@ -443,7 +477,7 @@ def remove(source_id: str, root: Optional[Path] = None) -> bool:
         if not found:
             return False
         folder, meta = found
-        _write_manifest(folder, [m for m in _read_manifest(folder) if m["id"] != source_id])
+        _write_manifest(folder, [m for m in _read_manifest(folder) if m.get("id") != source_id])
         for name in (f"{source_id}.txt", meta.get("raw") or ""):
             if name:
                 (folder / name).unlink(missing_ok=True)
@@ -463,11 +497,13 @@ def _now() -> str:
 
 def fetch_page(url: str, subject: str, week_end: date, *, http_get: Callable[..., http.Reply] = http.http_get_once,
                resolve: Callable[[str], list[str]] = _resolve, root: Optional[Path] = None,
-               now: Callable[[], str] = _now, origin: str = "fetched", fallback_date: str = "") -> SourceText:
+               now: Callable[[], str] = _now, origin: str = "fetched", fallback_date: str = "",
+               window: Optional[tuple[date, date]] = None) -> SourceText:
     """Fetch one page from any site, keep its readable text, and list it for ``subject``.
 
-    ``origin`` is "found" for a page the gather step chose; ``fallback_date`` (YYYY-MM-DD) is the date used only when the
-    page states none of its own (a PDF never does).
+    A never_read host (equities/source_policy.json) is refused whoever asks; the gather step reads only hosts the policy
+    allows for the piece (common/gather.py). ``origin`` is "found" for a page the gather step chose; ``fallback_date`` (YYYY-MM-DD) is the date used only when the
+    page states none of its own (a PDF never does). With ``window``, a page whose date is outside it, or unknown, is not kept.
 
     ``http_get(url, max_bytes=...)`` answers once and follows nothing (common/http.http_get_once); this function
     follows at most MAX_HOPS redirects itself, each only to the same host, and applies every rule to each address.
@@ -478,6 +514,41 @@ def fetch_page(url: str, subject: str, week_end: date, *, http_get: Callable[...
     if not subject.strip():
         raise SourceError(NO_SUBJECT)
     url = url.strip()
+    if source_policy.is_never_read(host_of(url)):
+        raise SourceError(NEVER_READ.format(host=host_of(url)))
+    try:
+        page, body, raw_name = _read_page(url, subject, week_end, http_get, resolve, now, origin, fallback_date)
+    except SourceError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - not a network error: say so, and log where, never the message
+        log.warning("fetch of %s failed unexpectedly: %s at %s", host_of(url) or "an unreadable address",
+                    type(exc).__name__, _inner_frame(exc))
+        raise SourceError(UNREADABLE.format(host=host_of(url) or "that address")) from None
+    if window and not window[0].isoformat() <= page.published_date <= window[1].isoformat():
+        raise SourceError(OUT_OF_WINDOW.format(host=page.host, day=page.published_date or "no date"))
+    return _save(page, body, raw_name, root)
+
+
+_PACKAGE = Path(__file__).resolve().parents[1]
+_HTML_START = re.compile(rb"<[!a-zA-Z]")
+
+
+def _inner_frame(exc: BaseException) -> str:
+    """The innermost frame of ``exc`` that is in this package: 'common/http.py:118 in http_get_once'. No message, no values."""
+    where, tb = "outside the project", exc.__traceback__
+    while tb is not None:
+        try:
+            rel = Path(tb.tb_frame.f_code.co_filename).resolve().relative_to(_PACKAGE)
+            where = f"{rel.as_posix()}:{tb.tb_lineno} in {tb.tb_frame.f_code.co_name}"
+        except (ValueError, OSError):
+            pass
+        tb = tb.tb_next
+    return where
+
+
+def _get_checked(url: str, http_get: Callable[..., http.Reply], resolve: Callable[[str], list[str]]
+                 ) -> tuple[http.Reply, dict[str, str], str, str]:
+    """(the reply, its headers, the final address, its host): the request, the redirects and every address and status rule."""
     host = _refuse_address(url, resolve)
     current, hops = url, 0
     while True:
@@ -485,14 +556,23 @@ def fetch_page(url: str, subject: str, week_end: date, *, http_get: Callable[...
             reply = http_get(current, max_bytes=MAX_BYTES)
         except http.TooLarge:
             raise SourceError(TOO_LARGE.format(mb=MAX_BYTES // (1024 * 1024))) from None
-        except Exception as exc:  # noqa: BLE001 - the analyst gets a sentence, the log gets the class
+        except Exception as exc:  # noqa: BLE001 - a connection problem gets a sentence; anything else goes up as unexpected
             if _certificate_failed(exc):
                 raise SourceError(CERTIFICATE.format(host=host)) from None
-            log.warning("fetch of %s failed: %s", host, type(exc).__name__)
-            raise SourceError(NETWORK.format(host=host)) from None
+            if isinstance(exc, http.TIMEOUT_ERRORS):
+                log.warning("fetch of %s timed out: %s", host, type(exc).__name__)
+                raise SourceError(TIMED_OUT.format(host=host)) from None
+            if isinstance(exc, http.NETWORK_ERRORS):
+                log.warning("fetch of %s failed: %s", host, type(exc).__name__)
+                raise SourceError(NETWORK.format(host=host)) from None
+            raise
+        headers = {str(k).lower(): str(v) for k, v in dict(reply.headers or {}).items()}   # any casing, none at all
         if reply.status not in (301, 302, 303, 307, 308):
             break
-        target = urljoin(current, reply.headers.get("location", ""))
+        location = headers.get("location", "").strip()
+        if not location:
+            raise SourceError(NO_LOCATION.format(host=host, status=reply.status))
+        target = urljoin(current, location)      # a relative address is read against the page that sent it
         other = host_of(target)
         if other != host:
             raise SourceError(REDIRECT.format(host=host, other=other or "an unreadable address"))
@@ -501,24 +581,49 @@ def fetch_page(url: str, subject: str, week_end: date, *, http_get: Callable[...
             raise SourceError(TOO_MANY.format(host=host, hops=MAX_HOPS))
         _refuse_address(target, resolve)
         current = target
+    if reply.status >= 300 or reply.status < 200:
+        log.warning("fetch of %s refused: HTTP %s", host, reply.status)
     if reply.status in (404, 410):
         raise SourceError(NOT_FOUND.format(status=reply.status))
+    if reply.status == 429:
+        raise SourceError(RATE_LIMITED.format(host=host, status=reply.status))
     if reply.status in (401, 402, 403, 451):
         raise SourceError(GATED.format(host=host, status=reply.status))
-    if reply.status >= 400 or reply.status < 200:
+    if reply.status >= 300 or reply.status < 200:      # a 3xx that is not a redirect is no page either
         raise SourceError(ERROR_STATUS.format(host=host, status=reply.status))
-    body = reply.body
-    kind = reply.headers.get("content-type", "").split(";")[0].strip().lower()
-    if kind and not body.startswith(b"%PDF") and "html" not in kind and "pdf" not in kind:
-        raise SourceError(NOT_A_PAGE.format(host=host, kind=kind))
-    if body.startswith(b"%PDF"):
+    return reply, headers, current, host
+
+
+def fetch_raw(url: str, *, http_get: Callable[..., http.Reply] = http.http_get_once,
+              resolve: Callable[[str], list[str]] = _resolve) -> tuple[str, bytes, str]:
+    """(final address, body, content type) of one page, with the same guards as fetch_page and nothing saved.
+    SourceError says why it could not be read."""
+    reply, headers, current, _ = _get_checked(url.strip(), http_get, resolve)
+    return current, reply.body or b"", headers.get("content-type", "")
+
+
+def _read_page(url: str, subject: str, week_end: date, http_get: Callable[..., http.Reply],
+               resolve: Callable[[str], list[str]], now: Callable[[], str], origin: str,
+               fallback_date: str) -> tuple[SourceText, bytes, str]:
+    """Everything of fetch_page up to saving: the request, the redirects, the rules and the reading."""
+    reply, headers, current, host = _get_checked(url, http_get, resolve)
+    body = reply.body or b""
+    if not body.strip():
+        raise SourceError(EMPTY.format(host=host))
+    kind = headers.get("content-type", "").split(";")[0].strip().lower()
+    is_pdf = body.startswith(b"%PDF")
+    if not is_pdf and "html" not in kind and "pdf" not in kind:
+        # a stated type that is neither is refused; no stated type is judged by the body itself
+        if kind or not _HTML_START.search(body[:2048]):
+            raise SourceError(NOT_A_PAGE.format(host=host, kind=kind or "no type stated"))
+    if is_pdf:
         try:
             text, title = read_pdf(body)
         except Exception:  # noqa: BLE001 - pdfplumber raises many kinds for a damaged file
             raise SourceError(EMPTY.format(host=host)) from None
         published, gated, raw_name = "", False, ".pdf"
     else:
-        text, title, published, gated = read_html(body, reply.headers.get("content-type", ""))
+        text, title, published, gated = read_html(body, headers.get("content-type", ""))
         raw_name = ".html"
     if not text.strip():
         raise SourceError(PAYWALL.format(host=host) if gated else EMPTY.format(host=host))
@@ -527,12 +632,12 @@ def fetch_page(url: str, subject: str, week_end: date, *, http_get: Callable[...
     if len(text) < MIN_CHARS:
         raise SourceError(SHORT.format(host=host, n=len(text)))
     sha = _sha(body)
-    src = SourceText(id=_id(subject, current, sha), subject=" ".join(subject.split()),
-                     week_end=latest_friday(week_end).isoformat(), url=current, host=host,
-                     title=title or current.rsplit("/", 1)[-1] or host, published_date=published or fallback_date,
-                     fetched_at=now(), origin=origin, text=text, sha256=sha, chars=len(text),
-                     flags=list_flags(host) + ([INSECURE] if current.lower().startswith("http://") else []))
-    return _save(src, body, raw_name, root)
+    page = SourceText(id=_id(subject, current, sha), subject=" ".join(subject.split()),
+                      week_end=latest_friday(week_end).isoformat(), url=current, host=host,
+                      title=title or current.rsplit("/", 1)[-1] or host, published_date=published or fallback_date,
+                      fetched_at=now(), origin=origin, text=text, sha256=sha, chars=len(text),
+                      flags=list_flags(host) + policy_flags(host, origin) + ([INSECURE] if current.lower().startswith("http://") else []))
+    return page, body, raw_name
 
 
 def from_paste(url: str, date_text: str, text: str, subject: str, week_end: date, *, title: str = "",
@@ -566,5 +671,29 @@ def from_paste(url: str, date_text: str, text: str, subject: str, week_end: date
                      week_end=latest_friday(week_end).isoformat(), url=url, host=host,
                      title=" ".join((title or "").split()) or host, published_date=published, fetched_at=now(),
                      origin=origin, text=text, sha256=sha, chars=len(text),
-                     flags=list_flags(host) + list(extra_flags))
+                     flags=list_flags(host) + policy_flags(host, origin) + list(extra_flags))
     return _save(src, None, "", root)
+
+
+def from_snip(image: Optional[bytes], ext: str, text: str, subject: str, week_end: date, published: str, title: str, *,
+              page: int = 0, file_sha: str = "", root: Optional[Path] = None, now: Callable[[], str] = _now,
+              typed_date: bool = False) -> SourceText:
+    """Keep the confirmed text of an uploaded image (a Real Estate snip) as a source the quote check can read.
+
+    ``subject`` is the sector, ``published`` the date the analyst gave or the report week's Friday (ISO). The image is saved
+    beside the text and its sha256 is the source's, so the saved copy is checked like any fetched page. Nothing is fetched.
+    With ``page`` it is one page of an uploaded PDF (``file_sha``): no file is saved beside it (the PDF stays with the snips),
+    the text's own sha256 is checked, and its host reads "uploaded PDF, page N" wherever the source is named.
+    """
+    if not text.strip():
+        raise SourceError(NO_TEXT)
+    if page:
+        sha, url, host = _sha(text.encode()), f"snip:{file_sha[:16]}#page={page}", f"uploaded PDF, page {page}"
+    else:
+        sha, host = _sha(image), "snip"
+        url = f"snip:{sha[:16]}"
+    src = SourceText(id=_id(subject, url, sha), subject=" ".join(subject.split()),
+                     week_end=latest_friday(week_end).isoformat(), url=url, host=host, title=title or url,
+                     published_date=published, fetched_at=now(), origin="snip", text=text, sha256=sha, chars=len(text),
+                     flags=[TYPED_DATE.format(date=published)] if typed_date else [])
+    return _save(src, image if not page else None, ext if not page else "", root)

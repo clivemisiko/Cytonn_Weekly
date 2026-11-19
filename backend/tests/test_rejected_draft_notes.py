@@ -8,8 +8,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.main import create_app
-from cytonn_weekly.digital_payments import review_store
-from cytonn_weekly.digital_payments.coordinator_review import ACCEPT, FIX_NEEDED, rejected_draft_notes
+from cytonn_weekly.review import store as review_store
+from cytonn_weekly.review.model import ACCEPT, FIX_NEEDED, rejected_draft_notes
 from tests.review_helpers import make_review
 
 WEEK = "Week ending 2026-10-09"
@@ -36,7 +36,7 @@ def saved(db, *, section="digital_payments", period=WEEK, report_type="weekly", 
             if item.resolution is None:
                 item.resolve(ACCEPT)
     if decision is not None:
-        review.decide(decision)
+        review.decide(decision, review.flagged_count)
     return review_store.save_review(review, section=section, db_path=db)
 
 
@@ -60,7 +60,7 @@ def test_the_run_just_before_is_rejected_its_fix_needed_items_and_notes_are_list
     ]
     # nothing was copied onto the new review, and its approval is its own
     new = review_store.load_review(second, db_path=db)
-    assert all(i.resolution is None and i.resolution_note is None for i in new.review_items) and not new.is_approvable
+    assert all(i.resolution is None and i.resolution_note is None for i in new.review_items) and new.is_approvable
 
 
 def test_none_when_the_run_before_was_approved_or_undecided_or_there_is_none(db, client):

@@ -55,7 +55,8 @@ export async function draftAndApprove(request: APIRequestContext, section: strin
     const res = await request.patch(`${API}/api/reviews/${review.run_id}/items/${item.index}`, { headers: json, data: { resolution: "accept" } });
     expect(res.ok()).toBe(true);
   }
-  const decided = await request.post(`${API}/api/reviews/${review.run_id}/decide`, { headers: json, data: { decision: "approved" } });
+  const flagged = review.review_items.filter((i: { status: string }) => i.status === "flagged").length;
+  const decided = await request.post(`${API}/api/reviews/${review.run_id}/decide`, { headers: json, data: { decision: "approved", acknowledged_flagged: flagged } });
   expect(decided.status(), await decided.text()).toBe(200);
 }
 

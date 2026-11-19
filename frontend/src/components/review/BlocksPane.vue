@@ -130,11 +130,18 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
       </h3>
       <article v-if="b.kind === 'narrative'" :class="PIECE" :aria-labelledby="`blk-${b.id}`">
         <!-- A Focus section's visible heading is its "Section I: ..." line above; this one names the article for a screen reader. -->
-        <component :is="b.group ? 'h4' : 'h3'" :id="`blk-${b.id}`" :class="[HEAD, b.role === 'section' || b.role === 'conclusion' ? 'sr-only' : '']">
+        <component :is="b.group ? 'h4' : 'h3'" :id="`blk-${b.id}`" :class="[HEAD, b.role === 'section' || b.role === 'conclusion' || b.role === 'findings' ? 'sr-only' : '']">
           <Numeral v-if="b.numeral || !b.role">{{ b.numeral }}</Numeral>
           <span>{{ b.headline }}</span>
         </component>
-        <Markdown :class="BODY" :text="b.body_md" />
+        <ul v-if="b.role === 'findings'" :aria-label="`${b.headline}: research notes`" class="max-w-[68ch] list-disc space-y-2 pl-5 text-sm leading-6 md:ml-11">
+          <li v-for="c in b.claims" :key="c.text + c.url" class="[overflow-wrap:anywhere]">
+            {{ c.text }}
+            <a v-if="safeUrl(c.url)" :href="safeUrl(c.url)!" target="_blank" rel="noopener noreferrer" :class="SOURCE_LINK">{{ c.title || c.url }}</a>
+            <span v-if="c.cited_text" class="block text-xs text-muted-foreground">Quote: “{{ c.cited_text }}”</span>
+          </li>
+        </ul>
+        <Markdown v-else :class="[BODY, b.outlook && 'font-bold italic']" :text="b.body_md" />
         <p v-if="b.analyst_note" class="text-xs text-muted-foreground md:pl-11">{{ b.analyst_note }}</p>
         <ul v-if="edited(b).length" aria-label="Sentences you edited" class="space-y-1 text-xs text-muted-foreground md:pl-11">
           <li v-for="e in edited(b)" :key="`${e.at}|${e.now}`" class="[overflow-wrap:anywhere]">
@@ -196,7 +203,7 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
           <span>{{ b.title }}</span>
         </h3>
         <Markdown :class="BODY" :text="b.body_md" />
-        <PartsLine :parts="computedParts(b)" />
+        <PartsLine v-if="b.role !== 'company_notes'" :parts="computedParts(b)" />
         <p v-for="n in b.notes" :key="n" class="text-xs text-muted-foreground md:pl-11">{{ n }}</p>
       </article>
 
@@ -210,12 +217,19 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
           Edited by you, {{ friendlyTime(b.edits[b.edits.length - 1].at) }}. You wrote this paragraph, so the checker has no source for it. It was
           copied from {{ b.carried_from.issue_id ? `issue ${b.carried_from.issue_id}` : "the previous issue" }} before you changed it.
         </Notice>
+        <Notice v-else-if="b.role === 'analyst'" tone="flag" class="font-medium md:ml-11">
+          Analyst to write. The tool writes no text here; write it by editing this paragraph before approving.
+        </Notice>
+        <Notice v-else-if="b.role === 'standing'" tone="flag" class="font-medium md:ml-11">
+          Carried forward, edit before approving. {{ b.carried_from.note }}
+        </Notice>
         <Notice v-else tone="flag" class="font-medium md:ml-11">
           Carried forward, edit before approving. Copied from
           {{ b.carried_from.issue_id ? `issue ${b.carried_from.issue_id} on cytonnreport.com` : "the previous issue"
           }}{{ b.carried_from.published ? `, published ${friendlyDate(b.carried_from.published)}` : "" }}.
         </Notice>
-        <Markdown :class="BODY" :text="b.body_md" />
+        <p v-if="b.role === 'standing'" :class="[BODY, 'whitespace-pre-line']">{{ b.body_md }}</p>
+        <Markdown v-else :class="BODY" :text="b.body_md" />
       </article>
 
       <!-- A chart the tool draws from the analyst workbook: the picture, its facts and its points. Its checks are review
@@ -229,12 +243,12 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
           {{ b.title }}
           <span class="inline-flex items-center gap-1 rounded-full border border-input px-2 py-0.5 text-xs font-semibold text-muted-foreground">
             <PhLockSimple weight="bold" class="size-3" aria-hidden="true" />
-            Not available yet
+            {{ b.sector ? "Not included" : "Not available yet" }}
           </span>
         </h3>
         <div class="space-y-2 rounded-md border bg-muted px-4 py-3 text-sm md:ml-11">
           <p>{{ b.reason }}</p>
-          <p class="text-muted-foreground"><span class="font-semibold text-foreground">Unblocked by:</span> {{ b.unblock }}</p>
+          <p class="text-muted-foreground"><span class="font-semibold text-foreground">{{ b.sector ? "To include it:" : "Unblocked by:" }}</span> {{ b.unblock }}</p>
         </div>
       </section>
     </template>

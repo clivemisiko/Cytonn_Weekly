@@ -43,7 +43,7 @@ describe("usesSources", () => {
     expect(usesSources({ provider: "bedrock" }, { uses_provider: true })).toBe(true);
     expect(usesSources({ provider: " Bedrock " }, { uses_provider: true })).toBe(true);
     expect(usesSources({ provider: "bedrock" }, { uses_provider: false })).toBe(false);
-    expect(usesSources({ provider: "anthropic" }, { uses_provider: true })).toBe(false);
+    expect(usesSources({ provider: "not configured" }, { uses_provider: true })).toBe(false);
     expect(usesSources({ provider: "local" }, { uses_provider: true })).toBe(false);
   });
 });
@@ -129,6 +129,8 @@ describe("claimSource", () => {
       textFromSearch: false,
       flags: [NOT_ON_LIST],
       offList: true,
+      newsSite: false,
+      addedByAnalyst: false,
     });
   });
   it("has no off-list mark when the flags are empty or absent", () => {

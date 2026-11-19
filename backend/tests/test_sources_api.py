@@ -13,10 +13,10 @@ from tests.test_sources import PARAGRAPH, PUBLIC, Getter, article, reply
 
 PERIOD = "Week ending 2026-10-02"
 FRIDAY = date(2026, 10, 2)
-REAL_ESTATE = pieces_for("weekly", PERIOD, "real_estate")
+REAL_ESTATE = pieces_for("weekly", PERIOD, "fixed_income")   # the weekly Real Estate takes snips, not sources
 SUBJECT = REAL_ESTATE[0].subject
 DP_SUBJECT = pieces_for("weekly", PERIOD, "digital_payments")[0].subject
-PASTED = {"section": "real_estate", "subject": SUBJECT, "period": PERIOD, "url": "https://www.centralbank.go.ke/press/x",
+PASTED = {"section": "fixed_income", "subject": SUBJECT, "period": PERIOD, "url": "https://www.centralbank.go.ke/press/x",
           "date": "2026-09-30", "text": PARAGRAPH * 2, "title": "CBK statement"}
 
 
@@ -44,14 +44,14 @@ def post(client, **over):
 
 
 def listing(client, **params):
-    return client.get("/api/sources", params={"section": "real_estate", "period": PERIOD, **params})
+    return client.get("/api/sources", params={"section": "fixed_income", "period": PERIOD, **params})
 
 
 # --- the listing -----------------------------------------------------------------------------------------------------------
 
 def test_the_listing_names_each_piece_with_its_day_and_week_and_no_sources_yet(client):
     body = listing(client).json()
-    assert body["section"] == "real_estate" and body["uses_sources"] is True and body["title"] == "Real Estate"
+    assert body["section"] == "fixed_income" and body["uses_sources"] is True and body["title"] == "Fixed Income"
     assert [p["subject"] for p in body["pieces"]] == [p.subject for p in REAL_ESTATE] and len(REAL_ESTATE) >= 3
     assert all(p["sources"] == [] and p["end"] == "2026-10-02" and p["week_end"] == "2026-10-02" for p in body["pieces"])
     assert all(p["gather"] is None for p in body["pieces"])   # no look has happened yet
@@ -86,7 +86,7 @@ def another_day(monkeypatch):
         def today(cls):
             return date(2026, 11, 9)
 
-    monkeypatch.setattr("api.main.date", Monday)
+    monkeypatch.setattr("api.routers.sources.date", Monday)
 
 
 @pytest.mark.parametrize("subject", [None, SUBJECT])
@@ -127,7 +127,7 @@ def test_a_pasted_source_is_kept_listed_and_its_text_is_served_exactly(client):
     body = r.json()
     one = body["source"]
     assert (one["origin"], one["host"], one["published_date"], one["title"], one["flags"]) == (
-        "pasted", "www.centralbank.go.ke", "2026-09-30", "CBK statement", [])
+        "pasted", "www.centralbank.go.ke", "2026-09-30", "CBK statement", ["Added by analyst"])
     assert "text" not in one and one["chars"] == len(PARAGRAPH * 2) and len(one["sha256"]) == 64
     assert body["subject"] == SUBJECT and body["week_end"] == "2026-10-02"
     assert [s["id"] for s in body["sources"]] == [one["id"]]
@@ -143,7 +143,7 @@ def test_a_pasted_source_is_kept_listed_and_its_text_is_served_exactly(client):
 
 def test_a_pasted_source_from_a_host_off_the_list_carries_the_flag(client):
     one = post(client, url="https://blog.example.com/p").json()["source"]
-    assert one["flags"] == ["host not on the approved list"]
+    assert one["flags"] == ["host not on the approved list", "Added by analyst"]
 
 
 @pytest.mark.parametrize("over,word", [
@@ -186,7 +186,7 @@ def test_a_fetch_that_fails_shows_the_sentence_and_keeps_nothing(client, fetched
 
 def test_a_subject_that_is_not_a_piece_of_the_section_is_422_naming_the_pieces(client):
     r = post(client, subject="Cryptocurrency")
-    assert r.status_code == 422 and "is not a piece of Real Estate" in r.json()["detail"] and SUBJECT in r.json()["detail"]
+    assert r.status_code == 422 and "is not a piece of Fixed Income" in r.json()["detail"] and SUBJECT in r.json()["detail"]
 
 
 def test_the_subject_may_differ_in_case_and_spacing(client):

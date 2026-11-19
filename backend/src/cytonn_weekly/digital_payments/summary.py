@@ -34,10 +34,10 @@ from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
 from cytonn_weekly.common.word_layout import keep_together, report_table
-from cytonn_weekly.digital_payments import review_store
-from cytonn_weekly.digital_payments.coordinator_review import APPROVED, CoordinatorReview
+from cytonn_weekly.review import store as review_store
+from cytonn_weekly.review.model import APPROVED, CoordinatorReview
 from cytonn_weekly.digital_payments.fetcher import format_table_rows
-from cytonn_weekly.digital_payments.providers.base import LINK_RE
+from cytonn_weekly.drafting.results import LINK_RE
 from cytonn_weekly.paths import DATA_DIR
 from cytonn_weekly.report_types import WEEKLY
 
@@ -90,10 +90,8 @@ def require_approved(review: Optional[CoordinatorReview]) -> CoordinatorReview:
     if review.decision != APPROVED:
         state = review.decision or "still in progress"
         raise SummaryNotAllowed(f"review run {review.run_id} is {state}, not approved; no summary produced")
-    if not review.is_approvable:  # a decision field alone is not proof; every item must really be accepted
-        raise SummaryNotAllowed(
-            f"review run {review.run_id} is marked approved but not every item is resolved and accepted"
-        )
+    if not review.is_approvable:  # a decision field alone is not proof; there must be a draft
+        raise SummaryNotAllowed(f"review run {review.run_id} is marked approved but holds no draft")
     return review
 
 

@@ -9,7 +9,7 @@ from openpyxl import Workbook as XlsxWorkbook
 
 from cytonn_weekly.common.formatting import round_half_up
 from cytonn_weekly.digital_payments import workbook as dpw
-from cytonn_weekly.digital_payments.coordinator_review import ACCEPT, FIX_NEEDED, WORKBOOK_QUARTER
+from cytonn_weekly.review.model import ACCEPT, FIX_NEEDED, WORKBOOK_QUARTER
 from cytonn_weekly.digital_payments.review_run import build_digital_payments_review, workbook_pe
 from datetime import date
 
@@ -389,7 +389,7 @@ def test_a_blank_quarter_found_by_search_is_a_review_item_with_its_citation_unti
                             "quoted": "GAAP net income in the quarter was $2.5 billion, up 3% from a year ago."}
     assert URL in item.detail and "$2.5 billion" in item.detail and "stays unavailable until you accept" in item.detail
     assert any(URL in w and "accept it in the review" in w for w in review.section["warnings"])
-    assert item.resolution is None and not review.is_approvable
+    assert item.resolution is None and review.is_approvable
     assert _visa_pe(workbook_pe(review)) is None   # before acceptance
     item.resolve(FIX_NEEDED)
     assert _visa_pe(workbook_pe(review)) is None

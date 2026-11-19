@@ -1,23 +1,16 @@
 <script setup lang="ts">
-import { PhCaretDown, PhCheckCircle } from "@phosphor-icons/vue";
+import { PhCaretDown } from "@phosphor-icons/vue";
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "reka-ui";
-import { computed, inject, reactive, ref } from "vue";
+import { computed, reactive, ref } from "vue";
 import Button from "@/components/ui/Button.vue";
 import { STATUS_META, STATUS_ORDER } from "@/lib/format";
-import { READ_ONLY } from "@/lib/previous";
-import type { Resolution, Review, Status } from "@/lib/types";
+import type { Review, Status } from "@/lib/types";
 import ReviewItemCard from "./ReviewItemCard.vue";
 
-const props = defineProps<{
-  review: Review;
-  locked: boolean;
-  onResolve: (index: number, resolution: Resolution, note?: string) => Promise<boolean>;
-  onAcceptClean: () => Promise<boolean>;
-}>();
+const props = defineProps<{ review: Review }>();
 
-type Filter = "all" | "unresolved" | "flagged" | "fix_needed";
+type Filter = "all" | "flagged";
 const filter = ref<Filter>("all");
-const readOnly = inject(READ_ONLY, false);
 
 const open = reactive<Record<Status, boolean>>({ flagged: true, not_auto_verified: true, clean: false });
 // Which cards show their evidence. Collapsed by default; Expand all / Collapse all act on every item with something to show.
@@ -27,24 +20,25 @@ const setAll = (on: boolean) => {
   for (const k of Object.keys(open) as Status[]) if (on) open[k] = true;
 };
 
+const filters = computed(() =>
+  (
+    [
+      { key: "all", label: "All", count: props.review.review_items.length, flag: false, show: true },
+      { key: "flagged", label: "Flagged", count: props.review.counts.flagged.total, flag: true, show: props.review.counts.flagged.total > 0 },
+    ] as { key: Filter; label: string; count: number | null; flag: boolean; show: boolean }[]
+  ).filter((f) => f.show),
+);
+
 const totalOf = (status: Status) => props.review.review_items.filter((i) => i.status === status).length;
 
 const itemsOf = (status: Status) => {
   const items = props.review.review_items.filter((i) => i.status === status);
-  if (filter.value === "all") return items;
-  if (filter.value === "unresolved") return items.filter((i) => i.resolution === null);
-  if (filter.value === "fix_needed") return items.filter((i) => i.resolution === "fix_needed");
-  if (filter.value === "flagged") return items;
-  return items;
+  return filter.value === "flagged" && status !== "flagged" ? [] : items;
 };
 
 function setFilter(next: Filter) {
   filter.value = next;
-  if (next === "unresolved" || next === "flagged" || next === "fix_needed") {
-    open.flagged = true;
-    open.not_auto_verified = true;
-    open.clean = true;
-  }
+  if (next === "flagged") open.flagged = true;
 }
 
 // The explanation two or more not-auto-verified items share (the claims' "Not yet automatically checked..." note) is shown
@@ -64,7 +58,7 @@ const shared = computed(() => {
     <div class="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
       <div>
         <h2 id="items-title" class="text-lg font-semibold tracking-tight text-foreground">Review items</h2>
-        <p class="text-xs text-muted-foreground">Resolve every item below to approve this section.</p>
+        <p class="text-xs text-muted-foreground">Read the items below, then approve or reject the section as a whole.</p>
       </div>
       <div class="flex gap-1.5">
         <Button size="sm" variant="outline" class="h-8 px-2.5 text-xs" @click="setAll(true)">Expand all</Button>
@@ -72,94 +66,22 @@ const shared = computed(() => {
       </div>
     </div>
 
-    <!-- Quick filter pill bar: lets analyst jump straight to what needs their attention -->
-    <div class="flex flex-wrap items-center gap-1.5 rounded-lg border border-border/80 bg-muted/50 p-1 text-xs">
+    <!-- Filters: a toggle group, so the one pressed is announced. Counts are from the review itself. -->
+    <div role="group" aria-label="Show items" class="flex flex-wrap items-center gap-1 rounded-lg border bg-muted/50 p-1 text-sm">
       <button
+        v-for="f in filters"
+        :key="f.key"
         type="button"
+        :aria-pressed="filter === f.key"
         :class="[
-          'rounded-md px-2.5 py-1 font-medium transition-all outline-none',
-          filter === 'all'
-            ? 'bg-card font-semibold text-foreground shadow-2xs'
-            : 'text-muted-foreground hover:text-foreground',
+          'flex items-center gap-1.5 rounded-md px-2.5 py-1 font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          filter === f.key ? 'bg-card font-semibold text-foreground shadow-2xs' : 'text-muted-foreground hover:text-foreground',
         ]"
-        @click="setFilter('all')"
+        @click="setFilter(f.key)"
       >
-        All ({{ review.review_items.length }})
+        <span>{{ f.label }}</span>
+        <span v-if="f.count !== null" class="count-badge" :class="f.flag && 'state-flagged'">{{ f.count }}</span>
       </button>
-      <button
-        type="button"
-        :class="[
-          'flex items-center gap-1.5 rounded-md px-2.5 py-1 font-medium transition-all outline-none',
-          filter === 'unresolved'
-            ? 'bg-card font-semibold text-foreground shadow-2xs'
-            : 'text-muted-foreground hover:text-foreground',
-        ]"
-        @click="setFilter('unresolved')"
-      >
-        <span>Unresolved</span>
-        <span
-          v-if="review.progress.unresolved > 0"
-          class="rounded-full px-1.5 py-0.5 font-mono text-[10px] font-bold"
-          :class="filter === 'unresolved' ? 'bg-primary/20 text-primary-fg' : 'bg-muted-foreground/20 text-foreground'"
-        >
-          {{ review.progress.unresolved }}
-        </span>
-      </button>
-      <button
-        v-if="review.counts.flagged.total > 0"
-        type="button"
-        :class="[
-          'flex items-center gap-1.5 rounded-md px-2.5 py-1 font-medium transition-all outline-none',
-          filter === 'flagged'
-            ? 'bg-card font-semibold text-foreground shadow-2xs'
-            : 'text-muted-foreground hover:text-foreground',
-        ]"
-        @click="setFilter('flagged')"
-      >
-        <span>Flagged</span>
-        <span class="rounded-full bg-flag/20 px-1.5 py-0.5 font-mono text-[10px] font-bold text-flag-fg">
-          {{ review.counts.flagged.total }}
-        </span>
-      </button>
-      <button
-        v-if="review.progress.fix_needed > 0"
-        type="button"
-        :class="[
-          'flex items-center gap-1.5 rounded-md px-2.5 py-1 font-medium transition-all outline-none',
-          filter === 'fix_needed'
-            ? 'bg-card font-semibold text-foreground shadow-2xs'
-            : 'text-muted-foreground hover:text-foreground',
-        ]"
-        @click="setFilter('fix_needed')"
-      >
-        <span>Fix needed</span>
-        <span class="rounded-full bg-flag/20 px-1.5 py-0.5 font-mono text-[10px] font-bold text-flag-fg">
-          {{ review.progress.fix_needed }}
-        </span>
-      </button>
-    </div>
-
-    <!-- Quick action: One-click accept clean items without digging into collapsed folder -->
-    <div
-      v-if="!locked && review.counts.clean.unresolved > 0"
-      class="flex items-center justify-between gap-3 rounded-lg border border-ok/30 bg-ok/10 p-3 text-xs"
-    >
-      <div class="min-w-0">
-        <p class="font-semibold text-ok-fg">{{ review.counts.clean.unresolved }} clean items pending</p>
-        <p class="text-muted-foreground">Passed automated verification with zero flags.</p>
-      </div>
-      <Button size="sm" class="h-8 shrink-0 font-medium shadow-2xs" @click="onAcceptClean()">
-        Accept all clean ({{ review.counts.clean.unresolved }})
-      </Button>
-    </div>
-
-    <!-- Approveness banner when all items are resolved -->
-    <div
-      v-if="review.is_approvable && !review.decision"
-      class="flex items-center gap-2.5 rounded-lg border border-ok/40 bg-ok/15 p-3 text-xs font-medium text-ok-fg"
-    >
-      <PhCheckCircle weight="bold" class="size-4.5 shrink-0" />
-      <span>All items resolved! Use the <strong>Approve</strong> button in the top bar to finalize this section.</span>
     </div>
 
     <section v-for="status in STATUS_ORDER" :key="status" :class="`state-${status}`" :aria-labelledby="`group-${status}-title`">
@@ -184,12 +106,7 @@ const shared = computed(() => {
           </CollapsibleTrigger>
         </h3>
 
-        <div v-if="status === 'clean'" class="flex flex-wrap items-center gap-x-4 gap-y-2 pt-3">
-          <p class="text-xs text-muted-foreground">Checked with no flag. Listed so you can see full coverage.</p>
-          <Button v-if="!readOnly" size="sm" :disabled="locked || review.counts.clean.unresolved === 0" @click="onAcceptClean()">
-            Mark all clean as accepted ({{ review.counts.clean.unresolved }} unresolved)
-          </Button>
-        </div>
+        <p v-if="status === 'clean'" class="pt-3 text-xs text-muted-foreground">Checked with no flag. Listed so you can see full coverage.</p>
 
         <CollapsibleContent class="collapsible -m-1 overflow-hidden p-1">
           <p v-if="status === 'not_auto_verified' && shared" class="pt-3 text-xs whitespace-pre-line text-muted-foreground">
@@ -204,8 +121,6 @@ const shared = computed(() => {
               :key="item.index"
               :item="item"
               :review="review"
-              :locked="locked"
-              :on-resolve="onResolve"
               v-model:open="expanded[item.index]"
             />
           </ul>

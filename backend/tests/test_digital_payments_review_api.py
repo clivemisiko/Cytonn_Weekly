@@ -16,10 +16,10 @@ from review_helpers import ROWS, TODAY, FakeProvider, LocalFakeProvider, make_re
 
 from api.main import CORS_ENV_VAR, create_app
 from cytonn_weekly import env as env_module
-from cytonn_weekly.digital_payments import coordinator_review as cr
+from cytonn_weekly.review import model as cr
 from cytonn_weekly.digital_payments import review_run
-from cytonn_weekly.digital_payments import review_store as rs
-from cytonn_weekly.digital_payments.providers.base import OutlookResult
+from cytonn_weekly.review import store as rs
+from cytonn_weekly.drafting.results import OutlookResult
 
 
 @pytest.fixture
@@ -97,7 +97,7 @@ def test_review_json_shape_for_a_tampered_review(client, db):
     body = client.get(f"/api/reviews/{run_id}").json()
 
     assert body["run_id"] == run_id and body["decision"] is None and body["locked"] is False
-    assert body["is_approvable"] is False and body["is_dev_draft"] is False and body["dev_mode_label"] is None
+    assert body["is_approvable"] is True and body["is_dev_draft"] is False and body["dev_mode_label"] is None
     n = len(review.review_items)
     assert body["progress"] == {"total": n, "resolved": 0, "unresolved": n, "fix_needed": 0}
     assert {s: body["counts"][s]["total"] for s in body["counts"]} == {"flagged": 2, "not_auto_verified": 4, "clean": n - 6}
@@ -162,15 +162,32 @@ def test_non_finite_source_values_do_not_break_the_response(client, db):
     assert ma["detail"][0]["source_value"] == "nan"
 
 
-@pytest.mark.parametrize("provider, spends, dev", [("", True, False), ("anthropic", True, False), ("local", False, True)])
+@pytest.mark.parametrize("provider, spends, dev", [("bedrock", True, False), ("local", False, True)])
 def test_config_reports_the_provider_and_what_a_draft_costs(client, monkeypatch, provider, spends, dev):
-    if provider:
-        monkeypatch.setenv("CYTONN_LLM_PROVIDER", provider)
-    else:
-        monkeypatch.delenv("CYTONN_LLM_PROVIDER", raising=False)
+    monkeypatch.setenv("CYTONN_LLM_PROVIDER", provider)
     cfg = client.get("/api/config").json()
-    assert (cfg["provider"], cfg["provider_valid"]) == (provider or "anthropic", True)
+    assert (cfg["provider"], cfg["provider_valid"]) == (provider, True)
     assert (cfg["spends_api_budget"], cfg["dev_mode"]) == (spends, dev)
+
+
+@pytest.mark.parametrize("value", [None, "", "  "])
+def test_config_reports_an_unset_provider_as_not_configured(client, monkeypatch, value):
+    if value is None:
+        monkeypatch.delenv("CYTONN_LLM_PROVIDER", raising=False)
+    else:
+        monkeypatch.setenv("CYTONN_LLM_PROVIDER", value)
+    cfg = client.get("/api/config").json()
+    assert cfg["provider"] == "not configured" and cfg["provider_valid"] is False
+    assert not cfg["spends_api_budget"] and not cfg["dev_mode"]
+    assert cfg["provider_problem"] and "CYTONN_LLM_PROVIDER" in cfg["provider_problem"]
+
+
+def test_config_says_the_anthropic_provider_was_removed(client, monkeypatch):
+    from cytonn_weekly.drafting.factory import ANTHROPIC_REMOVED
+
+    monkeypatch.setenv("CYTONN_LLM_PROVIDER", "anthropic")
+    cfg = client.get("/api/config").json()
+    assert cfg["provider_valid"] is False and cfg["provider_problem"] == ANTHROPIC_REMOVED and not cfg["spends_api_budget"]
 
 
 def test_config_flags_an_unknown_provider(client, monkeypatch):
@@ -357,23 +374,62 @@ def test_accept_clean_on_an_unknown_run_is_404(client):
 # Decision
 # ---------------------------------------------------------------------------
 
-def test_approve_is_blocked_while_items_are_unresolved(client, db):
+def test_approve_succeeds_while_items_are_unresolved(client, db):
     run_id = seed(db)
     r = client.post(f"/api/reviews/{run_id}/decide", json={"decision": "approved"})
-    assert r.status_code == 409 and "cannot approve" in r.json()["detail"]
-    assert rs.load_review(run_id, db_path=db).decision is None
+    assert r.status_code == 200 and r.json()["decision"] == "approved"
+    assert rs.load_review(run_id, db_path=db).decision == cr.APPROVED
 
 
-def test_approve_is_blocked_while_an_item_needs_a_fix(client, db):
+def test_approving_flagged_items_is_refused_without_their_count(client, db):
+    review = make_review(tamper=True)
+    run_id = seed(db, review)
+    flagged = sum(i.status == cr.FLAGGED for i in review.review_items)
+    assert flagged >= 2
+    for body in ({"decision": "approved"}, {"decision": "approved", "acknowledged_flagged": 0},
+                 {"decision": "approved", "acknowledged_flagged": flagged - 1},
+                 {"decision": "approved", "acknowledged_flagged": flagged + 1}):
+        r = client.post(f"/api/reviews/{run_id}/decide", json=body)
+        assert r.status_code == 409 and f"{flagged} flagged items" in r.json()["detail"], body
+        assert r.json()["problems"][0]["code"] == "review_not_decidable"
+    saved = rs.load_review(run_id, db_path=db)
+    assert saved.decision is None and all(i.resolution is None for i in saved.review_items)   # nothing changed
+    assert client.post(f"/api/reviews/{run_id}/decide", json={"decision": "approved", "acknowledged_flagged": -1}).status_code == 422
+
+
+def test_approving_with_the_right_count_accepts_the_flagged_items_and_leaves_resolved_ones(client, db):
+    review = make_review(tamper=True)
+    run_id = seed(db, review)
+    flagged = [n for n, i in enumerate(review.review_items) if i.status == cr.FLAGGED]
+    resolve(client, run_id, flagged[0], "fix_needed", note="my own call")
+    r = client.post(f"/api/reviews/{run_id}/decide", json={"decision": "approved", "acknowledged_flagged": len(flagged)})
+    assert r.status_code == 200 and r.json()["decision"] == "approved"
+    saved = rs.load_review(run_id, db_path=db)
+    first = saved.review_items[flagged[0]]
+    assert (first.resolution, first.resolution_note) == (cr.FIX_NEEDED, "my own call")
+    for n in flagged[1:]:
+        item = saved.review_items[n]
+        assert item.resolution == cr.ACCEPT and item.resolution_note == f"{cr.ACCEPTED_ON_APPROVAL} {saved.decided_at}."
+    assert saved.accepted_on_approval() == len(flagged) - 1
+    assert all(i.resolution is None for i in saved.review_items if i.status != cr.FLAGGED)   # nothing else was touched
+
+
+def test_rejecting_flagged_items_needs_no_count_and_accepts_nothing(client, db):
+    run_id = seed(db, make_review(tamper=True))
+    assert client.post(f"/api/reviews/{run_id}/decide", json={"decision": "rejected"}).status_code == 200
+    saved = rs.load_review(run_id, db_path=db)
+    assert saved.decision == cr.REJECTED and all(i.resolution is None for i in saved.review_items)
+
+
+def test_approve_succeeds_while_an_item_is_marked_fix_needed(client, db):
     review = make_review()
     run_id = seed(db, review)
-    accept_everything(client, run_id)
     body = resolve(client, run_id, idx_of(review, "Visa (V)"), "fix_needed").json()
-    assert body["is_approvable"] is False
+    assert body["is_approvable"] is True
 
     r = client.post(f"/api/reviews/{run_id}/decide", json={"decision": "approved"})
-    assert r.status_code == 409 and "fix_needed" in r.json()["detail"]
-    assert rs.load_review(run_id, db_path=db).decision is None
+    assert r.status_code == 200 and r.json()["decision"] == "approved"
+    assert rs.load_review(run_id, db_path=db).decision == cr.APPROVED
 
 
 def test_approve_records_the_decision_once_everything_is_resolved(client, db):

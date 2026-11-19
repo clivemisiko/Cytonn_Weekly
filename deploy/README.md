@@ -179,10 +179,11 @@ free to run, with every draft marked for development only.
 
 ## Reaching it
 
-Through the proxy's address. The Caddy proxy (`Caddyfile`, image from `Dockerfile.proxy`) listens on 443
-only, takes its certificate by DNS challenge (port 80 belongs to another project on the host), asks for
-one shared password (HTTP basic auth from `.env.proxy`) and forwards to the web container. A production
-host may also put its own separate sign-in in front of this one.
+In production `CYTONN_LLM_PROVIDER` is `bedrock`. It has no default: when it is unset or blank the
+server refuses every draft and says so (`anthropic` was removed and is refused too).
+With `bedrock`, **every "Draft again" on the overview spends real model budget**. Set `CYTONN_LLM_PROVIDER=local` and recreate the api to make the
+instance free to run (drafts are then marked for development only). After editing `.env`, recreate
+the api with `docker compose up -d --force-recreate api`; a restart does not re-read it.
 
 As a fallback that bypasses the proxy, both ports are bound to the host's loopback, so an SSH tunnel
 works:

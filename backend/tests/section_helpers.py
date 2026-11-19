@@ -8,10 +8,12 @@ Ibuka PDF and CBK's results PDFs on 2026-10-02.
 
 from datetime import date
 
-from cytonn_weekly.digital_payments.providers.base import SCOPE_WEB, HighlightResult
+from cytonn_weekly.drafting.results import SCOPE_WEB, HighlightResult
 from cytonn_weekly.equities.review_run import build_equities_review
 from cytonn_weekly.focus.review_run import build_focus_review
-from cytonn_weekly.narrative.base import NarrativeProvider
+from cytonn_weekly.drafting.base import NarrativeProvider
+from cytonn_weekly.common import sources as source_store
+from cytonn_weekly.real_estate import snips
 from cytonn_weekly.real_estate.review_run import build_real_estate_review
 from cytonn_weekly.weekly.previous_issue import Issue
 
@@ -33,7 +35,7 @@ class FakeNarrativeProvider(NarrativeProvider):
         self.bad_figure = bad_figure
         self.cited = cited
         self.calls = []
-        self.requests = 0   # what AnthropicNarrativeProvider counts: one per model request
+        self.requests = 0   # what the Bedrock provider counts: one per model request
         self.completions = []   # (system, prompt, max_tokens) of each plain completion
         self.replies = {}   # a reply to give a plain completion, by the system prompt's first words
 
@@ -63,6 +65,9 @@ class FakeNarrativeProvider(NarrativeProvider):
             {"text": second, "url": url, "title": brief.label,
              "cited_text": "Lending rose to Sh30.1bn this quarter." if self.cited else ""},
         ]
+        if brief.findings:   # findings only: the claims, no paragraph
+            return HighlightResult(company=brief.label, search_scope=SCOPE_WEB, ir_domain="", drafted_by=self.drafted_by,
+                                   headline=brief.label, paragraph="", paragraph_md="", claims=claims)
         body = " ".join(c["text"] for c in claims)
         return HighlightResult(
             company=brief.label, search_scope=SCOPE_WEB, ir_domain="", drafted_by=self.drafted_by,
@@ -107,9 +112,9 @@ def market(shares=None, as_of="2026-10-02T13:00:00+00:00"):
 def reits(warnings=()):
     """The real Ibuka figures of 25 Sept 2026 (prices unchanged from the 18 Sept summary)."""
     rows = [
-        {"reit": "ACORN_D", "name": "Acorn D-REIT", "price": 29.65, "inception_gain_pct": 48.5, "prior_price": 29.65,
+        {"reit": "ACORN_D", "name": "Acorn D-REIT", "price": 29.65, "inception_gain_pct": 48.25, "prior_price": 29.65,
          "ytd_base_price": 25.0, "wow_pct": 0.0, "ytd_pct": 18.6, "market_cap_kes_bn": 8.674903573, "error": None},
-        {"reit": "ACORN_I", "name": "Acorn I-REIT", "price": 24.44, "inception_gain_pct": 22.0, "prior_price": 23.75,
+        {"reit": "ACORN_I", "name": "Acorn I-REIT", "price": 24.44, "inception_gain_pct": 22.2, "prior_price": 23.75,
          "ytd_base_price": 22.0, "wow_pct": 2.905263157894737, "ytd_pct": 11.09, "market_cap_kes_bn": 9.898749704,
          "error": None},
         {"reit": "FAHARI", "name": "ILAM Fahari I-REIT", "price": 13.8, "inception_gain_pct": -31.0, "prior_price": 13.8,
@@ -130,7 +135,15 @@ def equities_review(provider=None, on_event=None):
                                  today=TODAY, fetch_market=market, on_event=on_event)
 
 
+def confirm_snips(sectors=("industry", "residential", "land", "hospitality")):
+    """A confirmed snip saved as a source for each of these sectors, as the confirm route leaves it."""
+    for sid in sectors:
+        label = snips.LABELS[sid]
+        source_store.from_snip(f"image-{sid}".encode(), ".png", f"{label} figures.", label, TODAY, TODAY.isoformat(), f"{sid}.png")
+
+
 def real_estate_review(provider=None, on_event=None):
+    confirm_snips()
     return build_real_estate_review(provider=provider or FakeNarrativeProvider(no_story={"hospitality"}),
                                     today=TODAY, fetch_reits=lambda _today: reits(), on_event=on_event)
 
@@ -149,9 +162,9 @@ def focus_review(provider=None, topic="SSA Eurobonds performance", on_event=None
 
 def old_focus_review(provider=None, topic="SSA Eurobonds performance", on_event=None):
     """A Focus as it was saved before the structure existed: one cited piece, a headline and a body, no roles."""
-    from cytonn_weekly.common.review import build_review, check_section, narrative_block, numbered
-    from cytonn_weekly.narrative.base import NarrativeBrief
-    from cytonn_weekly.narrative.drafter import draft_pieces
+    from cytonn_weekly.review.blocks import build_review, check_section, narrative_block, numbered
+    from cytonn_weekly.drafting.base import NarrativeBrief
+    from cytonn_weekly.drafting.drafter import draft_pieces
 
     brief = NarrativeBrief(id="focus", section="Focus of the Week", label=topic, focus=f"recent, sourced data on: {topic}",
                            words=(400, 700), opener=None, max_searches=8)

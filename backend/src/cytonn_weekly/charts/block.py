@@ -35,10 +35,10 @@ from typing import Any, Iterable, Optional
 from cytonn_weekly.charts.series import ChartSeries, average, check_quoted, compare_average, read_series, windowed
 from cytonn_weekly.charts.specs import AVERAGE_FROM, SPECS, ChartSpec
 from cytonn_weekly.charts.store import sha256
-from cytonn_weekly.checkers.digital_payments import Flag
+from cytonn_weekly.review.figures import Flag
 from cytonn_weekly.common.formatting import MULTIPLE, PCT, fmt_value
 from cytonn_weekly.common.run_events import PART_SKIPPED, PIECE_FINISHED, PIECE_STARTED, Observer, emit, fetch_source
-from cytonn_weekly.digital_payments.coordinator_review import CLEAN, FLAGGED, NOT_AUTO_VERIFIED
+from cytonn_weekly.review.model import CLEAN, FLAGGED, NOT_AUTO_VERIFIED
 from cytonn_weekly.notable.suggestion import FIXED_LABELS
 from cytonn_weekly.weekly.workbook import Workbook
 

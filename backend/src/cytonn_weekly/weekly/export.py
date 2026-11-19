@@ -50,11 +50,11 @@ from cytonn_weekly.common.word_layout import (
     title,
     title_line,
 )
-from cytonn_weekly.digital_payments import review_store
-from cytonn_weekly.digital_payments.coordinator_review import APPROVED, CoordinatorReview
+from cytonn_weekly.review import store as review_store
+from cytonn_weekly.review.model import APPROVED, CoordinatorReview
 from cytonn_weekly.digital_payments.delivery import DevModeDeliveryBlocked, is_dev_mode_review
 from cytonn_weekly.digital_payments.fetcher import format_table_rows
-from cytonn_weekly.digital_payments.providers.base import LINK_RE
+from cytonn_weekly.drafting.results import LINK_RE
 from cytonn_weekly.digital_payments.summary import (
     TABLE_COLUMNS,
     TABLE_TITLE,
@@ -72,11 +72,14 @@ from cytonn_weekly.weekly.week import Week, day_text, latest_friday, ordinal, we
 DEV_LABEL = "DEV MODE DRAFT (local model): NOT FOR PUBLICATION OR CIRCULATION"
 WATERMARK = "DEV MODE DRAFT"
 SUMMARY_HEADING = "Executive Summary:"
+GUIDE_LINE = "Focus of the Week: analyst to write"
 CARRIED_NOTE = "[Carried forward from the previous issue: edit before publishing]"
 CHART_WIDTH = Inches(6.0)
 CHART_NOT_VERIFIED = f"{PROVENANCE[0].upper()}{PROVENANCE[1:]}."   # its own paragraph, so the editor can delete it
 PICTURE_UNVERIFIED = "[Chart not drawn: the stored picture could not be verified]"
 UPLOAD_UNREADABLE = "[Chart image not used: the uploaded picture could not be read. Upload it again.]"
+
+UNLABELLED_CARRIED = ("outlook", "shilling_pressure")   # carried blocks the export prints with no heading
 
 # The issue's own section headings (#38.2026).
 HEADINGS = {"fixed_income": "Fixed Income", "equities": "Equities",
@@ -119,7 +122,9 @@ def export_status(db_path: Optional[Union[Path, str]], period: str, today: Optio
     """Whether the week's report can be exported, each section's state, and how many chart slots have no image."""
     reviews = weekly_reviews(db_path, period, today)
     sections = [{"slug": spec.slug, "title": HEADINGS.get(spec.slug, spec.title), "state": _state(review),
-                 "run_id": review.run_id if review else None} for spec, review in reviews]
+                 "run_id": review.run_id if review else None,
+                 "flagged_accepted_on_approval": review.accepted_on_approval() if review and review.decision == APPROVED else 0}
+                for spec, review in reviews]
     dev = [HEADINGS.get(spec.slug, spec.title) for spec, review in reviews if review is not None and is_dev_mode_review(review)]
     return {"period": period, "ready": all(s["state"] == APPROVED for s in sections), "sections": sections,
             "is_dev_draft": bool(dev), "dev_sections": dev, "dev_mode_label": DEV_LABEL if dev else None,
@@ -366,6 +371,10 @@ def _chart(doc, caption: str, chart: Optional[dict[str, Any]], review: Coordinat
 def _add_blocks(doc, review: CoordinatorReview, charts_root: Optional[Union[Path, str]] = None,
                 uploads: Optional[dict[str, tuple[bytes, str, str]]] = None) -> None:
     section = review.section
+    if any(b.get("role") == "findings" for b in section.get("blocks", [])):   # the Focus is the analyst's: its findings are never printed
+        note = _mark(doc, GUIDE_LINE)
+        note.bold, note.font.color.rgb = True, _RED
+        return
     chart_after: dict[str, list[str]] = section.get("chart_after") or {}
     charts = {b["caption"]: b for b in section.get("blocks", []) if b.get("kind") == "chart"}
 
@@ -374,7 +383,8 @@ def _add_blocks(doc, review: CoordinatorReview, charts_root: Optional[Union[Path
             _chart(doc, caption, charts.get(caption), review, charts_root, (uploads or {}).get(caption))
 
     placed: set[str] = set()
-    for block in real_estate_layout(section, WEEKLY):
+    layout = list(real_estate_layout(section, WEEKLY))
+    for n, block in enumerate(layout):
         kind = block["kind"]
         if block.get("export") is False:
             continue   # shown on the review screen only; its content is inside another block's table
@@ -382,6 +392,13 @@ def _add_blocks(doc, review: CoordinatorReview, charts_root: Optional[Union[Path
             doc.add_heading(block["group_heading"], level=2)
         if kind == "table":
             _add_table_block(doc, block)
+        elif kind == "narrative" and block.get("outlook"):   # Real Estate's closing outlook: bold italic, as the issue prints it
+            first = len(doc.paragraphs)
+            _add_text(doc, block.get("body_md") or "")
+            for para in doc.paragraphs[first:]:
+                if not para.text.startswith("Sources:") and not para.text.startswith("["):
+                    for run in para.runs:
+                        run.bold = run.italic = True
         elif kind == "narrative" and block.get("role"):
             _add_text(doc, block.get("body_md") or "")   # a Focus part: a section's heading is its group_heading, printed above
         elif kind == "narrative":
@@ -394,18 +411,32 @@ def _add_blocks(doc, review: CoordinatorReview, charts_root: Optional[Union[Path
         elif kind == "computed" and block.get("role") == "contents":
             _add_text(doc, block["body_md"])   # the Focus's contents list: plain lines, one per paragraph
         elif kind == "computed":
-            doc.add_heading(block["title"], level=2)
-            _add_text(doc, block["body_md"])
+            if not block.get("continues"):   # a sentence that continues the carried paragraph before it is printed there
+                if not block.get("group"):   # a Real Estate paragraph sits under its group's heading, as the issue prints it
+                    doc.add_heading(block["title"], level=2)
+                _add_text(doc, block["body_md"])
             names = [s["name"] for s in block.get("sources") or [] if s.get("name")]
             if names:
                 small_line(doc, "Source: " + "; ".join(names))
+        elif kind == "carried" and block.get("role") == "analyst" and not block.get("edits"):
+            _red_line(doc, f"[Analyst to write: {block['title']}]")
+        elif kind == "carried" and block.get("role") == "standing":
+            if not block.get("edits"):
+                note = _mark(doc, CARRIED_NOTE)
+                note.bold, note.font.color.rgb = True, _RED
+            for line in block["body_md"].splitlines():   # the paragraph, then each list item on its own line
+                if line.strip():
+                    doc.add_paragraph(line.strip())
         elif kind == "carried":
-            if block.get("role") != "disclaimer":   # the Focus's disclaimer starts with its own word, "Disclaimer:"
+            # the issue prints these as plain paragraphs: the Focus's disclaimer starts with its own word, and the closing
+            # outlooks and the shilling's pressure bullets sit under their section with no label (issue #45.2026, pp. 8 and 13)
+            if block.get("role") not in ("disclaimer", "analyst") and block["id"] not in UNLABELLED_CARRIED:
                 doc.add_heading(block["title"], level=2)
             if not block.get("edits"):   # a paragraph the reviewer rewrote (sentence_edit.apply_paragraph) is no longer carried text
                 note = _mark(doc, CARRIED_NOTE)
                 note.bold, note.font.color.rgb = True, _RED
-            _add_text(doc, block["body_md"])
+            after = layout[n + 1] if n + 1 < len(layout) else {}
+            _add_text(doc, block["body_md"] + (" " + after["body_md"] if after.get("continues") == block["id"] else ""))
         elif kind == "supplied":
             if len(section.get("blocks", [])) > 1:
                 doc.add_heading(block["title"], level=2)

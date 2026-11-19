@@ -29,6 +29,7 @@ PROBLEMS: dict[str, tuple[str, Optional[str]]] = {
     "analyst_suggestion_unavailable": ("No suggestion could be made", "analyst-form"),
     "bulletin_not_published": ("The bulletin is not published yet", "inputs-panel"),
     "bulletin_fetch_failed": ("The bulletin could not be fetched", "inputs-panel"),
+    "item_fetch_failed": ("The figures could not be fetched", "analyst-form"),
     "draft_section_unavailable": ("This section cannot be drafted yet", "start-draft"),
     "draft_topic_missing": ("Type the topic before you start the draft", "start-draft"),
     "draft_topic_invalid": ("The topic is too long", "start-draft"),
@@ -55,6 +56,9 @@ PROBLEMS: dict[str, tuple[str, Optional[str]]] = {
     "edit_paragraph_not_possible": ("This paragraph cannot be changed here", None),
     "edit_text_refused": ("The new sentence was not saved", None),
     "edit_save_failed": ("The new version could not be saved", None),
+    "finding_not_possible": ("This finding cannot be removed here", None),
+    "finding_not_found": ("The finding was not found in the draft", None),
+    "finding_save_failed": ("The finding was not removed", None),
 }
 
 

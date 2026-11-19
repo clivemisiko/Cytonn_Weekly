@@ -102,7 +102,7 @@ export interface SourceMeta {
   published_date: string;
   /** UTC with an offset; shown in East Africa Time. */
   fetched_at: string;
-  origin: "fetched" | "pasted" | "found";
+  origin: "fetched" | "pasted" | "found" | "snip";
   sha256: string;
   chars: number;
   flags: string[];
@@ -122,6 +122,43 @@ export interface SourcePiece {
   week_end: string;
   sources: SourceMeta[];
   gather?: GatherLook | null;
+}
+export interface EquitiesCompanies {
+  companies: { name: string; type: "bank" | "insurer"; domain: string; ir: string; set: boolean }[];
+  searches: number;
+  pages: number;
+}
+/** One uploaded Real Estate snip. `text` is null until the model has read it; only a confirmed snip is used as a source. */
+export interface SnipMeta {
+  hash: string;
+  filename: string;
+  sector: string;
+  text: string | null;
+  /** YYYY-MM-DD the analyst gave, or "" for the report week. */
+  date: string;
+  confirmed: boolean;
+  /** Set for an uploaded PDF; absent for an image. */
+  kind?: "pdf";
+  file_sha?: string;
+  size?: number;
+  pages?: number;
+  uploaded_at?: string;
+  /** Quotes checked word for word against their page; only these are used. */
+  passages?: { page: number; quote: string }[];
+  /** Quotes the model returned that were not word for word on their page, so were dropped. */
+  dropped?: number;
+  ocr_pages?: number[];
+}
+
+export interface SnipsListing {
+  week_ending: string;
+  sectors: { id: string; label: string }[];
+  max_per_sector: number;
+  max_bytes: number;
+  pdf_max_bytes: number;
+  pdf_max_pages: number;
+  snips: SnipMeta[];
+  warnings?: string[];
 }
 
 export interface SourcesListing {
@@ -175,7 +212,15 @@ export interface ReviewItem {
   /** True for a flagged sentence of a drafted piece that the reviewer can rewrite or remove by hand. */
   edit_sentence?: boolean;
   edit_paragraph?: boolean;
+  /** True for a claim of a model-drafted piece that the reviewer can take out of the draft whole. */
+  remove_finding?: boolean;
   context: ClaimContext;
+}
+
+/** A whole drafted piece the reviewer took out of the draft (weekly/sentence_edit.remove_finding). */
+export interface RemovedFinding {
+  headline: string;
+  at: string;
 }
 
 export interface Claim {
@@ -234,6 +279,7 @@ export interface Section {
   highlights_expected: number;
   shortfall: number;
   warnings: string[];
+  removed_findings?: RemovedFinding[];
   items: (HighlightItem | StockTableItem)[];
   outlook: Outlook;
 }
@@ -295,8 +341,8 @@ export interface CarriedBlock {
   id: string;
   title: string;
   body_md: string;
-  carried_from: { issue_id: number | null; url: string | null; published: string | null };
-  /** Focus of the Week only: "disclaimer". */
+  carried_from: { issue_id?: number | null; url?: string | null; published?: string | null; note?: string };
+  /** Focus of the Week: "disclaimer". Real Estate (weekly): "standing", the REITs text carried from the last saved review, one line a list item. */
   role?: string;
   /** Set once the reviewer retyped the paragraph by hand (weekly/sentence_edit.py). */
   edits?: BlockEdit[] | null;
@@ -307,10 +353,12 @@ export interface NarrativeBlock {
   /** Real Estate (weekly) only: the group it is printed under, and on the group's first block its heading ("I. Residential Sector"). */
   group?: string;
   group_heading?: string;
-  /** Focus of the Week only: which part of the report this is. A lead and a conclusion are written from the sections, with no cited claim. */
-  role?: "lead" | "section" | "conclusion";
+  /** Focus of the Week only: which part of the report this is. "findings" is a section's research notes (claims with their quotes), not report text. A saved older Focus may hold a lead, section or conclusion written by the model. */
+  role?: "lead" | "section" | "conclusion" | "findings";
   /** Focus of the Week only: a plain note for the analyst under a section, not a claim or a flag. */
   analyst_note?: string;
+  /** Real Estate (weekly): the closing outlook, printed bold italic; every sentence must rest on a cited claim. */
+  outlook?: boolean;
   kind: "narrative";
   id: string;
   topic: string;
@@ -336,6 +384,8 @@ export interface UnavailableBlock {
   numeral: string;
   kind: "unavailable";
   role?: string;
+  /** Real Estate (weekly): the sector this part stands for (a sector with no confirmed snip is not included). */
+  sector?: string;
   group_heading?: string;
   id: string;
   title: string;
@@ -457,6 +507,7 @@ export interface BlocksSection {
   /** Executive Summary only: how it is composed, and per included section what the summary leaves out. */
   summary_note?: string | null;
   not_covered?: NotCovered[];
+  removed_findings?: RemovedFinding[];
   blocks: Block[];
 }
 
@@ -546,7 +597,7 @@ export interface FixResult {
 }
 
 export interface SentenceResult {
-  action: "edit" | "remove" | "paragraph";
+  action: "edit" | "remove" | "paragraph" | "finding";
   changed_items: number;
   earlier_run_id: number;
   was_approved: boolean;
@@ -583,7 +634,7 @@ export interface ChartUpload {
 
 /** Where a value came from while it is still what was carried from last week's form, or what was suggested. */
 export interface AnalystCarried {
-  /** The week it was carried from (ISO date), or "suggested" for a worked-out running total. */
+  /** The week it was carried from (ISO date), "suggested" for a worked-out running total, "fetched", or "snip" for a fund table read from the Daily Nation page. */
   from: string;
   /** A suggestion's working, in the API's words. */
   note: string;
@@ -744,7 +795,8 @@ export type RunEventKind =
   | "sources_looking"
   | "sources_found"
   | "sources_search_unavailable"
-  | "retrying";
+  | "retrying"
+  | "source_left_out";
 
 /** One real step of a draft, as the pipeline reported it (common/run_events.py). */
 export interface RunEvent {

@@ -29,7 +29,7 @@ from typing import Any, Callable, Optional
 
 import pdfplumber
 
-from cytonn_weekly.common.formatting import PCT, PRICE, TEXT, clean_pdf_number, pct_change, round_half_up
+from cytonn_weekly.common.formatting import PCT, PRICE, TEXT, clean_pdf_number, pct_change
 from cytonn_weekly.common.http import NotFound, http_get_pdf
 
 URL_PATTERN = "https://www.nse.co.ke/wp-content/uploads/Unquoted-Securities-Platform-Ibuka-Weekly-Summary_{:%d-%m-%Y}.pdf"
@@ -43,17 +43,14 @@ REITS: list[tuple[str, str, str]] = [
     ("FAHARI", "ILAM Fahari I-REIT", "ILAM FAHARI-I REIT"),
 ]
 
-# Content and precision follow Cytonn Weekly #38.2026 (published 2026-09-27, still the
-# newest issue on 2026-10-02), whose REITs paragraph reads: "Acorn D-REIT and I-REIT traded
-# at Kshs 29.7 and Kshs 24.4 per unit, respectively ... The performance represented a 48.5%
-# and 22.0% gain for the D-REIT and I-REIT, respectively, from the Kshs 20.0 inception
-# price", and "ILAM Fahari I-REIT traded at Kshs 13.8 per share ... representing a 31.0 %
-# loss from the Kshs 20.0 inception price".
-#   price, 1 dp: Ibuka's 29.65 and 24.44 print as 29.7 and 24.4 (round-half-up, not half-to-even).
-#   gain, 1 dp, from the PRINTED price: the report used the 18 Sept 2026 summary, whose raw
-#     prices were 29.65 and 24.44 (checked against NSE's PDF).  From those, the gains would be
-#     48.3% and 22.2%; the report's 48.5% and 22.0% are (29.7 - 20) / 20 and (24.4 - 20) / 20.
-#     So the gain is computed from the price rounded to its display precision, then rounded.
+# Content and precision follow Cytonn Weekly #45.2026 (published 2026-11-15, issue 899), whose REITs paragraph reads:
+# "Acorn D-REIT and I-REIT traded at Kshs 29.7 and Kshs 24.4 per unit, respectively ... The performance represented a
+# 48.3% and 22.2% gain for the D-REIT and I-REIT, respectively, from the Kshs 20.0 inception price", and "ILAM Fahari
+# I-REIT closed at Kshs 13.8 per unit ... representing a 31.0% loss from the Kshs 20.0 inception price".
+#   price, 1 dp: Ibuka's 29.65 prints as 29.7 (round-half-up, not half-to-even).
+#   gain, 1 dp, from the UNROUNDED price, rounded half up once at the end: (29.65 - 20) / 20 = 48.25, printed 48.3%.
+#     (#38.2026 printed 48.5% and 22.0%, which are the gains on the rounded 29.7 and 24.4; #45.2026 is the newer
+#     practice and the one the team confirmed.)
 INCEPTION_PRICE = Decimal("20.0")
 PRICE_DECIMALS = 1
 COLUMNS = [
@@ -70,10 +67,10 @@ def ibuka_url(d: date) -> str:
 
 
 def inception_gain_pct(price: Optional[float]) -> Optional[float]:
-    """% gain (negative: loss) from the Kshs 20.0 inception price, on the price as printed (see COLUMNS)."""
+    """% gain (negative: loss) from the Kshs 20.0 inception price, on the price as Ibuka prints it, not as it is rounded."""
     if price is None:
         return None
-    return float((round_half_up(price, PRICE_DECIMALS) - INCEPTION_PRICE) / INCEPTION_PRICE * 100)
+    return float((Decimal(repr(price)) - INCEPTION_PRICE) / INCEPTION_PRICE * 100)
 
 
 def parse_tables(tables: list[list[list[Optional[str]]]]) -> dict[str, dict[str, Optional[float]]]:

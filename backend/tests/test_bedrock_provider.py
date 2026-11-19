@@ -14,22 +14,21 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.cms_publish import local_pieces, publish_report
-from api.main import SECTIONS_REQUIRED as SECTIONS_REQUIRED_TEXT
-from api.main import create_app, failure_message, provider_problem
+from api.deps import SECTIONS_REQUIRED as SECTIONS_REQUIRED_TEXT
+from api.deps import failure_message, provider_problem
+from api.main import create_app
 from api.serialize import is_dev_draft
 from cytonn_weekly import env
 from cytonn_weekly.digital_payments.delivery import is_dev_mode_review
-from cytonn_weekly.digital_payments.provider_factory import get_provider
-from cytonn_weekly.digital_payments.providers import drafting
-from cytonn_weekly.digital_payments.providers.anthropic_provider import AnthropicProvider
-from cytonn_weekly.digital_payments.providers.base import DraftingProvider
-from cytonn_weekly.digital_payments.providers.local_provider import EXA_KEY_MISSING, LocalProvider
-from cytonn_weekly.narrative import bedrock_provider as bp
-from cytonn_weekly.narrative.anthropic_provider import AnthropicNarrativeProvider
-from cytonn_weekly.narrative.base import NarrativeBrief, NarrativeProvider
-from cytonn_weekly.narrative.drafter import draft_pieces
-from cytonn_weekly.narrative.factory import get_narrative_provider
-from cytonn_weekly.narrative.local_provider import LocalNarrativeProvider
+from cytonn_weekly.drafting.factory import get_provider
+from cytonn_weekly.drafting import prompts, replies
+from cytonn_weekly.drafting.highlight_contract import DraftingProvider
+from cytonn_weekly.drafting.local import EXA_KEY_MISSING, LocalProvider
+from cytonn_weekly.drafting import bedrock as bp
+from cytonn_weekly.drafting.base import NarrativeBrief, NarrativeProvider
+from cytonn_weekly.drafting.drafter import draft_pieces
+from cytonn_weekly.drafting.factory import get_narrative_provider
+from cytonn_weekly.drafting.local_narrative import LocalNarrativeProvider
 from tests.review_helpers import make_review
 from tests.section_helpers import TODAY, focus_review
 
@@ -109,12 +108,19 @@ def api_error(cls, status, kind, message="RAW LIBRARY TEXT"):
 
 # --- the switch -----------------------------------------------------------------------
 
-def test_bedrock_is_chosen_by_the_switch_and_not_by_default(aws, monkeypatch):
+def test_bedrock_is_chosen_by_the_switch_and_nothing_is_chosen_without_it(aws, monkeypatch):
     assert isinstance(get_narrative_provider(), bp.BedrockNarrativeProvider)
     assert isinstance(get_provider(), bp.BedrockProvider)
+    monkeypatch.setenv("CYTONN_LLM_PROVIDER", "anthropic")   # the direct provider was removed; the factories say so
+    with pytest.raises(ValueError, match="was removed"):
+        get_narrative_provider()
+    with pytest.raises(ValueError, match="was removed"):
+        get_provider()
     monkeypatch.delenv("CYTONN_LLM_PROVIDER")
-    assert isinstance(get_narrative_provider(), AnthropicNarrativeProvider)
-    assert isinstance(get_provider(), AnthropicProvider)
+    with pytest.raises(ValueError, match="CYTONN_LLM_PROVIDER is not set"):
+        get_narrative_provider()
+    with pytest.raises(ValueError, match="CYTONN_LLM_PROVIDER is not set"):
+        get_provider()
 
 
 def test_the_model_is_bedrock_model_id_with_the_sonnet_profile_as_default(aws, monkeypatch):
@@ -150,8 +156,8 @@ def _imports(module):
 
 
 def test_the_bedrock_module_does_not_import_the_local_providers_and_does_not_mention_exa():
-    for module in (bp, drafting):
-        assert not [n for n in _imports(module) if "local_provider" in n], module.__name__
+    for module in (bp, prompts, replies):
+        assert not [n for n in _imports(module) if "drafting.local" in n], module.__name__
         assert not re.search(r"\bexa\b|EXA_|exa_", inspect.getsource(module), re.IGNORECASE), module.__name__
 
 
@@ -159,7 +165,7 @@ def test_the_bedrock_providers_do_not_subclass_either_local_provider():
     for cls, base in ((bp.BedrockProvider, DraftingProvider), (bp.BedrockNarrativeProvider, NarrativeProvider)):
         assert issubclass(cls, base)
         assert not issubclass(cls, (LocalProvider, LocalNarrativeProvider))
-        assert not any(c.__module__.endswith("local_provider") for c in cls.__mro__)
+        assert not any(c.__module__ in ("cytonn_weekly.drafting.local", "cytonn_weekly.drafting.local_narrative") for c in cls.__mro__)
 
 
 # --- a draft ---------------------------------------------------------------------------
@@ -202,7 +208,8 @@ def test_the_call_is_a_forced_client_side_function_with_no_server_tool_and_no_co
 
 def test_a_reply_cut_off_at_the_token_limit_is_discarded_with_a_warning(aws):
     res = narrative(FakeBedrock(stop="max_tokens")).draft_piece(BRIEF, start=START, end=TODAY, today=TODAY)
-    assert res.no_story and any("Bedrock model returned invalid JSON" in w for w in res.draft_warnings)
+    assert res.no_story and not res.claims and res.reason == bp.CUT_OFF
+    assert any(bp.CUT_OFF in w for w in res.draft_warnings)
 
 
 def test_each_request_logs_its_number_and_token_counts_and_nothing_else(aws, caplog):
@@ -245,8 +252,8 @@ def test_the_focus_structure_runs_through_bedrock_with_the_caps_and_is_not_a_dev
     provider = bp.BedrockNarrativeProvider(client=client)
     review = focus_review(provider)
     assert review.section["outline"]["source"] == "proposed"
-    assert [c["max_tokens"] for c in client.calls] == [300, 2000, 2000, 2000, 2000, 600]   # outline, 3 sections, conclusion, lead
-    assert review.section["api_requests"] == 6 and review.section["pieces_found"] == review.section["pieces_expected"]
+    assert [c["max_tokens"] for c in client.calls] == [300, 3000, 3000, 3000]   # outline, then 3 sections of findings; no conclusion or lead
+    assert review.section["api_requests"] == 4 and review.section["pieces_found"] == review.section["pieces_expected"]
     drafted = {b["drafted_by"] for b in review.section["blocks"] if b["kind"] == "narrative"}
     assert drafted == {f"bedrock:{MODEL}"}
     assert not is_dev_draft(review) and not is_dev_mode_review(review) and not list(local_pieces(review.section))
@@ -330,9 +337,9 @@ def test_access_keys_without_boto3_say_so_and_a_bearer_token_does_not_need_it(aw
     assert provider_problem() is None
 
 
-def test_an_unknown_provider_names_all_three(monkeypatch):
+def test_an_unknown_provider_names_both_choices(monkeypatch):
     monkeypatch.setenv("CYTONN_LLM_PROVIDER", "gpt")
-    assert provider_problem() == "Unknown CYTONN_LLM_PROVIDER value 'gpt'; expected 'anthropic', 'bedrock' or 'local'."
+    assert provider_problem() == "Unknown CYTONN_LLM_PROVIDER value 'gpt'; expected 'bedrock' or 'local'."
 
 
 def test_startup_names_which_aws_variables_are_set_and_never_a_value(aws, monkeypatch, caplog, tmp_path):
@@ -378,7 +385,7 @@ def test_an_exa_key_override_is_reported_for_the_local_provider_only(monkeypatch
     dot_env = tmp_path / ".env"
     dot_env.write_text("EXA_API_KEY=file-key-0000000000000000\n", encoding="utf-8")
     monkeypatch.setenv("EXA_API_KEY", "shell-key-1111111111111111")
-    for provider, reported in (("bedrock", False), ("anthropic", False), ("local", True)):
+    for provider, reported in (("bedrock", False), ("local", True)):
         monkeypatch.setenv("CYTONN_LLM_PROVIDER", provider)
         assert bool(env.key_override_warnings(dot_env)) is reported, provider
 
@@ -474,13 +481,15 @@ def test_a_focus_with_no_sources_anywhere_stops_with_the_no_sources_sentence(aws
     client = FakeBedrock()
     with pytest.raises(LookupError) as stopped:
         focus_review(narrative(client), sections=TITLES)
-    assert str(stopped.value) == bp.NO_SOURCES and client.calls == []
+    said = str(stopped.value)
+    assert said.startswith("No section produced a sourced draft, so nothing was saved.") and bp.NO_SOURCES in said
+    assert client.calls == []
 
 
 def test_a_provider_with_no_reason_of_its_own_keeps_the_nothing_qualifying_wording(aws):
     class Quiet(NarrativeProvider):
         def draft_piece(self, brief, *, start, end, today):
-            from cytonn_weekly.digital_payments.providers.base import HighlightResult
+            from cytonn_weekly.drafting.results import HighlightResult
             return HighlightResult(company=brief.label, search_scope=None, ir_domain="", drafted_by="x:y", no_story=True)
 
         def complete(self, system, prompt, *, max_tokens):
@@ -494,10 +503,10 @@ def test_the_shared_warnings_keep_the_search_results_wording_unless_a_provider_n
     reply = json.dumps({"is_genuine_announcement": True, "reasoning": "", "headline": "H", "paragraph": f"A [b]({UNSEEN}) c.",
                         "claims": [{"claim": "c", "url": UNSEEN}]})
     local = []
-    res = drafting.piece_from_reply(reply, BRIEF, "web", [dict(PAGE)], [], who="m", label="l", drafted_by="x:y")
+    res = replies.piece_from_reply(reply, BRIEF, "web", [dict(PAGE)], [], who="m", label="l", drafted_by="x:y")
     assert f"link to {UNSEEN} was not in the search results; unlinked" in res.warnings
     assert f"claim cited a URL not in the search results; dropped: {UNSEEN}" in res.warnings
-    res = drafting.piece_from_reply(reply, BRIEF, "supplied", [dict(PAGE)], local, who="m", label="l", drafted_by="x:y",
+    res = replies.piece_from_reply(reply, BRIEF, "supplied", [dict(PAGE)], local, who="m", label="l", drafted_by="x:y",
                                     where="supplied sources")
     assert f"claim cited a URL not in the supplied sources; dropped: {UNSEEN}" in res.warnings
 
@@ -545,7 +554,7 @@ def test_typed_titles_pass_that_check_and_the_other_providers_never_make_it(aws,
     # Past the titles check the next refusal is the provider check, so these never start a draft.
     typed = client.post("/api/runs", json={"section": "focus", "topic": "Eurobonds", "sections": TITLES, "provider": "local"})
     assert typed.json()["problems"][0]["code"] == "draft_mode_changed"
-    for provider in ("anthropic", "local"):
+    for provider in ("local",):
         monkeypatch.setenv("CYTONN_LLM_PROVIDER", provider)
         r = client.post("/api/runs", json={"section": "focus", "topic": "Eurobonds", "provider": "bedrock"})
         assert r.json()["problems"][0]["code"] == "draft_mode_changed"   # not draft_sections_required

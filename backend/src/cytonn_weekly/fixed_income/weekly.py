@@ -49,7 +49,7 @@ from cytonn_weekly.common.computed import (
     ratio_pct,
 )
 from cytonn_weekly.common.formatting import NUMBER, PCT, TEXT, round_half_up
-from cytonn_weekly.common.review import (
+from cytonn_weekly.review.blocks import (
     build_review,
     check_section,
     narrative_block,
@@ -59,10 +59,10 @@ from cytonn_weekly.common.review import (
     unavailable_block,
 )
 from cytonn_weekly.common.run_events import Observer, report_blocks
-from cytonn_weekly.digital_payments.coordinator_review import CoordinatorReview
+from cytonn_weekly.review.model import CoordinatorReview
 from cytonn_weekly.fixed_income import cbk_auctions, net_borrowing
-from cytonn_weekly.narrative.base import NarrativeBrief, NarrativeProvider
-from cytonn_weekly.narrative.drafter import draft_pieces
+from cytonn_weekly.drafting.base import NarrativeBrief, NarrativeProvider
+from cytonn_weekly.drafting.drafter import draft_pieces
 from cytonn_weekly.weekly import analyst, cbk_bulletin, cbk_rates, fi_workbook, previous_issue
 from cytonn_weekly.weekly.inputs import CBK_BULLETIN, WeeklyInputs, store
 from cytonn_weekly.weekly.prose import (
@@ -121,24 +121,26 @@ EUROBOND_NAMES = {"2018_10y": "10-year Eurobond issued in 2018", "2018_30y": "30
                   "2019_12y": "12-year Eurobond issued in 2019", "2021_13y": "13-year Eurobond issued in 2021",
                   "2024_7y": "7-year Eurobond issued in 2024"}
 
+IN_THE_WEEK = ("The event itself must have happened in the report week. A recap of an earlier decision or release, or a "
+               "preview of a later one, does not qualify, even if the article was published in the week.")
 BRIEFS: list[NarrativeBrief] = [
     NarrativeBrief(
         id="monetary", section=TITLE, label="Monetary policy and inflation",
         focus=("a Central Bank of Kenya monetary policy decision or statement, an inflation release from the Kenya "
                "National Bureau of Statistics, or a fuel price review by EPRA published in the week"),
-        preferred_domains=("centralbank.go.ke", "knbs.or.ke", "epra.go.ke"),
+        preferred_domains=("centralbank.go.ke", "knbs.or.ke", "epra.go.ke"), context=IN_THE_WEEK, dated_only=True,
     ),
     NarrativeBrief(
         id="fiscal", section=TITLE, label="Government borrowing and fiscal policy",
         focus=("a National Treasury, Parliament or IMF development on Kenya's budget, public debt, revenue collection "
                "or a sovereign credit rating action published in the week"),
-        preferred_domains=("treasury.go.ke", "parliament.go.ke", "imf.org"),
+        preferred_domains=("treasury.go.ke", "parliament.go.ke", "imf.org"), context=IN_THE_WEEK, dated_only=True,
     ),
     NarrativeBrief(
         id="markets", section=TITLE, label="Fixed income markets",
         focus=("a development in Kenya's government securities, corporate bond or money markets published in the "
                "week, such as a new issue, a buyback or a regulatory change"),
-        preferred_domains=("centralbank.go.ke", "nse.co.ke", "cma.or.ke"),
+        preferred_domains=("centralbank.go.ke", "nse.co.ke", "cma.or.ke"), context=IN_THE_WEEK, dated_only=True,
     ),
 ]
 
@@ -395,6 +397,12 @@ def tbonds_blocks(results: Optional[dict[str, Any]], bulletin: Optional[cbk_bull
         why = next((p for p in problems if p.startswith("CBK T-bond results")), "CBK's Treasury bond results could not be fetched.")
         return [unavailable_block("tbonds", title, why, "Draft again once centralbank.go.ke answers.")], []
     auctions = [a for a in results.get("auctions", []) if a.get("kind") == "primary"]
+    for a in results.get("auctions", []):   # what this part leaves out is said, never silently dropped
+        if a.get("kind") in ("tap", "switch"):
+            problems.append(f"T-Bonds Primary Market: the {'tap sale' if a['kind'] == 'tap' else 'switch'} result with value date "
+                            f"{a['value_date']} is not printed here (only primary auctions are). Add it by hand if it belongs: {a['url']}")
+    for s in results.get("skipped_files", []):
+        problems.append(f"T-Bonds Primary Market: the CBK result file {s['file']} was left out because {s['why']}.")
     blocks, bonds = [], []
     for n, auction in enumerate(sorted(auctions, key=lambda a: a["value_date"])):
         block_id = "tbonds" if n == 0 else f"tbonds_{n + 1}"
@@ -538,7 +546,7 @@ def money_market_blocks(inputs: WeeklyInputs, tbill_inputs: Optional[dict[str, d
                         f"The yield on the Cytonn Money Market Fund {direction(change, 'increased', 'decreased')} by {bps} to "
                         f"{now} from {was} recorded the previous week.")
     top = _top_five(table, figs, "top5", "Average yield of the Top 5 Money Market Funds")
-    prev_table = previous.analyst.mmf() if previous is not None else None
+    prev_table = form.previous_mmf(previous)
     if prev_table is None:
         text.append(f"The average yield on the Top 5 Money Market Funds stood at {top}.")
         warnings.append("Money Market Performance: the Top 5 average is not compared with the previous week, because the "
@@ -607,6 +615,8 @@ def liquidity_block(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bullet
     daily = form.interbank()
     if "interbank" in form.errors:
         warnings.append(f"Liquidity: {form.errors['interbank']}")
+    driver = form.field("liquidity_driver")   # the team's own words for what drove liquidity; the tool never writes a cause
+    cause = f", {driver.value.strip().rstrip('.').strip()}" if driver is not None else ""
     days = {"now": [r for r in daily if week.previous_friday <= r["date"] <= week.thursday],
             "last": [r for r in daily if week.previous.previous_friday <= r["date"] <= week.previous.thursday]}
 
@@ -634,10 +644,10 @@ def liquidity_block(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bullet
             figs.hide("rate_bps")
         text.append(f"During the week, liquidity in the money markets {direction(change, 'tightened', 'eased', 'was unchanged')}, "
                     f"with the average interbank rate {direction(change, 'increasing', 'decreasing', 'unchanged')}"
-                    + (f" by {bps}" if change else "") + f" to {rate}.")
+                    + (f" by {bps}" if change else "") + f" to {rate}{cause}.")
     else:
         kesonia = figs.add("kesonia", "KESONIA, weekly average", PLAIN_PCT, 2, {"kesonia": published(this_week["kesonia"], src)})
-        text.append(f"During the week, the Kenya Shilling Overnight Interbank Average (KESONIA) averaged {kesonia}.")
+        text.append(f"During the week, the Kenya Shilling Overnight Interbank Average (KESONIA) averaged {kesonia}{cause}.")
         warnings.append("Liquidity: the change in the average interbank rate is left out; it needs the daily interbank rates, "
                         f"typed under \"{analyst.FORM}\" or in the {WB.lower()} (the bulletin prints KESONIA to two decimals "
                         "only).")
@@ -648,9 +658,16 @@ def liquidity_block(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bullet
     moved = figs.value("volume_change")
     text.append(f"The average interbank volumes traded {direction(moved, 'increased', 'decreased', 'were unchanged')} by "
                 f"{change} to Kshs {now} bn from Kshs {was} bn recorded the previous week.")
+    notes = [f"Friday to Thursday: {week.previous_friday.isoformat()} to {week.thursday.isoformat()}."]
+    if driver is not None:
+        said = (f"Liquidity: the reason given for the week ({driver.value.strip().rstrip('.')}) is {driver.source}. "
+                "The tool does not check it.")
+        notes.append(said)
+        warnings.append(said)
     return computed_block("liquidity", title, " ".join(text), figs.items,
-                          sources=[{"name": src, "url": cbk_bulletin.LISTING}] + _typed_sources(inputs, *(r["rate"] for r in daily)),
-                          notes=[f"Friday to Thursday: {week.previous_friday.isoformat()} to {week.thursday.isoformat()}."])
+                          sources=[{"name": src, "url": cbk_bulletin.LISTING}]
+                          + _typed_sources(inputs, *(r["rate"] for r in daily), *([driver] if driver is not None else [])),
+                          notes=notes)
 
 
 # ---------------------------------------------------------------------------
@@ -783,7 +800,6 @@ def eurobond_blocks(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bullet
         if a is not None and b is not None:
             moves.append((abs(a - b), it, a, b, where_a, where_b, sa, sb))
     if moves:
-        _, it, a, b, where_a, where_b, sa, sb = max(moves, key=lambda m: m[0])
         figs = Figures()
 
         def reading(value, where, second):
@@ -794,16 +810,33 @@ def eurobond_blocks(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bullet
             label = WB if second[1].startswith(f"analyst input from {WB}") else second[1]
             return published(value, where, second=second_reading(second[0], label, ANALYST), decimals=3)
 
-        pair = {"last": reading(a, where_a, sa), "first": reading(b, where_b, sb)}
-        bps = figs.add("biggest_bps", f"{EUROBOND_NAMES[it['key']]} yield change", BPS, 1, pair, ["mul", ["sub", "last", "first"], 100])
-        now = figs.add("biggest_yield", f"{EUROBOND_NAMES[it['key']]} yield", PLAIN_PCT, 1, {"last": pair["last"]})
-        was = figs.add("biggest_previous", f"{EUROBOND_NAMES[it['key']]} yield, previous week", PLAIN_PCT, 1, {"first": pair["first"]})
+        def figures(prefix, move):
+            """(name, change, yield now, yield a week earlier) of one issue's move, each recorded as a checked figure."""
+            _, it, a, b, where_a, where_b, sa, sb = move
+            name = EUROBOND_NAMES[it["key"]]
+            pair = {"last": reading(a, where_a, sa), "first": reading(b, where_b, sb)}
+            return (name, figs.add(f"{prefix}_bps", f"{name} yield change", BPS, 1, pair, ["mul", ["sub", "last", "first"], 100]),
+                    figs.add(f"{prefix}_yield", f"{name} yield", PLAIN_PCT, 1, {"last": pair["last"]}),
+                    figs.add(f"{prefix}_previous", f"{name} yield, previous week", PLAIN_PCT, 1, {"first": pair["first"]}))
+
         ups = sum(1 for m in moves if m[2] > m[3])
         trend = "an upward" if ups == len(moves) else "a downward" if ups == 0 else "a mixed"
-        text = (f"During the week, the yields on Kenya's Eurobonds were on {trend} trajectory, with the yield on the "
-                f"{EUROBOND_NAMES[it['key']]} {direction(a - b, 'increasing', 'decreasing')} the most by {bps} to {now} from {was} "
-                f"recorded the previous week. The table below shows the summary performance of the Kenyan Eurobonds as of "
-                f"{ordinal(last)}:")
+        tail = f"The table below shows the summary performance of the Kenyan Eurobonds as of {ordinal(last)}:"
+        risers, fallers = [m for m in moves if m[2] > m[3]], [m for m in moves if m[2] < m[3]]
+        if risers and fallers:   # mixed: the biggest riser and the biggest faller
+            rn, rb, ry, rw = figures("riser", max(risers, key=lambda m: m[0]))
+            fn, fb, fy, fw = figures("faller", max(fallers, key=lambda m: m[0]))
+            # worded as issue #45.2026 prints it (p. 7): "the 10-year issued in 2018", with no "Eurobond" in the names
+            rn, fn = rn.replace(" Eurobond", ""), fn.replace(" Eurobond", "")
+            text = (f"During the week, the yields on the Eurobonds registered a mixed performance with the {rn} increased the "
+                    f"most by {rb} to {ry} from {rw} recorded the previous week while the yields on the {fn} decreased the most "
+                    f"by {fb} to {fy} from {fw} recorded the previous week. {tail}")
+        else:
+            biggest = max(moves, key=lambda m: m[0])
+            name, bps, now, was = figures("biggest", biggest)
+            text = (f"During the week, the yields on Kenya's Eurobonds were on {trend} trajectory, with the yield on the "
+                    f"{name} {direction(biggest[2] - biggest[3], 'increasing', 'decreasing')} the most by {bps} to {now} from "
+                    f"{was} recorded the previous week. {tail}")
         blocks.append(computed_block("eurobonds", title, text, figs.items,
                                      sources=[{"name": _bulletin_src(6), "url": cbk_bulletin.LISTING}]
                                      + _typed_sources(inputs, *(c for i in issues if i["series"] for c in i["series"].yields.values()))))
@@ -1372,20 +1405,24 @@ def build_fixed_income_review(
     blocks += shilling_blocks(inputs, bulletin, rates, week, issue, warnings)
 
     drafted = (draft or draft_pieces)(BRIEFS, N_HIGHLIGHTS, provider=provider, today=today,
-                                      window=(week.ending - timedelta(days=6), week.ending), on_event=on_event)
+                                      window=(week.ending - timedelta(days=6), week.ending), on_event=on_event,
+                                      earlier=previous_issue.digest(issue, "fixed-income"))
     blocks += [narrative_block(f"highlight_{p['brief_id']}", p) for p in drafted["pieces"]]
     blocks.append(_carried(issue, "outlook", "Rates and outlook (closing paragraph)", outlook_text))
     fy_start = inputs.analyst.borrowing()["fy_start"].day
     releases = try_fetch(on_event, net_borrowing.SOURCE_NAME, fetchers.releases, fy_start, week.value_date_window[1],
                          inputs.results_dir, problems=problems)
-    blocks += borrowing_blocks(inputs, week, releases, warnings, bulletin)
+    closing = borrowing_blocks(inputs, week, releases, warnings, bulletin)
+    if blocks[-1]["kind"] == "carried" and closing[0]["kind"] == "computed":
+        closing[0]["continues"] = blocks[-1]["id"]   # the export prints the borrowing sentence in the outlook's paragraph
+    blocks += closing
 
     content = {
         "section": SECTION, "title": TITLE, "week_ending": week.ending.isoformat(),
         "week_start": drafted["week_start"], "week_end": drafted["week_end"],
         "blocks": numbered(blocks), "pieces_found": len(drafted["pieces"]), "pieces_expected": N_HIGHLIGHTS,
         "shortfall": drafted["shortfall"],
-        "warnings": list(drafted["warnings"]) + warnings + inputs.analyst.difference_lines() + problems,
+        "warnings": list(drafted["warnings"]) + warnings + inputs.hidden_sheet_lines() + inputs.analyst.difference_lines() + problems,
         "notices": notices,
         "chart_notes": list(CHARTS), "chart_reference": CHART_REFERENCE, "chart_after": CHART_AFTER,
         "summary": compose_summary(blocks),

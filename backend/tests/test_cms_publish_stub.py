@@ -23,10 +23,11 @@ from api import cms_publish
 from api.cms_publish import BLOCKED_REASON, UNBLOCK, PublishNotAllowed, local_pieces, publish_report
 from api.main import create_app
 from cytonn_weekly import db as database
-from cytonn_weekly.digital_payments import review_store
-from cytonn_weekly.digital_payments.coordinator_review import APPROVED, REJECTED
+from cytonn_weekly.review import store as review_store
+from cytonn_weekly.review.model import APPROVED, REJECTED
 from cytonn_weekly.periodic import executive_summary
 from tests import periodic_helpers as ph
+from tests.route_helpers import every_route
 from tests import section_helpers as sh
 from tests.review_helpers import LocalFakeProvider, make_review
 
@@ -39,7 +40,7 @@ def approved(review, report_type="weekly", period=""):
     review.report_type, review.period = report_type, period
     for item in review.review_items:
         item.resolve("accept")
-    review.decide(APPROVED)
+    review.decide(APPROVED, review.flagged_count)
     return review
 
 
@@ -217,9 +218,10 @@ def test_a_review_that_is_not_approved_is_refused(publish):
 
 def test_a_decision_field_alone_is_not_approval(publish):
     review = undecided(make_review())
-    review.decision = APPROVED                   # set by hand; no item was resolved
+    review.review_items = []                     # no draft to approve
+    review.decision = APPROVED                   # set by hand
     err = publish("weekly", "", [review])
-    assert isinstance(err, PublishNotAllowed) and "not every item is resolved and accepted" in str(err)
+    assert isinstance(err, PublishNotAllowed) and "is marked approved but holds no draft" in str(err)
 
 
 def test_a_section_of_another_report_or_period_is_refused(publish):
@@ -247,7 +249,7 @@ def test_the_stub_imports_nothing_that_could_reach_out():
             imported |= {a.name for a in node.names}
         elif isinstance(node, ast.ImportFrom):
             imported.add(node.module)
-    assert imported == {"__future__", "typing", "cytonn_weekly.digital_payments.coordinator_review",
+    assert imported == {"__future__", "typing", "cytonn_weekly.review.model",
                         "cytonn_weekly.report_sections"}
 
 
@@ -259,6 +261,6 @@ def test_nothing_in_the_app_can_reach_the_stub(tmp_path):
                 or "publish_report" in p.read_text(encoding="utf-8", errors="replace")]
     assert mentions == [Path(cms_publish.__file__)]
     app = create_app(db_path=tmp_path / "app.db", load_dotenv=False)
-    paths = [route.path.lower() for route in app.routes]
+    paths = [route.path.lower() for route in every_route(app)]
     assert paths and not [p for p in paths if "publish" in p or "cms" in p]
     assert TestClient(app).post("/api/publish").status_code == 404

@@ -3,15 +3,15 @@ from __future__ import annotations
 import ast
 import re
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal, DivisionByZero, InvalidOperation
 from typing import Any, Callable, Collection, Mapping, Optional, Sequence
 from urllib.parse import urlparse
 
-from cytonn_weekly.checkers.digital_payments import check_figure, parse_number
+from cytonn_weekly.review.figures import check_figure, parse_number
 from cytonn_weekly.common.formatting import round_half_up
 from cytonn_weekly.digital_payments.highlights import HIGHLIGHT_COMPANIES
-from cytonn_weekly.weekly.workbook import Sheet, Workbook, WorkbookError, norm
+from cytonn_weekly.weekly.workbook import Sheet, Workbook, WorkbookError, norm, read_title_date
 
 STOCK_SHEET = "Stock Performance"
 EARNINGS_SHEET = "Earnings"
@@ -26,7 +26,6 @@ TOLERANCE = Decimal("0.05")
 
 _SUFFIX_WORDS = {"inc", "plc", "co", "corp", "ltd", "limited", "holdings", "group", "internet"}
 _REF = re.compile(r"((?:'[^']+'|[A-Za-z_]+)!)?\$?([A-Z]{1,3})\$?(\d+)")
-_PRICE_DATE = re.compile(r"(\d{1,2})/(\d{1,2})/(\d{4})")
 
 
 class DpWorkbookError(WorkbookError):
@@ -219,12 +218,8 @@ def _col(letters: str) -> int:
 def _price_date(stock: Sheet, header: int) -> Optional[date]:
     last = None
     for c in stock.cells(range(header, header + 1)):
-        m = _PRICE_DATE.search(str(c.value)) if norm(c.value).startswith("price") else None
-        if m:
-            try:
-                last = datetime.strptime(m.group(0), "%d/%m/%Y").date()
-            except ValueError:
-                last = None
+        if norm(c.value).startswith("price"):
+            last = read_title_date(c.value)
     return last
 
 
@@ -396,7 +391,7 @@ def read_dp_workbook(book: Workbook, fills: Sequence[Fill] = (), reasons: Option
                 said = said or ttm_side
     if left_out and not said:
         warnings.append(f"Average: the TTM P/E average covers {len(used)} of the seven companies{left}.")
-    return DpBook(rows, avg_ttm, avg_fwd, _price_date(stock, header), warnings, blank, list(fills), left_out)
+    return DpBook(rows, avg_ttm, avg_fwd, _price_date(stock, header), warnings + book.hidden_lines(), blank, list(fills), left_out)
 
 
 # ---- finding a figure for a blank quarter -----------------------------------------------------------------------------
@@ -493,7 +488,7 @@ def fill_blanks(book: Workbook, today: date, search: Optional[Search] = None) ->
 
 def exa_search(q: Quarter, domains: list[str]) -> list[dict[str, Any]]:
     """The tool's Exa search, limited to ``domains``."""
-    from cytonn_weekly.digital_payments.providers.local_provider import LocalProvider
+    from cytonn_weekly.drafting.local import LocalProvider
 
     results = LocalProvider()._exa_search(f"{q.company} {q.label} results net income", date(2000 + (_qkey(q.label) or (0, 1))[0], 1, 1), domains)
     return [{"url": r.get("url", ""), "title": r.get("title", ""), "text": r.get("text", "")} for r in results]

@@ -55,7 +55,7 @@ test("T99 an edited sentence with a figure the source has is no longer flagged, 
   expect(old.section.blocks.find((b: { kind: string; body_md: string }) => b.kind === "narrative" && b.body_md.includes("Sh99.9 billion."))).toBeTruthy();
 });
 
-test("T100 an edited sentence with a figure no source has stays flagged and says so", async ({ page, request }) => {
+test("T100 an edited sentence with a figure no source has stays flagged and says so, and the approval dialog still counts it", async ({ page, request }) => {
   const period = "Week ending 2026-11-06";
   await open(page, period, await draftFocus(request, period));
   await page.getByRole("button", { name: /^Edit this sentence/ }).click();
@@ -69,9 +69,18 @@ test("T100 an edited sentence with a figure no source has stays flagged and says
   await expect(item).toContainText("Edited by you");
   await item.getByRole("button", { name: /Show details/ }).click();
   await expect(item).toContainText("88.8 do not appear in the text the search tool cited");
-  // Accepting it knowingly is allowed: nothing is suppressed.
-  await item.getByRole("radio", { name: "Accept", exact: true }).click();
-  await expect(item.getByRole("radio", { name: "Accept", exact: true })).toBeChecked();
+  // Nothing is suppressed: approving still asks first and counts the edited sentence among the flagged items. Cancelling records nothing.
+  const approve = page.getByRole("button", { name: "Approve", exact: true });
+  await expect(approve).toBeEnabled();
+  await approve.click();
+  const dialog = page.getByRole("dialog", { name: "Approve with flagged items?" });
+  await expect(dialog).toContainText("This section has 2 flagged items:");
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toBeHidden();
+  const saved = await page.getByText(/^Saved as run \d+$/).textContent(); // the status bar names the review on screen: the edited one
+  const runId = saved?.match(/\d+/)?.[0];
+  expect(runId).toBeTruthy();
+  expect((await (await request.get(`${API}/api/reviews/${runId}`)).json()).decision).toBeNull();
 });
 
 test("T101 a removed sentence is gone from the text and listed as removed by you", async ({ page, request }) => {
@@ -116,7 +125,8 @@ test("T104 on an approved section it asks first and says the approval is removed
   for (const item of review.review_items) {
     expect((await request.patch(`${API}/api/reviews/${first}/items/${item.index}`, { headers: json, data: { resolution: "accept" } })).ok()).toBe(true);
   }
-  expect((await request.post(`${API}/api/reviews/${first}/decide`, { headers: json, data: { decision: "approved" } })).ok()).toBe(true);
+  const flagged = review.review_items.filter((i: { status: string }) => i.status === "flagged").length;
+  expect((await request.post(`${API}/api/reviews/${first}/decide`, { headers: json, data: { decision: "approved", acknowledged_flagged: flagged } })).ok()).toBe(true);
   await open(page, period, first);
 
   await page.getByRole("button", { name: /^Edit this sentence/ }).click();
@@ -131,4 +141,57 @@ test("T104 on an approved section it asks first and says the approval is removed
   await page.getByRole("dialog", { name: "Save your sentence as a new version?" }).getByRole("button", { name: "Save a new version" }).click();
   await expect(page.getByText("The earlier version was approved, so this one needs approving again.")).toBeVisible();
   expect((await (await request.get(`${API}/api/reviews/${first}`)).json()).decision).toBe("approved"); // the approved version is untouched
+});
+
+test("T105 the server refuses an approval that does not name the flagged count, records nothing, and takes the right count", async ({ request }) => {
+  const id = await draftFocus(request, "Week ending 2026-12-11");
+  const review = await (await request.get(`${API}/api/reviews/${id}`)).json();
+  const flagged = review.review_items.filter((i: { status: string }) => i.status === "flagged").length;
+  expect(flagged).toBeGreaterThan(1);
+  const decide = (data: object) => request.post(`${API}/api/reviews/${id}/decide`, { headers: json, data: { decision: "approved", ...data } });
+
+  for (const sent of [{}, { acknowledged_flagged: 0 }, { acknowledged_flagged: flagged - 1 }, { acknowledged_flagged: flagged + 1 }]) {
+    const refused = await decide(sent);
+    expect(refused.status(), JSON.stringify(sent)).toBe(409);
+    expect(JSON.stringify(await refused.json())).toContain("flagged item");
+  }
+  const untouched = await (await request.get(`${API}/api/reviews/${id}`)).json();
+  expect(untouched.decision).toBeNull();
+  expect(untouched.review_items.every((i: { resolution: string | null }) => i.resolution === null)).toBe(true);
+
+  const approved = await decide({ acknowledged_flagged: flagged });
+  expect(approved.status(), await approved.text()).toBe(200);
+  expect((await approved.json()).decision).toBe("approved");
+  // A decision is made once: the same call again is refused, whatever it names.
+  expect((await decide({ acknowledged_flagged: flagged })).status()).toBe(409);
+});
+
+test("T115 rejecting a section whose item carries a fix-needed note: the next draft shows that note, read-only, and its own approval does not depend on it", async ({ page, request }) => {
+  const period = "Week ending 2026-12-18";
+  const first = await draftFocus(request, period);
+  const earlier = await (await request.get(`${API}/api/reviews/${first}`)).json();
+  const item = earlier.review_items.find((i: { status: string }) => i.status === "flagged");
+  const note = "Check the Sh99.9 billion figure against its source.";
+  // The screen no longer sets a resolution or a note, but the API still stores one, and a rejection carries it to the next draft.
+  const marked = await request.patch(`${API}/api/reviews/${first}/items/${item.index}`, { headers: json, data: { resolution: "fix_needed", note } });
+  expect(marked.ok()).toBe(true);
+
+  await open(page, period, first);
+  await page.getByRole("button", { name: "Reject", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Reject this section?" });
+  await dialog.getByRole("button", { name: "Reject", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByText("Decision recorded: rejected.")).toBeVisible();
+  await expect(page.getByText("Rejected and locked")).toBeVisible();
+  expect((await (await request.get(`${API}/api/reviews/${first}`)).json()).decision).toBe("rejected");
+
+  const second = await draftFocus(request, period);
+  expect(second).not.toBe(first);
+  await open(page, period, second);
+  const notes = page.getByRole("region", { name: `Notes from the rejected draft (run ${first})` });
+  await expect(notes).toContainText(note);
+  await expect(notes).toContainText("Fix needed");
+  await expect(notes).toContainText("these notes were not carried onto the new items");
+  await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeEnabled(); // the new review is undecided and its own
+  expect((await (await request.get(`${API}/api/reviews/${second}`)).json()).decision).toBeNull();
 });

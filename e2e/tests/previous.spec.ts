@@ -5,15 +5,14 @@ import { VARIANT } from "./helpers";
 // API's answer changed on its way to the page, as T14 does for the export.
 test.skip(!!VARIANT, "runs on the default test backend");
 
-test("T106 Previous reports is a rail item with its own page, empty until a week is fully approved", async ({ page }) => {
+test("T106 Previous reports has its own page (hidden from the rail, opened by its address), empty until a week is fully approved", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto("/overview");
   const rail = page.getByRole("navigation", { name: "Report sections" });
   await expect(page.getByText("All five sections of this week are approved.")).toHaveCount(0);
-  await rail.getByRole("button", { name: "Previous reports" }).click();
-  await expect(page).toHaveURL(/\/previous$/);
+  await expect(rail.getByRole("button", { name: "Previous reports" })).toHaveCount(0);
+  await page.goto("/previous");
   await expect(page.getByRole("heading", { name: "Previous reports", level: 1 })).toBeVisible();
-  await expect(rail.getByRole("button", { name: "Previous reports" })).toHaveAttribute("aria-current", "page");
   await expect(page.getByText("No approved weeks yet.")).toBeVisible();
 
   await page.route("**/api/previous/weekly", (route) =>

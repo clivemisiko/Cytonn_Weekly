@@ -1,4 +1,4 @@
-"""check_table_block's optional second sources (common/checks.py).
+"""check_table_block's optional second sources (review/checks.py).
 
 ``extra_sources`` is forwarded to the Digital Payments checker's ``check_figure``, figure
 by figure, so a table cell with a second source is judged by the same code as a weekly
@@ -16,10 +16,11 @@ from pathlib import Path
 
 import pytest
 
-from cytonn_weekly.checkers import digital_payments as ck
-from cytonn_weekly.checkers.digital_payments import MISMATCH, SOURCES_DISAGREE, SourceValue
+from cytonn_weekly.digital_payments import checks as ck
+from cytonn_weekly.review import figures as fg
+from cytonn_weekly.review.figures import MISMATCH, SOURCES_DISAGREE, SourceValue
 from cytonn_weekly.common import formatting as fm
-from cytonn_weekly.common.checks import check_table_block, row_subject
+from cytonn_weekly.review.checks import check_table_block, row_subject
 from tests import periodic_helpers as ph
 from tests import section_helpers as sh
 
@@ -104,7 +105,7 @@ def cell(drafted_price, extra_value):
     extra = [SourceValue("alt", extra_value)]
     subject = row_subject("t", "A")
     report = check_table_block(table(rows), extra_sources={(subject, "price"): extra})
-    direct = ck.check_figure("table", subject, "price", drafted_price, 29.65, 2, extra_sources=extra, primary_source="test")
+    direct = fg.check_figure("table", subject, "price", drafted_price, 29.65, 2, extra_sources=extra, primary_source="test")
     return report, direct
 
 
