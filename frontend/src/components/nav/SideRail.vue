@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { PhCaretDown, PhChatCircle, PhHouse, PhSidebarSimple } from "@phosphor-icons/vue";
+import { PhCaretDown, PhChatCircle, PhSidebarSimple } from "@phosphor-icons/vue";
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "reka-ui";
 import { computed, nextTick, ref, useTemplateRef, watch } from "vue";
 import { RouterLink, useRouter } from "vue-router";
@@ -64,7 +64,6 @@ const showProgress = computed(() => shell.held.value !== null && !atOverview.val
 // The current item is a green-tinted pill with an accent bar (and bold, and aria-current); an item that does nothing is dimmed and has no hover.
 // Only pages that exist; the chat's own sections stay in the list below.
 const PAGES = [
-  { to: "/", name: "Home", icon: PhHouse },
   { to: "/chat", name: "Chat", icon: PhChatCircle },
 ];
 const ITEM =
