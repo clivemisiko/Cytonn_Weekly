@@ -10,7 +10,7 @@ from openpyxl.utils import get_column_letter
 
 from cytonn_weekly import paths
 from cytonn_weekly.history import reads, store
-from cytonn_weekly.weekly import analyst, equities_workbook as eq, fi_workbook as fi
+from cytonn_weekly.weekly import analyst, equities_workbook as eq, fi_workbook as fi, kcb_prices
 from cytonn_weekly.weekly.week import Week
 from cytonn_weekly.weekly.workbook import Workbook, WorkbookError
 
@@ -79,14 +79,15 @@ def _valuation(db_path: Any, week: Week, master: Optional[Workbook]) -> Sheet:
     return out
 
 
-def _universe(db_path: Any, week: Week, master: Optional[Workbook]) -> Sheet:
+def _universe(price_points: list[dict[str, Any]], week: Week, master: Optional[Workbook]) -> Sheet:
     head = f"Price as at {week.as_at:%d/%m/%Y}"
     out = Sheet(eq.UNIVERSE_SHEET, ["Company", head])
     prices = {}
-    for p in _points(db_path, week, "eq.price", None):
+    for p in price_points:
         if p["as_of"] in reads._dates(week):
             prices[p["subject"]] = p   # oldest first: the latest date wins
-    names: list[tuple[str, str]] = [(k, k) for k in sorted(prices)]   # (the key the store holds, the name shown)
+    # (the key the store holds, the name shown); an upper-case subject is a KCB ticker for the price blocks, not a company
+    names: list[tuple[str, str]] = [(k, k) for k in sorted(prices) if not k.isupper()]
     found = None
     if master is not None and eq.UNIVERSE_SHEET in master.sheet_names:
         try:
@@ -111,6 +112,54 @@ def _universe(db_path: Any, week: Week, master: Optional[Workbook]) -> Sheet:
         out.rows.append([name, _value("eq.price", point)])
     out.notes.insert(0, _layout(master, eq.UNIVERSE_SHEET, "equities", found, "Company in A, the price column to the right of the last one"))
     return out
+
+
+def _kcb_block(price_points: list[dict[str, Any]], week: Week, master: Optional[Workbook], title: str, mapping: dict[str, str], name_col: str) -> Sheet:
+    """One price per row of the master's block, from the KCB tickers the store holds for the week's last report date."""
+    prices: dict[str, dict[str, Any]] = {}
+    for p in price_points:
+        if p["subject"].isupper() and p["as_of"] in reads._dates(week):
+            prices[p["subject"]] = p   # oldest first: the latest date wins
+    day = max((p["as_of"] for p in prices.values()), default=week.as_at.isoformat())
+    prices = {t: p for t, p in prices.items() if p["as_of"] == day}
+    out = Sheet(title, [name_col, date.fromisoformat(day)])
+    rows, found = None, None
+    if master is not None and title in master.sheet_names:
+        try:
+            if title == eq.MARKET_PE_SHEET:
+                sheet = master.sheet(title)
+                rows = []
+                for r in range(2, sheet.max_row + 1):
+                    name = sheet.value(r, 1)
+                    if not isinstance(name, str) or not name.strip() or name.strip().lower() == "dividend yield":   # the footer row
+                        break
+                    rows.append(name)
+                found = "'Stock' in column A, in the master's order; the prices go in column D, headed by the date"
+            else:
+                rows = _large_caps(master)
+                found = "the tickers in column P, in the master's order; the prices go in a new column headed by the date in row 2"
+        except WorkbookError as exc:
+            out.notes.append(f"The uploaded equities workbook's sheet could not be read ({exc}): rows follow the tool's map.")
+    filled, flags = kcb_prices.fill(rows, {t: _value("eq.price", p) for t, p in prices.items()}, mapping, name_unused=title == eq.MARKET_PE_SHEET)
+    out.rows += filled
+    if not prices:
+        out.missing("eq.price", day, "from a KCB weekly report")
+    out.notes += [_layout(master, title, "equities", found, "rows in the tool's map order"), *flags,
+                  "Prices in KES from the KCB weekly report the store holds for this week; a blank cell is never guessed."]
+    return out
+
+
+def _large_caps(master: Workbook) -> list[str]:
+    sheet = master.sheet(eq.GAINERS_SHEET)
+    rows = []
+    for r in range(3, sheet.max_row + 1):
+        ticker = sheet.value(r, 16)
+        if not isinstance(ticker, str) or not ticker.strip():
+            break
+        rows.append(ticker)
+    if not rows:
+        raise WorkbookError(f"'{eq.GAINERS_SHEET}' has no tickers in column P from row 3")
+    return rows
 
 
 def _liquidity(db_path: Any, week: Week, master: Optional[Workbook]) -> Sheet:
@@ -175,11 +224,14 @@ def _funds(db_path: Any, week: Week, master: Optional[Workbook]) -> Sheet:
 
 def build(week: Week, db_path: Any = None, equities: Optional[Workbook] = None, fixed_income: Optional[Workbook] = None) -> XlBook:
     """This week's rows from the store's confirmed points, one sheet per workbook sheet that has weekly rows, as values only.  The masters are only read."""
+    price_points = _points(db_path, week, "eq.price", None)   # read once: the Universe and both price blocks share it
     sheets = [
         _flows(db_path, week, equities, eq.TURNOVER_SHEET, "eq.turnover", 6, "Turnover (USD mn)"),
         _flows(db_path, week, equities, eq.FOREIGN_SHEET, "eq.foreign", 5, "Foreign net position (USD mn)"),
         _valuation(db_path, week, equities),
-        _universe(db_path, week, equities),
+        _universe(price_points, week, equities),
+        _kcb_block(price_points, week, equities, eq.MARKET_PE_SHEET, kcb_prices.MARKET_PE, "Stock"),
+        _kcb_block(price_points, week, equities, eq.GAINERS_SHEET, kcb_prices.LARGE_CAPS, "Ticker"),
         _liquidity(db_path, week, fixed_income),
         _eurobond(db_path, week, fixed_income),
         _funds(db_path, week, fixed_income),

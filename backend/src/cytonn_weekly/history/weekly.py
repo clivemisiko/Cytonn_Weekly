@@ -140,6 +140,9 @@ def record_upload(week: Week, slug: str, parsed: Any, entry: dict[str, Any], db_
         if slug == "kcb_weekly":
             items = [{**_spec("eq.price", company, parsed.report_date.isoformat(), week, _text(price)), **how}
                      for company, ticker in analyst.COVERAGE_TICKERS.items() if (price := (parsed.securities.get(ticker) or {}).get("price")) is not None]
+            # Every KES security again under its KCB ticker (upper case, unlike a company key), for the price blocks of the rows export.
+            items += [{**_spec("eq.price", ticker, parsed.report_date.isoformat(), week, _text(s["price"])), **how}
+                      for ticker, s in parsed.securities.items() if s.get("currency") == "KES" and s.get("price") is not None]
         elif slug == "cbk_bulletin":
             items = [{**_spec("fi.kesonia", "", r["date"].isoformat(), week, _text(r["kesonia"])), **how} for r in parsed.interbank if r.get("kesonia") is not None]
         if items:
