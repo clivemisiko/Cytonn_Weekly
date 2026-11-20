@@ -9,7 +9,7 @@ import ReviewItemCard from "./ReviewItemCard.vue";
 
 const props = defineProps<{ review: Review }>();
 
-type Filter = "all" | "flagged";
+type Filter = "all" | "flagged" | "not_auto_verified" | "clean";
 const filter = ref<Filter>("all");
 
 const open = reactive<Record<Status, boolean>>({ flagged: true, not_auto_verified: true, clean: false });
@@ -20,25 +20,29 @@ const setAll = (on: boolean) => {
   for (const k of Object.keys(open) as Status[]) if (on) open[k] = true;
 };
 
+const totalOf = (status: Status) => props.review.review_items.filter((i) => i.status === status).length;
+
 const filters = computed(() =>
   (
     [
-      { key: "all", label: "All", count: props.review.review_items.length, flag: false, show: true },
-      { key: "flagged", label: "Flagged", count: props.review.counts.flagged.total, flag: true, show: props.review.counts.flagged.total > 0 },
-    ] as { key: Filter; label: string; count: number | null; flag: boolean; show: boolean }[]
-  ).filter((f) => f.show),
+      { key: "all" as Filter, label: "All", count: props.review.review_items.length, flag: false, show: true },
+      { key: "flagged" as Filter, label: "Flagged", count: props.review.counts.flagged.total, flag: true, show: true },
+      { key: "not_auto_verified" as Filter, label: "Not auto-verified", count: totalOf("not_auto_verified"), flag: false, show: true },
+      { key: "clean" as Filter, label: "Clean", count: totalOf("clean"), flag: false, show: true },
+    ]
+  ).filter((f) => f.count === null || f.count > 0 || f.key === "all"),
 );
-
-const totalOf = (status: Status) => props.review.review_items.filter((i) => i.status === status).length;
 
 const itemsOf = (status: Status) => {
   const items = props.review.review_items.filter((i) => i.status === status);
-  return filter.value === "flagged" && status !== "flagged" ? [] : items;
+  return filter.value !== "all" && filter.value !== status ? [] : items;
 };
 
 function setFilter(next: Filter) {
   filter.value = next;
-  if (next === "flagged") open.flagged = true;
+  if (next !== "all") {
+    open[next] = true;
+  }
 }
 
 // The explanation two or more not-auto-verified items share (the claims' "Not yet automatically checked..." note) is shown
@@ -84,7 +88,7 @@ const shared = computed(() => {
       </button>
     </div>
 
-    <section v-for="status in STATUS_ORDER" :key="status" :class="`state-${status}`" :aria-labelledby="`group-${status}-title`">
+    <section v-for="status in STATUS_ORDER" v-show="filter === 'all' || filter === status" :key="status" :class="`state-${status}`" :aria-labelledby="`group-${status}-title`">
       <CollapsibleRoot v-model:open="open[status]">
         <h3 :id="`group-${status}-title`" class="text-base font-semibold">
           <CollapsibleTrigger

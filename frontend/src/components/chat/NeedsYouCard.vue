@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { PhCloudArrowDown } from "@phosphor-icons/vue";
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import { RouterLink } from "vue-router";
 import Notice from "@/components/review/Notice.vue";
 import Button from "@/components/ui/Button.vue";
 import { LINK, buttonVariants } from "@/components/ui/button";
 import * as api from "@/lib/api";
-import { FETCHABLE_ITEMS, type NeedsYou } from "@/lib/chatcards";
+import type { NeedsYou } from "@/lib/chatcards";
 
 const props = defineProps<{ needs: NeedsYou; week: string; formTo: string; section: string }>();
 const emit = defineEmits<{ changed: [] }>();
@@ -15,6 +15,10 @@ const busy = ref<string | null>(null);
 const problem = ref<string | null>(null);
 /** The file names last picked per slot: the native "No file chosen" text is hidden, so the name is shown here. */
 const picked = ref<Record<string, string>>({});
+
+const hasOnlineFetch = computed(
+  () => props.needs.uploads.some((u) => u.fetchable) || props.needs.fetch.length > 0,
+);
 
 /** Every button here calls the route the old page's inputs panel calls, and the card is read again after it. */
 async function act(key: string, call: () => Promise<unknown>) {
@@ -30,8 +34,26 @@ async function act(key: string, call: () => Promise<unknown>) {
   }
 }
 
-const fetchBulletin = () => act("fetch", () => api.fetchBulletin(props.week));
-const fetchTable = (key: string) => act(`fetch-${key}`, () => api.fetchAnalystTable(props.week, props.section, key));
+async function fetchFromCbk() {
+  await act("fetch", async () => {
+    const refused: string[] = [];
+    if (props.needs.uploads.some((u) => u.fetchable)) {
+      try {
+        await api.fetchBulletin(props.week);
+      } catch (err) {
+        refused.push((err as Error).message);
+      }
+    }
+    for (const f of props.needs.fetch) {
+      try {
+        await api.fetchAnalystTable(props.week, props.section, f.key);
+      } catch (err) {
+        refused.push(`${f.label}: ${(err as Error).message}`);
+      }
+    }
+    if (refused.length) throw new Error(refused.join("\n"));
+  });
+}
 
 async function upload(slot: string, event: Event) {
   const input = event.target as HTMLInputElement;
@@ -55,17 +77,26 @@ async function upload(slot: string, event: Event) {
 
 <template>
   <section aria-label="Needs you" class="space-y-3 rounded-md border bg-background px-3 py-2.5" data-card="needs_you">
-    <h3 class="text-sm font-semibold">Needs you</h3>
+    <div class="flex items-center justify-between gap-2">
+      <h3 class="text-sm font-semibold">Needs you</h3>
+      <Button
+        v-if="hasOnlineFetch"
+        variant="outline"
+        size="sm"
+        class="min-h-9"
+        :disabled="busy !== null"
+        @click="fetchFromCbk"
+      >
+        <PhCloudArrowDown weight="bold" data-icon="inline-start" aria-hidden="true" />
+        {{ busy === "fetch" ? "Fetching…" : "Fetch from CBK" }}
+      </Button>
+    </div>
 
     <ul v-if="needs.uploads.length" class="space-y-3">
       <li v-for="u in needs.uploads" :key="u.key" class="flex flex-wrap items-center gap-x-3 gap-y-1">
         <p class="text-sm font-medium">{{ u.label }}</p>
         <p class="text-xs text-muted-foreground">{{ u.why }}</p>
         <div class="flex flex-wrap items-center gap-2 sm:ml-auto">
-          <Button v-if="u.fetchable" variant="outline" size="sm" class="min-h-11" :disabled="busy !== null" @click="fetchBulletin">
-            <PhCloudArrowDown weight="bold" data-icon="inline-start" aria-hidden="true" />
-            {{ busy === "fetch" ? "Fetching…" : "Fetch from CBK" }}<span class="sr-only">: {{ u.label }}</span>
-          </Button>
           <!-- The same input, visually hidden: the label is the button, and it shows the ring while the input has keyboard focus. -->
           <label :class="[buttonVariants({ variant: 'outline', size: 'sm' }), 'min-h-11 cursor-pointer has-[:focus-visible]:ring-3 has-[:focus-visible]:ring-ring/50 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50']">
             <input type="file" multiple accept=".pdf,.xlsx" :disabled="busy !== null" :aria-label="`Upload ${u.label}`" class="sr-only" @change="upload(u.key, $event)" />
@@ -76,14 +107,10 @@ async function upload(slot: string, event: Event) {
       </li>
     </ul>
 
-    <ul v-if="needs.fetch.length" class="space-y-3">
-      <li v-for="e in needs.fetch" :key="e.key" class="space-y-1.5">
+    <ul v-if="needs.fetch.length" class="space-y-2">
+      <li v-for="e in needs.fetch" :key="e.key" class="space-y-0.5">
         <p class="text-sm font-medium">{{ e.label }}</p>
         <p class="text-xs text-muted-foreground">{{ e.why }}</p>
-        <Button variant="outline" size="sm" :disabled="busy !== null" @click="fetchTable(e.key)">
-          <PhCloudArrowDown weight="bold" data-icon="inline-start" aria-hidden="true" />
-          {{ busy === `fetch-${e.key}` ? "Fetching…" : FETCHABLE_ITEMS[e.key] }}<span class="sr-only">: {{ e.label }}</span>
-        </Button>
       </li>
     </ul>
 

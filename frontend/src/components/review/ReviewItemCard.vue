@@ -55,7 +55,7 @@ const cells = (flag: Flag): [string, string][] => [
 </script>
 
 <template>
-  <li class="surface-state rise-in @container space-y-3 p-3 transition-shadow duration-200 hover:shadow-md" :class="`state-${item.status}`" :data-status="item.status" :data-index="item.index">
+  <li :id="`review-item-${item.index}`" class="surface-state rise-in @container space-y-3 p-3 transition-shadow duration-200 hover:shadow-md scroll-mt-28" :class="`state-${item.status}`" :data-status="item.status" :data-index="item.index">
     <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
       <SeverityPill :kind="item.status" />
       <span class="text-sm font-semibold">{{ item.ref }}</span>

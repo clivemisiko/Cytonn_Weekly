@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { PhTray } from "@phosphor-icons/vue";
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Textarea from "@/components/ui/Textarea.vue";
@@ -110,6 +111,53 @@ const slots = computed(() => {
 const charts = computed(() => (status.value?.charts ?? []).filter((c) => c.section === props.section));
 // Bumped on each image change, so a replaced image's thumbnail is read again.
 const chartVersion = ref(0);
+const isDraggingBatch = ref(false);
+
+function guessSlot(filename: string): string | null {
+  const lower = filename.toLowerCase();
+  if (lower.includes("fixed") || lower.includes("fi_") || (lower.includes("income") && lower.endsWith(".xlsx"))) {
+    return "fi_workbook";
+  }
+  if (lower.includes("equit") || lower.includes("eq_")) {
+    return "equities_workbook";
+  }
+  if (lower.includes("digital") || lower.includes("payment") || lower.includes("dp_")) {
+    return "dp_workbook";
+  }
+  if (lower.includes("bulletin") || lower.includes("cbk")) {
+    return "cbk_bulletin";
+  }
+  if (lower.includes("nse") || lower.includes("yield")) {
+    return "nse_yield_curve";
+  }
+  if (lower.includes("daily")) {
+    return "kcb_daily";
+  }
+  if (lower.includes("weekly") && lower.endsWith(".pdf")) {
+    return "kcb_weekly";
+  }
+  return null;
+}
+
+async function handleBatchDrop(event: DragEvent) {
+  isDraggingBatch.value = false;
+  const files = Array.from(event.dataTransfer?.files ?? []);
+  if (!files.length) return;
+
+  const unassigned: string[] = [];
+  for (const file of files) {
+    const slotSlug = guessSlot(file.name);
+    if (slotSlug) {
+      await upload(slotSlug, [file]);
+    } else {
+      unassigned.push(file.name);
+    }
+  }
+  if (unassigned.length) {
+    error.value = `Could not automatically determine the input slot for: ${unassigned.join(", ")}. Please use the individual "Choose file" buttons below for these files.`;
+  }
+}
+
 const uploadChart = (key: string, file: File) =>
   act(async () => {
     const next = await api.uploadChart(props.week, key, file);
@@ -119,7 +167,20 @@ const uploadChart = (key: string, file: File) =>
 const removeChart = (key: string) => act(() => api.removeChart(props.week, key));
 const saveLeadIn = (key: string, text: string) => act(() => api.saveChartLeadIn(props.week, key, text));
 const saveChartSource = (key: string, text: string) => act(() => api.saveChartSource(props.week, key, text));
-const fetchBulletin = () => act(() => api.fetchBulletin(props.week));
+const fetchBulletin = () =>
+  act(async () => {
+    try {
+      return await api.fetchBulletin(props.week);
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (!msg.startsWith("E2E:") && (msg.includes("404") || msg.toLowerCase().includes("not found"))) {
+        throw new Error(
+          `CBK Bulletin for the week ending ${friendlyDate(props.week)} is not yet published on the CBK website. You can upload the PDF manually if you have an advance copy.`,
+        );
+      }
+      throw err;
+    }
+  });
 
 function saveNote(key: "bidding_range" | "previous_issue" | "as_at", value: string) {
   if ((status.value?.notes[key] ?? "") === value.trim()) return;
@@ -194,6 +255,24 @@ function saveNote(key: "bidding_range" | "previous_issue" | "as_at", value: stri
           </p>
         </div>
       </details>
+
+      <!-- Batch Dropzone for multiple files -->
+      <div
+        class="flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed p-4 text-center transition-colors"
+        :class="isDraggingBatch ? 'border-primary bg-primary/5' : 'border-border/80 bg-muted/20 hover:border-border hover:bg-muted/30'"
+        @dragover.prevent="isDraggingBatch = true"
+        @dragleave.prevent="isDraggingBatch = false"
+        @drop.prevent="handleBatchDrop"
+      >
+        <div class="flex items-center gap-2 text-sm font-medium text-foreground">
+          <PhTray class="size-4 text-muted-foreground" aria-hidden="true" />
+          <span>Quick Dropzone: Drag & drop multiple files at once</span>
+        </div>
+        <p class="text-xs text-muted-foreground">
+          Drop workbooks (.xlsx), KCB reports, and CBK bulletins — they will be auto-sorted into their matching slots.
+        </p>
+      </div>
+
       <ul>
         <InputSlot
           v-for="slot in slots"
