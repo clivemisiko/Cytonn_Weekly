@@ -15,7 +15,7 @@ from tests import weekly_helpers as wh
 
 WEEK = wh.WEEK
 TODAY = date(2026, 10, 12)
-SHEETS = ["Equities Turnover", "Foreign Positions", "NASI-PE & Dividend Yield", "Universe of Coverage", "Liquidity Indicators", "Eurobond",
+SHEETS = ["Equities Turnover", "Foreign Positions", "NASI-PE & Dividend Yield", "Universe of Coverage", "Market PE & Dividend Yield", "Gainers & Losers", "Liquidity Indicators", "Eurobond",
           "Money Market Performance"]
 
 
