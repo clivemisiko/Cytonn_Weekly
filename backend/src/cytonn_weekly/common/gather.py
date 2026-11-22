@@ -109,11 +109,16 @@ def _usable(pool: Iterable[dict[str, Any]], start: date, end: date, skip: set[st
     return sorted(out, key=lambda r: r["day"], reverse=True)
 
 
-def _save(r: dict[str, Any], piece: Piece, fetch: Fetch, root: Optional[Path]) -> Optional[store.SourceText]:
-    """The page itself through fetch_page; if it cannot be read, the text the search returned; else nothing."""
+def _save(r: dict[str, Any], piece: Piece, fetch: Fetch, root: Optional[Path],
+          on_event: Optional[ev.Observer] = None) -> Optional[store.SourceText]:
+    """The page itself through fetch_page; if it cannot be read, the text the search returned; else nothing. A page whose
+    own date is outside the piece's window is left out (said in a run event), and its search text is not kept either."""
     url = r["url"]
     try:
-        return fetch(url, piece.subject, piece.end, root=root, origin="found", fallback_date=r["day"])
+        return fetch(url, piece.subject, piece.end, root=root, origin="found", fallback_date=r["day"], window=piece.window)
+    except store.OutOfWindow as exc:
+        ev.emit(on_event, ev.SOURCE_LEFT_OUT, str(r.get("title") or store.host_of(url)), detail=str(exc))
+        return None
     except Exception as exc:  # noqa: BLE001 - one page never stops the gather
         log.warning("gather: fetch of %s failed: %s", store.host_of(url), type(exc).__name__)
     text = str(r.get("text") or "").strip()
@@ -185,7 +190,7 @@ def gather_piece(piece: Piece, *, search: Search, fetch: Fetch, root: Optional[P
         for r in _usable(pool, start, end, skip, owns)[:piece.max_pages or limits.max_pages]:
             if time.monotonic() > deadline:
                 break
-            if got := _save(r, piece, fetch, root):
+            if got := _save(r, piece, fetch, root, on_event):
                 saved.append(got)
     finally:
         n = len(saved)

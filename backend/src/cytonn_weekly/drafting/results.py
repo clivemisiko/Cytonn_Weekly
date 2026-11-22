@@ -10,7 +10,9 @@ SCOPE_IR = "investor_relations"
 SCOPE_WEB = "web_fallback"
 SCOPE_PREFERRED = "preferred_sources"
 
-LINK_RE = re.compile(r"\[([^\]]+)\]\((https?://[^)\s]+)\)")
+# A snip is linked as snip:<id> (common/sources.from_snip); it is matched so its markdown never stays in the text.
+LINK_RE = re.compile(r"\[([^\]]+)\]\(((?:https?://|snip:)[^)\s]+)\)")
+SNIP = "snip:"
 
 
 def strip_links(text: str) -> str:

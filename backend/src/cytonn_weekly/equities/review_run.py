@@ -24,7 +24,7 @@ from cytonn_weekly.review.blocks import (
 from cytonn_weekly.common.run_events import Observer, fetch_source, report_blocks, report_failed_rows
 from cytonn_weekly.review.model import CoordinatorReview
 from cytonn_weekly.equities import fetcher, stubs
-from cytonn_weekly.drafting.base import NarrativeBrief, NarrativeProvider
+from cytonn_weekly.drafting.base import IN_THE_WEEK, NarrativeBrief, NarrativeProvider
 from cytonn_weekly.drafting.drafter import draft_pieces
 
 SECTION = "equities"
@@ -36,12 +36,13 @@ BRIEFS: list[NarrativeBrief] = [
         id="earnings", section=TITLE, label="Listed company earnings and dividends",
         focus=("an earnings release, profit warning, dividend declaration or similar financial result announced "
                "by a company listed on the Nairobi Securities Exchange"),
-        preferred_domains=("nse.co.ke",),
+        preferred_domains=("nse.co.ke",), context=IN_THE_WEEK, dated_only=True,
     ),
     NarrativeBrief(
         id="corporate_actions", section=TITLE, label="Corporate actions and deals",
         focus=("a rights issue, acquisition, merger, listing, delisting, share buyback or strategic transaction "
                "involving a Nairobi Securities Exchange-listed company"),
+        context=IN_THE_WEEK, dated_only=True,
     ),
     NarrativeBrief(
         id="market_regulation", section=TITLE, label="Capital markets regulation",
@@ -49,7 +50,7 @@ BRIEFS: list[NarrativeBrief] = [
                "Securities Exchange that applies to listed companies or to trading on the exchange, such as listing, "
                "disclosure, trading, settlement or market-conduct rules; a consultation or rule on another topic does "
                "not qualify"),
-        preferred_domains=("cma.or.ke", "nse.co.ke"),
+        preferred_domains=("cma.or.ke", "nse.co.ke"), context=IN_THE_WEEK, dated_only=True,
     ),
 ]
 

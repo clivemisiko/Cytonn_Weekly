@@ -46,6 +46,17 @@ def repeated_url(claims: Sequence[dict[str, Any]], urls: set[str]) -> Optional[s
     return next((c["url"] for c in claims if c.get("url") and norm_url(c["url"]) in urls), None)
 
 
+def piece_urls(piece: dict[str, Any]) -> set[str]:
+    return {u for u in (str(c.get("url") or "").split("#")[0].rstrip("/").lower() for c in piece.get("claims", [])) if u}
+
+
+def held_by(piece: dict[str, Any], existing: Sequence[dict[str, Any]]) -> Optional[str]:
+    """The topic of an already drafted piece whose claims cite every page this piece cites, so the event is shown once.
+    ponytail: same page address, not same event; a closer match needs the sentences compared."""
+    mine = piece_urls(piece)
+    return next((e["topic"] for e in existing if mine and mine <= piece_urls(e)), None)
+
+
 def draft_pieces(
     briefs: Sequence[NarrativeBrief],
     target: int,
@@ -65,7 +76,8 @@ def draft_pieces(
 
     ``earlier`` is ``previous_issue.digest`` of the same section of the previous issue.  Its headings go into each
     brief's context as already reported; and, in code, a piece whose claims cite an address that section already
-    linked is left out (said in the warnings and the run), and the next brief is tried in its place.
+    linked is left out (said in the warnings and the run), and the next brief is tried in its place.  So is a piece whose
+    claims cite only pages an earlier piece of this run already cites (``held_by``).
     """
     provider = provider or get_narrative_provider()
     today = today or date.today()
@@ -94,6 +106,10 @@ def draft_pieces(
             skipped[brief.id] = REPEAT
             warnings.append(f"{brief.label}: left out, {REPEAT} (it cites {url}, which that section already linked)")
             emit(on_event, PART_SKIPPED, brief.label, detail=f"Left out: {REPEAT} (it cites {url}).")
+        elif not brief.findings and (holder := held_by(piece_dict(res, brief), pieces)):   # Focus notes share one topic's pages
+            skipped[brief.id] = f"already drafted in this run under {holder}"
+            warnings.append(f"{brief.label}: left out, it cites the same page(s) as the piece already drafted under {holder}")
+            emit(on_event, PART_SKIPPED, brief.label, detail=f"Left out: the same story as {holder}.")
         else:
             pieces.append(piece_dict(res, brief))
             emit(on_event, PIECE_FINISHED, brief.label, detail=res.headline)

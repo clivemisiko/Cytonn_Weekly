@@ -116,6 +116,10 @@ class SourceError(ValueError):
     """Written for the analyst and shown as it stands; never holds a stack trace or a secret."""
 
 
+class OutOfWindow(SourceError):
+    """The page's own date is outside the window asked for (or it states none)."""
+
+
 @dataclass
 class SourceText:
     id: str
@@ -525,7 +529,7 @@ def fetch_page(url: str, subject: str, week_end: date, *, http_get: Callable[...
                     type(exc).__name__, _inner_frame(exc))
         raise SourceError(UNREADABLE.format(host=host_of(url) or "that address")) from None
     if window and not window[0].isoformat() <= page.published_date <= window[1].isoformat():
-        raise SourceError(OUT_OF_WINDOW.format(host=page.host, day=page.published_date or "no date"))
+        raise OutOfWindow(OUT_OF_WINDOW.format(host=page.host, day=page.published_date or "no date"))
     return _save(page, body, raw_name, root)
 
 

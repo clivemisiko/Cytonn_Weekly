@@ -201,3 +201,41 @@ def test_pasted_text_from_a_never_read_host_is_kept_and_marked_as_a_news_site(tm
     assert saved.origin == "pasted" and saved.text == PARAGRAPH * 3
     assert src.NEWS_SITE in saved.flags and src.ADDED_BY_ANALYST in saved.flags
     assert [s.id for s in src.list_for("Mortgage lending", FRIDAY, tmp_path)] == [saved.id]
+
+
+# --- a found page's own date is judged against the piece's window ------------------------------------------------------
+
+def gather_real_fetch(tmp_path, getter, day="2026-11-05"):
+    """One search result for a Fixed Income piece, read through the real fetch_page (no network: ``getter`` answers)."""
+    events = []
+    piece = Piece("T-bills", FRIDAY, domains=("centralbank.go.ke",), section="fixed_income")
+    saved = gather.gather_piece(
+        piece, search=lambda query, start, domains: [result("https://www.centralbank.go.ke/press/note", day)],
+        fetch=lambda url, subject, week_end, **kw: src.fetch_page(url, subject, week_end, http_get=getter,
+                                                                  resolve=lambda host: ["93.184.216.34"], **kw),
+        root=tmp_path, limits=gather.Limits(max_queries=1), deadline=time.monotonic() + 100,
+        on_event=lambda kind, label, detail=None, counts=None: events.append((kind, detail)))
+    return saved, events
+
+
+def dated(day):
+    return article(f'<meta property="article:published_time" content="{day}T08:00:00Z">')
+
+
+def test_a_found_page_dated_in_an_earlier_year_is_refused_and_said_to_be_left_out(tmp_path):
+    saved, events = gather_real_fetch(tmp_path, Getter(reply(dated("2022-11-04"), content_type="text/html")))
+    assert saved == [] and src.list_for("T-bills", FRIDAY, tmp_path) == []   # nor is its search text kept in its place
+    left = [d for k, d in events if k == ev.SOURCE_LEFT_OUT]
+    assert len(left) == 1 and "dated 2022-11-04, outside the report week" in left[0]
+
+
+def test_a_found_page_dated_in_the_week_is_kept(tmp_path):
+    saved, events = gather_real_fetch(tmp_path, Getter(reply(dated("2026-11-04"), content_type="text/html")))
+    assert [s.published_date for s in saved] == ["2026-11-04"]
+    assert not [k for k, _ in events if k == ev.SOURCE_LEFT_OUT]
+
+
+def test_a_found_pdf_states_no_date_so_it_keeps_the_search_date(tmp_path, monkeypatch):
+    monkeypatch.setattr(src, "read_pdf", lambda body: (PARAGRAPH * 3, "A PDF title"))
+    saved, _ = gather_real_fetch(tmp_path, Getter(reply(b"%PDF-1.4 not really", content_type="application/pdf")), "2026-11-06")
+    assert [s.published_date for s in saved] == ["2026-11-06"]

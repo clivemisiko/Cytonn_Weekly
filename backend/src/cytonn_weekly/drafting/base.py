@@ -26,6 +26,10 @@ from typing import Optional
 
 from cytonn_weekly.drafting.results import HighlightResult
 
+# A brief's context for a weekly highlight: the event, not only the article, falls in the week.
+IN_THE_WEEK = ("The event itself must have happened in the report week. A recap of an earlier decision or release, or a "
+               "preview of a later one, does not qualify, even if the article was published in the week.")
+
 
 @dataclass(frozen=True)
 class NarrativeBrief:
