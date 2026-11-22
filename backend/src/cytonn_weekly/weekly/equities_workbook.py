@@ -338,7 +338,7 @@ def read_universe(book: Workbook, week: Week) -> dict[str, Any]:
                                 f"{', '.join(c.a1 for c in found)}")
         return found[0].col
 
-    year = week.ending.year
+    year = week.as_at.year
     wow_col = one(lambda s: s == "w/w change", "w/w change")
     mom_col = one(lambda s: s == "m/m change", "m/m change")
     ytd_col = one(lambda s: s == "ytd change", "YTD Change")
@@ -364,21 +364,21 @@ def read_universe(book: Workbook, week: Week) -> dict[str, Any]:
 
     warnings: list[str] = []
     dated = _price_columns(sheet)
-    if dated.get(week.ending, current) < current:
+    if dated.get(week.as_at, current) < current:
         # A later week's workbook read for this earlier week: its formulas speak of the later week.
-        this_col = dated[week.ending]
-        if week.previous_friday not in dated:
-            raise WorkbookError(f"'{UNIVERSE_SHEET}' has no 'Price as at {week.previous_friday.strftime('%d/%m/%Y')}' column")
-        month_start = week.ending.replace(day=1)
+        this_col = dated[week.as_at]
+        if week.previous_as_at not in dated:
+            raise WorkbookError(f"'{UNIVERSE_SHEET}' has no 'Price as at {week.previous_as_at.strftime('%d/%m/%Y')}' column")
+        month_start = week.as_at.replace(day=1)
         earlier = [d for d in dated if d < month_start]
         if not earlier:
             raise WorkbookError(f"'{UNIVERSE_SHEET}' has no price column before {month_start.isoformat()} for the m/m change")
         month_end = max(earlier)
-        last_col, base_col = dated[week.previous_friday], dated[month_end]
+        last_col, base_col = dated[week.previous_as_at], dated[month_end]
     else:
         shown = _header_date(head(current).value)
-        if shown is not None and shown < week.ending:
-            raise WorkbookError(f"'{UNIVERSE_SHEET}' has no 'Price as at {week.ending.strftime('%d/%m/%Y')}' column: workbook "
+        if shown is not None and shown < week.as_at:
+            raise WorkbookError(f"'{UNIVERSE_SHEET}' has no 'Price as at {week.as_at.strftime('%d/%m/%Y')}' column: workbook "
                                 f"not yet updated for this week (its last price column, {head(current).a1}, reads "
                                 f"{head(current).value!r})")
 
@@ -417,9 +417,9 @@ def read_universe(book: Workbook, week: Week) -> dict[str, Any]:
             if col not in price_cols:
                 raise WorkbookError(f"'{UNIVERSE_SHEET}' '{label}' divides by {get_column_letter(col)}, which is not a "
                                     "'Price as at' column")
-        month_end = last_weekday_before(week.ending)
-        for col, expected, what in ((this_col, week.ending, "this Friday's price"),
-                                    (last_col, week.previous_friday, "last Friday's price, the w/w base"),
+        month_end = last_weekday_before(week.as_at)
+        for col, expected, what in ((this_col, week.as_at, "this Friday's price"),
+                                    (last_col, week.previous_as_at, "last Friday's price, the w/w base"),
                                     (base_col, month_end, "the m/m base")):
             if _header_date(head(col).value) != expected:
                 warnings.append(f"Universe of Coverage: the workbook's header {head(col).a1} reads {head(col).value!r}; the "
@@ -432,6 +432,6 @@ def read_universe(book: Workbook, week: Week) -> dict[str, Any]:
                "last_price": sheet.cell(r, last_col), "month_end_price": sheet.cell(r, base_col)}
         row.update({key: sheet.cell(r, col) for key, col in cols.items()})
         companies.append(row)
-    return {"companies": companies, "month_end": month_end, "week_ending": week.ending,
-            "previous_friday": week.previous_friday, "warnings": warnings,
+    return {"companies": companies, "month_end": month_end, "week_ending": week.as_at,
+            "previous_friday": week.previous_as_at, "warnings": warnings,
             "month_end_cell": Cell(month_end, sheet.name, HEADER_ROW, base_col)}
