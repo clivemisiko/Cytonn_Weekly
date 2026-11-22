@@ -3,6 +3,7 @@ import { PhCaretDown, PhChatCircle, PhSidebarSimple } from "@phosphor-icons/vue"
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "reka-ui";
 import { computed, nextTick, ref, useTemplateRef, watch } from "vue";
 import { RouterLink, useRouter } from "vue-router";
+import { SHOW_CHAT } from "@/lib/features";
 import { reportName } from "@/lib/format";
 import { chatHref, mayLeave } from "@/lib/nav";
 import { MARKS } from "@/lib/railmarks";
@@ -64,7 +65,7 @@ const showProgress = computed(() => shell.held.value !== null && !atOverview.val
 // The current item is a green-tinted pill with an accent bar (and bold, and aria-current); an item that does nothing is dimmed and has no hover.
 // Only pages that exist; the chat's own sections stay in the list below.
 const PAGES = [
-  { to: "/chat", name: "Chat", icon: PhChatCircle },
+  { to: "/chat", name: SHOW_CHAT ? "Chat" : "Sections", icon: PhChatCircle },
 ];
 const ITEM =
   "flex w-full items-center gap-3 rounded-md px-2 py-1.5 text-left text-sm outline-none transition-colors duration-150 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring aria-disabled:cursor-default aria-disabled:opacity-60 aria-disabled:hover:bg-transparent aria-[current=page]:bg-accent aria-[current=page]:font-semibold aria-[current=page]:text-accent-foreground aria-[current=page]:hover:bg-accent aria-[current=page]:shadow-[inset_3px_0_0_var(--primary)]";

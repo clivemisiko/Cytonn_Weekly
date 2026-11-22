@@ -1,6 +1,8 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { SHOW_CHAT } from "../../frontend/src/lib/features";
 import { API, PERIOD, VARIANT, WEEK, overviewUrl, topbar } from "./helpers";
 
+test.skip(!SHOW_CHAT, "the chat is hidden (SHOW_CHAT in frontend/src/lib/features.ts)");
 test.skip(!!VARIANT, "runs on the default test backend");
 test.describe.configure({ mode: "serial" });
 

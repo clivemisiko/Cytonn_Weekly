@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { SHOW_CHAT } from "../../frontend/src/lib/features";
 import { draftAnyway } from "./helpers";
 
 /**
@@ -58,7 +59,7 @@ test("T01 landing page loads, Home becomes current on the overview, Back disable
   await expect(topbar(page).getByRole("button", { name: "Back (this is the start screen)" })).toBeDisabled();
   await page.getByRole("link", { name: "Continue without signing in" }).click();
   await expect(page).toHaveURL(/\/chat$/); // the chat's section picker is where the welcome page leads
-  await expect(page.getByRole("heading", { name: "Choose what to talk about" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: SHOW_CHAT ? "Choose what to talk about" : "Choose a section" })).toBeVisible();
   await expect(home).toHaveAttribute("aria-current", "page"); // Home is the chat
   await page.goto("/overview"); // the overview is hidden from navigation but still opens by its address
   await expect(page).toHaveURL(DEFAULT_WEEK); // a bare /overview opens on a labelled week

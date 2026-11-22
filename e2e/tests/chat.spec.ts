@@ -1,6 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
+import { SHOW_CHAT } from "../../frontend/src/lib/features";
 import { PERIOD, VARIANT, card, overviewUrl } from "./helpers";
 
+test.skip(!SHOW_CHAT, "the chat is hidden (SHOW_CHAT in frontend/src/lib/features.ts)");
 test.skip(!!VARIANT, "runs on the default test backend");
 
 const TITLES = ["Fixed Income", "Equities", "Real Estate", "Digital Payments", "Focus of the Week"];

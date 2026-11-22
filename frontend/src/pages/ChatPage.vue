@@ -17,6 +17,7 @@ import * as api from "@/lib/api";
 import { type ChatCard, composerOff, createConversation, statusLine, toolLine } from "@/lib/chat";
 import { PREPARE_SECTIONS, parseReadiness, parseReviewSnapshot } from "@/lib/chatcards";
 import { draftingFor, draftingList } from "@/lib/drafting";
+import { SHOW_CHAT } from "@/lib/features";
 import { friendlyDate } from "@/lib/format";
 import { BACK_NONE, type BackTarget, useBack } from "@/lib/nav";
 import { openingWeek, weekChoiceLabel } from "@/lib/previous";
@@ -176,7 +177,7 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
           </div>
 
           <section aria-labelledby="chat-sections" class="space-y-2">
-            <h2 id="chat-sections" :class="current ? 'text-xs font-bold text-foreground' : 'text-xl font-semibold tracking-tight text-cw-accent'">{{ current ? "Sections" : "Choose what to talk about" }}</h2>
+            <h2 id="chat-sections" :class="current ? 'text-xs font-bold text-foreground' : 'text-xl font-semibold tracking-tight text-cw-accent'">{{ current ? "Sections" : SHOW_CHAT ? "Choose what to talk about" : "Choose a section" }}</h2>
             <ul class="flex flex-wrap gap-2.5">
               <li :class="!current && 'basis-full pb-2'">
                 <Button variant="ghost" :class="current ? SECTION_BTN : START_BTN" @click="wholeReport">Whole report</Button>
@@ -222,7 +223,7 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
             <Notice v-if="notice" tone="flag" role="alert" class="font-medium">{{ notice }}</Notice>
             <Notice v-if="lost" tone="warn" role="alert">{{ lost }}</Notice>
 
-            <ol role="log" aria-label="Conversation" class="space-y-4">
+            <ol v-if="SHOW_CHAT" role="log" aria-label="Conversation" class="space-y-4">
               <li v-for="{ m, cards } in rows" :key="m.seq">
                 <p v-if="m.role === 'tool'" class="pl-15 text-sm text-muted-foreground">{{ toolLine(m) }}</p>
                 <div v-else class="flex items-start gap-4">
@@ -243,14 +244,14 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
               </li>
             </ol>
 
-            <div v-if="status?.kind === 'working'" class="flex items-start gap-4">
+            <div v-if="SHOW_CHAT && status?.kind === 'working'" class="flex items-start gap-4">
               <span class="mt-1" aria-hidden="true"><CytonnMark avatar :size="44" /></span>
               <div role="status" class="flex h-[4.375rem] w-[6.875rem] items-end justify-center gap-2.5 rounded-3xl bg-cw-assistant pb-4">
                 <span class="sr-only">{{ status.text }}</span>
                 <span v-for="d in 3" :key="d" class="typing-dot size-2.5 rounded-full bg-cw-dots" :style="{ animationDelay: `${(d - 1) * 160}ms` }" aria-hidden="true" />
               </div>
             </div>
-            <Notice v-else-if="status" tone="info" role="status">
+            <Notice v-else-if="SHOW_CHAT && status" tone="info" role="status">
               <span class="flex flex-wrap items-center gap-x-3 gap-y-2">
                 <span class="inline-flex items-center gap-1.5">
                   <PhPauseCircle weight="bold" class="size-4" aria-hidden="true" />
@@ -275,7 +276,7 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
               @close="choose(null)"
             />
 
-            <form class="space-y-2" @submit.prevent="submit">
+            <form v-if="SHOW_CHAT" class="space-y-2" @submit.prevent="submit">
               <label for="chat-message" class="sr-only">Message</label>
               <div class="rounded-[2.5rem] border border-input p-2 focus-within:ring-[3px] focus-within:ring-ring/50">
                 <div class="flex items-end gap-2 rounded-[2rem] bg-card py-1 pr-2 pl-5 shadow-sm">
@@ -307,7 +308,8 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
           <dd>{{ current.title }}</dd>
           <dt class="eyebrow">Week</dt>
           <dd>{{ period }}</dd>
-          <template v-if="job">
+          <!-- The chat assistant's own model calls and tokens (jobs.add_usage); a draft's are counted apart, in draft_usage. -->
+          <template v-if="SHOW_CHAT && job">
             <dt class="eyebrow">Model calls</dt>
             <dd class="font-mono">{{ job.calls_used }} of {{ job.call_budget }}</dd>
             <dt class="eyebrow">Tokens</dt>
@@ -316,7 +318,7 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
         </dl>
         <!-- .rail-stack flattens the aside's direct children, so the tint sits one level in. -->
         <div v-else><div class="space-y-4 rounded-3xl bg-cw-bubble p-6">
-          <p class="text-sm text-foreground">Choose a section to start. Each section is its own conversation.</p>
+          <p class="text-sm text-foreground">{{ SHOW_CHAT ? "Choose a section to start. Each section is its own conversation." : "Choose a section to start." }}</p>
           <ol v-if="shell.sections.value.length" class="space-y-3">
             <li v-for="(s, i) in shell.sections.value" :key="s.slug" class="grid grid-cols-[2rem_1fr] text-sm">
               <span class="font-mono text-muted-foreground" aria-hidden="true">{{ String(i + 1).padStart(2, "0") }}</span>
