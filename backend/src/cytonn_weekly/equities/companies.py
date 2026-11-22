@@ -100,17 +100,6 @@ def _brief(c: Company) -> Any:
                           preferred_domains=(c.domain,) if c.domain else (), context=FACTS)
 
 
-def _urls(piece: dict[str, Any]) -> set[str]:
-    return {u for u in (str(c.get("url") or "").split("#")[0].rstrip("/").lower() for c in piece.get("claims", [])) if u}
-
-
-def _held_by(piece: dict[str, Any], existing: list[dict[str, Any]]) -> Optional[str]:
-    """The topic of an already drafted highlight whose claims cite every page this piece cites, so the event is shown once.
-    ponytail: same page address, not same event; a closer match needs the sentences compared."""
-    mine = _urls(piece)
-    return next((e["topic"] for e in existing if mine and mine <= _urls(e)), None)
-
-
 ROUTE_TEXT = {"site": "own website read", "search": "search fallback", "nothing": "nothing found"}
 
 
@@ -133,7 +122,7 @@ def part(friday: date, window: tuple[date, date], today: date, provider: Any, ex
     analyst); no source means no model call.  Notes in the first block name each company not searched, quiet or shown elsewhere."""
     from cytonn_weekly.common import sources as store
     from cytonn_weekly.review.blocks import narrative_block
-    from cytonn_weekly.drafting.drafter import draft_pieces
+    from cytonn_weekly.drafting.drafter import draft_pieces, held_by
 
     companies = load()
     if not companies:
@@ -145,7 +134,7 @@ def part(friday: date, window: tuple[date, date], today: date, provider: Any, ex
     blocks, elsewhere, drafted_ids = [], {}, set()
     for c in drafting:
         piece = by_id.get(c.id)
-        holder = _held_by(piece, existing) if piece else None
+        holder = held_by(piece, existing) if piece else None
         if holder:
             elsewhere[c.id] = f"{c.name} (in {holder})"
         elif piece:

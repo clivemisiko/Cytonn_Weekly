@@ -81,3 +81,19 @@ def test_with_no_earlier_section_nothing_changes():
     provider = Seeing({"a": "https://example.org/old"})
     out = draft_pieces(briefs("a"), 1, provider=provider, today=TODAY)
     assert [p["brief_id"] for p in out["pieces"]] == ["a"] and "skipped" not in out and provider.briefs[0].context == ""
+
+
+def test_two_briefs_whose_pieces_cite_the_same_page_give_one_piece_and_the_next_brief_is_tried():
+    seeing = Seeing({"a": "https://cma.or.ke/notice/1", "b": "https://cma.or.ke/notice/1#x", "c": "https://nse.co.ke/c"})
+    events = []
+    out = draft_pieces(briefs("a", "b", "c"), 2, provider=seeing, today=TODAY,
+                       on_event=lambda kind, label, detail=None, counts=None: events.append((kind, label)))
+    assert [p["brief_id"] for p in out["pieces"]] == ["a", "c"] and out["shortfall"] == 0
+    assert out["skipped"] == {"b": "already drafted in this run under A"}
+    assert (ev.PART_SKIPPED, "B") in events
+
+
+def test_two_briefs_whose_pieces_cite_different_pages_give_two_pieces():
+    seeing = Seeing({"a": "https://cma.or.ke/notice/1", "b": "https://nse.co.ke/notice/2"})
+    out = draft_pieces(briefs("a", "b"), 2, provider=seeing, today=TODAY)
+    assert [p["brief_id"] for p in out["pieces"]] == ["a", "b"] and "skipped" not in out
