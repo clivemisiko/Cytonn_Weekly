@@ -212,3 +212,26 @@ def test_an_undated_source_is_still_kept_with_its_flag_for_a_brief_without_dated
     kept, notes = bp.within_window([{"id": "u", "title": "Undated", "host": "nse.co.ke"}], brief.label, START, END,
                                    brief.dated_only)
     assert notes == [] and kept[0]["flags"] == [src.NO_DATE_FLAG]
+
+
+def test_a_snip_link_in_a_piece_leaves_clean_text_and_the_claim_keeps_the_snip_as_its_source(aws, events):
+    snip = src.from_snip(b"image-bytes", ".png", TEXT, SUBJECT, FRIDAY, "2026-09-30", "A snip")
+    assert snip.url.startswith("snip:")
+    client = Client([{"text": "Credit grew 8.75%.", "quote": QUOTE, "source_id": snip.id}],
+                    paragraph=f"Credit grew 8.75%, as [the bank said]({snip.url}) in the year to September 2026.")
+    res = narrative(client)
+    clean = "Credit grew 8.75%, as the bank said in the year to September 2026."
+    assert res.paragraph == res.paragraph_md == clean and res.links == []
+    assert not [w for w in res.warnings if "unlinked" in w]
+    assert [(c["url"], c["source_id"], c["origin"]) for c in res.claims] == [(snip.url, snip.id, "snip")]
+
+
+def test_a_snip_link_in_a_company_highlight_leaves_its_anchor_alone():
+    from cytonn_weekly.drafting import replies
+
+    raw = json.dumps({"is_genuine_announcement": True, "reasoning": "x", "headline": "Visa results",
+                      "paragraph": "Visa reported [higher revenue](snip:0123456789abcdef) for the quarter.", "claims": []})
+    res = replies.highlight_from_reply(raw, "Visa", "", "web", ["Visa"], [], [], who="the model", label="Visa",
+                                       drafted_by="fake:test")
+    assert res.paragraph == res.paragraph_md == "Visa reported higher revenue for the quarter."
+    assert not [w for w in res.warnings if "unlinked" in w]

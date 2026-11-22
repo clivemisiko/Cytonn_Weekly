@@ -642,7 +642,7 @@ def liquidity_block(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bullet
             figs.hide("rate_bps")
         text.append(f"During the week, liquidity in the money markets {direction(change, 'tightened', 'eased', 'was unchanged')}, "
                     f"with the average interbank rate {direction(change, 'increasing', 'decreasing', 'unchanged')}"
-                    + (f" by {bps}" if change else "") + f" to {rate}{cause}.")
+                    + (f" by {bps} to" if change else " at") + f" {rate}{cause}.")
     else:
         kesonia = figs.add("kesonia", "KESONIA, weekly average", PLAIN_PCT, 2, {"kesonia": published(this_week["kesonia"], src)})
         text.append(f"During the week, the Kenya Shilling Overnight Interbank Average (KESONIA) averaged {kesonia}{cause}.")

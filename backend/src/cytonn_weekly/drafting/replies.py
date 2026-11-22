@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, Callable, Optional, Sequence
 
 from cytonn_weekly.drafting.highlight_contract import BODY_WORDS, OPENER
 from cytonn_weekly.drafting.reply_models import DraftReply, _decoded
-from cytonn_weekly.drafting.results import LINK_RE, HighlightResult, is_about_company, strip_links, word_count
+from cytonn_weekly.drafting.results import LINK_RE, SNIP, HighlightResult, is_about_company, strip_links, word_count
 
 if TYPE_CHECKING:
     from cytonn_weekly.drafting.base import NarrativeBrief
@@ -81,6 +81,8 @@ def highlight_from_reply(
 
     def _keep(m) -> str:
         anchor, url = m.group(1), m.group(2)
+        if url.startswith(SNIP):   # an uploaded snip has no address to open: its anchor alone, the claim keeps the source
+            return anchor
         if url in by_url:
             links.append({"anchor": anchor, "url": url})
             return m.group(0)
@@ -166,6 +168,8 @@ def piece_from_reply(
     links: list[dict[str, str]] = []
 
     def keep(m) -> str:
+        if m.group(2).startswith(SNIP):   # as in highlight_from_reply
+            return m.group(1)
         if m.group(2) in by_url:
             links.append({"anchor": m.group(1), "url": m.group(2)})
             return m.group(0)

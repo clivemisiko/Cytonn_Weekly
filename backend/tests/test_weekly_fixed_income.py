@@ -257,7 +257,7 @@ LAST_DAYS = ("2026-09-18", "2026-09-21", "2026-09-22", "2026-09-23", "2026-09-24
 @pytest.mark.parametrize("now, last, printed, sentence", [
     ("8.80", "8.70", "10.0 bps", "tightened, with the average interbank rate increasing by 10.0 bps to 8.8%."),
     ("8.7504", "8.7500", "0.04 bps", "tightened, with the average interbank rate increasing by 0.04 bps to 8.8%."),
-    ("8.7500", "8.7500", "0.00 bps", "was unchanged, with the average interbank rate unchanged to 8.8%."),
+    ("8.7500", "8.7500", "0.00 bps", "was unchanged, with the average interbank rate unchanged at 8.8%."),
 ])
 def test_the_checker_matches_the_interbank_change_at_each_precision(tmp_path, now, last, printed, sentence):
     from cytonn_weekly.weekly import analyst
