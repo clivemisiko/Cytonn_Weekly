@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { SHOW_CHAT } from "../../frontend/src/lib/features";
 import { API } from "./helpers";
 
 // The prepare page, which every section shows while it has no draft. Every figure here is invented, and each test takes
@@ -243,19 +244,21 @@ test("T148 Create draft opens the conversation and starts the draft; a drafted s
   await page.goto(url("equities", period));
   await prepare(page).getByRole("button", { name: /Create draft/ }).click();
   const ask = page.getByRole("dialog", { name: "Draft this section?" });
-  await expect(ask.or(page.getByRole("log", { name: "Conversation" }))).toBeVisible();
+  await expect(ask.or(page.getByRole("region", { name: "What you can do now" }))).toBeVisible();
   if (await ask.isVisible()) await ask.getByRole("button", { name: "Draft anyway" }).click();
   await expect(page).toHaveURL(/view=conversation/);
   await expect(page.getByRole("region", { name: "What you can do now" }).getByRole("region", { name: /^Review of Equities/ })).toBeVisible({ timeout: 180_000 });
 
   await page.goto(url("equities", period)); // no flag: the section has a draft, so the conversation view
-  await expect(page.getByRole("log", { name: "Conversation" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "What you can do now" })).toBeVisible();
+  await expect(page.getByRole("log", { name: "Conversation" })).toHaveCount(SHOW_CHAT ? 1 : 0);
   await expect(prepare(page)).toHaveCount(0);
   await page.getByRole("link", { name: "Back to sources and inputs" }).first().click();
   await expect(prepare(page).locator("[data-pill]")).toHaveText("In review");
 });
 
 test("T149 the prepare page offers the conversation when one already holds more than its snapshot, and only then", async ({ page }) => {
+  test.skip(!SHOW_CHAT, "the chat is hidden");
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto(url("equities", "2027-05-28"));
   await expect(inputs(page)).toBeVisible();
@@ -292,7 +295,22 @@ test("T150 a saved source is a link to its /sources/{id} record in a new tab, on
   expect(onPrepare.some((l) => l.href.startsWith("/sources/"))).toBe(true); // the rule was checked against a real record link
 
   await page.goto(url("focus", "2027-06-04", "&view=conversation"));
-  await expect(page.getByRole("log", { name: "Conversation" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "What you can do now" })).toBeVisible();
   await expect(page.getByRole("region", { name: "What you can do now" }).getByText(/^1 saved/)).toBeVisible();
   await linksFollowTheRule(page.getByRole("main"));
+});
+
+test("T151 with the chat hidden, the section list opens a section on its prepare page, with no message box and no way into the conversation", async ({ page }) => {
+  test.skip(SHOW_CHAT, "the chat is shown");
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(`/chat?period=${encodeURIComponent("Week ending 2027-07-02")}`);
+  await page.getByRole("button", { name: "Equities", exact: true }).click();
+  await expect(page).toHaveURL(/section=equities/);
+  await expect(prepare(page)).toBeVisible();
+  await expect(inputs(page)).toBeVisible();
+  await expect(prepare(page).getByRole("button", { name: /Create draft/ })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Message" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Send" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Open the conversation" })).toHaveCount(0);
+  await expect(page.getByRole("log", { name: "Conversation" })).toHaveCount(0);
 });
