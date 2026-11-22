@@ -15,7 +15,7 @@ import Button from "@/components/ui/Button.vue";
 import { FIELD, LINK } from "@/components/ui/button";
 import * as api from "@/lib/api";
 import { type ChatCard, composerOff, createConversation, statusLine, toolLine } from "@/lib/chat";
-import { PREPARE_SECTIONS, parseReadiness, parseReviewSnapshot } from "@/lib/chatcards";
+import { PREPARE_SECTIONS, hasDraftWork, openView, parseReadiness, parseReviewSnapshot } from "@/lib/chatcards";
 import { draftingFor, draftingList } from "@/lib/drafting";
 import { SHOW_CHAT } from "@/lib/features";
 import { friendlyDate } from "@/lib/format";
@@ -59,9 +59,12 @@ const weekOptions = computed(() => {
 const view = computed(() => first(route.query.view));
 const state = computed(() => (overview.value && current.value ? railState(overview.value, current.value, report.value) : null));
 const prepares = computed(() => !!current.value && PREPARE_SECTIONS.includes(current.value.slug));
-const preparing = computed(() => prepares.value && (view.value === "prepare" || (view.value !== "conversation" && state.value === "not_drafted")));
 const viewTo = (v: "prepare" | "conversation") => `/chat?${new URLSearchParams({ period: period.value, section: slug.value ?? "", view: v }).toString()}`;
 const drafting = computed(() => (overview.value && current.value ? draftingFor(draftingList(overview.value), current.value.slug, report.value) : null));
+const work = computed(() => !!current.value && hasDraftWork(current.value, drafting.value));
+const preparing = computed(
+  () => openView({ showChat: SHOW_CHAT, prepares: prepares.value, view: view.value, state: state.value, work: work.value }) === "prepare",
+);
 
 // The hidden page a chat button opens (the inputs form, the snips and sources, the Focus topic); there it shows "Back to chat".
 const status = computed(() => statusLine(job.value));
@@ -93,6 +96,8 @@ async function load() {
     }
     overview.value = await api.getOverview(report.value);
     shell.setOverview(overview.value); // the rail takes the same payload
+    // The chat hidden, a conversation view with no draft card would show only its back link: the address says prepare instead.
+    if (!SHOW_CHAT && view.value === "conversation" && preparing.value) return void router.replace(viewTo("prepare"));
     const wanted = slug.value;
     // The prepare page opens no conversation: it reads the section's readiness on its own.
     if (wanted && !preparing.value && overview.value.sections.some((s) => s.slug === wanted && s.available)) await convo.open(wanted, period.value);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FOCUS_ON_OLD_PAGE, GROUPS, NOT_JUDGED, draftCard, flaggedOf, hasNeeds, needsYou, parseReadiness, parseReviewSnapshot, snipLine, sourceRows, sourcesLine, typedProblem, captureSteps, unsavedSteps, weekOf } from "./chatcards";
+import { FOCUS_ON_OLD_PAGE, GROUPS, NOT_JUDGED, draftCard, hasDraftWork, openView, flaggedOf, hasNeeds, needsYou, parseReadiness, parseReviewSnapshot, snipLine, sourceRows, sourcesLine, typedProblem, captureSteps, unsavedSteps, weekOf } from "./chatcards";
 import type { AppConfig, Drafting, Review, SectionSummary } from "./types";
 
 const entry = (key: string, over: Record<string, unknown> = {}) => ({ kind: "upload", key, label: key.toUpperCase(), why: "not uploaded", ...over });
@@ -209,5 +209,49 @@ describe("the prepare page's source documents", () => {
     const later = r();
     later.groups.in_place.push(later.groups.needs_analyst.shift()!);
     expect(sourceRows(later, order).map((x) => x.key)).toEqual(order);
+  });
+});
+
+describe("openView: which view a section opens on", () => {
+  // Each state as the page sees it. A reload, the browser's Back button, a typed address and coming back from the overview
+  // or the review page all reach the page as one of these addresses (no view, view=prepare, view=conversation).
+  const STATES = [
+    { name: "no draft", state: "not_drafted", work: false },
+    { name: "a draft running", state: "drafting", work: true },
+    { name: "a draft queued", state: "queued", work: true },
+    { name: "a draft finished, in review", state: "in_review", work: true },
+    { name: "approved", state: "approved", work: true },
+    { name: "rejected", state: "rejected", work: true },
+    { name: "a failed draft, none before", state: "not_drafted", work: true },
+    { name: "a draft from an earlier week only", state: "in_review", work: false },
+  ];
+  const shown = (view: string, s: { state: string; work: boolean }) => openView({ showChat: true, prepares: true, view, ...s });
+  const hidden = (view: string, s: { state: string; work: boolean }) => openView({ showChat: false, prepares: true, view, ...s });
+
+  for (const s of STATES) {
+    it(`the chat hidden, ${s.name}: the prepare page unless the conversation view is asked for and has a draft card`, () => {
+      expect(hidden("", s)).toBe("prepare");
+      expect(hidden("prepare", s)).toBe("prepare");
+      expect(hidden("conversation", s)).toBe(s.work ? "conversation" : "prepare");
+    });
+    it(`the chat shown, ${s.name}: as before`, () => {
+      expect(shown("", s)).toBe(s.state === "not_drafted" ? "prepare" : "conversation");
+      expect(shown("prepare", s)).toBe("prepare");
+      expect(shown("conversation", s)).toBe("conversation");
+    });
+  }
+
+  it("a section that is not a prepare section keeps the conversation view either way", () => {
+    for (const showChat of [true, false]) expect(openView({ showChat, prepares: false, view: "", state: "not_drafted", work: false })).toBe("conversation");
+  });
+
+  it("hasDraftWork: a draft entry of any kind, or this week's review, and nothing else", () => {
+    const base = { slug: "equities", latest: null } as unknown as SectionSummary;
+    const latest = (current: boolean) => ({ ...base, latest: { current, this_week: current } }) as unknown as SectionSummary;
+    expect(hasDraftWork(base, null)).toBe(false);
+    expect(hasDraftWork(base, { slug: "equities", state: "failed" } as Drafting)).toBe(true);
+    expect(hasDraftWork(base, { slug: "equities", state: "running" } as Drafting)).toBe(true);
+    expect(hasDraftWork(latest(true), null)).toBe(true);
+    expect(hasDraftWork(latest(false), null)).toBe(false);
   });
 });

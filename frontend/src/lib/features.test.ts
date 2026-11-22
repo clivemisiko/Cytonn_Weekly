@@ -6,6 +6,7 @@ import * as features from "./features";
 
 // The real ChatPage and PreparePage, rendered by Vue's server renderer (the repo has no DOM library), with the flag mocked.
 let show = false;
+let running = true; // an Equities draft running, so the conversation view has a draft card to show
 vi.mock("@/lib/features", () => ({
   get SHOW_CHAT() {
     return show;
@@ -16,13 +17,14 @@ const PERIOD = "Week ending 2026-10-09";
 const NOW = "2026-10-09T08:00:00+00:00";
 const job = { job_id: 5, report_type: "weekly", period: PERIOD, section: "equities", status: "idle", paused_reason: null, calls_used: 1, call_budget: 20, input_tokens: 0, output_tokens: 0, token_budget: 200000, max_tool_calls: 8, budget_raises: 0, created_at: NOW };
 const section = { slug: "equities", title: "Equities", available: true, needs_topic: false, requires_approved: false, uses_provider: true, reason: null, unblock: null, built_parts: [], subsections: [], charts: [], steps: [], latest: null };
+const run = { slug: "equities", section: "equities", state: "running", title: "Equities", report_type: "weekly", period: PERIOD, started_at: NOW, elapsed_seconds: 5, stale: false, stale_after_seconds: 900, run_id: null };
 const groups = { needs_analyst: [], carried_or_suggested: [], fetched: [], in_place: [], optional: [] };
 // Invented stand-ins for the routes the page reads; anything else is a 404 the page reports in words.
 function answer(url: string): unknown {
   if (url.includes("/readiness")) return { readiness: { section: "equities", week_ending: "2026-10-09", groups }, conversation: true };
   if (url.includes("/api/config")) return { dev_mode: false, dev_mode_label: "", provider: "bedrock", provider_problem: null };
   if (url.includes("/api/previous/weekly")) return { weeks: [], next_week_ending: null, default_week_ending: "2026-10-09", choices: [] };
-  if (url.includes("/api/sections?")) return { today: "2026-10-09", drafting: null, drafting_list: [], report: { type: "weekly", period: PERIOD, kind: null }, sections: [section] };
+  if (url.includes("/api/sections?")) return { today: "2026-10-09", drafting: null, drafting_list: running ? [run] : [], report: { type: "weekly", period: PERIOD, kind: null }, sections: [section] };
   if (url.match(/\/api\/jobs\/5\/messages/)) return { messages: [], job };
   if (url.endsWith("/api/jobs")) return { job, created: false };
   return null;
@@ -48,7 +50,10 @@ async function mount(view: "prepare" | "conversation" | "list", page: "ChatPage"
   return out;
 }
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  running = true;
+});
 
 describe("SHOW_CHAT", { timeout: 30_000 }, () => {
   it("is false in the shipped flag file", async () => {
@@ -93,4 +98,12 @@ describe("SHOW_CHAT", { timeout: 30_000 }, () => {
       expect(out.includes("Open the conversation")).toBe(flag);
     });
   }
+
+  it("the chat hidden, a conversation view with no draft card to show opens the prepare page instead", async () => {
+    show = false;
+    running = false;
+    const out = await mount("conversation");
+    expect(out).toContain('data-card="prepare"');
+    expect(out).not.toContain('data-card="live"');
+  });
 });
