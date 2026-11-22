@@ -12,6 +12,7 @@ import { LINK, buttonVariants } from "@/components/ui/button";
 import * as api from "@/lib/api";
 import { type Readiness, draftCard, parseReadiness, sourceRows, weekOf } from "@/lib/chatcards";
 import { useDraftStart } from "@/lib/draftstart";
+import { SHOW_CHAT } from "@/lib/features";
 import { type Step, focusProblems, noDocumentsLine, openingStep, plural, prepareCounts, prepareSteps, readFocus, writeFocus } from "@/lib/prepare";
 import { MARKS } from "@/lib/railmarks";
 import type { RailState } from "@/lib/shell";
@@ -210,7 +211,7 @@ const mark = computed(() => MARKS[props.state ?? "unknown"]);
         </span>
       </div>
       <p class="text-sm text-muted-foreground">Week ending {{ week }} · Prepare your sources and inputs, then create a draft.</p>
-      <RouterLink v-if="talked" :to="conversationTo" :class="['inline-flex min-h-11 items-center text-sm', LINK]">Open the conversation</RouterLink>
+      <RouterLink v-if="SHOW_CHAT && talked" :to="conversationTo" :class="['inline-flex min-h-11 items-center text-sm', LINK]">Open the conversation</RouterLink>
     </div>
 
     <Notice v-if="readProblem" tone="warn" role="alert">{{ readProblem }}</Notice>
@@ -351,7 +352,7 @@ const mark = computed(() => MARKS[props.state ?? "unknown"]);
             <h3 id="prepare-draft-title" class="text-lg font-semibold"><span class="mr-2 tabular-nums">3</span>Create draft</h3>
             <p class="text-sm text-muted-foreground">Draft this section using what’s in place. Anything still missing comes back as a named gap, never as invented text.</p>
             <p v-if="card.kind === 'blocked' || card.kind === 'none'" class="text-sm">{{ card.why }}</p>
-            <p v-else-if="card.kind === 'running' || card.kind === 'queued'" class="text-sm">This section is being drafted. <RouterLink :to="conversationTo" :class="LINK">Open the conversation</RouterLink> to follow it.</p>
+            <p v-else-if="card.kind === 'running' || card.kind === 'queued'" class="text-sm">This section is being drafted. <template v-if="SHOW_CHAT"><RouterLink :to="conversationTo" :class="LINK">Open the conversation</RouterLink> to follow it.</template><RouterLink v-else :to="conversationTo" :class="LINK">Follow the draft</RouterLink></p>
           </div>
           <div v-if="card.kind === 'ready' || card.kind === 'failed'" class="space-y-1 text-center max-sm:w-full">
             <Button class="min-h-11 px-6 max-sm:w-full" :aria-disabled="blocked || undefined" aria-describedby="prepare-draft-caption" @click="!blocked && create()">
