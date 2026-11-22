@@ -121,6 +121,21 @@ export const typedProblem = (text: string) => (text.trim() ? null : "Type a valu
 /** Sections that open on the prepare page while they have no draft. The others keep the conversation view until reviewed. */
 export const PREPARE_SECTIONS = ["fixed_income", "equities", "real_estate", "digital_payments", "focus"];
 
+/** True when the conversation view has a draft card to show: a draft running, queued or stopped, or this week's review. */
+export const hasDraftWork = (section: SectionSummary, mine: Drafting | null) =>
+  mine !== null || (section.latest !== null && (section.latest.current ?? section.latest.this_week));
+
+/**
+ * Which view a section opens on. With the chat shown: the prepare page while there is no draft, or when the address says
+ * `view=prepare`. With the chat hidden: always the prepare page, unless the address asks for the conversation view and it
+ * has a draft card to show (Create draft and "Follow the draft" go there).
+ */
+export function openView(o: { showChat: boolean; prepares: boolean; view: string; state: string | null; work: boolean }): "prepare" | "conversation" {
+  if (!o.prepares) return "conversation";
+  if (o.showChat) return o.view === "prepare" || (o.view !== "conversation" && o.state === "not_drafted") ? "prepare" : "conversation";
+  return o.view === "conversation" && o.work ? "conversation" : "prepare";
+}
+
 export interface SourceRow {
   key: string;
   label: string;
