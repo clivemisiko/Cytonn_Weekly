@@ -167,11 +167,11 @@ def test_a_dated_only_brief_leaves_out_an_undated_source_and_says_so(aws, events
     assert "The event itself must have happened in the report week." in seen                        # the prompt line
 
 
-def test_the_dated_only_rule_is_the_three_fixed_income_briefs_alone():
+def test_the_dated_only_rule_is_the_fixed_income_and_equities_briefs():
     from cytonn_weekly.fixed_income import weekly as fiw
     from cytonn_weekly.equities import weekly as eqw
-    assert all(b.dated_only and "recap of an earlier decision" in b.context for b in fiw.BRIEFS)
-    assert not any(b.dated_only for b in eqw.BRIEFS) and not BRIEF.dated_only
+    assert all(b.dated_only and "recap of an earlier decision" in b.context for b in fiw.BRIEFS + eqw.BRIEFS)
+    assert not BRIEF.dated_only
 
 
 @pytest.mark.parametrize("day", ["2026-09-01", "2026-10-20"])
@@ -192,3 +192,23 @@ def test_a_fetched_page_keeps_the_window_and_an_untyped_snip_date_carries_no_fla
     res = narrative(client)
     assert OUTSIDE not in shown_to_the_model(client) and len(left_out(events)) == 1
     assert any("Old page" in w for w in res.draft_warnings)
+
+
+@pytest.mark.parametrize("brief", __import__("cytonn_weekly.equities.review_run", fromlist=["BRIEFS"]).BRIEFS,
+                         ids=lambda b: b.id)
+def test_an_undated_source_is_dropped_for_every_equities_brief_which_carries_the_shared_in_the_week_rule(brief):
+    from cytonn_weekly.drafting.base import IN_THE_WEEK
+    from cytonn_weekly.fixed_income.weekly import BRIEFS as FI_BRIEFS
+
+    assert brief.dated_only and brief.context == IN_THE_WEEK
+    assert all(b.context == IN_THE_WEEK for b in FI_BRIEFS)   # Fixed Income reads the same shared text
+    kept, notes = bp.within_window([{"id": "u", "title": "Undated", "host": "nse.co.ke"}], brief.label, START, END,
+                                   brief.dated_only)
+    assert kept == [] and "has no date" in notes[0]
+
+
+def test_an_undated_source_is_still_kept_with_its_flag_for_a_brief_without_dated_only():
+    brief = NarrativeBrief(id="b", section="Real Estate", label=SUBJECT, focus="x")
+    kept, notes = bp.within_window([{"id": "u", "title": "Undated", "host": "nse.co.ke"}], brief.label, START, END,
+                                   brief.dated_only)
+    assert notes == [] and kept[0]["flags"] == [src.NO_DATE_FLAG]

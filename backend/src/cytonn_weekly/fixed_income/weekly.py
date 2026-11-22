@@ -61,7 +61,7 @@ from cytonn_weekly.review.blocks import (
 from cytonn_weekly.common.run_events import Observer, report_blocks
 from cytonn_weekly.review.model import CoordinatorReview
 from cytonn_weekly.fixed_income import cbk_auctions, net_borrowing
-from cytonn_weekly.drafting.base import NarrativeBrief, NarrativeProvider
+from cytonn_weekly.drafting.base import IN_THE_WEEK, NarrativeBrief, NarrativeProvider
 from cytonn_weekly.drafting.drafter import draft_pieces
 from cytonn_weekly.weekly import analyst, cbk_bulletin, cbk_rates, fi_workbook, previous_issue
 from cytonn_weekly.weekly.inputs import CBK_BULLETIN, WeeklyInputs, store
@@ -121,8 +121,6 @@ EUROBOND_NAMES = {"2018_10y": "10-year Eurobond issued in 2018", "2018_30y": "30
                   "2019_12y": "12-year Eurobond issued in 2019", "2021_13y": "13-year Eurobond issued in 2021",
                   "2024_7y": "7-year Eurobond issued in 2024"}
 
-IN_THE_WEEK = ("The event itself must have happened in the report week. A recap of an earlier decision or release, or a "
-               "preview of a later one, does not qualify, even if the article was published in the week.")
 BRIEFS: list[NarrativeBrief] = [
     NarrativeBrief(
         id="monetary", section=TITLE, label="Monetary policy and inflation",
