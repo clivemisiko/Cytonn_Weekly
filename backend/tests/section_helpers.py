@@ -145,7 +145,8 @@ def confirm_snips(sectors=("industry", "residential", "land", "hospitality")):
 def real_estate_review(provider=None, on_event=None):
     confirm_snips()
     return build_real_estate_review(provider=provider or FakeNarrativeProvider(no_story={"hospitality"}),
-                                    today=TODAY, fetch_reits=lambda _today: reits(), on_event=on_event)
+                                    today=TODAY, fetch_reits=lambda _today: reits(),
+                                    fetch_previous_issue=lambda _day: None, on_event=on_event)
 
 
 PREVIOUS_FOCUS = {"focus-of-the-week": {"name": "Focus of the Week", "body": "<p>Body.</p><p>Disclaimer: Past performance is not a guide.</p>"}}
