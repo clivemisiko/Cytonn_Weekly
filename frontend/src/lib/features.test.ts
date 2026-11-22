@@ -28,16 +28,18 @@ function answer(url: string): unknown {
   return null;
 }
 
-async function mount(view: "prepare" | "conversation") {
+async function mount(view: "prepare" | "conversation" | "list", page: "ChatPage" | "SideRail" = "ChatPage") {
   vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
     const body = answer(String(input));
     return new Response(JSON.stringify(body ?? { detail: "Not here." }), { status: body ? 200 : 404, headers: { "content-type": "application/json" } });
   });
   vi.stubGlobal("window", { matchMedia: () => ({ matches: true }), confirm: () => true, addEventListener() {}, removeEventListener() {}, location: { origin: "http://127.0.0.1:5173" } });
+  vi.resetModules(); // SideRail reads the flag when its module loads
   const { default: ChatPage } = await import("@/pages/ChatPage.vue");
+  const { default: SideRail } = await import("@/components/nav/SideRail.vue");
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/chat", component: ChatPage }] });
-  await router.push(`/chat?period=${encodeURIComponent(PERIOD)}&section=equities&view=${view}`);
-  const app = createSSRApp(ChatPage);
+  await router.push(view === "list" ? `/chat?period=${encodeURIComponent(PERIOD)}` : `/chat?period=${encodeURIComponent(PERIOD)}&section=equities&view=${view}`);
+  const app = createSSRApp(page === "ChatPage" ? ChatPage : SideRail);
   app.use(router);
   app.config.warnHandler = () => {};
   // Each component waits for what it reads on opening before it renders, as it would on screen a moment later.
@@ -62,6 +64,26 @@ describe("SHOW_CHAT", { timeout: 30_000 }, () => {
       expect(out.includes('id="chat-message"')).toBe(flag);
       expect(out.includes(">Send<")).toBe(flag);
       expect(out.includes('aria-label="Conversation"')).toBe(flag);
+      // The chat's own budget; Section and Week stay.
+      expect(out.includes("Model calls")).toBe(flag);
+      expect(out.includes("Tokens")).toBe(flag);
+      expect(out).toContain(">Section<");
+      expect(out).toContain(">Week<");
+    });
+
+    it(`words the section list ${flag ? "as the chat" : "without the chat"} when it is ${flag}`, async () => {
+      show = flag;
+      const out = await mount("list");
+      expect(out.includes("Choose what to talk about")).toBe(flag);
+      expect(out.includes(">Choose a section<")).toBe(!flag);
+      expect(out.includes("Each section is its own conversation.")).toBe(flag);
+      expect(out).toContain("Choose a section to start.");
+    });
+
+    it(`names the left menu's section list item ${flag ? "Chat" : "Sections"} when it is ${flag}, going to /chat either way`, async () => {
+      show = flag;
+      const out = await mount("list", "SideRail");
+      expect(out).toMatch(new RegExp(`<a[^>]*href="/chat"[^>]*>(?:(?!</a>).)*>${flag ? "Chat" : "Sections"}</span>`, "s"));
     });
 
     it(`${flag ? "shows" : "hides"} the prepare page's "Open the conversation" link when it is ${flag}`, async () => {

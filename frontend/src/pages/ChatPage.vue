@@ -177,7 +177,7 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
           </div>
 
           <section aria-labelledby="chat-sections" class="space-y-2">
-            <h2 id="chat-sections" :class="current ? 'text-xs font-bold text-foreground' : 'text-xl font-semibold tracking-tight text-cw-accent'">{{ current ? "Sections" : "Choose what to talk about" }}</h2>
+            <h2 id="chat-sections" :class="current ? 'text-xs font-bold text-foreground' : 'text-xl font-semibold tracking-tight text-cw-accent'">{{ current ? "Sections" : SHOW_CHAT ? "Choose what to talk about" : "Choose a section" }}</h2>
             <ul class="flex flex-wrap gap-2.5">
               <li :class="!current && 'basis-full pb-2'">
                 <Button variant="ghost" :class="current ? SECTION_BTN : START_BTN" @click="wholeReport">Whole report</Button>
@@ -308,7 +308,8 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
           <dd>{{ current.title }}</dd>
           <dt class="eyebrow">Week</dt>
           <dd>{{ period }}</dd>
-          <template v-if="job">
+          <!-- The chat assistant's own model calls and tokens (jobs.add_usage); a draft's are counted apart, in draft_usage. -->
+          <template v-if="SHOW_CHAT && job">
             <dt class="eyebrow">Model calls</dt>
             <dd class="font-mono">{{ job.calls_used }} of {{ job.call_budget }}</dd>
             <dt class="eyebrow">Tokens</dt>
@@ -317,7 +318,7 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
         </dl>
         <!-- .rail-stack flattens the aside's direct children, so the tint sits one level in. -->
         <div v-else><div class="space-y-4 rounded-3xl bg-cw-bubble p-6">
-          <p class="text-sm text-foreground">Choose a section to start. Each section is its own conversation.</p>
+          <p class="text-sm text-foreground">{{ SHOW_CHAT ? "Choose a section to start. Each section is its own conversation." : "Choose a section to start." }}</p>
           <ol v-if="shell.sections.value.length" class="space-y-3">
             <li v-for="(s, i) in shell.sections.value" :key="s.slug" class="grid grid-cols-[2rem_1fr] text-sm">
               <span class="font-mono text-muted-foreground" aria-hidden="true">{{ String(i + 1).padStart(2, "0") }}</span>
