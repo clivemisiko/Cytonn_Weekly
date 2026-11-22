@@ -247,8 +247,20 @@ test("T148 Create draft opens the conversation and starts the draft; a drafted s
   await expect(ask.or(page.getByRole("region", { name: "What you can do now" }))).toBeVisible();
   if (await ask.isVisible()) await ask.getByRole("button", { name: "Draft anyway" }).click();
   await expect(page).toHaveURL(/view=conversation/);
+  await expect(page.locator('[data-card="live"]')).toBeVisible(); // the draft's own cards, never a page with only a back link
+  await expect(prepare(page)).toHaveCount(0);
   await expect(page.getByRole("region", { name: "What you can do now" }).getByRole("region", { name: /^Review of Equities/ })).toBeVisible({ timeout: 180_000 });
 
+  if (!SHOW_CHAT) {
+    // The chat hidden, a drafted section still opens on its prepare page, and the draft is one link away.
+    await page.goto(url("equities", period));
+    await expect(prepare(page).locator("[data-pill]")).toHaveText("In review");
+    await prepare(page).getByRole("link", { name: "Open the draft" }).click();
+    await expect(page.getByRole("region", { name: "What you can do now" }).getByRole("region", { name: /^Review of Equities/ })).toBeVisible();
+    await page.getByRole("link", { name: "Back to sources and inputs" }).first().click();
+    await expect(prepare(page).locator("[data-pill]")).toHaveText("In review");
+    return;
+  }
   await page.goto(url("equities", period)); // no flag: the section has a draft, so the conversation view
   await expect(page.getByRole("region", { name: "What you can do now" })).toBeVisible();
   await expect(page.getByRole("log", { name: "Conversation" })).toHaveCount(SHOW_CHAT ? 1 : 0);
@@ -295,6 +307,12 @@ test("T150 a saved source is a link to its /sources/{id} record in a new tab, on
   expect(onPrepare.some((l) => l.href.startsWith("/sources/"))).toBe(true); // the rule was checked against a real record link
 
   await page.goto(url("focus", "2027-06-04", "&view=conversation"));
+  if (!SHOW_CHAT) {
+    // No draft, so nothing for the conversation view to show: the address is turned into the prepare page.
+    await expect(page).toHaveURL(/view=prepare/);
+    await expect(prepare(page)).toBeVisible();
+    return;
+  }
   await expect(page.getByRole("region", { name: "What you can do now" })).toBeVisible();
   await expect(page.getByRole("region", { name: "What you can do now" }).getByText(/^1 saved/)).toBeVisible();
   await linksFollowTheRule(page.getByRole("main"));
@@ -314,3 +332,16 @@ test("T151 with the chat hidden, the section list opens a section on its prepare
   await expect(page.getByRole("link", { name: "Open the conversation" })).toHaveCount(0);
   await expect(page.getByRole("log", { name: "Conversation" })).toHaveCount(0);
 });
+
+for (const s of SECTIONS) {
+  test(`T152 ${s.title}: with the chat hidden, the section list opens it on its prepare page with no click needed`, async ({ page }) => {
+    test.skip(SHOW_CHAT, "the chat is shown");
+    await page.setViewportSize({ width: 1366, height: 900 });
+    await page.goto(`/chat?period=${encodeURIComponent("Week ending 2027-08-06")}`); // opening a section saves nothing
+    await page.getByRole("button", { name: s.title, exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`section=${s.slug}`));
+    await expect(page).not.toHaveURL(/view=conversation/);
+    await expect(prepare(page)).toBeVisible();
+    await expect(prepare(page).getByRole("button", { name: /Create draft/ })).toBeVisible();
+  });
+}
