@@ -6,6 +6,7 @@ Week (Company updates is written by the CT team after the export, so it is not a
 each CMS section carries a ``summary`` of its own lead paragraphs.
 """
 
+import time
 from datetime import date
 
 import pytest
@@ -136,10 +137,9 @@ def test_a_run_of_a_weekly_section_carries_the_week_too(api):
     started = client.post("/api/runs", json={"section": "equities", "period": "2026-10-02"})
     assert started.status_code == 202
     run_id = started.json()["run_id"]
-    for _ in range(200):
-        run = client.get(f"/api/runs/{run_id}").json()
-        if run["status"] != "running":
-            break
+    deadline = time.monotonic() + 20
+    while (run := client.get(f"/api/runs/{run_id}").json())["status"] == "running" and time.monotonic() < deadline:
+        time.sleep(0.05)
     assert run["status"] == "finished" and calls[-1][1]["week_ending"] == date(2026, 10, 2)
     assert callable(calls[-1][1]["on_event"])
 
