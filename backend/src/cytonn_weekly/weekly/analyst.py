@@ -1570,6 +1570,7 @@ def status(week: Week, root: Optional[Path] = None, section: Optional[str] = Non
 
 
 # What the timing log calls each parsed file: its kind, never its name or contents.
+_BOOK_FILES = {FI: "fi_workbook.xlsx", EQ: "equities_workbook.xlsx"}
 _LOAD_KINDS = {"fi": "fixed income workbook", "eq": "equities workbook", "kcbw": "KCB weekly PDF"}
 
 
@@ -1604,11 +1605,16 @@ def _status(analyst: "Analyst", week: Week, root: Optional[Path], section: Optio
             return None
         return {"from": mark["from"], "note": mark.get("note", ""), "whole": same, "cells": cells or {}}
     # Run every reader the builders use, so the differences shown here are the ones a draft will report.
-    for key in FIELDS:
-        analyst.field(key)
-    for read in (analyst.mmf, analyst.interbank, analyst.eurobonds, analyst.remittances, analyst.borrowing,
-                 analyst.foreign_history, analyst.universe):
-        read()
+    # Only the asked-for section's: a reader reads its own section's workbook and fields only, so the other's change nothing here.
+    for key, spec in FIELDS.items():
+        if section in (None, spec.section):
+            analyst.field(key)
+    readers = {FI: (analyst.mmf, analyst.interbank, analyst.eurobonds, analyst.remittances, analyst.borrowing),
+               EQ: (analyst.foreign_history, analyst.universe)}
+    for sec, reads in readers.items():
+        if section in (None, sec):
+            for read in reads:
+                read()
     differences: dict[str, list[str]] = {}
     for d in analyst.differences:
         if d["text"] not in differences.setdefault(d["item"], []):
@@ -1668,7 +1674,9 @@ def _status(analyst: "Analyst", week: Week, root: Optional[Path], section: Optio
         groups.append({"section": sec, "key": key, "title": title, "items": items})
     shown_keys = {i["key"] for g in groups for i in g["items"]}
     return {"form": FORM, "week_ending": week.ending.isoformat(), "saved_at": form.get("saved_at"), "groups": groups,
-            "workbooks": {FI: analyst.book(FI) is not None, EQ: analyst.book(EQ) is not None},
+            # the other section's workbook is only looked for, not opened: an upload is refused unless it opens
+            "workbooks": {s: analyst.book(s) is not None if section in (None, s) else analyst.inputs._path(_BOOK_FILES[s]) is not None
+                          for s in (FI, EQ)},
             "previous_week": week.previous_friday.isoformat(),
             "can_carry": bool(last["fields"] or last["tables"]),
             # what still waits to be confirmed, on this section's part of the form: the draft button waits for it
