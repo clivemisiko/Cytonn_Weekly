@@ -17,7 +17,7 @@ def make_router(d: Deps) -> APIRouter:
     router = APIRouter()
 
     def slot_of(slug: str) -> weekly_inputs.Slot:
-        slot = weekly_inputs.BY_SLUG.get(slug)
+        slot = weekly_inputs.slot_of(slug)
         if slot is None:
             raise HTTPException(404, f"no weekly input {slug!r}")
         return slot

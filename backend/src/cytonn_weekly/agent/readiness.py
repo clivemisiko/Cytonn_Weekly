@@ -10,7 +10,7 @@ GROUPS = ("fetched", "carried_or_suggested", "needs_analyst", "optional", "in_pl
 
 
 def _files(slot: dict[str, Any]) -> list[dict[str, Any]]:
-    got = [d["file"] for d in slot["days"]] if slot["per_day"] else [slot["file"]]
+    got = slot["files"] if slot.get("many") else [d["file"] for d in slot["days"]] if slot["per_day"] else [slot["file"]]
     return [f for f in got if f]
 
 
@@ -20,6 +20,8 @@ def _slot(slot: dict[str, Any]) -> tuple[str, str]:
     missing = "optional" if slot["optional"] else "needs_analyst"
     if not slot["received"]:
         return missing, "not received; fetch it or upload it" if slot["fetchable"] else "not uploaded"
+    if slot.get("many"):
+        return "in_place", f"{len(files)} {'file' if len(files) == 1 else 'files'} uploaded"
     if slot["per_day"] and not slot["complete"]:
         days = ", ".join(d["weekday"] for d in slot["days"] if not d["received"])
         return missing, f"missing days: {days}"
@@ -50,7 +52,8 @@ def classify(section: str, inputs: dict[str, Any], form: Optional[dict[str, Any]
     for slot in inputs["slots"]:
         if section in slot["sections"]:
             group, why = _slot(slot)
-            out[group].append({"kind": "upload", "key": slot["slug"], "label": slot["title"], "why": why})
+            out[group].append({"kind": "upload", "key": slot["slug"], "label": slot["title"], "why": why,
+                               **({"many": True} if slot.get("many") else {})})
     for g in (form or {}).get("groups", []):
         for item in g["items"]:
             group, why = _item(item)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from pathlib import Path
 from typing import Any, Optional
@@ -34,6 +34,8 @@ class Company:
     hosts: tuple[str, ...] = ()   # other hostnames that belong to the company
     start: tuple[str, ...] = ()   # full addresses where reading its site begins; none means its home page
     kenya_only: bool = True       # False for a group whose home market is not Kenya (BK Group)
+    ticker: str = ""
+    aliases: tuple[str, ...] = ()   # other names its own pages print (a results file's entity headers)
 
     def owns(self, url: str) -> bool:
         """Whether a link belongs to this company: its host is the domain, a subdomain of it (on the dot, so
@@ -67,10 +69,11 @@ def load(path: Path = FILE) -> list[Company]:
         scope = "/" + str(r.get("scope") or "").strip().strip("/").lower() if str(r.get("scope") or "").strip("/ ") else ""
         hosts = tuple(h for h in (str(x).strip().lower() for x in r.get("hosts") or []) if _HOST.fullmatch(h))
         c = Company(r["name"].strip(), r["type"], domain if _HOST.fullmatch(domain) else None, str(r.get("ir") or "").strip(),
-                    scope, hosts, (), r.get("kenya_only", True) is not False)
+                    scope, hosts, (), r.get("kenya_only", True) is not False, str(r.get("ticker") or "").strip(),
+                    tuple(str(a).strip() for a in r.get("aliases") or [] if str(a).strip()))
         base = f"https://{c.domain}/"
         start = tuple(u for u in (urljoin(base, str(x).strip()) for x in r.get("start") or []) if c.owns(u))
-        out.append(Company(c.name, c.kind, c.domain, c.ir, c.scope, c.hosts, start, c.kenya_only))
+        out.append(replace(c, start=start))
     return sorted(out, key=lambda c: (KINDS.index(c.kind), c.name.casefold()))
 
 

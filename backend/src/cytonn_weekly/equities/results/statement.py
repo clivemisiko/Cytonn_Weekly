@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
-from typing import Optional, Union
+from typing import IO, Optional, Union
 
 import pdfplumber
 
@@ -528,8 +528,8 @@ def _entities(entity_line, columns):
     return [" ".join(n) for n in names], groups
 
 
-def read_statement(path: Union[str, Path], bank: str) -> Statement:
-    with pdfplumber.open(str(path)) as pdf:
+def read_statement(path: Union[str, Path, IO[bytes]], bank: str) -> Statement:
+    with pdfplumber.open(path if hasattr(path, "read") else str(path)) as pdf:
         events = list(_rows(pdf))
     problems = [e[1] for e in events if e[0] == "problem"]
     bands = [e for e in events if e[0] == "band"]

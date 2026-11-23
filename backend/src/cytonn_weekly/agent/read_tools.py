@@ -265,7 +265,7 @@ def export_status(args: NoParams, ctx: ToolContext) -> dict[str, Any]:
 
 # --- the list ---------------------------------------------------------------------------------
 
-_ENTRY = ("kind", "key", "label", "why")
+_ENTRY = ("kind", "key", "label", "why", "many")
 _REVIEW_ITEM = ("index", "kind", "ref", "status", "resolution")
 READ_TOOLS = [
     Tool("inputs_list", "List the week's uploaded files per input: received or not, the date read from each, whether it fits the week, "

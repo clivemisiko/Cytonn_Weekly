@@ -34,6 +34,7 @@ from typing import Any, Callable, Optional
 from cytonn_weekly import paths
 from cytonn_weekly.common import atomic
 from cytonn_weekly.digital_payments import workbook as dp_workbook
+from cytonn_weekly.equities.results import upload as bank_upload
 from cytonn_weekly.weekly import cbk_bulletin, equities_workbook, fi_workbook, kcb, nse_yield_curve
 from cytonn_weekly.weekly.week import Week, day_text
 from cytonn_weekly.weekly.workbook import Workbook, WorkbookError, read_title_date
@@ -68,6 +69,7 @@ class Slot:
     fetchable: bool      # the tool can fetch it itself
     help: str
     sections: tuple[str, ...] = ()   # the weekly sections whose draft reads it (a test records the reads and checks this)
+    many: bool = False   # several files, one per thing identify() names (each its own stored_name); a repeat replaces it
 
 
 SLOTS: tuple[Slot, ...] = (
@@ -90,6 +92,22 @@ SLOTS: tuple[Slot, ...] = (
          "differences show as warnings on the Digital Payments review.", sections=("digital_payments",)),
 )
 BY_SLUG = {s.slug: s for s in SLOTS}
+
+# Results season: off until the Equities blocks that read these files are built. Tests turn it on.
+RESULTS_SEASON_ENABLED = False
+BANK_RESULTS = "bank_results"
+RESULTS_SLOT = Slot(BANK_RESULTS, "Bank results (quarterly financial statements)", "pdf", True, False, False,
+                    "Optional, in results season. Upload each bank's \"Financial Statements and Other Disclosures\" PDF "
+                    "from its own website, the version with selectable text. One file per bank; a second file for the "
+                    "same bank replaces the first.", sections=("equities",), many=True)
+
+
+def active_slots() -> tuple[Slot, ...]:
+    return SLOTS + ((RESULTS_SLOT,) if RESULTS_SEASON_ENABLED else ())
+
+
+def slot_of(slug: str) -> Optional[Slot]:
+    return next((s for s in active_slots() if s.slug == slug), None)
 
 # Set by tests (conftest redirects it), so nothing is ever written under the real data directory.
 _DEFAULT_ROOT: Optional[Path] = None
@@ -203,8 +221,14 @@ def identify(slot: Slot, data: bytes, week: Week) -> dict[str, Any]:
         if slot.slug == NSE_YIELD_CURVE:
             curve = nse_yield_curve.parse_yield_curve(data)
             return _found(curve.curve_date, week.monday <= curve.curve_date <= week.ending, "nse_yield_curve.pdf", "")
+        if slot.slug == BANK_RESULTS:
+            got = bank_upload.read(data)   # read once, here; status reads what is stored, never the PDF
+            # its date: the newest period column the statements print
+            return {**_found(date.fromisoformat(got["period"]), True, got.pop("stored_name"), ""), "read": got}
     except InputError:
         raise
+    except bank_upload.Refused as exc:
+        raise InputError(f"{slot.title}: {exc}.")
     except (WorkbookError, kcb.KcbParseError, cbk_bulletin.BulletinParseError,
             nse_yield_curve.YieldCurveParseError) as exc:
         raise InputError(f"{slot.title}: {exc}")
@@ -230,12 +254,16 @@ _SAFE_NAME = re.compile(r"[^A-Za-z0-9 ._()'&,-]")
 def store(week: Week, slug: str, data: bytes, filename: str = "", root: Optional[Path] = None,
           fetched_from: Optional[str] = None, db_path: Optional[Path] = None, record: bool = True) -> dict[str, Any]:
     """Check and keep one upload; returns its manifest entry.  InputError (nothing stored) if it is refused."""
-    slot = BY_SLUG.get(slug)
+    slot = slot_of(slug)
     if slot is None:
         raise InputError(f"unknown input {slug!r}")
     found = identify(slot, data, week)
     folder = week_dir(week, root)
+    if slot.many and "read" in found:
+        earlier = read_manifest(week, root).get(found["stored_name"])
+        found["read"]["replaced"] = (earlier.get("original_name") or "the earlier file") if earlier else None
     entry = {
+        **({"read": found["read"]} if "read" in found else {}),
         "slot": slug, "stored_name": found["stored_name"], "read_date": found["read_date"], "matches": found["matches"],
         "note": found["note"], "notices": found["notices"], "size": len(data), "sha256": hashlib.sha256(data).hexdigest(),
         "original_name": _SAFE_NAME.sub("_", filename or "")[:160], "received_at": _now(),
@@ -303,7 +331,7 @@ def write_notes(week: Week, notes: dict[str, Optional[str]], root: Optional[Path
 
 def _file_view(entry: dict[str, Any]) -> dict[str, Any]:
     return {k: entry.get(k) for k in ("stored_name", "read_date", "matches", "note", "notices", "size", "original_name",
-                                      "received_at", "fetched_from")}
+                                      "received_at", "fetched_from", "read")}
 
 
 def status(week: Week, root: Optional[Path] = None) -> dict[str, Any]:
@@ -314,11 +342,18 @@ def status(week: Week, root: Optional[Path] = None) -> dict[str, Any]:
     folder = week_dir(week, root)
     present = {name: e for name, e in manifest.items() if (folder / name).is_file()}
     slots = []
-    for slot in SLOTS:
+    for slot in active_slots():
         files = sorted((e for e in present.values() if e.get("slot") == slot.slug), key=lambda e: e["stored_name"])
         view: dict[str, Any] = {"slug": slot.slug, "title": slot.title, "kind": slot.kind, "optional": slot.optional,
-                                "per_day": slot.per_day, "fetchable": slot.fetchable, "help": slot.help, "sections": list(slot.sections)}
-        if slot.per_day:
+                                "per_day": slot.per_day, "many": slot.many, "fetchable": slot.fetchable, "help": slot.help,
+                                "sections": list(slot.sections)}
+        if slot.many:   # from the manifest alone: nothing is parsed here
+            view["files"] = [_file_view(e) for e in files]
+            view["received"] = view["complete"] = bool(files)
+            dates = sorted({e["read_date"] for e in files if e.get("read_date")})
+            view["warning"] = (f"The files are not all for the same period ({', '.join(day_text(date.fromisoformat(d)) for d in dates)}). "
+                               "Check each is the quarter you mean." if len(dates) > 1 else None)
+        elif slot.per_day:
             by_day = {e["read_date"]: e for e in files}
             view["days"] = [{"date": d.isoformat(), "weekday": d.strftime("%A"), "received": d.isoformat() in by_day,
                              "file": _file_view(by_day[d.isoformat()]) if d.isoformat() in by_day else None}

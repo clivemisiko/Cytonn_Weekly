@@ -32,7 +32,12 @@
     "name": "Equity Group Holdings",
     "type": "bank",
     "domain": "equitygroupholdings.com",
-    "ir": ""
+    "ir": "",
+    "ticker": "EQTY",
+    "aliases": [
+      "Equity Bank",
+      "Equity Group"
+    ]
   },
   {
     "name": "HF Group",
@@ -57,6 +62,11 @@
     "start": [
       "https://kcbgroup.com/investor-relations",
       "https://kcbgroup.com/press-release"
+    ],
+    "ticker": "KCB",
+    "aliases": [
+      "KCB Bank Kenya",
+      "KCB Group PLC"
     ]
   },
   {
@@ -97,6 +107,12 @@
     "start": [
       "https://www.co-opbank.co.ke/investor-relations/press-releases/",
       "https://www.co-opbank.co.ke/investor-documents/"
+    ],
+    "ticker": "COOP",
+    "aliases": [
+      "Co-operative Bank",
+      "Co-op Bank",
+      "Kingdom Bank"
     ]
   },
   {
