@@ -98,8 +98,15 @@ const ITEM =
       </button>
 
       <div v-if="shell.report.value" class="space-y-1 border-b px-2 pt-1 pb-3" :class="!open && 'hidden min-[1366px]:block'">
-        <p class="eyebrow">Report</p>
-        <p class="text-sm font-semibold tracking-tight text-foreground">{{ reportName(shell.report.value.title, shell.report.value.period) }}</p>
+        <template v-if="chatPeriod">
+          <p class="eyebrow">{{ shell.report.value.title }} report</p>
+          <p class="text-xs text-muted-foreground">Week ending</p>
+          <p class="font-mono text-lg font-semibold tracking-tight text-foreground">{{ chatPeriod.slice("Week ending ".length) }}</p>
+        </template>
+        <template v-else>
+          <p class="eyebrow">Report</p>
+          <p class="text-sm font-semibold tracking-tight text-foreground">{{ reportName(shell.report.value.title, shell.report.value.period) }}</p>
+        </template>
         <p v-if="mode" class="text-xs text-muted-foreground">{{ mode }}</p>
       </div>
 
@@ -181,7 +188,7 @@ const ITEM =
             {{
               shell.approved.value !== null && shell.approved.value === shell.total.value
                 ? "Ready to export from the chat."
-                : `Export unlocks when all ${shell.total.value ?? ""} are approved.`
+                : `Report export unlocks when all ${shell.total.value ?? ""} are approved.`
             }}
           </p>
         </div>

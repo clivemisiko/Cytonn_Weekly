@@ -1,8 +1,8 @@
-import { PhCheckCircle, PhCircle, PhCircleDashed, PhCircleHalf, PhCircleNotch, PhHourglass, PhLockSimple, PhWarningCircle } from "@phosphor-icons/vue";
+import { PhCheck, PhCircle, PhCircleDashed, PhCircleHalf, PhCircleNotch, PhHourglass, PhLockSimple, PhWarningCircle } from "@phosphor-icons/vue";
 import type { RailState } from "./shell";
 
 export const MARKS: Record<RailState | "unknown", { label: string; icon: typeof PhCircle; tone: string }> = {
-  approved: { label: "Approved", icon: PhCheckCircle, tone: "text-ok-fg" },
+  approved: { label: "Approved", icon: PhCheck, tone: "text-ok-fg" },
   rejected: { label: "Rejected", icon: PhWarningCircle, tone: "text-flag-fg" },
   in_review: { label: "In review", icon: PhCircleHalf, tone: "text-foreground" },
   not_drafted: { label: "Not drafted", icon: PhCircle, tone: "text-muted-foreground" },

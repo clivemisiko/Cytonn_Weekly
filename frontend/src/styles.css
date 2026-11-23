@@ -127,43 +127,43 @@
      white on teal 6.5; dark: ink on card 15.0, muted text on card 7.9, brand green on card 6.7. A control's edge is at
      least 3:1 against every surface it sits on: light 4.5 on a card, 4.1 on the page, 3.9 on the muted fill; dark
      5.2 on a card. The hairline (--border) is decorative only. */
-  --background: light-dark(#f3f3f3, #0b0d10);
-  --foreground: light-dark(#000000, #eaeaea);
-  --card: light-dark(#fefefe, #13161b);
-  --card-foreground: light-dark(#000000, #eaeaea);
-  --popover: light-dark(#fefefe, #13161b);
-  --popover-foreground: light-dark(#000000, #eaeaea);
+  --background: light-dark(#f3f3f3, #101512);
+  --foreground: light-dark(#000000, #ece6d8);
+  --card: light-dark(#fefefe, #161c19);
+  --card-foreground: light-dark(#000000, #ece6d8);
+  --popover: light-dark(#fefefe, #161c19);
+  --popover-foreground: light-dark(#000000, #ece6d8);
   --primary: #49b315; /* a fill, with black text; never text or an edge on a light surface */
   --primary-hover: #5cc72a;
   --primary-foreground: #000000;
-  --secondary: light-dark(#ededed, #1c2027);
-  --secondary-foreground: light-dark(#000000, #eaeaea);
-  --muted: light-dark(#ededed, #1c2027);
-  --muted-foreground: light-dark(#44474e, #9aa1ab);
-  --accent: light-dark(#e8f4e0, #13240d); /* the selected state: a pale green tint */
-  --accent-foreground: light-dark(#2c7409, #49b315);
-  --destructive: light-dark(#b42318, #f27f73);
-  --border: light-dark(#e6e6e6, #242932);
-  --input: light-dark(#767676, #7d8590); /* 3:1 against every surface a control sits on: its edge must be findable */
-  --ring: light-dark(#2c7409, #49b315);
-  --link: light-dark(#2c7409, #49b315);
+  --secondary: light-dark(#ededed, #1e2622);
+  --secondary-foreground: light-dark(#000000, #ece6d8);
+  --muted: light-dark(#ededed, #1e2622);
+  --muted-foreground: light-dark(#44474e, #a4aa9f);
+  --accent: light-dark(#e8f4e0, #22382a); /* the selected state: a pale green tint */
+  --accent-foreground: light-dark(#2c7409, #9fd58a);
+  --destructive: light-dark(#b42318, #eb9a7c);
+  --border: light-dark(#e6e6e6, #2a332d);
+  --input: light-dark(#767676, #7f897f); /* 3:1 against every surface a control sits on: its edge must be findable */
+  --ring: light-dark(#2c7409, #8fcf6f);
+  --link: light-dark(#2c7409, #8fcf6f);
 
-  --band: light-dark(#ffffff, #0b0d10);
-  --band-foreground: light-dark(#000000, #eaeaea);
-  --band-muted: light-dark(#44474e, #9aa1ab);
-  --band-rule: light-dark(#e6e6e6, #242932);
+  --band: light-dark(#ffffff, #121914);
+  --band-foreground: light-dark(#000000, #ece6d8);
+  --band-muted: light-dark(#44474e, #a4aa9f);
+  --band-rule: light-dark(#e6e6e6, #2a332d);
   --scrim: #000000; /* the dialog overlay, used at 70% */
 
-  --flag: light-dark(#b42318, #f27f73);
-  --flag-fg: light-dark(#9a1b12, #f6a59c);
-  --flag-on: light-dark(#fff6f4, #2a0906);
+  --flag: light-dark(#b42318, #e8956f);
+  --flag-fg: light-dark(#9a1b12, #f0b394);
+  --flag-on: light-dark(#fff6f4, #33231d);
   /* The outline on a problem the page has gone to: 5.53 light and 5.51 dark at its lowest (the flag tint, the muted fill),
      so at least 3:1 against every surface it sits on. */
-  --attention: light-dark(#b42318, #f27f73);
+  --attention: light-dark(#b42318, #e8956f);
   --warn: light-dark(#b26a00, #e8b04f);
   --warn-fg: light-dark(#7a4700, #efc57f);
-  --ok: light-dark(#006b5b, #3fbfa8);
-  --ok-fg: light-dark(#006b5b, #3fbfa8);
+  --ok: light-dark(#006b5b, #8fc49a);
+  --ok-fg: light-dark(#006b5b, #9ccc9f);
   --ok-on: light-dark(#ffffff, #000000);
 
   /* The dev-mode hazard stripe is the same in both themes: it is a warning label, not part of the page's palette. */
@@ -191,17 +191,17 @@
 /* The landing and chat skin (2026-11-19, from the Weekly-Landing and Weekly-Chat artboards). Defined only on .cw-skin, which
    only LandingPage and ChatPage carry, so the bg-cw-* utilities resolve to nothing anywhere else. AA pairs in contrast.test.ts. */
 .cw-skin {
-  --cw-page: light-dark(#ffffff, #0b0d10); /* the design's white page; dark keeps the app's page */
-  --cw-hairline: light-dark(#ececec, #1c2027); /* the quieter card edge: decorative, like --border */
+  --cw-page: light-dark(#ffffff, #101512); /* the design's white page; dark keeps the app's page */
+  --cw-hairline: light-dark(#ececec, #1e2622); /* the quieter card edge: decorative, like --border */
   --cw-accent: light-dark(#17757b, #5fc4c9); /* headings: 5.4 on card, 4.9 on page */
   --cw-button: light-dark(#13707a, #5fc4c9);
   --cw-button-fg: light-dark(#ffffff, #000000);
   --cw-button-hover: light-dark(#0e5a62, #8fdade);
   --cw-brand: light-dark(#0b6b4f, #4fc79a); /* the wordmark */
   --cw-bubble: light-dark(#eef8f6, #12292a); /* the user's messages, the selected section, the landing notice */
-  --cw-assistant: light-dark(#f6f7f7, #171a20); /* the assistant's messages and the typing indicator */
+  --cw-assistant: light-dark(#f6f7f7, #1a211d); /* the assistant's messages and the typing indicator */
   --cw-selected-fg: light-dark(#0e5a62, #8fdade);
-  --cw-chip: light-dark(#f1f1f1, #1c2027);
+  --cw-chip: light-dark(#f1f1f1, #1e2622);
   --cw-dots: light-dark(#5c9a1f, #8fd14f); /* decorative only: always beside text that says the same */
   /* The placeholder logo's arcs (CytonnMark.vue): replace with Cytonn's official file. */
   --cw-logo-red: #e8432b;
