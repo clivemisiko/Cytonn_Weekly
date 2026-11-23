@@ -33,7 +33,7 @@ function goBack() {
       class="flex h-full shrink-0 items-center gap-2 px-3 text-sm font-semibold tracking-tight whitespace-nowrap min-[768px]:w-14 min-[768px]:justify-center min-[768px]:border-r min-[768px]:border-band-rule min-[768px]:px-0 min-[1366px]:w-56 min-[1366px]:justify-start min-[1366px]:px-4"
     >
       <span class="brand-dot size-2.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
-      <span class="sr-only min-[1366px]:not-sr-only">Cytonn Weekly</span>
+      <span class="sr-only leading-none min-[1366px]:not-sr-only">Cytonn <span class="mt-0.5 block text-[0.625rem] font-medium tracking-[0.3em] text-band-muted uppercase">Weekly</span></span>
     </p>
     <nav aria-label="App" class="flex h-full min-w-0 flex-1 items-center gap-1 px-2 sm:px-4">
       <button v-if="route.path !== '/'" type="button" :class="[CONTROL, 'min-[768px]:hidden']" :aria-expanded="shell.menu.value" aria-label="Menu" @click="shell.menu.value = !shell.menu.value">
