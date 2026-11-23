@@ -231,6 +231,10 @@ def main() -> None:
     print(f"E2E instance: data folder {paths.DATA_DIR}, port {PORT}, variant {VARIANT or 'default'}", flush=True)
     if VARIANT == "stale":
         os.environ["CYTONN_DRAFT_CONCURRENCY"] = "1"   # one seat, so the next draft has to take the stuck one's over
+    if os.environ.get("E2E_RESULTS_SEASON") == "1":   # results.spec.ts only: the bank results slot is off everywhere else
+        from cytonn_weekly.weekly import inputs as weekly_inputs
+
+        weekly_inputs.RESULTS_SEASON_ENABLED = True
     app = create_app(DB_PATH, load_dotenv=False, fetch_bulletin=fetch_bulletin, notable_registry=notable_demo.REGISTRY, fetch_source=fetch_source,
                      read_fund_snip=read_fund_snip,
                      **({"draft_stale_after": 6} if VARIANT == "stale" else {}))
