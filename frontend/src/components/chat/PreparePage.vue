@@ -3,6 +3,7 @@ import { PhArrowRight, PhCaretDown, PhCloudArrowDown, PhUploadSimple } from "@ph
 import { computed, ref, shallowRef, watch } from "vue";
 import { RouterLink } from "vue-router";
 import ExportBar from "@/components/review/ExportBar.vue";
+import ManySlot from "@/components/review/ManySlot.vue";
 import Notice from "@/components/review/Notice.vue";
 import RedraftDialog from "@/components/review/RedraftDialog.vue";
 import SnipSector from "@/components/review/SnipSector.vue";
@@ -19,7 +20,7 @@ import { MARKS } from "@/lib/railmarks";
 import type { RailState } from "@/lib/shell";
 import { usesSources } from "@/lib/sources";
 import { MAX_SECTIONS, MAX_SECTION_TITLE, MAX_TOPIC, sectionTitles, sectionsProblem, topicLength } from "@/lib/topic";
-import type { AnalystForm, AppConfig, Drafting, ReportChoice, SectionSummary, SourcePiece } from "@/lib/types";
+import type { AnalystForm, AppConfig, Drafting, ReportChoice, SectionSummary, SourcePiece, WeeklyInputs } from "@/lib/types";
 import { useSnips } from "@/lib/usesnips";
 import FundSnipCard from "./FundSnipCard.vue";
 import InputSteps from "./InputSteps.vue";
@@ -68,7 +69,34 @@ async function read() {
   shapeProblem.value = readiness.value ? null : "The readiness check came back in a shape this page does not know.";
   if (readiness.value?.snips && !snips.listing.value) await snips.load();
   if (hasForm.value && !form.value) await readForm();
+  await readInputs();
 }
+
+// ---- Slots that take several files (bank results): their files come from the inputs status, read once at upload ----
+const manyKeys = computed(() => Object.values(readiness.value?.groups ?? {}).flat().filter((e) => e.many).map((e) => e.key));
+const inputs = shallowRef<WeeklyInputs | null>(null);
+const manySlots = computed(() => (inputs.value?.slots ?? []).filter((s) => s.many && manyKeys.value.includes(s.slug)));
+const refusedBanks = ref<{ name: string; reason: string }[]>([]);
+async function readInputs() {
+  if (!manyKeys.value.length) return;
+  try {
+    inputs.value = await api.getInputs(week.value);
+  } catch (err) {
+    actionProblem.value = (err as Error).message;
+  }
+}
+const uploadMany = (slot: string, files: File[]) =>
+  act(`upload-${slot}`, async () => {
+    refusedBanks.value = [];
+    for (const file of files) {
+      try {
+        await api.uploadInput(week.value, slot, file);
+      } catch (err) {
+        refusedBanks.value.push({ name: file.name, reason: (err as Error).message });
+      }
+    }
+  });
+const removeMany = (name: string) => act(`remove-${name}`, () => api.removeInput(week.value, name));
 
 async function readForm() {
   if (await formCall.run()) form.value = formCall.value.value;
@@ -89,6 +117,8 @@ watch(
     steps.value = null;
     snips.listing.value = null;
     rowOrder = [];
+    inputs.value = null;
+    refusedBanks.value = [];
     ({ topic: topic.value, titles: titles.value } = props.section.needs_topic ? readFocus(props.report.period, props.section.slug) : { topic: "", titles: "" });
     void read();
   },
@@ -289,6 +319,9 @@ const mark = computed(() => MARKS[props.state ?? "unknown"]);
             </tr>
           </tbody>
         </table>
+        <ul v-if="manySlots.length" class="border-t pt-4">
+          <ManySlot v-for="m in manySlots" :key="m.slug" :entry="m" :busy="busy !== null" :refused="refusedBanks" @upload="(f) => uploadMany(m.slug, f)" @remove="removeMany" />
+        </ul>
         <Notice v-if="actionProblem" role="alert" class="font-medium whitespace-pre-line">{{ actionProblem }}</Notice>
       </section>
 

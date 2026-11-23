@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { PhTray } from "@phosphor-icons/vue";
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Textarea from "@/components/ui/Textarea.vue";
@@ -7,8 +6,11 @@ import { FIELD } from "@/components/ui/button";
 import * as api from "@/lib/api";
 import { friendlyDate } from "@/lib/format";
 import type { WeeklyInputs } from "@/lib/types";
+import { guessSlot } from "@/lib/slotguess";
+import BatchDropzone from "./BatchDropzone.vue";
 import ChartSlot from "./ChartSlot.vue";
 import InputSlot from "./InputSlot.vue";
+import ManySlot from "./ManySlot.vue";
 import Notice from "./Notice.vue";
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -79,16 +81,21 @@ async function act(work: () => Promise<WeeklyInputs>) {
   }
 }
 
+// Bank results refused at upload: listed in their own block, as rows, since nothing of them is kept.
+const refusedBanks = ref<{ name: string; reason: string }[]>([]);
 const upload = (slot: string, files: File[]) =>
   act(async () => {
     let last: WeeklyInputs | null = null;
     const refused: string[] = [];
+    const many = status.value?.slots.find((s) => s.slug === slot)?.many;
+    if (many) refusedBanks.value = [];
     for (const file of files) {
       try {
         last = await api.uploadInput(props.week, slot, file);
         status.value = last;
       } catch (err) {
-        refused.push(`${file.name}: ${(err as Error).message}`);
+        if (many) refusedBanks.value.push({ name: file.name, reason: (err as Error).message });
+        else refused.push(`${file.name}: ${(err as Error).message}`);
       }
     }
     if (refused.length) setTimeout(() => (refusedFiles.value = refused), 0);
@@ -100,7 +107,7 @@ const remove = (name: string) => act(() => api.removeInput(props.week, name));
 // Any other section sees every slot. The notes below belong to Fixed Income and Equities.
 const SLOTS_READ: Record<string, string[]> = {
   fixed_income: ["fi_workbook", "cbk_bulletin", "nse_yield_curve"],
-  equities: ["equities_workbook", "kcb_daily", "kcb_weekly", "cbk_bulletin"],
+  equities: ["equities_workbook", "kcb_daily", "kcb_weekly", "cbk_bulletin", "bank_results"],
   digital_payments: ["dp_workbook"],
 };
 const dpOnly = computed(() => props.section === "digital_payments");
@@ -111,42 +118,11 @@ const slots = computed(() => {
 const charts = computed(() => (status.value?.charts ?? []).filter((c) => c.section === props.section));
 // Bumped on each image change, so a replaced image's thumbnail is read again.
 const chartVersion = ref(0);
-const isDraggingBatch = ref(false);
-
-function guessSlot(filename: string): string | null {
-  const lower = filename.toLowerCase();
-  if (lower.includes("fixed") || lower.includes("fi_") || (lower.includes("income") && lower.endsWith(".xlsx"))) {
-    return "fi_workbook";
-  }
-  if (lower.includes("equit") || lower.includes("eq_")) {
-    return "equities_workbook";
-  }
-  if (lower.includes("digital") || lower.includes("payment") || lower.includes("dp_")) {
-    return "dp_workbook";
-  }
-  if (lower.includes("bulletin") || lower.includes("cbk")) {
-    return "cbk_bulletin";
-  }
-  if (lower.includes("nse") || lower.includes("yield")) {
-    return "nse_yield_curve";
-  }
-  if (lower.includes("daily")) {
-    return "kcb_daily";
-  }
-  if (lower.includes("weekly") && lower.endsWith(".pdf")) {
-    return "kcb_weekly";
-  }
-  return null;
-}
-
-async function handleBatchDrop(event: DragEvent) {
-  isDraggingBatch.value = false;
-  const files = Array.from(event.dataTransfer?.files ?? []);
-  if (!files.length) return;
-
+async function handleBatchDrop(files: File[]) {
+  const available = slots.value.map((s) => s.slug);
   const unassigned: string[] = [];
   for (const file of files) {
-    const slotSlug = guessSlot(file.name);
+    const slotSlug = guessSlot(file.name, available);
     if (slotSlug) {
       await upload(slotSlug, [file]);
     } else {
@@ -256,27 +232,17 @@ function saveNote(key: "bidding_range" | "previous_issue" | "as_at", value: stri
         </div>
       </details>
 
-      <!-- Batch Dropzone for multiple files -->
-      <div
-        class="flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed p-4 text-center transition-colors"
-        :class="isDraggingBatch ? 'border-primary bg-primary/5' : 'border-border/80 bg-muted/20 hover:border-border hover:bg-muted/30'"
-        @dragover.prevent="isDraggingBatch = true"
-        @dragleave.prevent="isDraggingBatch = false"
-        @drop.prevent="handleBatchDrop"
-      >
-        <div class="flex items-center gap-2 text-sm font-medium text-foreground">
-          <PhTray class="size-4 text-muted-foreground" aria-hidden="true" />
-          <span>Quick Dropzone: Drag & drop multiple files at once</span>
-        </div>
-        <p class="text-xs text-muted-foreground">
-          Drop workbooks (.xlsx), KCB reports, and CBK bulletins — they will be auto-sorted into their matching slots.
-        </p>
-      </div>
+      <BatchDropzone
+        title="Quick Dropzone: Drag & drop multiple files at once"
+        :hint="slots.some((s) => s.many) ? 'Drop workbooks (.xlsx), KCB reports, bank results and CBK bulletins — they will be auto-sorted into their matching slots.' : 'Drop workbooks (.xlsx), KCB reports, and CBK bulletins — they will be auto-sorted into their matching slots.'"
+        @files="handleBatchDrop"
+      />
 
       <ul>
+        <template v-for="slot in slots" :key="slot.slug">
+        <ManySlot v-if="slot.many" :entry="slot" :busy="locked" :refused="refusedBanks" @upload="(f) => upload(slot.slug, f)" @remove="remove" />
         <InputSlot
-          v-for="slot in slots"
-          :key="slot.slug"
+          v-else
           :entry="slot"
           :week="status.week_ending"
           :busy="locked"
@@ -284,6 +250,7 @@ function saveNote(key: "bidding_range" | "previous_issue" | "as_at", value: stri
           @remove="remove"
           @fetch="fetchBulletin"
         />
+        </template>
       </ul>
 
       <section v-if="charts.length" aria-labelledby="charts-title" class="space-y-2 border-t pt-4">

@@ -27,6 +27,8 @@ export interface ReadinessEntry {
   key: string;
   label: string;
   why: string;
+  /** A slot taking several files (bank results): shown in its own block, never a table row. */
+  many?: boolean;
 }
 export interface SnipCount {
   sector: string;
@@ -57,7 +59,7 @@ export function parseReadiness(data: unknown): Readiness | null {
   if (!isObject(data) || !isObject(data.groups) || typeof data.week_ending !== "string") return null;
   const groups = {} as Record<GroupKey, ReadinessEntry[]>;
   for (const { key } of GROUPS) {
-    groups[key] = list(data.groups[key]).map((e) => ({ kind: text(e.kind), key: text(e.key), label: text(e.label), why: text(e.why) }));
+    groups[key] = list(data.groups[key]).map((e) => ({ kind: text(e.kind), key: text(e.key), label: text(e.label), why: text(e.why), ...(e.many === true ? { many: true } : {}) }));
   }
   const snips = Array.isArray(data.snips) ? list(data.snips).map((s) => ({ sector: text(s.sector), uploaded: num(s.uploaded), read: num(s.read), confirmed: num(s.confirmed) })) : null;
   const s = isObject(data.sources) ? data.sources : null;
@@ -157,7 +159,7 @@ export function sourceRows(r: Readiness, order: string[] = []): SourceRow[] {
   for (const { key: group } of GROUPS) {
     for (const e of r.groups[group]) {
       const fetchTable = e.kind === "table" && e.key in FETCHABLE_ITEMS;
-      if (e.kind !== "upload" && !fetchTable) continue;
+      if ((e.kind !== "upload" && !fetchTable) || e.many) continue;
       rows.push({
         key: e.key,
         label: e.label,

@@ -526,6 +526,21 @@ export interface InputFile {
   original_name: string;
   received_at: string;
   fetched_from: string | null;
+  /** A bank's results file: what was read from it at upload (status never reads the PDF again). */
+  read?: BankRead;
+}
+
+export interface BankRead {
+  bank: string;
+  ticker: string;
+  period: string;
+  entities: string[];
+  group_entity: string | null;
+  checks_passed: boolean;
+  flag_count: number;
+  flags: string[];
+  /** The earlier file's name when this upload replaced the bank's file. */
+  replaced: string | null;
 }
 
 export interface InputSlot {
@@ -540,6 +555,11 @@ export interface InputSlot {
   help: string;
   received: boolean;
   complete: boolean;
+  /** Several files at once, one per bank (bank results). */
+  many?: boolean;
+  files?: InputFile[];
+  /** Set when the files are not all for the same period. */
+  warning?: string | null;
   file?: InputFile | null;
   days?: { date: string; weekday: string; received: boolean; file: InputFile | null }[];
 }
