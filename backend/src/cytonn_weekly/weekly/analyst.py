@@ -1615,6 +1615,16 @@ def _status(analyst: "Analyst", week: Week, root: Optional[Path], section: Optio
         if section in (None, sec):
             for read in reads:
                 read()
+    # A carried or suggested value the uploaded workbook supplies is not waiting: no builder reads it (usable_form), the
+    # workbook's cell is used, so it is shown as the workbook's.  One with nothing else behind it still waits.
+    superseded: set[str] = set()
+
+    def held(key: str, wb: Any, value: Any) -> Any:
+        if key in form["unconfirmed"] and wb:
+            superseded.add(key)
+            return None
+        return value
+
     differences: dict[str, list[str]] = {}
     for d in analyst.differences:
         if d["text"] not in differences.setdefault(d["item"], []):
@@ -1626,17 +1636,18 @@ def _status(analyst: "Analyst", week: Week, root: Optional[Path], section: Optio
         if wb:
             workbook = ({"value": [shown(c) for c in wb], "ref": wb[0].ref} if spec.kind == NAMES
                         else {"value": shown(wb, spec.scale), "ref": wb.ref})
+        value = held(spec.key, wb, form["fields"].get(spec.key))
         return {"type": "field", "key": spec.key, "label": spec.label, "required": spec.required, "kind": spec.kind, "unit": spec.unit, "min": spec.lo,
                 "max": spec.hi, "source": spec.source, "help": spec.help, "used_in": spec.used_in,
-                "value": form["fields"].get(spec.key), "workbook": workbook,
+                "value": value, "workbook": workbook,
                 "workbook_note": analyst.errors.get(_READING[spec.key]), "differences": differences.get(spec.key, []),
-                "carried": carried(spec.key, form["fields"].get(spec.key)),
-                "needs_confirmation": spec.key in form["unconfirmed"], "suggestable": spec.key in SUGGESTED_FIELDS,
+                "carried": carried(spec.key, value),
+                "needs_confirmation": spec.key in form["unconfirmed"] and spec.key not in superseded, "suggestable": spec.key in SUGGESTED_FIELDS,
                 "default": {"fiscal_year_start": fiscal_year_start(week).isoformat(), "mmf_source": MMF_SOURCE_DEFAULT}.get(spec.key)}
 
     def table_view(table: Table) -> dict[str, Any]:
-        rows = form["tables"].get(table.key)
         wb = analyst.wb_rows(table.key)
+        rows = held(table.key, wb, form["tables"].get(table.key))
         first = next((v for r in (wb or []) for v in r.values() if isinstance(v, Cell)), None)
         auto = None
         if table.key == "universe":
@@ -1660,7 +1671,7 @@ def _status(analyst: "Analyst", week: Week, root: Optional[Path], section: Optio
                 "workbook_ref": f"{WORKBOOKS[table.section]} '{first.sheet}'" if first is not None else None,
                 "workbook_note": analyst.errors.get(_READING[table.key]),
                 "warnings": _table_warnings(table, rows or []), "differences": differences.get(table.key, []),
-                "carried": carried(table.key, rows), "needs_confirmation": table.key in form["unconfirmed"],
+                "carried": carried(table.key, rows), "needs_confirmation": table.key in form["unconfirmed"] and table.key not in superseded,
                 "auto_rows": auto or None,
                 "auto_note": ("This Friday's price is read from KCB IB's weekly report and last Friday's from the price stored "
                               "for the previous week, where you type none.") if auto else ""}
@@ -1681,4 +1692,4 @@ def _status(analyst: "Analyst", week: Week, root: Optional[Path], section: Optio
             "can_carry": bool(last["fields"] or last["tables"]),
             # what still waits to be confirmed, on this section's part of the form: the draft button waits for it
             "unconfirmed": [{"key": k, "label": (FIELDS.get(k) or TABLES.get(k)).label}
-                            for k in form["unconfirmed"] if k in shown_keys]}
+                            for k in form["unconfirmed"] if k in shown_keys and k not in superseded]}

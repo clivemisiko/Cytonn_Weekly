@@ -49,7 +49,8 @@ def test_uploaded_typed_carried_and_fetched_inputs_land_in_their_own_groups(env)
     got = env.use("week_status")
     why = {e["key"]: e["why"] for g in got["groups"].values() for e in g}
     assert why["equities_workbook"] == "uploaded" and why["turnover_ytd"] == "typed" and why["large_caps"] == "typed"
-    assert why["pe"] == "carried from last week, not yet confirmed" and "pe" in keys(got, "carried_or_suggested")
+    # the uploaded workbook holds this week's P/E, so the carried one does not wait (test_readiness_workbook_first.py)
+    assert why["pe"] == "from the workbook" and "pe" in keys(got, "in_place")
     assert "pe" not in keys(got, "needs_analyst") and "equities_workbook" not in keys(got, "needs_analyst")
 
 

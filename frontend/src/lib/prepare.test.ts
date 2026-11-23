@@ -85,3 +85,21 @@ describe("Focus of the Week", () => {
     expect(readFocus("p", "focus")).toEqual({ topic: "", titles: "" });
   });
 });
+
+describe("a carried item the uploaded workbook holds (the API reports it as the workbook's)", () => {
+  const entry = (key: string, why: string) => ({ kind: "field", key, label: `Fake ${key}`, why });
+  const shape = (needs: boolean, workbook: boolean) =>
+    ({ type: "field", key: "fake", value: needs ? "1.0" : null, workbook: workbook ? { value: "2.0", ref: "Fake!B2" } : null, differences: [], carried: needs ? { from: "2031-01-03", note: "", whole: true, cells: {} } : null, needs_confirmation: needs }) as never;
+  for (const section of ["fixed_income", "equities"]) {
+    it(`${section}: shows the workbook's chip and counts nothing missing; one with no workbook still waits`, async () => {
+      const { fieldOrigin } = await import("./analyst");
+      expect(fieldOrigin(shape(false, true))).toBe("workbook");
+      expect(fieldOrigin(shape(true, false))).toBe("unconfirmed");
+      expect(fieldOrigin(shape(false, false))).toBe("empty");
+      const r = readiness({ in_place: [entry("held", "from the workbook")], carried_or_suggested: [entry("waits", "carried from last week, not yet confirmed")] });
+      const c = prepareCounts({ ...r, section }, {});
+      expect(c.required).toBe(0);
+      expect(c.missing).toEqual(["waits"]);
+    });
+  }
+});
