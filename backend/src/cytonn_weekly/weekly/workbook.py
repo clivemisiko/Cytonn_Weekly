@@ -12,8 +12,10 @@ saved value reads as empty, and the reader says so instead of computing it.
 
 from __future__ import annotations
 
+import copy
 import io
 import re
+import threading
 import warnings
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -165,6 +167,13 @@ class Workbook:
         # Read-only mode does give each sheet's state (visible, hidden, veryHidden); it gives no hidden rows or columns.
         self._states = {ws.title: ws.sheet_state for ws in self._values.worksheets}
         self._hidden_read: dict[str, str] = {}
+        self._lock = threading.Lock()   # the opened file is shared by every copy, and openpyxl's reader is not safe across threads
+
+    def shared_copy(self) -> "Workbook":
+        """A copy for one request: the opened file and the sheets read so far are shared, which hidden sheets it read is its own."""
+        twin = copy.copy(self)
+        twin._hidden_read = {}
+        return twin
 
     def _touch(self, name: str) -> None:
         if self._states.get(name, "visible") != "visible":
@@ -191,19 +200,20 @@ class Workbook:
         return list(self._values.sheetnames)
 
     def sheet(self, name: str) -> Sheet:
-        if name not in self._sheets:
-            if name not in self._values.sheetnames:
-                raise WorkbookError(f"{self.name} has no sheet {name!r}")
-            self._touch(name)
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                self._sheets[name] = Sheet(name, [tuple(r) for r in self._values[name].iter_rows(values_only=True)])
-        return self._sheets[name]
+        if name not in self._values.sheetnames:
+            raise WorkbookError(f"{self.name} has no sheet {name!r}")
+        self._touch(name)   # on every read: a sheet another copy read first is still this copy's to report
+        with self._lock:
+            if name not in self._sheets:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    self._sheets[name] = Sheet(name, [tuple(r) for r in self._values[name].iter_rows(values_only=True)])
+            return self._sheets[name]
 
     def number_format(self, cell: Cell) -> str:
         """The cell's number format code as Excel stored it ("0.0%"); "General" for an empty cell or one off the sheet."""
         self._touch(cell.sheet)
-        with warnings.catch_warnings():
+        with self._lock, warnings.catch_warnings():
             warnings.simplefilter("ignore")
             for row in self._values[cell.sheet].iter_rows(min_row=cell.row, max_row=cell.row, min_col=cell.col, max_col=cell.col):
                 return row[0].number_format or "General"
@@ -211,9 +221,9 @@ class Workbook:
 
     def formula(self, cell: Cell) -> Optional[str]:
         """The cell's formula text ("=AVERAGE(B8:B938)"), or None if it holds a typed value."""
-        if self._formulas is None:
-            self._formulas = self._open(data_only=False)
-        with warnings.catch_warnings():
+        with self._lock, warnings.catch_warnings():
+            if self._formulas is None:
+                self._formulas = self._open(data_only=False)
             warnings.simplefilter("ignore")
             for row in self._formulas[cell.sheet].iter_rows(min_row=cell.row, max_row=cell.row, min_col=cell.col,
                                                             max_col=cell.col, values_only=True):

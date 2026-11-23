@@ -20,9 +20,12 @@ Nothing about a file is guessed from its name.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import re
+import threading
+from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -338,6 +341,18 @@ def status(week: Week, root: Optional[Path] = None) -> dict[str, Any]:
 # Reading the stored inputs back, for the section builders
 # ---------------------------------------------------------------------------
 
+# Parsed files, shared across requests: (kind, path, mtime_ns, size) -> the parse. A replaced file has a new key, so it is parsed again.
+# ponytail: a fixed count, not a byte budget; each entry is at most one stored file (MAX_BYTES) plus what was read from it.
+_PARSED: "OrderedDict[tuple, Any]" = OrderedDict()
+_PARSED_LOCK = threading.Lock()
+_PARSED_MAX = 6
+
+
+def _fresh(parsed: Any) -> Any:
+    """What one request gets: never the cached object itself, so what a reader records on it stays in that request."""
+    return parsed.shared_copy() if isinstance(parsed, Workbook) else copy.deepcopy(parsed)
+
+
 class WeeklyInputs:
     """One week's stored inputs, parsed on first use.  A missing input is None, never an error."""
 
@@ -345,6 +360,7 @@ class WeeklyInputs:
         self.week = week
         self.root = root
         self._cache: dict[str, Any] = {}
+        self.loads: dict[str, str] = {}   # parsed file kind -> "parsed", for the timing log
         typed = self.notes.get("as_at")   # the as-at date the analyst set for the week, if any
         if typed:
             self.week = week.with_as_at(date.fromisoformat(typed))
@@ -361,7 +377,24 @@ class WeeklyInputs:
     def _parsed(self, key: str, name: str, parse: Callable[[bytes], Any]) -> Any:
         def load() -> Any:
             path = self._path(name)
-            return parse(path.read_bytes()) if path else None
+            if path is None:
+                return None
+            st = path.stat()   # before the read: a file replaced in between is cached under the old key, never served stale
+            ident = (key, str(path.resolve()), st.st_mtime_ns, st.st_size)
+            with _PARSED_LOCK:
+                parsed = _PARSED.get(ident)
+                if parsed is not None:
+                    _PARSED.move_to_end(ident)
+            if parsed is not None:
+                self.loads[key] = "from cache"
+                return _fresh(parsed)
+            self.loads[key] = "parsed"
+            parsed = parse(path.read_bytes())
+            with _PARSED_LOCK:
+                _PARSED[ident] = parsed
+                while len(_PARSED) > _PARSED_MAX:
+                    _PARSED.popitem(last=False)
+            return _fresh(parsed)
 
         return self._once(key, load)
 
