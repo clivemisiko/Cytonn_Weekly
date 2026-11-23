@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Route } from "@playwright/test";
 import { SHOW_CHAT } from "../../frontend/src/lib/features";
 import { API } from "./helpers";
 
@@ -343,5 +343,40 @@ for (const s of SECTIONS) {
     await expect(page).not.toHaveURL(/view=conversation/);
     await expect(prepare(page)).toBeVisible();
     await expect(prepare(page).getByRole("button", { name: /Create draft/ })).toBeVisible();
+  });
+}
+
+for (const s of SECTIONS) {
+  test(`T153 ${s.title}: a failed read shows a notice with Try again beside that part only, and Try again repeats only that read`, async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 900 });
+    const calls: Record<string, number> = { readiness: 0, analyst: 0 };
+    const failOnce = (name: string) => async (route: Route) => {
+      calls[name] += 1;
+      if (calls[name] === 1) await route.fulfill({ status: 503, json: { detail: `Fake ${name} failure.` } });
+      else await route.fallback();
+    };
+    await page.route(/\/api\/sections\/[^/]+\/readiness/, failOnce("readiness"));
+    await page.route(/\/api\/inputs\/weekly\/[^/]+\/analyst\?/, failOnce("analyst"));
+    await page.goto(url(s.slug, s.friday));
+
+    const readinessProblem = prepare(page).locator('[data-part-problem="readiness"]');
+    await expect(readinessProblem).toContainText("Fake readiness failure.");
+    await readinessProblem.getByRole("button", { name: "Try again" }).click();
+    await expect(banner(page)).toBeVisible();
+    await expect(readinessProblem).toHaveCount(0);
+
+    const formProblem = prepare(page).locator('[data-part-problem="form"]');
+    if (calls.analyst === 0) {
+      await expect(inputs(page)).toBeVisible(); // no form for this section: nothing else to fail
+      expect(calls).toEqual({ readiness: 2, analyst: 0 });
+      return;
+    }
+    await expect(formProblem).toContainText("Fake analyst failure.");
+    await expect(prepare(page).locator('[data-card="prepare_sources"]')).toBeVisible(); // what loaded stays
+    await expect(banner(page)).toBeVisible();
+    await formProblem.getByRole("button", { name: "Try again" }).click();
+    await expect(inputs(page)).toBeVisible();
+    await expect(formProblem).toHaveCount(0);
+    expect(calls).toEqual({ readiness: 2, analyst: 2 });
   });
 }

@@ -12,6 +12,7 @@ import { LINK, buttonVariants } from "@/components/ui/button";
 import * as api from "@/lib/api";
 import { type Readiness, draftCard, hasDraftWork, parseReadiness, sourceRows, weekOf } from "@/lib/chatcards";
 import { useDraftStart } from "@/lib/draftstart";
+import { usePart } from "@/lib/loadpart";
 import { SHOW_CHAT } from "@/lib/features";
 import { type Step, focusProblems, noDocumentsLine, openingStep, plural, prepareCounts, prepareSteps, readFocus, writeFocus } from "@/lib/prepare";
 import { MARKS } from "@/lib/railmarks";
@@ -41,8 +42,7 @@ const readiness = shallowRef<Readiness | null>(null);
 const form = shallowRef<AnalystForm | null>(null);
 const pieces = shallowRef<SourcePiece[] | null>(null);
 const talked = ref(false);
-const readProblem = ref<string | null>(null);
-let generation = 0;
+const shapeProblem = ref<string | null>(null);
 const steps = shallowRef<Step[] | null>(null);
 let rowOrder: string[] = [];
 
@@ -54,20 +54,24 @@ const bedrock = computed(() => !!props.config && usesSources(props.config, props
 const takesSources = computed(() => bedrock.value && !readiness.value?.snips);
 const snips = useSnips(week);
 
+// Each read on its own: one that fails keeps what the others drew, and its Try again repeats only it.
+const readinessCall = usePart(() => api.getSectionReadiness(props.section.slug, props.report.period));
+const formCall = usePart(() => api.getAnalystInputs(week.value, props.section.slug));
+const readProblem = computed(() => readinessCall.problem.value ?? shapeProblem.value);
+
 /** Read with GET /api/sections/{slug}/readiness: no conversation is opened and no model is called. */
 async function read() {
-  const mine = ++generation;
-  try {
-    const got = await api.getSectionReadiness(props.section.slug, props.report.period);
-    if (mine !== generation) return;
-    readiness.value = parseReadiness(got.readiness);
-    talked.value = got.conversation === true;
-    readProblem.value = readiness.value ? null : "The readiness check came back in a shape this page does not know.";
-    if (readiness.value?.snips && !snips.listing.value) await snips.load();
-    if (hasForm.value && !form.value) form.value = await api.getAnalystInputs(week.value, props.section.slug);
-  } catch (err) {
-    if (mine === generation) readProblem.value = (err as Error).message;
-  }
+  if (!(await readinessCall.run())) return;
+  const got = readinessCall.value.value!;
+  readiness.value = parseReadiness(got.readiness);
+  talked.value = got.conversation === true;
+  shapeProblem.value = readiness.value ? null : "The readiness check came back in a shape this page does not know.";
+  if (readiness.value?.snips && !snips.listing.value) await snips.load();
+  if (hasForm.value && !form.value) await readForm();
+}
+
+async function readForm() {
+  if (await formCall.run()) form.value = formCall.value.value;
 }
 
 // ---- Focus of the Week: the topic and titles live on this page, mirrored to session storage for a reload ----
@@ -76,6 +80,9 @@ const titles = ref("");
 watch(
   () => `${props.section.slug} ${props.report.period}`,
   () => {
+    readinessCall.reset();
+    formCall.reset();
+    shapeProblem.value = null;
     readiness.value = null;
     form.value = null;
     pieces.value = null;
@@ -214,10 +221,13 @@ const mark = computed(() => MARKS[props.state ?? "unknown"]);
       <RouterLink v-if="SHOW_CHAT && talked" :to="conversationTo" :class="['inline-flex min-h-11 items-center text-sm', LINK]">Open the conversation</RouterLink>
     </div>
 
-    <Notice v-if="readProblem" tone="warn" role="alert">{{ readProblem }}</Notice>
-    <p v-else-if="!readiness || !counts" class="text-sm text-muted-foreground" aria-busy="true">Reading what this section needs…</p>
+    <div v-if="readProblem" class="flex flex-wrap items-center gap-3" data-part-problem="readiness">
+      <Notice tone="warn" role="alert" class="flex-1">{{ readProblem }}</Notice>
+      <Button variant="outline" class="min-h-11" @click="read">Try again</Button>
+    </div>
+    <p v-if="!readProblem && (!readiness || !counts)" class="text-sm text-muted-foreground" aria-busy="true">Reading what this section needs…</p>
 
-    <template v-else>
+    <template v-if="readiness && counts">
       <div class="rounded-lg bg-cw-bubble px-4 py-3">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <p aria-live="polite" class="flex flex-wrap items-baseline gap-x-3 text-sm" data-banner>
@@ -282,6 +292,10 @@ const mark = computed(() => MARKS[props.state ?? "unknown"]);
         <Notice v-if="actionProblem" role="alert" class="font-medium whitespace-pre-line">{{ actionProblem }}</Notice>
       </section>
 
+      <div v-if="formCall.problem.value" class="flex flex-wrap items-center gap-3" data-part-problem="form">
+        <Notice tone="warn" role="alert" class="flex-1">The report inputs could not be read. {{ formCall.problem.value }}</Notice>
+        <Button variant="outline" class="min-h-11" @click="readForm">Try again</Button>
+      </div>
       <InputSteps
         v-if="steps"
         :key="`${section.slug} ${report.period}`"
