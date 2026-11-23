@@ -345,6 +345,7 @@ class WeeklyInputs:
         self.week = week
         self.root = root
         self._cache: dict[str, Any] = {}
+        self.loads: dict[str, str] = {}   # parsed file kind -> "parsed", for the timing log
         typed = self.notes.get("as_at")   # the as-at date the analyst set for the week, if any
         if typed:
             self.week = week.with_as_at(date.fromisoformat(typed))
@@ -361,7 +362,10 @@ class WeeklyInputs:
     def _parsed(self, key: str, name: str, parse: Callable[[bytes], Any]) -> Any:
         def load() -> Any:
             path = self._path(name)
-            return parse(path.read_bytes()) if path else None
+            if path is None:
+                return None
+            self.loads[key] = "parsed"
+            return parse(path.read_bytes())
 
         return self._once(key, load)
 

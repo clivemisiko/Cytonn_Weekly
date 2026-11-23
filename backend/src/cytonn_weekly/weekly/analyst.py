@@ -56,8 +56,10 @@ from __future__ import annotations
 
 import functools
 import json
+import logging
 import re
 import threading
+import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -69,6 +71,8 @@ from cytonn_weekly.weekly import equities_workbook, fi_workbook
 from cytonn_weekly.weekly.inputs import InputError, WeeklyInputs, week_dir
 from cytonn_weekly.weekly.week import Week, day_text, ordinal
 from cytonn_weekly.weekly.workbook import Cell, WorkbookError
+
+log = logging.getLogger(__name__)
 
 FORM = "Weekly analyst inputs"
 FILE = "analyst.json"
@@ -1556,7 +1560,28 @@ def _table_warnings(table: Table, rows: list[dict[str, str]]) -> list[str]:
 
 def status(week: Week, root: Optional[Path] = None, section: Optional[str] = None) -> dict[str, Any]:
     """The form for one week: every item with what was typed, what the uploaded workbook holds, and where they differ."""
+    started = time.perf_counter()
     analyst = Analyst(WeeklyInputs(week, root))
+    try:
+        return _status(analyst, week, root, section)
+    finally:
+        log.info("analyst status: section=%s seconds=%.2f files=%s", section or "all", time.perf_counter() - started,
+                 _loads_text(analyst))
+
+
+# What the timing log calls each parsed file: its kind, never its name or contents.
+_LOAD_KINDS = {"fi": "fixed income workbook", "eq": "equities workbook", "kcbw": "KCB weekly PDF"}
+
+
+def _loads_text(analyst: "Analyst") -> str:
+    parts = [f"{_LOAD_KINDS.get(k, k)} {how}" for k, how in analyst.inputs.loads.items()]
+    previous = analyst._memo.get("previous")
+    if previous is not None:
+        parts += [f"previous week's {_LOAD_KINDS.get(k, k)} {how}" for k, how in previous.inputs.loads.items()]
+    return ", ".join(parts) or "none"
+
+
+def _status(analyst: "Analyst", week: Week, root: Optional[Path], section: Optional[str]) -> dict[str, Any]:
     form = analyst.stored          # what is held, confirmed or not; the readers below see only what is confirmed
     last = usable_form(read_form(week.previous, root))   # what carry_forward() would copy: only what was confirmed
 
