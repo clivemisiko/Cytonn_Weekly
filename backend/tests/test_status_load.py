@@ -62,3 +62,65 @@ def test_the_other_sections_readers_and_workbook_are_not_touched(typed, section,
     monkeypatch.setattr(*opener, refuse)
     got = analyst.status(WEEK, typed, section)
     assert got["workbooks"] == {analyst.FI: True, analyst.EQ: True}
+
+
+def _count(monkeypatch, module, name):
+    calls = []
+    real = getattr(module, name)
+    monkeypatch.setattr(module, name, lambda *a, **k: calls.append(1) or real(*a, **k))
+    return calls
+
+
+def test_an_unchanged_file_is_parsed_once_across_requests(books, monkeypatch, caplog):
+    from cytonn_weekly.weekly import fi_workbook
+
+    calls = _count(monkeypatch, fi_workbook, "open_fi_workbook")
+    first, second = inputs.WeeklyInputs(WEEK, books).fi_book, inputs.WeeklyInputs(WEEK, books).fi_book
+    assert len(calls) == 1 and first is not second
+    with caplog.at_level(logging.INFO, logger="cytonn_weekly.weekly.analyst"):
+        analyst.status(WEEK, books, analyst.FI)
+    assert "fixed income workbook from cache" in caplog.text and len(calls) == 1
+
+
+def test_a_replaced_file_is_parsed_again(books, monkeypatch):
+    import os
+
+    from cytonn_weekly.weekly import fi_workbook
+
+    calls = _count(monkeypatch, fi_workbook, "open_fi_workbook")
+    inputs.WeeklyInputs(WEEK, books).fi_book
+    path = inputs.week_dir(WEEK, books) / "fi_workbook.xlsx"
+    st = path.stat()
+    os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000))   # same size, new time
+    inputs.WeeklyInputs(WEEK, books).fi_book
+    inputs.store(WEEK, "fi_workbook", wh.fi_workbook_bytes(funds=[("Alpha Fund", 9.0)]), "FI.xlsx", books)   # new bytes
+    assert len(calls) == 3   # the store opens the new file once to check it
+    inputs.WeeklyInputs(WEEK, books).fi_book
+    assert len(calls) == 4
+
+
+def test_two_requests_do_not_share_what_they_read(monkeypatch, tmp_path):
+    import io
+
+    from openpyxl import Workbook as Xlsx
+
+    from cytonn_weekly.weekly.workbook import Workbook
+
+    xlsx = Xlsx()
+    xlsx.active.title = "Shown"
+    xlsx.create_sheet("Kept").sheet_state = "hidden"
+    xlsx["Kept"]["A1"] = 1
+    buf = io.BytesIO()
+    xlsx.save(buf)
+    cached = Workbook(buf.getvalue(), "Book")
+    one, two = cached.shared_copy(), cached.shared_copy()
+    one.sheet("Kept")
+    assert one.hidden_lines() and not two.hidden_lines() and not cached.hidden_lines()
+    assert two.sheet("Kept") is one.sheet("Kept")          # the grid is shared ...
+    assert two.hidden_lines() == one.hidden_lines()         # ... and the second still reports reading it
+
+
+def test_a_cached_pdf_comes_back_as_a_copy(books):
+    first = inputs.WeeklyInputs(WEEK, books).kcb_weekly
+    first.problems.append("recorded by one request")
+    assert "recorded by one request" not in inputs.WeeklyInputs(WEEK, books).kcb_weekly.problems

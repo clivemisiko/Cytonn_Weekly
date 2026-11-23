@@ -96,6 +96,16 @@ def isolated_default_db(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_cached_parses(monkeypatch):
+    """The parsed-file cache is process-wide: each test starts with it empty, so a parser a test replaces is the one used."""
+    from collections import OrderedDict
+
+    from cytonn_weekly.weekly import inputs
+
+    monkeypatch.setattr(inputs, "_PARSED", OrderedDict())
+
+
+@pytest.fixture(autouse=True)
 def no_held_postgres_connection():
     """The held PostgreSQL connection is process-wide: no test starts with the last one's, or leaves its own."""
     db.close_all()
