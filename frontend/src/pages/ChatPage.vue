@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { PhPauseCircle, PhUser } from "@phosphor-icons/vue";
+import { PhCaretRight, PhPauseCircle, PhUser } from "@phosphor-icons/vue";
 import { computed, nextTick, onUnmounted, ref, shallowRef, useTemplateRef, watch } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import CytonnMark from "@/components/brand/CytonnMark.vue";
@@ -9,21 +9,26 @@ import PreparePage from "@/components/chat/PreparePage.vue";
 import ReadinessCard from "@/components/chat/ReadinessCard.vue";
 import ReviewSummaryCard from "@/components/chat/ReviewSummaryCard.vue";
 import PageGrid from "@/components/nav/PageGrid.vue";
+import ActivityPanel from "@/components/review/ActivityPanel.vue";
+import DraftingBanner from "@/components/review/DraftingBanner.vue";
+import ExportBar from "@/components/review/ExportBar.vue";
+import ExportNotices from "@/components/review/ExportNotices.vue";
 import Masthead from "@/components/review/Masthead.vue";
+import SectionRow from "@/components/review/SectionRow.vue";
 import Notice from "@/components/review/Notice.vue";
 import Button from "@/components/ui/Button.vue";
 import { FIELD, LINK } from "@/components/ui/button";
 import * as api from "@/lib/api";
 import { type ChatCard, composerOff, createConversation, statusLine, toolLine } from "@/lib/chat";
 import { PREPARE_SECTIONS, hasDraftWork, openView, parseReadiness, parseReviewSnapshot } from "@/lib/chatcards";
-import { draftingFor, draftingList } from "@/lib/drafting";
+import { attentionList, draftAgainOff, draftingFor, draftingList, isLive, reportCounts, stateTally, useDraftingPoll } from "@/lib/drafting";
 import { SHOW_CHAT } from "@/lib/features";
 import { friendlyDate } from "@/lib/format";
 import { BACK_NONE, type BackTarget, useBack } from "@/lib/nav";
-import { openingWeek, weekChoiceLabel } from "@/lib/previous";
-import { MARKS } from "@/lib/railmarks";
+import { APPROVED_BANNER, fullyApproved, openingWeek, weekChoiceLabel } from "@/lib/previous";
+import { screenHref } from "@/lib/run";
 import { railState, shell, useShellActions, useShellHere, useShellRibbon } from "@/lib/shell";
-import type { AppConfig, Overview, ReportChoice, WeekChoice } from "@/lib/types";
+import type { AppConfig, ExportStatus, Overview, ReportChoice, WeekChoice } from "@/lib/types";
 
 const route = useRoute();
 const router = useRouter();
@@ -123,6 +128,41 @@ async function changed() {
   }
 }
 
+// The aside with no section open: the report's figures, what needs the analyst, each section's own action and the export.
+const ROW =
+  "flex w-full items-center gap-3 rounded-md px-2 py-1.5 text-left text-sm outline-none transition-colors duration-150 hover:bg-card focus-visible:ring-2 focus-visible:ring-ring";
+const figures = computed<[string, number, string, string][]>(() => {
+  if (!overview.value) return [];
+  const c = reportCounts(overview.value);
+  const all = sections.value.length;
+  return [
+    ["Approved", c.approved, ` / ${all}`, all && c.approved === all ? "text-ok-fg" : ""],
+    ["In review", c.inReview, "", ""],
+    ["Flagged", c.flagged, "", c.flagged > 0 ? "text-flag-fg" : ""],
+    ["Drafting", c.drafting, "", ""],
+  ];
+});
+const tally = computed(() => (overview.value ? stateTally(overview.value) : []));
+const ATTENTION_SHOWN = 4;
+const attention = computed(() => (overview.value ? attentionList(overview.value, report.value).slice(0, ATTENTION_SHOWN) : []));
+// A section card's button goes where it went on the overview: its current review, else its start screen.
+function openScreen(slug: string, resume: boolean) {
+  const run = sections.value.find((s) => s.slug === slug)?.latest;
+  void router.push(screenHref(report.value, resume && run ? { review: run.run_id } : { section: slug }));
+}
+const exportStatus = shallowRef<ExportStatus | null>(null);
+const exportProblem = ref<string | null>(null);
+// While a draft runs, the figures and states are read again every few seconds, as the overview did.
+useDraftingPoll(
+  () => (overview.value ? draftingList(overview.value) : []),
+  (next) => {
+    overview.value = next;
+    shell.setOverview(next);
+  },
+  () => report.value,
+  () => !current.value,
+);
+
 const openFull = (reviewId: number, index?: number | null) => (full.value = { reviewId, index: index ?? null });
 
 // A saved card is read into its own shape here, once; one that is not as expected is shown by its name only.
@@ -200,6 +240,13 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
             </ul>
           </section>
           </div>
+
+          <template v-if="!current && overview">
+            <DraftingBanner v-for="d in draftingList(overview).filter(isLive)" :key="d.run_id ?? `${d.report_type}${d.period}${d.slug}`" :drafting="d" />
+            <Notice v-if="fullyApproved(overview)" tone="info" role="status">
+              <span>{{ APPROVED_BANNER }} <RouterLink to="/previous" :class="LINK">Previous reports</RouterLink></span>
+            </Notice>
+          </template>
 
           <section v-if="!current && choices.length" aria-labelledby="chat-recent" class="space-y-3 pt-4">
             <h2 id="chat-recent" class="text-xl font-semibold tracking-tight text-foreground">Recent weeks</h2>
@@ -322,17 +369,66 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
           </template>
         </dl>
         <!-- .rail-stack flattens the aside's direct children, so the tint sits one level in. -->
-        <div v-else><div class="space-y-4 rounded-3xl bg-cw-bubble p-6">
+        <div v-else-if="overview"><div class="space-y-5 rounded-3xl bg-cw-bubble p-6">
           <p class="text-sm text-foreground">{{ SHOW_CHAT ? "Choose a section to start. Each section is its own conversation." : "Choose a section to start." }}</p>
-          <ol v-if="shell.sections.value.length" class="space-y-3">
-            <li v-for="(s, i) in shell.sections.value" :key="s.slug" class="grid grid-cols-[2rem_1fr] text-sm">
-              <span class="font-mono text-muted-foreground" aria-hidden="true">{{ String(i + 1).padStart(2, "0") }}</span>
-              <span>
-                <span class="block font-semibold text-foreground">{{ s.title }}</span>
-                <span class="block text-muted-foreground">{{ MARKS[s.state ?? "unknown"].label }}</span>
-              </span>
-            </li>
-          </ol>
+
+          <!-- The report in figures, counted from the overview's payload (reportCounts in lib/drafting). -->
+          <dl role="group" aria-label="This report in figures" class="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border">
+            <div v-for="[label, value, sub, tone] in figures" :key="label" class="bg-card px-3 py-2.5">
+              <dt class="text-xs text-muted-foreground">{{ label }}</dt>
+              <dd class="font-mono text-lg font-semibold" :class="tone">{{ value }}<span v-if="sub" class="text-xs font-normal text-muted-foreground">{{ sub }}</span></dd>
+            </div>
+          </dl>
+          <dl role="group" aria-label="Sections by state" class="divide-y text-sm">
+            <div v-for="[label, value] in tally" :key="label" class="flex items-baseline justify-between gap-3 py-1.5" :class="value === 0 && 'text-muted-foreground'">
+              <dt>{{ label }}</dt>
+              <dd class="font-mono font-semibold">{{ value }}<span class="text-xs font-normal text-muted-foreground"> / {{ sections.length }}</span></dd>
+            </div>
+          </dl>
+          <ActivityPanel :drafting="draftingList(overview)" :report="report" />
+
+          <section v-if="attention.length" aria-labelledby="chat-attention" class="space-y-1.5">
+            <h2 id="chat-attention" class="eyebrow">Needs your attention</h2>
+            <ul class="space-y-1">
+              <li v-for="a in attention" :key="a.slug">
+                <button type="button" :class="ROW" @click="choose(a.slug)">
+                  <span class="glyph" :class="a.flag ? 'state-flagged' : 'state-not_auto_verified'" aria-hidden="true">{{ a.flag ? "!" : "?" }}</span>
+                  <span class="min-w-0 flex-1">
+                    <span class="block font-semibold text-foreground">{{ a.title }}</span>
+                    <span class="block text-xs" :class="a.flag ? 'text-flag-fg' : 'text-muted-foreground'">{{ a.why }}</span>
+                  </span>
+                  <PhCaretRight weight="bold" class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                </button>
+              </li>
+            </ul>
+          </section>
+
+          <section aria-labelledby="chat-aside-sections" class="space-y-1.5">
+            <h2 id="chat-aside-sections" class="eyebrow">Sections</h2>
+            <ol class="divide-y overflow-hidden rounded-xl border bg-card">
+              <SectionRow
+                v-for="(s, i) in sections"
+                :key="s.slug"
+                :s="s"
+                :index="i"
+                :period="report.period"
+                :drafting="draftingFor(draftingList(overview), s.slug, report)"
+                :draft-again-off="config ? draftAgainOff(s, draftingFor(draftingList(overview), s.slug, report), config) : null"
+                @open="(slug, resume) => openScreen(slug, resume)"
+                @redraft="(slug) => openScreen(slug, false)"
+              />
+            </ol>
+          </section>
+
+          <template v-if="report.type === 'weekly'">
+            <ExportBar
+              :period="report.period"
+              :refresh-key="sections.map((s) => `${s.latest?.run_id ?? ''}:${s.latest?.decision ?? ''}`).join('|')"
+              @status="(st) => (exportStatus = st)"
+              @error="(m) => (exportProblem = m)"
+            />
+            <ExportNotices :status="exportStatus" :error="exportProblem" />
+          </template>
         </div></div>
       </template>
     </PageGrid>

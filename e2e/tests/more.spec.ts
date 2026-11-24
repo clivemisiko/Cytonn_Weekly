@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
-import { API, DRAFT, PERIOD, REPO, VARIANT, WEEK, card, draftAndApprove, hold, openStart, overviewUrl, putAnalyst, release, startRun, topbar, reviewHeading } from "./helpers";
+import { API, DRAFT, PERIOD, REPO, VARIANT, WEEK, card, draftAndApprove, hold, openStart, overviewUrl, putAnalyst, release, startRun, topbar, reviewHeading, screenUrl } from "./helpers";
 
 /**
  * The behaviours the first sixteen tests never exercised, against either app. This file has its own run on a freshly
@@ -232,7 +232,7 @@ test("T23 rejecting a section is final: the dialog, the locked review, the overv
   await expect(page.getByRole("button", { name: "Approve", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Reject", exact: true })).toHaveCount(0);
   // Still rejected when opened again by its address.
-  await page.goto(`${overviewUrl(period)}&review=${review}`);
+  await page.goto(`${screenUrl(period)}&review=${review}`);
   await expect(page.getByText("Rejected and locked")).toBeVisible();
   await page.getByRole("button", { name: "Back to all sections" }).last().click();
   await expect(card(page, "Digital Payments")).toContainText("Rejected");

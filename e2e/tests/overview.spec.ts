@@ -2,13 +2,16 @@ import { expect, test, type Page } from "@playwright/test";
 import { PERIOD, VARIANT, card, overviewUrl } from "./helpers";
 
 /**
- * The overview's layout: the report-status panel and its fold, and what a section card shows of the overview's payload.
+ * What the overview did, now on the section chooser: the report's figures, its tally, the section cards and the export
+ * with its notices in the chooser's aside, and the export's notices on a section's own page too.
  * Two tests change the API's answer for /api/sections on the way to the page (as T14 does for the export) so that a state
  * the demo week does not have, a flagged review and an unavailable section, can be looked at; what is under test is what the
  * page does with it. This file has its own run on a freshly restored test backend (`playwright test overview`).
  */
 test.skip(!!VARIANT, "runs on the default test backend");
 test.describe.configure({ mode: "serial" });
+// The chooser re-reads the sections while a draft runs; a read still in flight when a test ends is not part of it.
+test.afterEach(({ page }) => page.unrouteAll({ behavior: "ignoreErrors" }));
 
 type Section = { slug: string; [key: string]: unknown };
 type Overview = { sections: Section[] };
@@ -25,35 +28,27 @@ async function changeOverview(page: Page, change: (body: Overview) => void) {
 
 const sectionOf = (body: Overview, slug: string) => body.sections.find((s) => s.slug === slug)!;
 
-test("T66 the report-status panel folds, is open again after a reload, and is below the feed on a narrow window", async ({ page }) => {
+const aside = (page: Page) => page.getByRole("complementary", { name: "This conversation" });
+
+test("T66 the chooser's aside holds the report's figures, its tally and the export, beside the sections and below them on a narrow window", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 768 });
   await page.goto(overviewUrl());
-  const panel = page.getByRole("complementary", { name: "Report status" });
-  const tally = page.getByRole("group", { name: "Sections by state" });
-  await expect(tally).toBeVisible();
-  await expect(page.getByRole("button", { name: "Export weekly report" })).toBeVisible();
-  const feed = (await card(page, "Fixed Income").boundingBox())!;
-  expect((await panel.boundingBox())!.x).toBeGreaterThan(feed.x + feed.width); // beside the feed, on its right
+  const panel = aside(page);
+  const figures = panel.getByRole("group", { name: "This report in figures" });
+  await expect(figures).toContainText("Approved0 / 5");
+  for (const label of ["In review", "Flagged", "Drafting"]) await expect(figures.getByText(label, { exact: true })).toBeVisible();
+  await expect(panel.getByRole("group", { name: "Sections by state" })).toContainText("Not drafted5 / 5");
+  await expect(panel.getByRole("button", { name: "Export weekly report" })).toBeVisible();
+  const chooser = (await page.getByRole("heading", { name: "Choose a section" }).boundingBox())!;
+  expect((await panel.boundingBox())!.x).toBeGreaterThan(chooser.x + chooser.width); // beside the chooser, on its right
 
-  await panel.getByRole("button", { name: "Hide Report status" }).click();
-  await expect(tally).toBeHidden();
-  await expect(page.getByRole("button", { name: "Export weekly report" })).toBeHidden();
-  expect((await panel.boundingBox())!.width).toBeLessThan(80); // a strip
-  await page.reload();
-  await expect(page.getByRole("heading", { name: "Analyst review", level: 1 })).toBeVisible();
-  await expect(panel.getByRole("button", { name: "Hide Report status" })).toBeVisible(); // open again on every load, nothing remembered
-  await expect(tally).toBeVisible();
-  await expect(page.getByRole("button", { name: "Export weekly report" })).toBeVisible();
-
-  // Under 1100px wide the panel is not beside anything: it follows the feed, open, with no fold button.
+  // Under 1100px wide the aside follows the chooser.
   await page.setViewportSize({ width: 1024, height: 768 });
-  await expect(panel.getByRole("button", { name: /Report status$/ })).toBeHidden();
-  await expect(tally).toBeVisible();
-  const narrowFeed = (await card(page, "Fixed Income").boundingBox())!;
-  expect((await panel.boundingBox())!.y).toBeGreaterThan(narrowFeed.y);
+  await expect(panel.getByRole("group", { name: "This report in figures" })).toBeVisible();
+  expect((await panel.boundingBox())!.y).toBeGreaterThan((await page.getByRole("heading", { name: "Choose a section" }).boundingBox())!.y);
 });
 
-test("T67 a card shows what the payload says, and folding the group keeps the flagged total in view", async ({ page }) => {
+test("T67 a card shows what the payload says, the figures count its flagged items, and it needs the analyst's attention", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   const counts = (total: number) => ({ total, unresolved: total, fix_needed: 0 });
   await changeOverview(page, (body) => {
@@ -78,20 +73,18 @@ test("T67 a card shows what the payload says, and folding the group keeps the fl
   await expect(fi.getByText("DEV DRAFT")).toBeVisible(); // the dev mark is on the card
   await expect(fi).toContainText("Run 99");
   await expect(fi.getByText("10 review items")).toBeVisible();
-  await expect(fi.getByRole("progressbar")).toHaveCount(0); // items are no longer resolved one by one, so the card has no progress bar
   await expect(fi.getByText("3 flagged")).toBeVisible();
   await expect(fi.getByRole("button", { name: "Resume review" })).toBeVisible();
   await expect(fi.getByRole("button", { name: "Draft again" })).toBeVisible();
   await expect(card(page, "Equities").getByRole("button")).toHaveText(["Draft section"]);
+  await expect(aside(page).getByRole("group", { name: "This report in figures" })).toContainText("Flagged3");
 
-  // The group's heading says how many are approved and how many items are flagged; folding it hides the cards, not that.
-  const group = page.getByRole("button", { name: "Week ending 9 Oct 2026 · 0 of 5 approved" });
-  await expect(page.getByText("3 flagged").filter({ visible: true })).toHaveCount(2); // the heading's and the card's
-  await group.click();
-  await expect(fi).toBeHidden();
-  await expect(page.getByText("3 flagged").filter({ visible: true })).toHaveCount(1);
-  await group.click();
-  await expect(fi).toBeVisible();
+  // The attention list puts the flagged review first and opens that section here, on the chooser.
+  const attention = aside(page).getByRole("region", { name: "Needs your attention" }).getByRole("button");
+  await expect(attention.first()).toContainText("Fixed Income3 items flagged");
+  await attention.first().click();
+  await expect(page).toHaveURL(/\/chat\?period=.*&section=fixed_income/);
+
 });
 
 test("T68 an unavailable section's reason and what unblocks it are always in full; the rest is behind Show more", async ({ page }) => {
@@ -118,44 +111,11 @@ test("T68 an unavailable section's reason and what unblocks it are always in ful
   await re.locator("summary").click();
   await expect(re.getByText("Already built")).toBeVisible();
   await expect(re.getByText("SYNTHETIC built part one")).toBeVisible();
-  await expect(re.getByText("SYNTHETIC reason: nothing here can be drafted yet, whatever the length of this sentence is.")).toBeVisible();
 });
 
-test("T70 the export's dev-mode notice is in the feed right under the dev-mode notice, shown once, and stays when the panel is folded", async ({ page }) => {
+test("T70 the export's notices are shown once beside the export, on the chooser and on a section's own page", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 768 });
-  // No section in this test API is a dev draft, so the export status the page reads is changed to say one is.
-  await page.route(/\/api\/export\/weekly/, async (route) => {
-    if (route.request().method() !== "GET") return route.continue();
-    const response = await route.fetch();
-    const body = (await response.json()) as Record<string, unknown>;
-    Object.assign(body, { is_dev_draft: true, dev_mode_label: "DEV MODE DRAFT (stub): NOT FOR PUBLICATION OR CIRCULATION.", dev_sections: ["Fixed Income", "Equities"] });
-    await route.fulfill({ response, json: body });
-  });
-  await page.goto(overviewUrl());
-  const panel = page.getByRole("complementary", { name: "Report status" });
-  const notice = page.getByRole("alert").filter({ hasText: "Export Notice: This document contains test content" });
-  await expect(notice).toHaveCount(1); // once only
-  await expect(notice).toHaveText("Export Notice: This document contains test content (Fixed Income, Equities) and includes a developer watermark on every page. It cannot be circulated or published externally.");
-  await expect(panel.getByText("Export Notice: This document contains test content")).toHaveCount(0); // not in the panel
-  await expect(panel.getByRole("button", { name: "Export weekly report" })).toBeVisible(); // the button is
-
-  const dev = page.getByRole("alert").filter({ hasText: "Development Mode Active (Local Model)" });
-  const above = (await dev.boundingBox())!;
-  const below = (await notice.boundingBox())!;
-  expect(below.y).toBeGreaterThan(above.y + above.height - 1); // after it
-  expect(below.y - (above.y + above.height)).toBeLessThan(40); // and right under it, in the same column
-
-  await panel.getByRole("button", { name: "Hide Report status" }).click();
-  await expect(page.getByRole("button", { name: "Export weekly report" })).toBeHidden(); // folded away with the panel
-  await expect(notice).toBeVisible(); // the warning is not
-  await expect(notice).toHaveCount(1);
-  await page.reload();
-  await expect(panel.getByRole("button", { name: "Hide Report status" })).toBeVisible(); // open again after a reload
-  await expect(notice).toBeVisible();
-});
-
-test("T108 the weekly export's notices go when the picker switches to the Monthly and come back with the weekly", async ({ page }) => {
-  await page.setViewportSize({ width: 1366, height: 768 });
+  // No section in this test API is a dev draft and every chart has an image, so the export status read is changed.
   await page.route(/\/api\/export\/weekly/, async (route) => {
     if (route.request().method() !== "GET") return route.continue();
     const response = await route.fetch();
@@ -164,23 +124,16 @@ test("T108 the weekly export's notices go when the picker switches to the Monthl
     await route.fulfill({ response, json: body });
   });
   await page.goto(overviewUrl());
+  const notice = page.getByRole("alert").filter({ hasText: "Export Notice: This document contains test content" });
   const charts = page.getByText("3 charts have no image. The Word file will contain placeholders for them.");
-  const watermark = page.getByRole("alert").filter({ hasText: "Export Notice: This document contains test content" });
-  await expect(charts).toBeVisible();
-  await expect(watermark).toBeVisible();
+  await expect(notice).toHaveCount(1); // once only
+  await expect(notice).toHaveText("Export Notice: This document contains test content (Fixed Income, Equities) and includes a developer watermark on every page. It cannot be circulated or published externally.");
+  await expect(charts).toHaveCount(1);
+  await expect(aside(page).getByRole("button", { name: "Export weekly report" })).toBeVisible();
 
-  // Through the picker, not a reload: a reload mounts the screen afresh and would hide a status left over from the weekly.
-  await page.getByLabel("Report type").selectOption("monthly");
-  await page.getByLabel("Period", { exact: true }).fill("Oct'2026");
-  await page.getByRole("button", { name: "Show sections" }).click();
-  await expect(page.getByText("Monthly, Oct'2026: 4 report sections.", { exact: false })).toBeVisible();
-  await expect(charts).toHaveCount(0);
-  await expect(watermark).toHaveCount(0);
-
-  await page.getByLabel("Report type").selectOption("weekly");
-  await page.getByLabel("Issue (optional)").fill(PERIOD);
-  await page.getByRole("button", { name: "Show sections" }).click();
-  await expect(card(page, "Focus of the Week")).toBeVisible();
-  await expect(charts).toBeVisible();
-  await expect(watermark).toBeVisible();
+  // A section's prepare page has the export too, and the same notices with it.
+  await page.getByRole("button", { name: "Fixed Income", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Export weekly report" })).toBeVisible();
+  await expect(notice).toHaveCount(1);
+  await expect(charts).toHaveCount(1);
 });

@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, shallowRef, watch } from "vue";
 import ExportBar from "@/components/review/ExportBar.vue";
+import ExportNotices from "@/components/review/ExportNotices.vue";
 import Notice from "@/components/review/Notice.vue";
 import * as api from "@/lib/api";
 import type { Job } from "@/lib/chat";
 import { draftCard, hasNeeds, needsYou, parseReadiness, type Readiness } from "@/lib/chatcards";
 import { type Step, itemSteps, openingStep } from "@/lib/prepare";
-import type { AnalystForm, AppConfig, Drafting, ReportChoice, Review, SectionSummary } from "@/lib/types";
+import type { AnalystForm, AppConfig, Drafting, ExportStatus, ReportChoice, Review, SectionSummary } from "@/lib/types";
 import DraftCard from "./DraftCard.vue";
 import FundSnipCard from "./FundSnipCard.vue";
 import LiveReviewCard from "./LiveReviewCard.vue";
@@ -38,6 +39,7 @@ const readiness = shallowRef<Readiness | null>(null);
 const readinessProblem = ref<string | null>(null);
 const review = shallowRef<Review | null>(null);
 const exportProblem = ref<string | null>(null);
+const exportStatus = ref<ExportStatus | null>(null);
 let generation = 0;
 
 /** Everything on these cards is read from the server now: nothing is carried from an earlier read. */
@@ -131,8 +133,8 @@ const done = () => {
     <DraftCard v-if="draft.kind !== 'none'" :section="section" :card="draft" :report="report" :config="config" :old-page="oldPage" @changed="done" @ended="ended" />
     <LiveReviewCard v-if="review" :key="review.run_id" :initial="review" @full="(id, i) => emit('full', id, i)" @decided="done" @close="emit('close')" />
     <template v-if="weekly">
-      <ExportBar rows :period="report.period" :refresh-key="`${tick}-${section.latest?.run_id ?? 0}-${section.latest?.decision ?? ''}`" @error="(m) => (exportProblem = m)" />
-      <Notice v-if="exportProblem" role="alert" class="font-medium">{{ exportProblem }}</Notice>
+      <ExportBar rows @status="(st) => (exportStatus = st)" :period="report.period" :refresh-key="`${tick}-${section.latest?.run_id ?? 0}-${section.latest?.decision ?? ''}`" @error="(m) => (exportProblem = m)" />
+      <ExportNotices :status="exportStatus" :error="exportProblem" />
     </template>
   </section>
 </template>

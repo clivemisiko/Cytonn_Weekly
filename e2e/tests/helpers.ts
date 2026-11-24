@@ -10,13 +10,17 @@ export const DRAFT = `Draft the ${PERIOD} section`;
 export const REPO = join(import.meta.dirname, "..", "..");
 export const VARIANT = process.env.E2E_VARIANT ?? "";
 
-export const overviewUrl = (period = PERIOD, type = "weekly") => `/overview?report=${type}&period=${encodeURIComponent(period)}`;
+/** The section chooser of a weekly report (it took the overview's place); its aside lists every section as a card. */
+export const overviewUrl = (period = PERIOD, type = "weekly") =>
+  type === "weekly" ? `/chat?period=${encodeURIComponent(period)}` : `/overview?report=${type}&period=${encodeURIComponent(period)}`;
 /** The h1 of a section's start screen and its review: one place, so a rename is one change. */
 export const reviewHeading = (title: string) => ({ name: `${title} review`, level: 1 }) as const;
 export const card = (page: Page, title: string) => page.locator("li", { has: page.getByRole("heading", { name: title, exact: true }) });
 export const topbar = (page: Page) => page.getByRole("navigation", { name: "App" });
 
-/** A section's start screen, from the overview card's own button. */
+/** The start screen (&section=) and saved review (&review=) addresses, which keep the old overview's path. */
+export const screenUrl = (period = PERIOD, type = "weekly") => `/overview?report=${type}&period=${encodeURIComponent(period)}`;
+/** A section's start screen, from its card's own button in the chooser's aside. */
 export async function openStart(page: Page, title: string, period = PERIOD, type = "weekly") {
   await page.goto(overviewUrl(period, type));
   await card(page, title).getByRole("button", { name: /Draft section|Compose summary|Draft again|View review|Resume review/ }).click();

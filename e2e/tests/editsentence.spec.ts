@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
-import { API, VARIANT, overviewUrl, release, reviewHeading } from "./helpers";
+import { API, VARIANT, overviewUrl, release, reviewHeading, screenUrl } from "./helpers";
 
 // A flagged sentence of a drafted piece, edited or removed by hand. The test backend drafts a topic that says "bad figure"
 // with a sentence whose figure (Sh99.9 billion) is not in the text its source cited (e2e/serve_e2e.py). Each test uses
@@ -23,7 +23,7 @@ async function draftFocus(request: APIRequestContext, period: string): Promise<n
 }
 
 async function open(page: Page, period: string, runId: number) {
-  await page.goto(`${overviewUrl(period)}&review=${runId}`);
+  await page.goto(`${screenUrl(period)}&review=${runId}`);
   await expect(page.getByRole("heading", reviewHeading("Focus of the Week"))).toBeVisible();
 }
 

@@ -1,3 +1,4 @@
+import { chooserHref } from "./nav";
 import type { ReportType, RunEvent, RunEventKind } from "./types";
 
 /** How one step line is marked. `working` is only ever a step that started and has not ended. */
@@ -135,6 +136,18 @@ export function mergeEvents(have: RunEvent[], more: RunEvent[]): RunEvent[] {
     }
   }
   return changed ? [...bySeq.values()].sort((a, b) => a.seq - b.seq) : have;
+}
+
+/** A section's start screen or a saved review of one report (they keep the old overview's address), else its chooser. */
+export function screenHref(report: { type: ReportType; period: string; kind?: string | null }, at: { review?: number | null; section?: string | null } = {}): string {
+  if (at.review == null && !at.section) return chooserHref(report.type === "weekly" ? report.period : "");
+  // Always names the report: an address with none opens the default week, not the unlabelled weekly report.
+  const q = new URLSearchParams({ report: report.type });
+  if (report.period) q.set("period", report.period);
+  if (report.kind) q.set("kind", report.kind);
+  if (at.review != null) q.set("review", String(at.review));
+  else if (at.section) q.set("section", at.section);
+  return `/overview?${q.toString()}`;
 }
 
 /** The overview of one report, optionally opening one saved review on it (how a finished run hands over). */

@@ -1,6 +1,6 @@
 import { type MaybeRefOrGetter, computed, ref, toValue, watch, watchEffect } from "vue";
 import * as api from "./api";
-import { friendlyDate } from "./format";
+import { friendlyDate, plural } from "./format";
 import type { AppConfig, Drafting, Overview, ReportChoice, SectionSummary } from "./types";
 
 const POLL_MS = 5_000;
@@ -126,3 +126,73 @@ export function stateOf(s: SectionSummary): SectionState {
 /** "for Q3'2026", "this week", or (a weekly period naming its Friday) the short "for w/e 2 Oct 2026". */
 export const when = (period: string) =>
   period.startsWith("Week ending ") ? `for w/e ${friendlyDate(period.slice(12))}` : period ? `for ${period}` : "this week";
+
+/** The button a section's row offers for its state (the overview card and the chooser's list); null when unavailable. */
+export function sectionAction(s: SectionSummary): { label: string; resume: boolean; primary: boolean } | null {
+  const state = stateOf(s);
+  if (state === "unavailable") return null;
+  if (state === "in_review") return { label: "Resume review", resume: true, primary: true };
+  if (state === "not_drafted") return { label: s.requires_approved ? "Compose summary" : "Draft section", resume: false, primary: true };
+  return { label: "View review", resume: true, primary: false };
+}
+
+/** A section that already has a review (in review, approved or rejected) can be drafted again; the start screen asks first. */
+export const canRedraft = (s: SectionSummary) => ["in_review", "approved", "rejected"].includes(stateOf(s));
+
+/** The flagged items of a section's current review, as the overview's payload counts them (0 with no current review). */
+export const flaggedOf = (s: SectionSummary) => (s.latest && (s.latest.current ?? s.latest.this_week) ? s.latest.counts.flagged.total : 0);
+
+/** How many sections are in each state, in the overview's tally order. */
+export function stateTally(o: Overview): [string, number][] {
+  const states = o.sections.map(stateOf);
+  const n = (st: SectionState) => states.filter((x) => x === st).length;
+  return [
+    ["Approved", n("approved")],
+    ["In review", n("in_review")],
+    ["Not drafted", n("not_drafted")],
+    ["Rejected", n("rejected")],
+    ["Not available yet", n("unavailable")],
+  ];
+}
+
+/** The report's four figures, counted from the overview's payload (a section's current review only). */
+export function reportCounts(o: Overview) {
+  const states = o.sections.map(stateOf);
+  return {
+    approved: states.filter((x) => x === "approved").length,
+    inReview: states.filter((x) => x === "in_review").length,
+    flagged: o.sections.reduce((n, s) => n + flaggedOf(s), 0),
+    drafting: draftingList(o).filter(isLive).length,
+  };
+}
+
+export interface AttentionItem {
+  slug: string;
+  title: string;
+  why: string;
+  flag: boolean;
+}
+
+/**
+ * Each section waiting on the analyst, worded from the payload: a stopped draft, a rejection, a review, or no draft yet,
+ * ordered a stopped draft, a rejection, flagged items, ready for a decision, not drafted (then the issue's order).
+ */
+export function attentionList(o: Overview, report: ReportChoice): AttentionItem[] {
+  const list = draftingList(o);
+  return o.sections
+    .flatMap((s, i) => {
+      const state = stateOf(s);
+      const d = draftingFor(list, s.slug, report);
+      if (d?.state === "failed") return [{ slug: s.slug, title: s.title, why: "The last draft stopped", flag: true, rank: 0, i }];
+      if (isLive(d)) return [];
+      if (state === "rejected") return [{ slug: s.slug, title: s.title, why: "Rejected: draft it again", flag: true, rank: 1, i }];
+      if (state === "in_review") {
+        const f = flaggedOf(s);
+        return [{ slug: s.slug, title: s.title, why: f ? `${plural(f, "item")} flagged` : "Ready for a decision", flag: f > 0, rank: f > 0 ? 2 : 4, i }];
+      }
+      if (state === "not_drafted") return [{ slug: s.slug, title: s.title, why: s.requires_approved ? "Not composed yet" : "Not drafted yet", flag: false, rank: 5, i }];
+      return [];
+    })
+    .sort((a, b) => a.rank - b.rank || a.i - b.i)
+    .map(({ slug, title, why, flag }) => ({ slug, title, why, flag }));
+}

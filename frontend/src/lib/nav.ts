@@ -7,6 +7,9 @@ export const HOME = "/chat";
 export const chatHref = (period: string, section: string | null) =>
   `/chat?${new URLSearchParams({ period, ...(section ? { section } : {}) }).toString()}`;
 
+/** The section chooser of a report: the page every "back to the sections" goes to (the old overview's place). */
+export const chooserHref = (period = "") => (period ? `/chat?${new URLSearchParams({ period }).toString()}` : "/chat");
+
 /**
  * Where the top bar's Back button goes from the page on screen. Each page says so itself (useBack), because most of
  * the app's screens are states of one page (overview, a section's start screen, an open review), not addresses the
