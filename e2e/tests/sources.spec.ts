@@ -193,9 +193,20 @@ test("T113 a drafted piece shows its source host, date and verified quote, and a
   await expect(page.getByRole("heading", reviewHeading("Focus of the Week"))).toBeVisible();
   await expect(page.getByText("DEV MODE", { exact: false })).toHaveCount(0); // a Bedrock draft is a production draft
 
-  await page.getByRole("button", { name: "Expand all" }).click();
+  // Every item, one at a time: open its technical details and count the claim sources.
   const claims = page.getByTestId("claim-source");
-  await expect(claims).toHaveCount(1); // the second claim's quote is in no page, so only one survived
+  const pressed = page.getByRole("group", { name: "Review items by status" }).getByRole("button", { pressed: true });
+  if (await pressed.count()) await pressed.click();
+  const rows = page.getByRole("complementary", { name: "Review items" }).locator("li[data-status] > button");
+  const withClaim: number[] = [];
+  for (let n = 0; n < (await rows.count()); n++) {
+    await rows.nth(n).click();
+    await page.getByRole("button", { name: "Technical details" }).click();
+    if (await claims.count()) withClaim.push(n);
+  }
+  expect(withClaim).toHaveLength(1); // the second claim's quote is in no page, so only one survived
+  await rows.nth(withClaim[0]).click();
+  await page.getByRole("button", { name: "Technical details" }).click();
   const claim = claims.first();
   await expect(claim).toContainText("blog.example.com");
   await expect(claim).toContainText("7 Oct 2026");

@@ -5,7 +5,6 @@ import Button from "@/components/ui/Button.vue";
 import { OPEN_REVIEW, lastRecheck } from "@/lib/fixfile";
 import { lastSentence } from "@/lib/sentence";
 import { STATUS_ORDER, friendlyTime, weekRange } from "@/lib/format";
-import PageGrid from "@/components/nav/PageGrid.vue";
 import { weekOfReview } from "@/lib/notable";
 import { READ_ONLY } from "@/lib/previous";
 import { useReviewSession } from "@/lib/session";
@@ -49,7 +48,8 @@ watch(
 );
 
 // The strip filters the review items: one status, or every item when no tile is pressed.
-const filter = ref<"all" | Status>("all");
+// It opens on the first status that has items: Flagged, then Not auto-verified, then Clean.
+const filter = ref<"all" | Status>(STATUS_ORDER.find((s) => props.initial.counts[s].total > 0) ?? "all");
 const SUBLINES: Record<Status, string> = { flagged: "Read before approving", not_auto_verified: "Check by hand", clean: "Checked, no flag" };
 
 // Pieces the reviewer took out of the draft, and whether any drafted finding is left.
@@ -102,16 +102,12 @@ const findingsLeft = computed(() => {
       @close="emit('close')"
     />
 
-    <!-- The draft is the content; the review items are the panel beside it. The panel is never folded (it is the work and it
-         holds the flags) and, being as tall as the section, it is left in the flow. -->
-    <PageGrid aside-title="Review items" hide-title wide-body style="--bar-extra: 5.5rem">
+    <!-- The review items (list and detail) come first, then the draft at full width. -->
+    <div class="@container w-full min-w-0 px-4 pt-4 pb-16 sm:px-6">
       <div class="space-y-6">
         <RecheckResult v-if="recheck" :result="recheck" @redraft="emit('redraft', review.section_slug)" />
         <SentenceResult v-if="sentence" :result="sentence" />
         <RejectedDraftNotes :run-id="review.run_id" />
-        <p v-if="review.decision" class="rise-in text-sm text-muted-foreground">
-          Decision recorded{{ review.decided_at ? ` on ${friendlyTime(review.decided_at)}` : "" }}. This section is finalized and locked for editing.
-        </p>
         <!-- Three counts, one per status, in the item cards' colour, glyph and border: each one filters the review items, and
              pressing it again shows every item. -->
         <div role="group" aria-label="Review items by status" class="flex flex-wrap items-center gap-1 rounded-lg border bg-card p-1.5">
@@ -126,6 +122,7 @@ const findingsLeft = computed(() => {
             />
           <p class="ml-auto px-3 text-xs text-muted-foreground">Not auto-verified is not the same as incorrect</p>
         </div>
+        <ItemsPane v-model:filter="filter" :review="review" />
         <details v-if="removed.length" class="rounded-lg border bg-card px-4 py-2.5 text-sm">
           <summary class="cursor-pointer font-medium">Removed findings ({{ removed.length }})</summary>
           <ul class="mt-2 space-y-1 text-muted-foreground">
@@ -151,10 +148,6 @@ const findingsLeft = computed(() => {
           :week="week"
         />
       </div>
-
-      <template #aside>
-        <ItemsPane v-model:filter="filter" :review="review" />
-      </template>
-    </PageGrid>
+    </div>
   </div>
 </template>

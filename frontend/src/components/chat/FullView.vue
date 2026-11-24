@@ -43,7 +43,7 @@ onMounted(async () => {
     <Notice v-if="problem" role="alert" class="font-medium">{{ problem }}</Notice>
     <template v-if="review">
       <p class="text-xs text-muted-foreground">{{ review.section_title }}, run {{ review.run_id }}. Nothing can be changed here.</p>
-      <ul v-if="item" class="space-y-3"><ReviewItemCard :item="item" :review="review" :open="true" /></ul>
+      <ul v-if="item"><li :data-status="item.status" :data-index="item.index"><ReviewItemCard :item="item" :review="review" :open="true" /></li></ul>
       <p v-else-if="index !== null" class="text-sm text-muted-foreground">That item is no longer in this review.</p>
       <ItemsPane v-else :review="review" />
     </template>

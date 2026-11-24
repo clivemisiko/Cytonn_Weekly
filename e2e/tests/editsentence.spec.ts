@@ -66,9 +66,10 @@ test("T100 an edited sentence with a figure no source has stays flagged and says
   const item = overviewClaim(page, "flagged", BAD);
   await expect(item).toHaveCount(1);
   await expect(flagged(page)).toHaveCount(2);
-  await expect(item).toContainText("Edited by you");
-  await item.getByRole("button", { name: /Show details/ }).click();
-  await expect(item).toContainText("88.8 do not appear in the text the search tool cited");
+  await item.locator("button").click();
+  const detail = page.getByRole("region", { name: "Selected review item" });
+  await expect(detail).toContainText("Edited by you");
+  await expect(detail).toContainText("88.8 do not appear in the text the search tool cited");
   // Nothing is suppressed: approving still asks first and counts the edited sentence among the flagged items. Cancelling records nothing.
   const approve = page.getByRole("button", { name: "Approve", exact: true });
   await expect(approve).toBeEnabled();
@@ -92,7 +93,8 @@ test("T101 a removed sentence is gone from the text and listed as removed by you
   await expect(flagged(page)).toHaveCount(1); // only the carried disclaimer remains flagged
   const removed = page.locator("li[data-index]", { hasText: "(removed by you)" });
   await expect(removed).toHaveCount(1);
-  await expect(removed).toContainText("Removed by you");
+  await removed.locator("button").click();
+  await expect(page.getByRole("region", { name: "Selected review item" })).toContainText("Removed by you");
   await expect(page.getByLabel("Sentences you edited")).toHaveCount(0); // a removal is not shown inside the text
   await expect(page.locator("article").getByText("Sh99.9 billion.")).toHaveCount(0);
 });
