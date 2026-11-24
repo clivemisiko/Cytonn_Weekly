@@ -15,7 +15,7 @@ from cytonn_weekly.review.checks import normalise_quote
 from cytonn_weekly.weekly.week import latest_friday
 
 SECTORS = (("industry", "Industry reports"), ("residential", "Residential sector"), ("land", "Land"),
-           ("hospitality", "Hospitality and Tourism"))
+           ("hospitality", "Hospitality and Tourism"), ("mixed_use", "Mixed-use developments"), ("infrastructure", "Infrastructure"))
 LIVE = dict(SECTORS)   # the sectors a snip can be uploaded to; REITs is the Ibuka table and the analyst's own text, so no draft reads a REITs snip
 LABELS = {**LIVE, "reits": "REITs"}   # names every sector ever stored, so a REITs snip saved earlier still reads back and shows
 MAX_BYTES = 5 * 1024 * 1024
