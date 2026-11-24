@@ -77,7 +77,8 @@ describe("run steps", () => {
     // No screen named: the section chooser, with the week only for a weekly report.
     expect(screenHref({ type: "weekly", period: "" })).toBe("/chat");
     expect(screenHref({ type: "weekly", period: "Week ending 2026-10-09" })).toBe("/chat?period=Week+ending+2026-10-09");
-    expect(screenHref({ type: "quarterly", period: "Q3'2026" })).toBe("/chat");
+    expect(screenHref({ type: "quarterly", period: "Q3'2026" })).toBe("/chat?report=quarterly&period=Q3%272026");
+    expect(screenHref({ type: "companion", period: "Weekly #38.2026", kind: "k" })).toBe("/chat?report=companion&period=Weekly+%2338.2026&kind=k");
     // A review or a start screen keeps the old overview's address, naming the report.
     expect(screenHref({ type: "weekly", period: "Week ending 2026-10-09" }, { review: 12 })).toBe("/overview?report=weekly&period=Week+ending+2026-10-09&review=12");
     expect(screenHref({ type: "quarterly", period: "Q3'2026" }, { section: "equities" })).toBe("/overview?report=quarterly&period=Q3%272026&section=equities");

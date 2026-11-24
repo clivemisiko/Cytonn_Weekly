@@ -95,23 +95,59 @@ test("T03 the chooser lists the five weekly sections, the dev mark and the expor
   await expect(page.getByText("Fixed Income: Not drafted")).toBeVisible();
 });
 
-test("T04 report picker shows the API's refusal, switches report, keeps it on reload; Back is disabled on overview", async ({ page }) => {
-  await page.goto("/overview");
-  await expect(page.getByRole("heading", { name: "Analyst review", level: 1 })).toBeVisible();
+test("T04 the chooser's Report type: the API's refusal stays with the period, a type and period reload the page in place, its sections open their screens", async ({ page }) => {
+  await page.goto(OVERVIEW);
+  await expect(page.getByRole("heading", chooserHeading)).toBeVisible();
+  await expect(page.getByLabel("Week", { exact: true })).toBeVisible(); // Weekly: the Week beside the type
   await page.getByLabel("Report type").selectOption("quarterly");
-  await expect(page.getByLabel("Period", { exact: true })).toHaveValue("Q3'2026");
-  await page.getByLabel("Period", { exact: true }).fill("Q2'2026");
-  await page.getByRole("button", { name: "Show sections" }).click();
+  await expect(page).toHaveURL(/\/chat\?report=quarterly&period=Q3%272026$/);
+  await expect(page.getByLabel("Week", { exact: true })).toHaveCount(0);
+  const periodBox = page.getByLabel("Period", { exact: true });
+  await expect(periodBox).toHaveValue("Q3'2026");
+  await expect(page.getByRole("heading", { name: "Recent weeks" })).toHaveCount(0); // no list of earlier quarters to show
+  await expect(page.getByRole("navigation", { name: "Report sections" }).getByText("Quarterly Markets Review, Q3'2026")).toBeVisible(); // the rail follows
+
+  await periodBox.fill("Q2'2026");
+  await periodBox.press("Enter");
   await expect(page.getByRole("alert").filter({ hasText: "Cytonn publishes the second quarter as the half-year review (H1); choose Half-year" })).toBeVisible();
-  await expect(page.getByLabel("Period", { exact: true })).toHaveAttribute("aria-invalid", "true");
-  await page.getByLabel("Period", { exact: true }).fill("q3 2026");
-  await page.getByRole("button", { name: "Show sections" }).click();
-  await expect(page.getByText("Quarterly Markets Review, Q3'2026: 8 report sections.", { exact: false })).toBeVisible();
-  expect(new URL(page.url()).searchParams.get("period")).toBe("Q3'2026");
+  await expect(periodBox).toHaveAttribute("aria-invalid", "true");
+  expect(new URL(page.url()).searchParams.get("period")).toBe("Q3'2026"); // the page keeps the report it had
+  await periodBox.fill("q3 2026");
+  await periodBox.press("Enter");
+  await expect(periodBox).not.toHaveAttribute("aria-invalid", "true");
   await page.reload();
-  await expect(page.getByText("Quarterly Markets Review, Q3'2026: 8 report sections.", { exact: false })).toBeVisible();
+  await expect(page.getByLabel("Period", { exact: true })).toHaveValue("Q3'2026");
   await expect(card(page, "Fixed Income").getByText("Not drafted for Q3'2026")).toBeVisible();
-  await expect(topbar(page).getByRole("button", { name: "Back (this is the start screen)" })).toBeDisabled();
+
+  // A Markets Review section opens its start screen, not the weekly chat; Back comes to this chooser on the same report.
+  await page.getByRole("button", { name: "Fixed Income", exact: true }).click();
+  await expect(page.getByRole("heading", reviewHeading("Fixed Income"))).toBeVisible();
+  expect(new URL(page.url()).pathname).toBe("/overview");
+  await topbar(page).getByRole("button", { name: "Back to all sections" }).click();
+  await expect(page).toHaveURL(/\/chat\?report=quarterly&period=Q3%272026$/);
+
+  await page.getByLabel("Report type").selectOption("weekly");
+  await expect(page.getByLabel("Week", { exact: true })).toBeVisible();
+  expect(new URL(page.url()).searchParams.get("report")).toBeNull();
+});
+
+test("T04b Companion: its edition and issue beside the type, the notice, and no section can be drafted", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(OVERVIEW);
+  await page.getByLabel("Report type").selectOption("companion");
+  await expect(page).toHaveURL(/report=companion/);
+  await expect(page.getByLabel("Report Edition")).toBeVisible();
+  await expect(page.getByLabel("Associated Weekly Report Issue")).not.toHaveValue("");
+  await expect(page.getByText("Companion research reports ride inside a weekly issue as its Focus of the Week.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Whole report" })).toBeDisabled();
+  const before = new URL(page.url()).searchParams.get("kind");
+  const options = await page.getByLabel("Report Edition").locator("option").allInnerTexts();
+  await page.getByLabel("Report Edition").selectOption({ label: options[1] });
+  await expect.poll(() => new URL(page.url()).searchParams.get("kind")).not.toBe(before);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false); // no sideways scroll at 390px
+  // Keyboard: the type is reachable and changes with the arrow keys.
+  await page.getByLabel("Report type").focus();
+  await expect(page.getByLabel("Report type")).toBeFocused();
 });
 
 test("T05 theme toggle: Light, Dark, System, kept after a reload and applied before the first paint", async ({ page }) => {
@@ -512,18 +548,17 @@ test("T16 keyboard: the skip link comes first, the theme group is one tab stop m
 });
 
 test("T107 the Monthly: four stub sections, each with its reason; a month a Markets Review covers is refused", async ({ page }) => {
-  await page.goto("/overview");
+  await page.goto(OVERVIEW);
   await page.getByLabel("Report type").selectOption("monthly");
   const periodBox = page.getByLabel("Period", { exact: true });
   await periodBox.fill("Sep'2026");
-  await page.getByRole("button", { name: "Show sections" }).click();
+  await periodBox.press("Enter");
   await expect(page.getByRole("alert").filter({ hasText: "September 2026 has no Cytonn Monthly: it is covered by the Q3 Markets Review." })).toBeVisible();
   await expect(periodBox).toHaveAttribute("aria-invalid", "true");
   await periodBox.fill("Oct'2026");
-  await page.getByRole("button", { name: "Show sections" }).click();
-  await expect(page.getByText("Monthly, Oct'2026: 4 report sections.", { exact: false })).toBeVisible();
+  await periodBox.press("Enter");
+  await expect.poll(() => new URL(page.url()).searchParams.get("period")).toBe("Oct'2026");
   expect(new URL(page.url()).searchParams.get("report")).toBe("monthly");
-  expect(new URL(page.url()).searchParams.get("period")).toBe("Oct'2026");
   const reasons: [string, string][] = [
     ["Fixed Income", "The monthly T-bill and T-bond averages, the two-month Bond Issuances table"],
     ["Equities", "The month's index moves and the month-start levels are not built."],

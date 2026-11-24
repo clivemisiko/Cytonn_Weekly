@@ -23,7 +23,7 @@ export const router = createRouter({
       beforeEnter: (to) =>
         one(to.query.review) || one(to.query.section)
           ? true
-          : chooserHref(one(to.query.report) === "weekly" || !one(to.query.report) ? one(to.query.period) : ""),
+          : chooserHref({ type: one(to.query.report) || "weekly", period: one(to.query.period), kind: one(to.query.kind) }),
     },
     { path: "/previous", component: () => import("./pages/PreviousReportsPage.vue") },
     { path: "/chat", component: () => import("./pages/ChatPage.vue") },

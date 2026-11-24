@@ -55,7 +55,7 @@ test("T74 a stopped run: the failure and the way back are in the feed, and the p
   await expect(alert).toContainText("the Ibuka summary could not be fetched (a deliberate failure for the tests)");
   await expect(panel.locator("dt")).toHaveText(["Section", "Report", "Started", "Stopped", "Steps"]);
   const side = (await panel.boundingBox())!;
-  for (const where of [alert, page.getByRole("link", { name: "Back to overview" }), page.getByText(/^Stopped .* EAT\.$/)]) {
+  for (const where of [alert, page.getByRole("link", { name: "Back to the sections" }), page.getByText(/^Stopped .* EAT\.$/)]) {
     await expect(where).toBeVisible();
     const box = (await where.boundingBox())!;
     expect(box.x + box.width).toBeLessThan(side.x); // in the feed, left of the panel

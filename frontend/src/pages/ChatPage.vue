@@ -24,16 +24,18 @@ import { PREPARE_SECTIONS, hasDraftWork, openView, parseReadiness, parseReviewSn
 import { attentionList, draftAgainOff, draftingFor, draftingList, isLive, reportCounts, stateTally, useDraftingPoll } from "@/lib/drafting";
 import { SHOW_CHAT } from "@/lib/features";
 import { friendlyDate } from "@/lib/format";
-import { BACK_NONE, type BackTarget, useBack } from "@/lib/nav";
+import { BACK_NONE, type BackTarget, chooserHref, useBack } from "@/lib/nav";
 import { APPROVED_BANNER, fullyApproved, openingWeek, weekChoiceLabel } from "@/lib/previous";
+import { useReportChoice } from "@/lib/reportchoice";
 import { screenHref } from "@/lib/run";
 import { railState, shell, useShellActions, useShellHere, useShellRibbon } from "@/lib/shell";
-import type { AppConfig, ExportStatus, Overview, ReportChoice, WeekChoice } from "@/lib/types";
+import { type AppConfig, type ExportStatus, type Overview, REPORT_TYPES, type ReportChoice, type ReportType, type WeekChoice } from "@/lib/types";
 
 const route = useRoute();
 const router = useRouter();
-const SECTION_BTN = "h-11 rounded-sm border border-transparent bg-cw-chip px-4 font-normal text-foreground hover:bg-cw-chip hover:border-input aria-[current=true]:!border-cw-button aria-[current=true]:!bg-cw-bubble aria-[current=true]:font-semibold aria-[current=true]:text-cw-selected-fg";
+const SECTION_BTN = "h-auto min-h-11 max-w-full whitespace-normal py-2 text-left rounded-sm border border-transparent bg-cw-chip px-4 font-normal text-foreground hover:bg-cw-chip hover:border-input aria-[current=true]:!border-cw-button aria-[current=true]:!bg-cw-bubble aria-[current=true]:font-semibold aria-[current=true]:text-cw-selected-fg";
 const first = (v: unknown) => (Array.isArray(v) ? String(v[0] ?? "") : typeof v === "string" ? v : "");
+const PICK = "h-11 !rounded-full pr-9 pl-4";
 const START_BTN = "h-12 w-full rounded-xl bg-cw-button font-semibold text-cw-button-fg hover:bg-cw-button hover:opacity-90";
 const WEEK = /^Week ending \d{4}-\d{2}-\d{2}$/;
 
@@ -49,9 +51,19 @@ const convo = createConversation(api.chatApi);
 const { job, messages, notice, lost, sending } = convo;
 onUnmounted(convo.stop);
 
-const period = computed(() => (WEEK.test(first(route.query.period)) ? first(route.query.period) : defaultPeriod.value));
-const slug = computed(() => first(route.query.section) || null);
-const report = computed<ReportChoice>(() => ({ type: "weekly", period: period.value, kind: null }));
+// The report in the address: weekly (named by its week) unless ?report= names another type, with its period and edition.
+const reportType = computed<ReportType>(() => (REPORT_TYPES as readonly string[]).includes(first(route.query.report)) ? (first(route.query.report) as ReportType) : "weekly");
+const weekly = computed(() => reportType.value === "weekly");
+const period = computed(() =>
+  weekly.value ? (WEEK.test(first(route.query.period)) ? first(route.query.period) : defaultPeriod.value) : first(route.query.period),
+);
+// The weekly chat flow stays weekly: another report's sections open their start or review screen instead.
+const slug = computed(() => (weekly.value ? first(route.query.section) || null : null));
+const report = computed<ReportChoice>(() => ({
+  type: reportType.value,
+  period: period.value,
+  kind: reportType.value === "companion" ? first(route.query.kind) || null : null,
+}));
 const sections = computed(() => overview.value?.sections ?? []);
 const current = computed(() => sections.value.find((s) => s.slug === slug.value) ?? null);
 const weekOptions = computed(() => {
@@ -78,12 +90,48 @@ const used = computed(() => (job.value ? job.value.input_tokens + job.value.outp
 
 function choose(next: string | null) {
   full.value = null;
-  void router.push({ path: "/chat", query: { period: period.value, ...(next ? { section: next } : {}) } });
+  if (next && !weekly.value) return openScreen(next, true);
+  void router.push(next ? { path: "/chat", query: { period: period.value, section: next } } : chooserHref(report.value));
 }
 /** "Whole report" opens the first section in the issue's order: each section is its own conversation. */
 const wholeReport = () => choose(sections.value.find((s) => s.available)?.slug ?? null);
 function chooseWeek(event: Event) {
   void router.replace({ path: "/chat", query: { ...route.query, period: (event.target as HTMLSelectElement).value } });
+}
+
+// The report type beside the Week: the overview's picker logic (lib/reportchoice.ts). Weekly shows the Week; another type
+// shows its period or issue, and a companion report its edition too. A choice is read first, so one the API refuses stays
+// here with its reason and the page keeps the report it had.
+const pick = useReportChoice(
+  () => report.value,
+  () => overview.value?.report_types ?? [],
+  () => overview.value?.companion_kinds ?? [],
+);
+const pickError = ref<string | null>(null);
+watch(report, (r) => {
+  pick.type.value = r.type;
+  pick.period.value = r.period;
+  if (r.kind) pick.kind.value = r.kind;
+  pickError.value = null;
+});
+async function applyPick() {
+  pickError.value = null;
+  const next = pick.choice();
+  if (next.type === "weekly") return void router.push(chooserHref({ period: defaultPeriod.value || period.value }));
+  try {
+    const read = await api.getOverview(next);
+    void router.push(chooserHref({ type: read.report.type, period: read.report.period, kind: read.report.kind }));
+  } catch (err) {
+    pickError.value = err instanceof Error ? err.message : String(err);
+  }
+}
+function chooseType(event: Event) {
+  pick.chooseType((event.target as HTMLSelectElement).value as ReportType);
+  void applyPick();
+}
+function chooseKind(event: Event) {
+  pick.chooseKind((event.target as HTMLSelectElement).value);
+  void applyPick();
 }
 
 async function load() {
@@ -97,7 +145,8 @@ async function load() {
       shell.config.value = c;
       choices.value = weeks.choices ?? [];
       // Settled before the overview below is read, so the Week select never shows one week then another.
-      if (!WEEK.test(first(route.query.period))) defaultPeriod.value = await openingWeek(weeks, () => api.getOverview());
+      // Opened on another report, the default week is still read: switching back to Weekly opens it.
+      if (!weekly.value || !WEEK.test(first(route.query.period))) defaultPeriod.value = await openingWeek(weeks, () => api.getOverview());
     }
     overview.value = await api.getOverview(report.value);
     shell.setOverview(overview.value); // the rail takes the same payload
@@ -108,12 +157,17 @@ async function load() {
     if (wanted && !preparing.value && overview.value.sections.some((s) => s.slug === wanted && s.available)) await convo.open(wanted, period.value);
     else convo.stop();
   } catch (err) {
+    overview.value = null; // never a report other than the one the address names
     problem.value = err instanceof Error ? err.message : String(err);
   } finally {
     loading.value = false;
   }
 }
-watch(() => `${first(route.query.section)} ${first(route.query.period)} ${first(route.query.view)}`, load, { immediate: true });
+watch(
+  () => [route.query.report, route.query.kind, route.query.section, route.query.period, route.query.view].map(first).join(" "),
+  load,
+  { immediate: true },
+);
 
 // After any button on a card: the rail and the overview are read again, so neither shows an old state, and the cards read the server again.
 const tick = ref(0);
@@ -148,7 +202,8 @@ const attention = computed(() => (overview.value ? attentionList(overview.value,
 // A section card's button goes where it went on the overview: its current review, else its start screen.
 function openScreen(slug: string, resume: boolean) {
   const run = sections.value.find((s) => s.slug === slug)?.latest;
-  void router.push(screenHref(report.value, resume && run ? { review: run.run_id } : { section: slug }));
+  const saved = run && (run.current ?? run.this_week);
+  void router.push(screenHref(report.value, resume && saved ? { review: run.run_id } : { section: slug }));
 }
 const exportStatus = shallowRef<ExportStatus | null>(null);
 const exportProblem = ref<string | null>(null);
@@ -203,29 +258,68 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
     <Masthead v-if="current" wide title="Chat" class="sr-only" />
     <header v-else class="px-4 pt-8 sm:px-6 min-[1100px]:px-10">
       <h1 class="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">Let's get this week's report going.</h1>
-      <p class="mt-2 text-base text-muted-foreground">Pick the week, then choose a section to work on.</p>
+      <p class="mt-2 text-base text-muted-foreground">Pick the report and its week, then choose a section to work on.</p>
     </header>
     <PageGrid aside-title="This conversation">
       <div class="min-w-0 space-y-4">
         <p v-if="loading && !overview" role="status" class="text-sm text-muted-foreground">Opening the chat…</p>
-        <Notice v-else-if="problem" role="alert" class="font-medium">{{ problem }}</Notice>
-
         <template v-else>
+          <Notice v-if="problem" role="alert" class="font-medium">{{ problem }}</Notice>
           <div :class="!current && 'space-y-6 rounded-3xl border bg-card p-6 shadow-sm sm:p-8'">
+          <div class="space-y-1.5">
           <div class="flex flex-wrap items-end gap-3">
             <div class="space-y-1.5">
+              <label for="chat-type" class="block text-xs font-bold text-foreground">Report type</label>
+              <select id="chat-type" :class="[FIELD, PICK]" :value="pick.type.value" :disabled="!overview" @change="chooseType">
+                <option v-for="t in overview?.report_types ?? []" :key="t.slug" :value="t.slug">{{ t.title }}</option>
+              </select>
+            </div>
+            <div v-if="weekly" class="space-y-1.5">
               <label for="chat-week" class="block text-xs font-bold text-foreground">Week</label>
-              <select id="chat-week" :class="[FIELD, 'h-11 !rounded-full pr-9 pl-4']" :value="period" @change="chooseWeek">
+              <select id="chat-week" :class="[FIELD, PICK]" :value="period" @change="chooseWeek">
                 <option v-for="o in weekOptions" :key="o.period" :value="o.period">{{ o.label }}</option>
               </select>
             </div>
+            <template v-else>
+              <div v-if="pick.type.value === 'companion'" class="w-full min-w-0 space-y-1.5 sm:w-auto sm:max-w-full">
+                <label for="chat-kind" class="block text-xs font-bold text-foreground">Report Edition</label>
+                <select id="chat-kind" :class="[FIELD, PICK, 'w-full sm:w-auto sm:max-w-full']" :value="pick.kind.value" @change="chooseKind">
+                  <option v-for="k in overview?.companion_kinds ?? []" :key="k.slug" :value="k.slug">{{ k.title }}</option>
+                </select>
+              </div>
+              <form class="space-y-1.5" @submit.prevent="applyPick">
+                <label for="chat-period" class="block text-xs font-bold text-foreground">{{ pick.periodLabel.value }}</label>
+                <input
+                  id="chat-period"
+                  v-model="pick.period.value"
+                  type="text"
+                  autocomplete="off"
+                  spellcheck="false"
+                  maxlength="40"
+                  :placeholder="pick.info.value?.period_hint ?? ''"
+                  :aria-invalid="pickError ? true : undefined"
+                  aria-describedby="chat-report-hint"
+                  :class="[FIELD, PICK, 'w-56 max-w-full font-mono']"
+                  @change="applyPick"
+                />
+              </form>
+            </template>
           </div>
+          <p v-if="!weekly || pickError" id="chat-report-hint" :role="pickError ? 'alert' : undefined" class="text-xs" :class="pickError ? 'font-semibold text-flag-fg' : 'text-muted-foreground'">
+            {{ pickError ?? pick.hint.value }}
+          </p>
+          </div>
+
+          <Notice v-if="report.type === 'companion'" tone="info">
+            Companion research reports ride inside a weekly issue as its Focus of the Week. Every section below is Cytonn’s own
+            analysis, so none can be drafted yet; the weekly Focus of the Week can still draft a cited piece on the same topic.
+          </Notice>
 
           <section aria-labelledby="chat-sections" class="space-y-2">
             <h2 id="chat-sections" :class="current ? 'text-xs font-bold text-foreground' : 'text-xl font-semibold tracking-tight text-cw-accent'">{{ current ? "Sections" : SHOW_CHAT ? "Choose what to talk about" : "Choose a section" }}</h2>
             <ul class="flex flex-wrap gap-2.5">
               <li :class="!current && 'basis-full pb-2'">
-                <Button variant="ghost" :class="current ? SECTION_BTN : START_BTN" @click="wholeReport">Whole report</Button>
+                <Button variant="ghost" :class="current ? SECTION_BTN : START_BTN" :disabled="!sections.some((s) => s.available)" @click="wholeReport">Whole report</Button>
               </li>
               <li v-for="s in sections" :key="s.slug" class="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <Button
@@ -235,7 +329,7 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
                   :disabled="!s.available"
                   @click="choose(s.slug)"
                 >{{ s.title }}</Button>
-                <span v-if="!s.available" class="text-sm text-muted-foreground">Not available yet.</span>
+                <span v-if="!s.available" class="text-sm text-muted-foreground">{{ s.reason ? `Not available yet. ${s.reason}` : "Not available yet." }}</span>
               </li>
             </ul>
           </section>
@@ -248,7 +342,7 @@ useBack((): BackTarget => (slug.value ? { kind: "go", to: "the section list", go
             </Notice>
           </template>
 
-          <section v-if="!current && choices.length" aria-labelledby="chat-recent" class="space-y-3 pt-4">
+          <section v-if="!current && weekly && choices.length" aria-labelledby="chat-recent" class="space-y-3 pt-4">
             <h2 id="chat-recent" class="text-xl font-semibold tracking-tight text-foreground">Recent weeks</h2>
             <ul class="divide-y overflow-hidden rounded-2xl border bg-card">
               <li v-for="c in choices.slice(0, 4)" :key="c.period" class="px-5 py-3.5 text-sm text-foreground">{{ weekChoiceLabel(c) }}</li>

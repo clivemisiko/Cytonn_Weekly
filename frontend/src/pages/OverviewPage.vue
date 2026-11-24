@@ -72,7 +72,7 @@ function reportToUrl(next: ReportChoice, reviewId: number | null = null, section
 
 /** The section chooser of the report on screen: where this page goes instead of the overview it no longer shows. */
 function toChooser(how: "push" | "replace" = "replace") {
-  if (live) void router[how](chooserHref(report.value.type === "weekly" ? report.value.period : ""));
+  if (live) void router[how](chooserHref(report.value));
 }
 
 /** A section's start screen, with its current saved review (if any) offered for resume. `known` is an overview just read. */

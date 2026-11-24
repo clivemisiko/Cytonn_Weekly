@@ -7,8 +7,15 @@ export const HOME = "/chat";
 export const chatHref = (period: string, section: string | null) =>
   `/chat?${new URLSearchParams({ period, ...(section ? { section } : {}) }).toString()}`;
 
-/** The section chooser of a report: the page every "back to the sections" goes to (the old overview's place). */
-export const chooserHref = (period = "") => (period ? `/chat?${new URLSearchParams({ period }).toString()}` : "/chat");
+/** The section chooser of a report: the page every "back to the sections" goes to (the old overview's place). A weekly
+ *  report is named by its week alone; any other by its type, period and (companion) edition. */
+export function chooserHref(r: { type?: string; period?: string; kind?: string | null } = {}): string {
+  const q = new URLSearchParams();
+  if (r.type && r.type !== "weekly") q.set("report", r.type);
+  if (r.period) q.set("period", r.period);
+  if (r.type === "companion" && r.kind) q.set("kind", r.kind);
+  return q.size ? `/chat?${q.toString()}` : "/chat";
+}
 
 /**
  * Where the top bar's Back button goes from the page on screen. Each page says so itself (useBack), because most of

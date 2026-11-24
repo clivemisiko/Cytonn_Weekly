@@ -140,7 +140,7 @@ export function mergeEvents(have: RunEvent[], more: RunEvent[]): RunEvent[] {
 
 /** A section's start screen or a saved review of one report (they keep the old overview's address), else its chooser. */
 export function screenHref(report: { type: ReportType; period: string; kind?: string | null }, at: { review?: number | null; section?: string | null } = {}): string {
-  if (at.review == null && !at.section) return chooserHref(report.type === "weekly" ? report.period : "");
+  if (at.review == null && !at.section) return chooserHref(report);
   // Always names the report: an address with none opens the default week, not the unlabelled weekly report.
   const q = new URLSearchParams({ report: report.type });
   if (report.period) q.set("period", report.period);
