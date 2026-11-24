@@ -266,7 +266,7 @@ async function override(key: string) {
             <p class="font-medium">{{ step.label }}</p>
             <p class="text-muted-foreground [overflow-wrap:anywhere]">From the workbook: <span class="text-foreground">{{ bookValue(step) }}</span></p>
             <p v-if="alsoHeld(step)" class="text-xs text-muted-foreground">{{ alsoHeld(step) }}</p>
-            <p v-if="firstOf(step)" class="text-xs text-muted-foreground">The draft uses the workbook's table; one added here is its second reading.</p>
+            <p v-if="firstOf(step)" class="text-xs text-muted-foreground">The draft uses the workbook's fund table and its date; what is added here is their second reading.</p>
           </div>
           <Button variant="outline" class="min-h-11" :disabled="busy !== null" @click="override(step.key)">Override<span class="sr-only">: {{ step.label }}</span></Button>
         </li>
