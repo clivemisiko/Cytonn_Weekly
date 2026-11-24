@@ -170,7 +170,7 @@ test("T146 Real Estate: each sector is a step; an uploaded snip counts until con
   const p = prepare(page);
   const card = inputs(page);
   await expect(p.getByText("Nothing to upload here. The snips are added in the next card.")).toBeVisible();
-  await expect(card.getByText("Step 1 of 4", { exact: true })).toBeVisible();
+  await expect(card.getByText("Step 1 of 6", { exact: true })).toBeVisible();
   await expect(card.getByRole("heading", { name: "Industry reports", level: 3 })).toBeVisible();
   await expect(banner(page)).toHaveText(/^Everything required is in place/);
 

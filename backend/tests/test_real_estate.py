@@ -81,8 +81,9 @@ def test_review_closes_with_reits_and_checks_clean():
     blocks = review.section["blocks"]
     assert review.section["section"] == SECTION
     assert [b["id"] for b in blocks] == ["sector_industry", "industry_closing", "sector_residential", "sector_land",
-                                         "sector_hospitality", "reits_prices", "reits", "standing", "outlook_reits"]
-    assert _reits_block(review)["numeral"] == "VII" and _reits_block(review)["export"] is False
+                                         "sector_hospitality", "sector_mixed_use", "sector_infrastructure", "reits_prices", "reits",
+                                         "standing", "outlook_reits"]
+    assert _reits_block(review)["numeral"] == "IX" and _reits_block(review)["export"] is False
     assert _reits_block(review)["rows"][1] == {"reit": "ACORN_I", "name": "Acorn I-REIT", "price": "24.4", "inception_gain_pct": "22.2%"}
     rows = [i for i in review.review_items if i.kind == TABLE_ROW]
     assert len(rows) == 3 and all(i.status == CLEAN for i in rows)
@@ -114,7 +115,7 @@ def test_reit_gains_are_from_the_unrounded_price_as_cytonn_weekly_45_2026_printe
 def test_each_sector_is_drafted_from_its_own_snips_and_a_quiet_one_is_not_included():
     provider = FakeNarrativeProvider(no_story={"hospitality"})
     review = real_estate_review(provider)
-    assert provider.calls == [b.id for b in SECTOR_BRIEFS]
+    assert provider.calls == [b.id for b in SECTOR_BRIEFS if b.id not in ("mixed_use", "infrastructure")]   # the helper confirms no snip for these
     hospitality = next(b for b in review.section["blocks"] if b["id"] == "sector_hospitality")
     assert hospitality["kind"] == "unavailable" and hospitality["sector"] == "hospitality"
 

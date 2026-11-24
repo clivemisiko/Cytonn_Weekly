@@ -19,12 +19,13 @@ from tests import section_helpers as sh
 
 PERIOD = "Week ending 2026-09-25"
 RESIDENTIAL, INFRASTRUCTURE, COMMERCIAL = "Residential Sector", "Infrastructure Sector", "Commercial Sector"
-INDUSTRY, RES_SECTOR, LAND, HOSPITALITY, REITS = ("Industry reports", "Residential sector", "Land", "Hospitality and Tourism",
-                                                  "REITs")
+INDUSTRY, RES_SECTOR, LAND, HOSPITALITY, MIXED_USE, INFRA, REITS = (
+    "Industry reports", "Residential sector", "Land", "Hospitality and Tourism", "Mixed-use developments", "Infrastructure", "REITs")
 
 
 def _review():
-    """industry, residential, land, then hospitality (no story, so not included), the REITs table, standing text and outlook."""
+    """industry, residential, land, then hospitality (no story), mixed-use and infrastructure (no snip), so those three are not
+    included, then the REITs table, standing text and outlook."""
     review = sh.real_estate_review()
     review.report_type, review.period = "weekly", PERIOD
     return review
@@ -68,7 +69,9 @@ def test_the_weekly_layout_numbers_groups_and_letters_stories_with_reits_last():
         ("sector_residential", "a", f"II. {RES_SECTOR}"),
         ("sector_land", "a", f"III. {LAND}"),
         ("sector_hospitality", "a", f"IV. {HOSPITALITY}"),
-        ("reits_prices", "a", f"V. {REITS}"),
+        ("sector_mixed_use", "a", f"V. {MIXED_USE}"),
+        ("sector_infrastructure", "a", f"VI. {INFRA}"),
+        ("reits_prices", "a", f"VII. {REITS}"),
         ("reits", "b", None),
         ("standing", "c", None),
         ("outlook_reits", "d", None),
@@ -86,9 +89,10 @@ def test_markets_reviews_and_other_sections_are_left_as_they_are():
 
 def test_the_review_screen_gets_group_headings_and_letters():
     blocks = serialize_review(_review())["section"]["blocks"]
-    assert [b["numeral"] for b in blocks] == ["a", "b", "a", "a", "a", "a", "b", "c", "d"]
+    assert [b["numeral"] for b in blocks] == ["a", "b", "a", "a", "a", "a", "a", "a", "b", "c", "d"]
     assert [b.get("group_heading") for b in blocks] == [f"I. {INDUSTRY}", None, f"II. {RES_SECTOR}", f"III. {LAND}",
-                                                        f"IV. {HOSPITALITY}", f"V. {REITS}", None, None, None]
+                                                        f"IV. {HOSPITALITY}", f"V. {MIXED_USE}", f"VI. {INFRA}",
+                                                        f"VII. {REITS}", None, None, None]
     assert blocks[2]["group"] == RES_SECTOR
 
 
@@ -123,10 +127,11 @@ def test_the_export_prints_groups_as_heading_2_and_lettered_stories_as_heading_3
     paras = _paragraphs(_review())
     h2 = [p.text for p in paras if p.style.name == "Heading 2"]
     h3 = [p.text for p in paras if p.style.name == "Heading 3"]
-    assert h2 == [f"I. {INDUSTRY}", f"II. {RES_SECTOR}", f"III. {LAND}", f"IV. {HOSPITALITY}", f"V. {REITS}"]
+    assert h2 == [f"I. {INDUSTRY}", f"II. {RES_SECTOR}", f"III. {LAND}", f"IV. {HOSPITALITY}", f"V. {MIXED_USE}", f"VI. {INFRA}",
+                  f"VII. {REITS}"]
     assert h3 == ["a. Industry reports: a development", "a. Residential sector: a development", "a. Land: a development"]
     text = [p.text for p in paras]
-    reits = text.index(f"V. {REITS}")
+    reits = text.index(f"VII. {REITS}")
     assert text[reits + 1].startswith("Acorn D-REIT closed at Kshs 29.7 per unit, representing a 48.3% gain")   # the paragraph, no table
     assert text[reits + 2].startswith("Source: ") and "REITs weekly performance" not in [p.text for p in paras if p.style.name == "Heading 2"]
     assert not paras[reits]._parent.tables   # the price table is the review screen's, not the Word file's

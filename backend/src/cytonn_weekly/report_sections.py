@@ -204,10 +204,12 @@ SECTIONS: tuple[SectionSpec, ...] = (
     ),
     SectionSpec(
         slug="real_estate", title="Real Estate", available=True, build=_real_estate,
-        subsections=("Industry reports", "Residential sector", "Land", "Hospitality and Tourism", "REITs"),
+        subsections=("Industry reports", "Residential sector", "Land", "Hospitality and Tourism", "Mixed-use developments",
+                     "Infrastructure", "REITs"),
         steps=(
-            ("Your snips", "You upload magazine snips under Industry reports, Residential sector, Land, Hospitality and Tourism "
-                           "and REITs, read each, fix its text and confirm it. Nothing is searched for this section."),
+            ("Your snips", "You upload magazine snips under Industry reports, Residential sector, Land, Hospitality and Tourism, "
+                           "Mixed-use developments and Infrastructure, read each, fix its text and confirm it. Nothing is "
+                           "searched for this section."),
             ("Draft sectors", "Each sector with a confirmed snip is written from that sector's snips alone; one without is left out and named."),
             ("Fetch REITs", "Acorn D-REIT, Acorn I-REIT and ILAM Fahari prices from the NSE Ibuka weekly PDF; the standing REITs "
                             "text is carried from the last saved review."),
