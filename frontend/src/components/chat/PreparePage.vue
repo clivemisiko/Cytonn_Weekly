@@ -15,7 +15,7 @@ import { type Readiness, draftCard, hasDraftWork, parseReadiness, sourceRows, we
 import { useDraftStart } from "@/lib/draftstart";
 import { usePart } from "@/lib/loadpart";
 import { SHOW_CHAT } from "@/lib/features";
-import { type Step, focusProblems, noDocumentsLine, openingStep, plural, prepareCounts, prepareSteps, readFocus, writeFocus } from "@/lib/prepare";
+import { type Step, coveredKeys, focusProblems, noDocumentsLine, openingStep, plural, prepareCounts, prepareSteps, readFocus, splitSteps, writeFocus } from "@/lib/prepare";
 import { MARKS } from "@/lib/railmarks";
 import type { RailState } from "@/lib/shell";
 import { usesSources } from "@/lib/sources";
@@ -45,6 +45,8 @@ const pieces = shallowRef<SourcePiece[] | null>(null);
 const talked = ref(false);
 const shapeProblem = ref<string | null>(null);
 const steps = shallowRef<Step[] | null>(null);
+/** The steps this week's workbook answers, read with the steps and fixed with them. */
+const covered = shallowRef<string[]>([]);
 let rowOrder: string[] = [];
 
 // What the section is made of follows from its data: a form when the readiness check lists typed items, snips when it
@@ -88,6 +90,7 @@ watch(
     form.value = null;
     pieces.value = null;
     steps.value = null;
+    covered.value = [];
     snips.listing.value = null;
     rowOrder = [];
     ({ topic: topic.value, titles: titles.value } = props.section.needs_topic ? readFocus(props.report.period, props.section.slug) : { topic: "", titles: "" });
@@ -114,11 +117,13 @@ watch(
   [readiness, form, snips.listing],
   () => {
     if (steps.value || !readiness.value || (hasForm.value && !form.value) || (readiness.value.snips && !snips.listing.value)) return;
-    steps.value = prepareSteps({ form: form.value, sectors: snips.listing.value?.sectors ?? [], topic: props.section.needs_topic, sources: takesSources.value });
+    const all = prepareSteps({ form: form.value, sectors: snips.listing.value?.sectors ?? [], topic: props.section.needs_topic, sources: takesSources.value });
+    covered.value = coveredKeys(all, form.value);
+    steps.value = all;
   },
   { immediate: true },
 );
-const start = computed(() => (steps.value && counts.value ? openingStep(steps.value, counts.value.missing, props.openOn) : 0));
+const start = computed(() => (steps.value && counts.value ? openingStep(splitSteps(steps.value, covered.value).shown, counts.value.missing, props.openOn) : 0));
 const sectorOf = (key: string) => snips.bySector.value.find((s) => `snips:${s.id}` === key);
 
 // ---- Card 1: source documents, in the order first seen ----
@@ -302,6 +307,7 @@ const mark = computed(() => MARKS[props.state ?? "unknown"]);
         v-if="steps"
         :key="`${section.slug} ${report.period}`"
         :steps="steps"
+        :covered="covered"
         :form="form"
         :week="week"
         :section="section.slug"

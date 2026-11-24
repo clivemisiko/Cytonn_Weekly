@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Readiness } from "./chatcards";
-import { focusProblems, itemSteps, noDocumentsLine, openingStep, prepareCounts, prepareSteps, readFocus, stepIndex, writeFocus } from "./prepare";
+import { coveredKeys, focusProblems, itemSteps, noDocumentsLine, openingStep, prepareCounts, prepareSteps, readFocus, splitSteps, stepIndex, writeFocus } from "./prepare";
 import type { AnalystForm, SnipMeta, SnipsListing, SourcePiece } from "./types";
 
 const field = (key: string, kind = "number") => ({ type: "field", key, label: `Fake ${key}`, kind }) as never;
@@ -102,4 +102,102 @@ describe("a carried item the uploaded workbook holds (the API reports it as the 
       expect(c.missing).toEqual(["waits"]);
     });
   }
+});
+
+describe("inputs this week's workbook already answers", () => {
+  const book = (key: string, value: string | null, extra: object = {}) =>
+    ({ type: "field", key, label: `Fake ${key}`, kind: "number", value: null, workbook: value === null ? null : { value, ref: "Fake!B2" }, workbook_stale: null, differences: [], carried: null, needs_confirmation: false, ...extra }) as never;
+  const rows = (key: string, columns: string[], got: Record<string, string>[] | null, extra: object = {}) =>
+    ({ type: "table", key, label: `Fake ${key}`, mode: "grid", columns: columns.map((c) => ({ key: c })), fixed_rows: [], rows: null, workbook_rows: got, workbook_ref: got ? "Fake 'Sheet'" : null, workbook_stale: null, differences: [], carried: null, needs_confirmation: false, ...extra }) as never;
+  const stale = { workbook_stale: { note: "dated another week", found: "2031-01-02", expected: ["2031-01-09"] } };
+  // Each section's form as the API would send it for a week whose workbook is uploaded; the three without a form have none.
+  const SECTIONS: { slug: string; form: AnalystForm | null; covered: string[] }[] = [
+    {
+      slug: "fixed_income",
+      form: form(
+        book("placements", "9.5"),
+        book("liquidity_driver", null),
+        book("borrowing_target", null),
+        rows("eurobond_issues", ["amount_mn", "maturity", "yield_at_issue"], [{ row: "a", amount_mn: "1,000", maturity: "2031-02-28" }]),
+        rows("borrowing_redemptions", ["bond", "amount"], null),
+        rows("mmf", ["rank", "fund", "rate"], [{ rank: "1", fund: "Fake Fund", rate: "9.9" }], { workbook_first: true }),
+        book("mmf_published", "2031-01-02", { kind: "date" }),
+        book("mmf_source", null, { kind: "text" }),
+      ),
+      covered: ["placements", "fund", "mmf_published"],
+    },
+    { slug: "equities", form: form(book("large_caps", "Fake Bank", { kind: "names" }), book("pe", "6.1"), book("universe_month_end", null, { kind: "date" })), covered: ["large_caps", "pe"] },
+    { slug: "real_estate", form: null, covered: [] },
+    { slug: "digital_payments", form: null, covered: [] },
+    { slug: "focus", form: null, covered: [] },
+  ];
+  const stepsOf = (f: AnalystForm | null) => prepareSteps({ form: f, sectors: [], topic: false, sources: true });
+
+  for (const s of SECTIONS) {
+    it(`${s.slug}: what the workbook holds leaves the step-through, and the count is of what is left`, () => {
+      const all = stepsOf(s.form);
+      const covered = coveredKeys(all, s.form);
+      expect(covered).toEqual(s.covered);
+      const { shown, folded } = splitSteps(all, covered);
+      expect(folded.map((x) => x.key)).toEqual(s.covered);
+      expect(shown.map((x) => x.key)).toEqual(all.map((x) => x.key).filter((k) => !s.covered.includes(k)));
+      expect(shown.length).toBe(all.length - s.covered.length); // the "Step n of N" count
+    });
+
+    it(`${s.slug}: overridden, an input goes back into the step-through in its own place`, () => {
+      const all = stepsOf(s.form);
+      const covered = coveredKeys(all, s.form);
+      for (const key of covered) {
+        const { shown, folded } = splitSteps(all, covered, [key]);
+        expect(folded.map((x) => x.key)).not.toContain(key);
+        expect(shown.map((x) => x.key)).toEqual(all.map((x) => x.key).filter((k) => k === key || !covered.includes(k)));
+      }
+    });
+
+    it(`${s.slug}: with no workbook, or one for another week, nothing is folded and the steps are today's`, () => {
+      const strip = (f: AnalystForm | null, more: object) =>
+        f && ({ groups: f.groups.map((g) => ({ ...g, items: g.items.map((i) => ({ ...i, ...(i.type === "field" ? { workbook: null } : { workbook_rows: null, workbook_ref: null }), ...more })) })) } as AnalystForm);
+      for (const f of [strip(s.form, {}), strip(s.form, stale)]) {
+        const all = stepsOf(f);
+        expect(coveredKeys(all, f)).toEqual([]);
+        expect(splitSteps(all, coveredKeys(all, f)).shown).toEqual(all);
+      }
+    });
+
+    it(`${s.slug}: the banner, the readiness check and the step count agree`, () => {
+      const all = stepsOf(s.form);
+      const covered = coveredKeys(all, s.form);
+      const { shown } = splitSteps(all, covered);
+      // the readiness route's grouping of the same form: a workbook value is in place, an empty required one is missing
+      const items = (s.form?.groups ?? []).flatMap((g) => g.items);
+      const held = (i: (typeof items)[number]) => (i.type === "field" ? !!i.workbook : !!i.workbook_rows?.length);
+      const entry = (i: (typeof items)[number]) => ({ kind: i.type, key: i.key, label: i.label, why: "fake" });
+      const c = prepareCounts(readiness({ in_place: items.filter(held).map(entry), needs_analyst: items.filter((i) => !held(i)).map(entry) }), {});
+      expect(c.required).toBe(items.filter((i) => !held(i)).length);
+      for (const key of c.missing) expect(covered).not.toContain(key === "mmf" ? "fund" : key);
+      const stepKeys = shown.map((x) => x.key);
+      for (const key of c.missing) if (all.some((x) => x.key === key)) expect(stepKeys).toContain(key);
+      expect(openingStep(shown, c.missing)).toBe(Math.max(stepKeys.findIndex((k) => c.missing.includes(k)), 0));
+    });
+  }
+
+  it("a table the workbook fills only in part stays a step (the Eurobond issues have no yield at issue in it)", () => {
+    const f = form(rows("eurobond_issues", ["amount_mn", "yield_at_issue"], [{ row: "a", amount_mn: "1,000" }]));
+    expect(coveredKeys(stepsOf(f), f)).toEqual([]);
+    const full = form(rows("eurobond_issues", ["amount_mn", "yield_at_issue"], [{ row: "a", amount_mn: "1,000" }, { row: "b", yield_at_issue: "7.0" }]));
+    expect(coveredKeys(stepsOf(full), full)).toEqual(["eurobond_issues"]);
+  });
+
+  it("a value still waiting to be confirmed is never folded away", () => {
+    const f = form(book("placements", "9.5", { needs_confirmation: true, value: "9.0" }));
+    expect(coveredKeys(stepsOf(f), f)).toEqual([]);
+  });
+
+  it("a typed override is folded with the workbook's value and its own origin; the typed value is the API's to use", async () => {
+    const { fieldOrigin, originLabel } = await import("./analyst");
+    const typed = book("placements", "9.5", { value: "9.75", differences: ["typed as 9.75%, but the workbook has 9.5%. The typed value is used."] });
+    const f = form(typed);
+    expect(coveredKeys(stepsOf(f), f)).toEqual(["placements"]);
+    expect(originLabel(fieldOrigin(typed as never), null, undefined, true)).toBe("Typed, differs from the workbook");
+  });
 });
