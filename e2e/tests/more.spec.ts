@@ -198,7 +198,8 @@ test("T22 weekly Digital Payments: its own review shape (highlights, the stock t
   const outlook = draft.getByRole("region", { name: "Outlook" }).or(draft.locator('section[aria-label="Outlook"]'));
   await expect(outlook.locator("dl > div").first()).toBeVisible();
   // Its review items are the Digital Payments kinds.
-  await page.getByRole("button", { name: /Clean \(\d+\)$/ }).click();
+  // Show every item: pressing the pressed tile clears the filter.
+  await page.getByRole("group", { name: "Review items by status" }).getByRole("button", { pressed: true }).click();
   const items = page.locator("li[data-status]");
   await expect(items.filter({ hasText: "Table row" }).first()).toBeVisible();
   await expect(items.filter({ hasText: "Outlook stat" }).first()).toBeVisible();
@@ -228,7 +229,7 @@ test("T23 rejecting a section is final: the dialog, the locked review, the overv
   await expect(dialog).toBeHidden();
 
   await expect(page.getByText("Rejected and locked")).toBeVisible();
-  await expect(page.getByText(/Decision recorded on .* EAT\. This section is finalized and locked for editing\./)).toBeVisible();
+  await expect(page.getByText("Review controls are unavailable while this section is locked.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Approve", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Reject", exact: true })).toHaveCount(0);
   // Still rejected when opened again by its address.

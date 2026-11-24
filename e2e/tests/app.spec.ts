@@ -382,21 +382,18 @@ test("T12 Fixed Income: run view steps to done, review lists the three statuses,
   await page.getByRole("link", { name: "Open review" }).click();
 
   await expect(page.getByRole("heading", reviewHeading("Fixed Income"))).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Review items", level: 2 })).toBeVisible();
-  const flaggedHead = page.getByRole("button", { name: /^! Flagged by the checker \(\d+\)$|^Flagged by the checker \(\d+\)$/ });
-  const unverifiedHead = page.getByRole("button", { name: /Not automatically verified \(\d+\)$/ });
-  const cleanHead = page.getByRole("button", { name: /Clean \(\d+\)$/ });
-  await expect(flaggedHead).toHaveAttribute("aria-expanded", "true");
-  await expect(unverifiedHead).toHaveAttribute("aria-expanded", "true");
-  await expect(cleanHead).toHaveAttribute("aria-expanded", "false"); // coverage, not work: starts closed
+  await expect(page.getByRole("heading", { name: /Review items/, level: 2 })).toBeVisible();
+  const flaggedTile = tiles.getByRole("button", { name: /Flagged/ });
+  await expect(flaggedTile).toHaveAttribute("aria-pressed", "true"); // flagged items exist, so the list opens on them
   const flagged = page.locator('li[data-status="flagged"]');
   const unverified = page.locator('li[data-status="not_auto_verified"]');
   const clean = page.locator('li[data-status="clean"]');
   expect(await flagged.count()).toBeGreaterThan(0);
-  expect(await unverified.count()).toBeGreaterThan(0);
+  await expect(unverified).toHaveCount(0);
   await expect(clean).toHaveCount(0);
-  await cleanHead.click();
-  await expect(cleanHead).toHaveAttribute("aria-expanded", "true");
+  await flaggedTile.click(); // pressing the pressed tile shows every item
+  await expect(flaggedTile).toHaveAttribute("aria-pressed", "false");
+  expect(await unverified.count()).toBeGreaterThan(0);
   expect(await clean.count()).toBeGreaterThan(0);
   await expect(flagged.first()).toContainText("Flagged");
   await expect(unverified.first()).toContainText("Not auto-verified");
@@ -435,7 +432,7 @@ test("T13 Equities: run to done and its review opens with items", async ({ page 
   await page.getByRole("link", { name: "Open review" }).click();
   await expect(page.getByRole("heading", reviewHeading("Equities"))).toBeVisible();
   expect(await page.locator("li[data-status]").count()).toBeGreaterThan(0);
-  await expect(page.getByRole("button", { name: /Flagged by the checker \(\d+\)$/ })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Review items by status" }).getByRole("button", { name: /Flagged/ })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeEnabled(); // one decision for the whole section, asked for once it is read
   await expect(page.getByRole("button", { name: "Reject", exact: true })).toBeEnabled();
 });
