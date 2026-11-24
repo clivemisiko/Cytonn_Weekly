@@ -57,7 +57,7 @@ function sectionFromUrl(): string | null {
 }
 
 /** The chosen report in the address bar, without a history entry. */
-function reportToUrl(next: ReportChoice, reviewId: number | null = null, sectionSlug: string | null = null) {
+function reportToUrl(next: ReportChoice, reviewId: number | null = null, sectionSlug: string | null = null, focus: string | null = null) {
   // The report is always written, the unlabelled weekly one as ?report=weekly: an address with none opens the default week.
   const query: Record<string, string> = { report: next.type };
   if (next.period) query.period = next.period;
@@ -66,6 +66,7 @@ function reportToUrl(next: ReportChoice, reviewId: number | null = null, section
     query.review = String(reviewId);
   } else if (sectionSlug !== null) {
     query.section = sectionSlug;
+    if (focus) query.focus = focus; // read once by the start screen ("Add this input" on a review item)
   }
   void router.replace({ path: route.path, query });
 }
@@ -257,7 +258,7 @@ const key = computed(() => {
         :initial="phase.review"
         @close="home"
         @open="(next) => (reportToUrl(report, next.run_id), set({ name: 'review', review: next }))"
-        @redraft="async (slug) => (reportToUrl(report, null, slug), set(await fetchStart(slug)))"
+        @redraft="async (slug, focus) => (reportToUrl(report, null, slug, focus ?? null), set(await fetchStart(slug)))"
       />
     </main>
   </Transition>

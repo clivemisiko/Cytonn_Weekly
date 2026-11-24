@@ -26,7 +26,7 @@ from typing import Any, Optional
 
 from cytonn_weekly.charts import store as chart_store
 from cytonn_weekly.review.blocks import COMPUTED_FIGURE, UNAVAILABLE_PART, build_review, check_section, numbered
-from cytonn_weekly.review.model import TABLE_ROW, CoordinatorReview, ReviewItem
+from cytonn_weekly.review.model import TABLE_ROW, WORKBOOK_QUARTER, CoordinatorReview, ReviewItem
 from cytonn_weekly.weekly import inputs as wi
 from cytonn_weekly.weekly.week import Week
 
@@ -99,6 +99,58 @@ def fix_slots(section: str, content: dict[str, Any], item: ReviewItem) -> list[s
     for e in entries[1:]:
         slots &= set(e.slots)
     return [s for s in entries[0].slots if s in slots]
+
+
+# The form fields and tables (weekly/analyst.py FIELDS, TABLES) whose absence makes a block unavailable: the keys each
+# builder passes to ``Analyst.why()`` for that block.  A test pins every prefix against the builders and every key.
+FORM_PANEL, INPUTS_PANEL, SNIPS_PANEL = "analyst-form", "inputs-panel", "snips"   # the start screen's data-attention targets
+FIELD_MAP: dict[str, dict[str, tuple[str, ...]]] = {
+    FIXED_INCOME: {"money_market": ("mmf", "placements"), "borrowing": ("borrowing_target", "borrowing_log")},
+    EQUITIES: {"large_caps": ("large_caps",), "valuation": ("pe", "pe_average", "dividend_yield", "dividend_yield_average"),
+               "universe_of_coverage": ("universe", "universe_month_end")},
+}
+_TYPED_ON_FORM = "typed on the weekly form ("
+
+
+def _typed_keys(item: ReviewItem) -> list[str]:
+    """The form keys of an item's typed inputs: the input's own name when it is a key, else the label its origin names."""
+    from cytonn_weekly.common.computed import ANALYST
+    from cytonn_weekly.weekly.analyst import FIELDS, TABLES
+
+    by_label = {spec.label.lower(): k for k, spec in {**TABLES, **FIELDS}.items()}
+    keys: list[str] = []
+    for name, given in ((item.context or {}).get("inputs") or {}).items():
+        if not isinstance(given, dict) or given.get("origin") != ANALYST or _TYPED_ON_FORM not in str(given.get("source", "")):
+            continue
+        source = str(given["source"])
+        what = source.split(_TYPED_ON_FORM, 1)[1].split(";", 1)[0].strip().lower()
+        key = name if name in FIELDS or name in TABLES else by_label.get(what)
+        if key and key not in keys:
+            keys.append(key)
+    return keys
+
+
+def fix_inputs(section: str, content: dict[str, Any], item: ReviewItem) -> list[dict[str, str]]:
+    """Where on the start screen this item is fixed: [{"panel", "key"}], a form item, an upload slot or a snip sector.
+
+    Empty for a clean item and for anything an input cannot fix (a claim, an OCR reading, a fetched figure).
+    """
+    if item.status == "clean":
+        return []
+    if section == "digital_payments":
+        return [{"panel": INPUTS_PANEL, "key": wi.DP_WORKBOOK}] if item.kind == WORKBOOK_QUARTER else []
+    if item.kind == UNAVAILABLE_PART and section == "real_estate":
+        return [{"panel": SNIPS_PANEL, "key": b["sector"]} for b in _blocks_of(content, item) if b.get("sector")][:1]
+    if section not in FIELD_MAP:
+        return []
+    if item.kind == UNAVAILABLE_PART:
+        keys = [k for b in _blocks_of(content, item)
+                for prefix, ks in FIELD_MAP[section].items() if b["id"] == prefix or b["id"].startswith(prefix + "_") for k in ks]
+    elif item.kind in (TABLE_ROW, COMPUTED_FIGURE):
+        keys = _typed_keys(item)
+    else:
+        keys = []
+    return [{"panel": FORM_PANEL, "key": k} for k in dict.fromkeys(keys)]
 
 
 class OfflineGuard(Exception):

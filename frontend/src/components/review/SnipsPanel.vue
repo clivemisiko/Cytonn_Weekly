@@ -36,7 +36,7 @@ const note = computed(() => (listing.value ? unconfirmedNote(listing.value) : nu
     <Notice v-for="w in listing?.warnings ?? []" :key="w" tone="warn" role="status">{{ w }}</Notice>
     <p v-if="!listing && !error" role="status" class="text-sm text-muted-foreground">Reading the saved snips…</p>
 
-    <div v-for="sec in bySector" :key="sec.id" class="space-y-3 border-t pt-4">
+    <div v-for="sec in bySector" :key="sec.id" :data-attention-key="sec.id" class="space-y-3 border-t pt-4">
       <SnipSector :sec="sec" :snips="snips" :week="week" :disabled="disabled" />
     </div>
   </section>

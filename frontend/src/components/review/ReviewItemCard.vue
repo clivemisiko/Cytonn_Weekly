@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { PhArrowSquareOut, PhCaretDown, PhPencilSimple, PhWarning } from "@phosphor-icons/vue";
+import { PhArrowSquareOut, PhCaretDown, PhPencilSimple, PhPlus, PhWarning } from "@phosphor-icons/vue";
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "reka-ui";
 import { computed, inject } from "vue";
+import Button from "@/components/ui/Button.vue";
+import { FIX_THIS } from "@/lib/attention";
 import { KIND_LABELS, friendlyTime, pyRepr } from "@/lib/format";
 import { READ_ONLY } from "@/lib/previous";
+import { FIX_APPROVED_NOTE } from "@/lib/redraft";
 import { ADDED_BY_ANALYST, NEWS_SITE, TEXT_FROM_SEARCH, claimSource, sourcePageHref } from "@/lib/sources";
 import type { Flag, Review, ReviewItem } from "@/lib/types";
 import EditSentence from "./EditSentence.vue";
@@ -52,6 +55,25 @@ const cells = (flag: Flag): [string, string][] => [
   ["Expected (normalized source)", flag.expected ?? "None"],
   ["Source value", pyRepr(flag.source_value)],
 ];
+// "Add this input": offered only where the review screen provides the way to the start screen, never read-only.
+const fixThis = inject(FIX_THIS, null);
+const fixInput = computed(() => (readOnly || !fixThis ? null : (props.item.fix_inputs?.[0] ?? null)));
+const isSafe = (url: string | undefined | null): url is string => !!url && /^https?:\/\//.test(url);
+// A figure read by OCR alone: the page it was read from, by the address its check hint names.
+const ocrHref = computed(() => {
+  for (const [, input] of inputs.value) {
+    if (input.origin !== "ocr" || input.second) continue;
+    const url = input.check?.match(/https?:\/\/[^\s)]+/)?.[0];
+    if (isSafe(url)) return url;
+  }
+  return null;
+});
+// Items that need a check, not an input: open what to check against (a claim's saved text, an OCR figure's page).
+const openSourceHref = computed(() => {
+  if (props.item.status === "clean" || fixInput.value) return null;
+  if (source.value) return sourcePageHref(source.value.id, source.value.quote, props.review.run_id);
+  return safeUrl.value ? null : ocrHref.value; // a safe url already has the Source check card's "Open source"
+});
 const sourceHref = computed(() => (source.value ? sourcePageHref(source.value.id, source.value.quote, props.review.run_id) : safeUrl.value));
 </script>
 
@@ -207,6 +229,22 @@ const sourceHref = computed(() => (source.value ? sourcePageHref(source.value.id
       </CollapsibleContent>
     </CollapsibleRoot>
 
+    <div v-if="fixInput || openSourceHref" class="space-y-1">
+      <Button v-if="fixInput" size="sm" @click="fixThis?.(fixInput)">
+        <PhPlus weight="bold" data-icon="inline-start" aria-hidden="true" />Add this input
+      </Button>
+      <a
+        v-else-if="openSourceHref"
+        :href="openSourceHref"
+        target="_blank"
+        rel="noopener noreferrer"
+        data-testid="item-open-source"
+        class="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        Open source<PhArrowSquareOut weight="bold" class="size-4" aria-hidden="true" />
+      </a>
+      <p v-if="fixInput && review.locked" class="text-xs text-muted-foreground">{{ FIX_APPROVED_NOTE }}</p>
+    </div>
     <p v-if="oldMark" class="text-xs text-muted-foreground [overflow-wrap:anywhere]">{{ oldMark }}</p>
     <div v-if="!readOnly && (item.fix_slots?.length || item.edit_sentence || item.edit_paragraph || item.remove_finding)" class="flex flex-wrap items-center gap-2">
       <FixFromFile :review="review" :item="item" />

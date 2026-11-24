@@ -142,7 +142,7 @@ const hasBook = computed(() => form.value?.workbooks[props.section] ?? false);
         class="space-y-4 border-t pt-4 first-of-type:border-t-0 first-of-type:pt-0"
       >
         <h3 :id="`analyst-group-${group.key}`" class="eyebrow">{{ group.title }}</h3>
-        <template v-for="item in group.items" :key="item.key">
+        <div v-for="item in group.items" :key="item.key" :data-attention-key="item.key" class="scroll-mt-28 rounded-md">
           <FieldRow
             v-if="item.type === 'field'"
             :key="`${item.key}:${asText(item.value)}`"
@@ -172,7 +172,7 @@ const hasBook = computed(() => form.value?.workbooks[props.section] ?? false);
             @dirty="(d) => mark(item.key, d)"
             @save="(rows) => save(item.key, { tables: { [item.key]: rows === null ? null : { rows } } })"
           />
-        </template>
+        </div>
       </section>
     </template>
   </section>

@@ -2,6 +2,7 @@
 import { PhArrowLeft, PhLockSimple } from "@phosphor-icons/vue";
 import { computed, provide, ref, watch } from "vue";
 import Button from "@/components/ui/Button.vue";
+import { FIX_THIS } from "@/lib/attention";
 import { OPEN_REVIEW, lastRecheck } from "@/lib/fixfile";
 import { lastSentence } from "@/lib/sentence";
 import { STATUS_ORDER, friendlyTime, weekRange } from "@/lib/format";
@@ -22,10 +23,12 @@ import SentenceResult from "./SentenceResult.vue";
 import StatusBar from "./StatusBar.vue";
 
 const props = defineProps<{ initial: Review; readOnly?: boolean }>();
-const emit = defineEmits<{ close: []; open: [review: Review]; redraft: [slug: string] }>();
+const emit = defineEmits<{ close: []; open: [review: Review]; redraft: [slug: string, focus?: string] }>();
 // A card that fixed an item from a file hands the new review up, and the page shows it in this one's place.
 provide(OPEN_REVIEW, (next: Review) => emit("open", next));
 provide(READ_ONLY, props.readOnly ?? false);
+// "Add this input" on an item: the section's start screen, at that input. Never offered on a read-only review.
+if (!props.readOnly) provide(FIX_THIS, ({ panel, key }) => emit("redraft", props.initial.section_slug, `${panel}:${key}`));
 const recheck = computed(() => (lastRecheck.value?.runId === props.initial.run_id ? lastRecheck.value.result : null));
 const sentence = computed(() => (lastSentence.value?.runId === props.initial.run_id ? lastSentence.value.result : null));
 

@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { DRAFT, VARIANT, openStart, overviewUrl, release, reviewHeading } from "./helpers";
+import { DRAFT, PERIOD, VARIANT, openStart, overviewUrl, release, reviewHeading, screenUrl } from "./helpers";
 
 /**
  * T87 to T98: what the page does when an action fails with a named problem (frontend/src/lib/attention.ts). A whole
@@ -218,4 +218,14 @@ test("T98 an export the API refuses: the error is beside the export in the choos
   await expect(panel.getByText(NOT_READY)).toHaveCount(1); // the aside does not fold, so the error stays with its button
   await expect(page.getByText(NOT_READY, { exact: true })).toHaveCount(1);
   await expect(notice).toBeInViewport();
+});
+
+test("T157 goToKey: a start-screen input named by its key is highlighted, scrolled into view, and its first control focused", async ({ page }) => {
+  await page.goto(`${screenUrl(PERIOD)}&section=digital_payments&focus=${encodeURIComponent("inputs-panel:dp_workbook")}`);
+  const slot = page.locator('[data-attention="inputs-panel"] [data-attention-key="dp_workbook"]');
+  await expect(slot).toHaveAttribute("data-attention-on", "");
+  await expect(slot).toBeInViewport();
+  expect(await slot.evaluate((el) => el.contains(document.activeElement))).toBe(true);
+  // Only the named input is marked.
+  await expect(page.locator("[data-attention-key][data-attention-on]")).toHaveCount(1);
 });

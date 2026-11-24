@@ -105,6 +105,7 @@ test("T122 Start draft shows the steps as they happen, then the review summary j
   await expect(full.getByText("Nothing can be changed here.")).toBeVisible();
   await expect(full.getByRole("heading", { name: "Review items" })).toBeVisible();
   await expect(full.getByRole("button", { name: /^(Approve|Reject|Edit this sentence|Remove|Fix|Save)/ })).toHaveCount(0);
+  await expect(full.getByRole("button", { name: "Add this input" })).toHaveCount(0); // the full view is read-only
   await full.getByRole("button", { name: "Close the full view" }).click();
   await expect(full).toHaveCount(0);
 
