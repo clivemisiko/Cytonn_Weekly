@@ -3,7 +3,7 @@ import { computed, ref, watch } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import { FIELD } from "@/components/ui/button";
-import { asText, fieldOrigin, originLabel, range } from "@/lib/analyst";
+import { asText, fieldOrigin, inWorkbook, originLabel, range } from "@/lib/analyst";
 import { friendlyDate } from "@/lib/format";
 import type { AnalystField } from "@/lib/types";
 import ConfirmBox from "./ConfirmBox.vue";
@@ -35,7 +35,7 @@ const commit = () => {
   <div class="space-y-1">
     <div class="flex flex-wrap items-center gap-2">
       <label :for="id" class="text-sm font-semibold">{{ item.label }}</label>
-      <OriginChip :origin="origin">{{ originLabel(origin, item.carried) }}</OriginChip>
+      <OriginChip :origin="origin">{{ originLabel(origin, item.carried, undefined, inWorkbook(item)) }}</OriginChip>
     </div>
     <Textarea
       v-if="item.kind === 'names'"
@@ -81,9 +81,15 @@ const commit = () => {
       <p v-if="item.help" class="text-xs text-muted-foreground">{{ item.help }}</p>
       <SourceLine :source="item.source" :used-in="item.used_in" :expected="range(item.min, item.max, item.unit)" />
       <p v-if="origin === 'workbook' && item.workbook" class="text-xs text-muted-foreground">
-        Read from <span class="font-mono [overflow-wrap:anywhere]">{{ item.workbook.ref }}</span>. Type a value to use yours instead.
+        Read from <span class="font-mono [overflow-wrap:anywhere]">{{ item.workbook.ref }}</span>.
+        {{ item.workbook_first ? "The workbook's value is used." : "Type a value to use yours instead." }}
       </p>
-      <p v-if="item.workbook_note && !saved" class="text-xs text-warn-fg">{{ item.workbook_note }}</p>
+      <p v-else-if="origin === 'second' && item.workbook" class="text-xs text-muted-foreground">
+        Read from <span class="font-mono [overflow-wrap:anywhere]">{{ item.workbook.ref }}</span>. The workbook's value is used; the value
+        here is its second reading.
+      </p>
+      <p v-if="item.workbook_stale" class="text-xs text-warn-fg">{{ item.workbook_stale.note }}</p>
+      <p v-else-if="item.workbook_note && !saved" class="text-xs text-warn-fg">{{ item.workbook_note }}</p>
     </div>
     <ConfirmBox v-if="item.needs_confirmation" :carried="item.carried" :label="item.label" :disabled="disabled" @confirm="emit('confirm')" />
     <Differences :lines="item.differences" />

@@ -1,8 +1,12 @@
 import { friendlyDate } from "./format";
 import type { AnalystCarried, AnalystColumn, AnalystField, AnalystRow, AnalystTable } from "./types";
 
-/** Where an item's value comes from: typed here, the uploaded workbook, both and different, or nowhere. */
-export type Origin = "typed" | "differs" | "workbook" | "empty" | "carried" | "unconfirmed";
+/**
+ * Where an item's value comes from: typed here, the uploaded workbook, both and different, or nowhere.
+ * "second": the workbook's value is used and what the form holds is its second reading (the fund table).
+ * "stale": nothing is typed and the workbook holds the item, but for another week.
+ */
+export type Origin = "typed" | "differs" | "workbook" | "second" | "stale" | "empty" | "carried" | "unconfirmed";
 
 export const range = (min: number | null, max: number | null, unit: string) =>
   min === null || max === null ? "" : `${min.toLocaleString()} to ${max.toLocaleString()}${unit === "%" || unit === "x" ? unit : unit ? ` ${unit}` : ""}`;
@@ -25,31 +29,46 @@ export const header = (col: AnalystColumn) => (col.unit ? `${col.label} (${col.u
 
 export function fieldOrigin(item: AnalystField): Origin {
   if (item.needs_confirmation) return "unconfirmed";
-  if (asText(item.value)) return item.differences.length ? "differs" : item.carried ? "carried" : "typed";
-  return asText(item.workbook?.value) ? "workbook" : "empty";
+  const inBook = !!asText(item.workbook?.value);
+  if (asText(item.value)) return item.workbook_first && inBook ? "second" : item.differences.length ? "differs" : item.carried ? "carried" : "typed";
+  return inBook ? "workbook" : item.workbook_stale ? "stale" : "empty";
 }
 
 export const tableOrigin = (item: AnalystTable): Origin =>
   item.needs_confirmation
     ? "unconfirmed"
     : item.rows?.length
-      ? item.differences.length
-        ? "differs"
-        : item.carried?.whole
-          ? "carried"
-          : "typed"
+      ? item.workbook_first && item.workbook_rows?.length
+        ? "second"
+        : item.differences.length
+          ? "differs"
+          : item.carried?.whole
+            ? "carried"
+            : "typed"
       : item.workbook_rows?.length
         ? "workbook"
-        : "empty";
+        : item.workbook_stale
+          ? "stale"
+          : "empty";
 
-/** The chip's words. `rows` is "12 rows" for a table and absent for a field. */
-export function originLabel(origin: Origin, carried: AnalystCarried | null, rows?: string): string {
+/** Whether the uploaded workbook holds a value for the item this week. */
+export const inWorkbook = (item: AnalystField | AnalystTable) =>
+  item.type === "table" ? !!item.workbook_rows?.length : !!asText(item.workbook?.value);
+
+/**
+ * The chip's words. `rows` is "12 rows" for a table and absent for a field. `alsoInBook` says, beside a typed or carried
+ * value, that the uploaded workbook holds the item too (the typed value is still the one used).
+ */
+export function originLabel(origin: Origin, carried: AnalystCarried | null, rows?: string, alsoInBook = false): string {
   const n = rows ? `, ${rows}` : "";
+  const also = alsoInBook ? ", also in the workbook" : "";
   if (origin === "unconfirmed" && carried) return `${capital(cameFrom(carried))}${n}, not confirmed`;
-  if (origin === "carried" && carried) return `${capital(cameFrom(carried))}${n}`;
-  if (origin === "typed") return `Typed${n}`;
+  if (origin === "carried" && carried) return `${capital(cameFrom(carried))}${n}${also}`;
+  if (origin === "typed") return `Typed${n}${also}`;
   if (origin === "differs") return `Typed${n}, differs from the workbook`;
   if (origin === "workbook") return `From the workbook${n}`;
+  if (origin === "second") return `From the workbook${n}; the form's value is its second reading`;
+  if (origin === "stale") return "In the workbook, but for another week";
   return "Empty";
 }
 

@@ -107,6 +107,12 @@ SUGGESTED = "suggested"
 FETCHED = "fetched"
 SNIP = "snip"   # a fund table read from a Daily Nation snip and confirmed by the analyst (weekly/fund_snip.py)
 
+# The money market fund table only: when the uploaded fixed income workbook holds an accepted table for the week (its
+# title dated this week's Friday or as-at day), the draft uses the workbook's table, and a table on the form (pasted, or
+# confirmed from a Daily Nation snip) is its second reading.  False restores "typed wins" for the fund table: a form
+# table replaces the workbook's whole and the workbook's rates are its second reading, as for every other item.
+MMF_WORKBOOK_FIRST = True
+
 # The names the Universe of Coverage uses and the tickers KCB IB's weekly report lists them under.  Checked against
 # the report and the workbook of 2 October 2026: the report's price equals the workbook's for all thirteen.
 COVERAGE_TICKERS = {"co-op bank": "COOP", "ncba": "NCBA", "kcb group": "KCB", "absa bank": "ABSA",
@@ -387,6 +393,18 @@ class Reading:
     @property
     def a1(self) -> str:
         return self.source
+
+
+@dataclass(frozen=True)
+class Booked(Cell):
+    """A fixed income workbook cell used ahead of a value on the form (MMF_WORKBOOK_FIRST); the form's value rides along
+    as its second reading, so ``prose.typed`` makes a difference a "sources disagree" flag."""
+
+    other: Optional[Any] = None
+
+    @property
+    def source(self) -> str:
+        return f"analyst input from {fi_workbook.SOURCE_NAME} {self.ref}"
 
 
 def is_typed(cell: Any) -> bool:
@@ -1037,6 +1055,7 @@ class Analyst:
         self.stored = read_form(inputs.week, inputs.root)
         self.form = usable_form(self.stored)             # a carried or suggested value is read only once confirmed
         self.errors: dict[str, str] = {}             # workbook reading -> why it could not be read
+        self.stale: dict[str, dict[str, Any]] = {}   # workbook reading -> {note, found, expected}: held, but for another week
         self.incomplete: dict[str, str] = {}         # item -> what is typed for it but cannot be used yet
         self.differences: list[dict[str, str]] = []  # {"item", "text"}
         self._memo: dict[str, Any] = {}
@@ -1061,6 +1080,9 @@ class Analyst:
                 return read(book)
             except WorkbookError as exc:
                 self.errors[name] = str(exc)
+                if isinstance(exc, fi_workbook.WorkbookWeekError):
+                    self.stale[name] = {"note": str(exc), "found": exc.found.isoformat() if exc.found else None,
+                                        "expected": [d.isoformat() for d in exc.expected]}
                 return None
 
         return self._once(f"wb:{name}", load)
@@ -1095,9 +1117,9 @@ class Analyst:
         if key in ("mmf_source", "liquidity_driver"):
             return None
         if key == "placements":
-            return self._read(FI, key, fi_workbook.read_placements)
+            return self._read(FI, key, lambda b: fi_workbook.read_placements(b, self.week))
         if key == "cmmf_last_week":
-            return self._read(FI, key, fi_workbook.read_mmf_last_week)
+            return self._read(FI, key, lambda b: fi_workbook.read_mmf_last_week(b, self.week))
         if key == "mmf_published":
             table = self.wb_mmf()
             return None if table is None else Cell(table["published"], table["title_cell"].sheet, table["title_cell"].row,
@@ -1201,6 +1223,13 @@ class Analyst:
             spec, raw, wb = FIELDS[key], self.form["fields"].get(key), self.wb_field(key)
             if raw is None:
                 return wb
+            if key == "mmf_published" and self.mmf_workbook_first():
+                # the fund table's own date: with the workbook's table in use, the workbook's date goes with it
+                if wb.day is not None and raw != wb.day.isoformat():
+                    self.differences.append({"item": key, "text": (
+                        f"{spec.label}: the uploaded {WORKBOOKS[FI].lower()} has {wb.day.isoformat()} ({wb.ref}), but the "
+                        f"weekly form has {raw}. The workbook's date is used, with the workbook's fund table.")})
+                return wb
             if spec.kind == NAMES:
                 theirs = [shown(c) for c in wb] if wb else []
                 if theirs and [_key(n) for n in theirs] != [_key(n) for n in raw]:
@@ -1247,16 +1276,64 @@ class Analyst:
 
     # -- fixed income ---------------------------------------------------------
 
+    def mmf_workbook_first(self) -> bool:
+        """True when the draft uses the workbook's fund table: MMF_WORKBOOK_FIRST and an accepted table for the week."""
+        return MMF_WORKBOOK_FIRST and self.wb_mmf() is not None
+
+    def mmf_form_kind(self) -> str:
+        """What the form's fund table is: "snip" (confirmed from a Daily Nation snip and unedited since) or "typed"."""
+        mark = self.stored["carried"].get("mmf") or {}
+        return SNIP if mark.get("from") == SNIP and mark.get("value") == self.typed_rows("mmf") else "typed"
+
+    def _mmf_from_book(self, wb: dict[str, Any], rows: list[dict[str, str]]) -> dict[str, Any]:
+        """The workbook's table, with the form's table (if any) as each rate's second reading, differences worded in reverse."""
+        table, first, last = TABLES["mmf"], wb["funds"][0]["rank"], wb["funds"][-1]["rate"]
+        span = f"{first.ref}:{last.a1}"
+        out = {**wb, "origin": f"analyst input from {fi_workbook.SOURCE_NAME} {span}, typed from {table.source}",
+               "via": f"rows from the {fi_workbook.SOURCE_NAME.lower()} ({span})"}
+        if not rows:
+            return out
+        snip = self.mmf_form_kind() == SNIP
+        form_name = "the table confirmed from the Daily Nation snip" if snip else "the table typed on the weekly form"
+        label = "Daily Nation snip, confirmed on the weekly form" if snip else table.source
+        ours = {fund_key(r["fund"]): r for r in rows}
+        funds = []
+        for f in wb["funds"]:
+            r, cell = ours.get(fund_key(f["fund"].value)), f["rate"]
+            if r and r.get("rate") and cell.number is not None and _clean(cell.number) * 100 != Decimal(r["rate"]):
+                what = f"money market fund table, {r['fund']}: effective annual rate"
+                self.differences.append({"item": "mmf", "text": (
+                    f"{what}: the uploaded {WORKBOOKS[FI].lower()} has {shown(cell, 100)}% ({cell.ref}), but {form_name} "
+                    f"has {r['rate']}%. The workbook's value is used.")})
+                cell = Booked(cell.value, cell.sheet, cell.row, cell.col, Typed(float(Decimal(r["rate"]) / 100), what, label))
+            funds.append({**f, "rate": cell})
+        theirs = {fund_key(f["fund"].value) for f in wb["funds"]}
+        only_form = [r["fund"] for k, r in ours.items() if k not in theirs]
+        only_book = len(theirs - set(ours))
+        if only_form or only_book:
+            parts = []
+            if only_form:
+                parts.append(f"{len(only_form)} on the form only ({', '.join(only_form[:6])}{', ...' if len(only_form) > 6 else ''})")
+            if only_book:
+                parts.append(f"{only_book} in the workbook only")
+            self.differences.append({"item": "mmf", "text": (
+                f"{table.label}: {form_name} and the uploaded {WORKBOOKS[FI].lower()} do not list the same funds: "
+                f"{'; '.join(parts)}. The workbook's table is used.")})
+        out["origin"] += f"; {form_name} is its second reading"
+        return {**out, "funds": funds}
+
     def mmf(self) -> Optional[dict[str, Any]]:
-        """The fund table: {published, title, funds: [{rank, fund, rate}], origin}; None if it is in neither place."""
+        """The fund table: {published, title, funds: [{rank, fund, rate}], origin, via}; None if it is in neither place.
+
+        With MMF_WORKBOOK_FIRST, an accepted workbook table is used and the form's table is its second reading;
+        otherwise (or with no accepted workbook table) a table on the form replaces the workbook's whole."""
         def load() -> Optional[dict[str, Any]]:
             table, rows, wb = TABLES["mmf"], self.typed_rows("mmf"), self.wb_mmf()
+            if wb is not None and (not rows or self.mmf_workbook_first()):
+                return self._mmf_from_book(wb, rows)
             if not rows:
-                if wb is None:
-                    return None
-                first, last = wb["funds"][0]["rank"], wb["funds"][-1]["rate"]
-                return {**wb, "origin": f"analyst input from {fi_workbook.SOURCE_NAME} {first.ref}:{last.a1}, typed from "
-                                        f"{table.source}"}
+                return None
+            snip = self.mmf_form_kind() == SNIP
             published = self.field("mmf_published")
             if published is None or published.day is None:
                 self.incomplete["mmf"] = (f"The money market fund table is typed under \"{FORM}\", but the date it was "
@@ -1272,9 +1349,13 @@ class Analyst:
                               "rate": self._cell(table, table.columns[2], r, what, base.get("rate"))})
             if wb:
                 self._only_in(table, {fund_key(r["fund"]) for r in rows}, {k: shown(f["fund"]) for k, f in theirs.items()})
+            origin = (f"analyst input read from a Daily Nation snip and confirmed on the weekly form (money market fund table; "
+                      f"source: {table.source})" if snip else
+                      f"analyst input typed on the weekly form (money market fund table; source: {table.source})")
             return {"published": published.day, "funds": funds,
                     "title": f"Money Market Fund Yield for Fund Managers as published on {ordinal(published.day)}",
-                    "origin": f"analyst input typed on the weekly form (money market fund table; source: {table.source})"}
+                    "origin": origin,
+                    "via": "rows read from the Daily Nation snip and confirmed" if snip else "rows typed on the weekly form"}
 
         return self._once("mmf", load)
 
@@ -1550,6 +1631,10 @@ class Analyst:
                 seen.append(d["text"])
         return [f"{FORM}: {text}" for text in seen]
 
+    def stale_lines(self) -> list[str]:
+        """Every item an uploaded workbook holds but for another week (its date and the date expected), met so far."""
+        return list(dict.fromkeys(s["note"] for s in self.stale.values()))
+
 
 # ---------------------------------------------------------------------------
 # What the form shows
@@ -1647,6 +1732,10 @@ def _status(analyst: "Analyst", week: Week, root: Optional[Path], section: Optio
             return None
         return value
 
+    def workbook_first(key: str) -> bool:
+        """The draft uses the workbook's value even where the form holds one (the fund table and its date only)."""
+        return key in ("mmf", "mmf_published") and analyst.mmf_workbook_first()
+
     differences: dict[str, list[str]] = {}
     for d in analyst.differences:
         if d["text"] not in differences.setdefault(d["item"], []):
@@ -1663,6 +1752,7 @@ def _status(analyst: "Analyst", week: Week, root: Optional[Path], section: Optio
                 "max": spec.hi, "source": spec.source, "help": spec.help, "used_in": spec.used_in,
                 "value": value, "workbook": workbook,
                 "workbook_note": analyst.errors.get(_READING[spec.key]), "differences": differences.get(spec.key, []),
+                "workbook_stale": analyst.stale.get(_READING[spec.key]), "workbook_first": workbook_first(spec.key),
                 "carried": carried(spec.key, value),
                 "needs_confirmation": spec.key in form["unconfirmed"] and spec.key not in superseded, "suggestable": spec.key in SUGGESTED_FIELDS,
                 "default": {"fiscal_year_start": fiscal_year_start(week).isoformat(), "mmf_source": MMF_SOURCE_DEFAULT}.get(spec.key)}
@@ -1698,6 +1788,7 @@ def _status(analyst: "Analyst", week: Week, root: Optional[Path], section: Optio
                 "workbook_rows": [_wb_row(table, r) for r in wb] if wb else None,
                 "workbook_ref": f"{WORKBOOKS[table.section]} '{first.sheet}'" if first is not None else None,
                 "workbook_note": analyst.errors.get(_READING[table.key]),
+                "workbook_stale": analyst.stale.get(_READING[table.key]), "workbook_first": workbook_first(table.key),
                 "warnings": _table_warnings(table, rows or []), "differences": differences.get(table.key, []),
                 "carried": carried(table.key, rows), "needs_confirmation": table.key in form["unconfirmed"] and table.key not in superseded,
                 "auto_rows": auto or None,

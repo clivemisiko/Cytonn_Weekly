@@ -574,7 +574,9 @@ def money_market_blocks(inputs: WeeklyInputs, tbill_inputs: Optional[dict[str, d
         "mmf_table", table["title"],
         [{"key": "rank", "label": "Rank", "fmt": TEXT}, {"key": "fund", "label": "Fund Manager", "fmt": TEXT},
          {"key": "rate", "label": "Effective Annual Rate", "fmt": PCT, "decimals": 1}],
-        rows, "fund", "fund", {"name": inputs.analyst.mmf_source(), "url": None, "as_of": table["published"].isoformat()})
+        rows, "fund", "fund", {"name": inputs.analyst.mmf_source(), "url": None, "as_of": table["published"].isoformat(),
+                               # where the rows came from, on the review screen only: the Word source line prints the name
+                               "via": table.get("via")})
     block["row_origin"] = ANALYST
     block["origin_note"] = f"Not auto-verified: {table['origin']}. The tool does not read the e-paper, so check the row against the paper."
     # A typed rate that differs from the uploaded workbook's is shown to the reviewer on its row.
@@ -1438,7 +1440,8 @@ def build_fixed_income_review(
         "week_start": drafted["week_start"], "week_end": drafted["week_end"],
         "blocks": numbered(blocks), "pieces_found": len(drafted["pieces"]), "pieces_expected": N_HIGHLIGHTS,
         "shortfall": drafted["shortfall"],
-        "warnings": list(drafted["warnings"]) + warnings + inputs.hidden_sheet_lines() + inputs.analyst.difference_lines() + problems,
+        "warnings": list(drafted["warnings"]) + warnings + inputs.hidden_sheet_lines() + inputs.analyst.stale_lines()
+                    + inputs.analyst.difference_lines() + problems,
         "notices": notices,
         "chart_notes": list(CHARTS), "chart_reference": CHART_REFERENCE, "chart_after": CHART_AFTER,
         "summary": compose_summary(blocks),

@@ -309,7 +309,7 @@ export interface TableBlock {
   key_field: string;
   /** `typed`: the row's figures match their source, but the source is a cell an analyst typed. */
   rows: (Record<string, string> & { flagged: boolean; error: string | null; typed?: boolean })[];
-  source: { name: string; url: string | null; as_of: string | null };
+  source: { name: string; url: string | null; as_of: string | null; via?: string | null };
   footnotes?: string[] | null;
   notes?: string[] | null;
 }
@@ -661,6 +661,14 @@ export interface AnalystCarried {
   cells: Record<string, string[]>;
 }
 
+export interface WorkbookStale {
+  note: string;
+  /** The date the workbook carries (ISO), or null when it cannot be read. */
+  found: string | null;
+  /** The dates this week accepts (ISO): the Friday, and the as-at day in a holiday week. */
+  expected: string[];
+}
+
 /** One typed field of the "Weekly analyst inputs" form, with what an uploaded workbook holds for it. */
 export interface AnalystField {
   type: "field";
@@ -680,6 +688,10 @@ export interface AnalystField {
   workbook: { value: string | string[]; ref: string } | null;
   /** Why the uploaded workbook could not supply it, if it could not. */
   workbook_note: string | null;
+  /** The uploaded workbook holds it, but for another week: the API's sentence and the dates it read. */
+  workbook_stale?: WorkbookStale | null;
+  /** The draft uses the workbook's value even where the form holds one (the fund table and its date). */
+  workbook_first?: boolean;
   /** Typed values that differ from the uploaded workbook's, in the API's words. */
   differences: string[];
   carried: AnalystCarried | null;
@@ -735,6 +747,8 @@ export interface AnalystTable {
   workbook_rows: AnalystRow[] | null;
   workbook_ref: string | null;
   workbook_note: string | null;
+  workbook_stale?: WorkbookStale | null;
+  workbook_first?: boolean;
   warnings: string[];
   differences: string[];
   carried: AnalystCarried | null;

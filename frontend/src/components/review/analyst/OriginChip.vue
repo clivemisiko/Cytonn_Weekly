@@ -9,6 +9,8 @@ const ORIGIN = {
   unconfirmed: { icon: PhWarning, box: "border-warn/40 bg-warn/10 text-warn-fg" },
   differs: { icon: PhWarning, box: "border-warn/40 bg-warn/10 text-warn-fg" },
   workbook: { icon: PhFile, box: "border-input bg-muted text-foreground" },
+  second: { icon: PhFile, box: "border-input bg-muted text-foreground" },
+  stale: { icon: PhWarning, box: "border-warn/40 bg-warn/10 text-warn-fg" },
   empty: { icon: PhQuestion, box: "border-dashed border-input text-muted-foreground" },
 } as const;
 
