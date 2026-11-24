@@ -438,7 +438,7 @@ test("T133 every required step saved, the grid and the paste table included: the
   await next.click();
 
   await at(card, 8);
-  await card.getByLabel("Other bond redemptions: paste the rows").fill("2026-07-20  FAKE/0000/01  123.45");
+  await card.getByLabel("Other bond redemptions: paste the rows").fill("2026-07-20  FAKE/0000/01  123.45  NSE Implied Yields sheet, 17 Jul 2026  Analyst  2026-07-20");
   await card.getByRole("button", { name: "Save table" }).click();
   await at(card, 9);
   await card.getByLabel("Fund table published on").fill("2026-07-23");

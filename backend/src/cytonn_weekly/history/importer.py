@@ -35,6 +35,8 @@ CATALOG = {
     "fi.kesonia": ("pct", "day", "fixed_income", "KESONIA", 1),
     "fi.remittances.total": ("usd_mn", "month", "fixed_income", "Diaspora remittances, total", 1),
     "fi.remittances.north_america": ("usd_mn", "month", "fixed_income", "Diaspora remittances, North America", 1),
+    # Typed on the form only (history/weekly.py REDEMPTION), never imported: a bond redemption CBK prints on no result file.
+    "fi.bond_redemption": ("kes_mn", "day", "fixed_income", "Bond redemption on no CBK result, by bond", 1),
 }
 
 

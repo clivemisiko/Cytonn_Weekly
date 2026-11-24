@@ -208,6 +208,7 @@ const confirm = (key: string) => save(key, { confirm: [key] });
                   :item="item"
                   :disabled="busy !== null"
                   @save="(text) => save(item.key, { tables: { [item.key]: text === null ? null : { text } } })"
+                  @retire="(point_id, reason) => save(item.key, { retire: [{ point_id, reason }] })"
                   @confirm="confirm(item.key)"
                 />
                 <p aria-live="polite" class="text-xs font-medium whitespace-pre-line text-flag-fg">{{ errors[item.key] ?? "" }}</p>

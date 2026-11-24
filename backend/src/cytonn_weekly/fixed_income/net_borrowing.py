@@ -41,7 +41,9 @@ The rules:
   a bond redemption only in the results of a bond auction settling that day, so a bond that
   matures on a day with no bond auction is on no file (first case: IFB1/2014/12, 12-10-2026).
   The analysts type it under "Other bond redemptions" on the weekly form; each row counts as a
-  redemption on its value date, is labelled "typed, not on a release" and is analyst input.
+  redemption on its value date, is labelled "typed, not on a release" and is analyst input.  The
+  form save also keeps each row in the history store, and every later week of the fiscal year
+  reads it from there ("from the history store", still analyst input) until an analyst retires it.
 * **A maturity nobody accounted for is asked about, never filled in** (``maturities``, from
   fixed_income/bond_issues.py).  A maturity date inside the log's window with no redemption on
   a bond result of that day and no typed row for that day gets a row of its own, flagged.  The
@@ -68,6 +70,12 @@ from cytonn_weekly.common.http import http_get, http_head
 from cytonn_weekly.review.blocks import table_block
 from cytonn_weekly.fixed_income import bond_issues, cbk_auctions
 
+# Off (the default, decided 2026-11-24): an uploaded fixed income workbook plays no part in net borrowing.  Its log is never
+# set beside CBK's (no "sources disagree" or "workbook log counts a switch" flag, no workbook_difference warning), and the
+# target, the fiscal year's start and the fallback log are not read from it (weekly/analyst.py wb_borrowing).  On: all of
+# that comes back as it was before 2026-11-24.  The team's log has known errors, so turn it on only to compare with it.
+WORKBOOK_BORROWING = False
+
 SOURCE_NAME = "CBK Treasury bill and bond auction results"
 TBILL, PRIMARY, TAP, SWITCH = "tbill", "primary", "tap", "switch"
 KINDS = {TBILL: "T-bills", PRIMARY: "T-bonds", TAP: "T-bond tap sale", SWITCH: "T-bond switch"}
@@ -77,6 +85,9 @@ TYPED_LABEL = "typed, not on a release"
 # Where the team reads a bond's maturity date and the amount still outstanding (one page, an image: the tool cannot read it).
 NSE_SHEET = "the NSE Implied Yields sheet"
 TYPED_KIND = f"Bond redemption ({TYPED_LABEL})"
+# A redemption typed in an earlier week and kept in the history store (history/weekly.py stored_redemptions).
+STORED_LABEL = "from the history store"
+STORED_KIND = f"Bond redemption ({STORED_LABEL})"
 MATURITY_KIND = "Bond maturity (no redemption found)"
 
 GET_DELAY = 1.0     # seconds between two downloads from centralbank.go.ke
@@ -305,7 +316,7 @@ def _day(iso: str) -> str:
 
 def row_key(release: dict[str, Any]) -> str:
     if release["kind"] == TYPED:
-        return f"{release['value_date']} {release['bond']} redemption ({TYPED_LABEL})"
+        return f"{release['value_date']} {release['bond']} redemption ({STORED_LABEL if release.get('stored') else TYPED_LABEL})"
     if release["kind"] == MATURITY:
         return f"{release['value_date']} {release['bond']} maturity"
     return f"{release['value_date']} {KINDS.get(release['kind'], release['kind'])}"
@@ -338,6 +349,7 @@ class Log:
     counted: int = 0
     switches: list[dict[str, Any]] = field(default_factory=list)         # found, and excluded by rule
     typed: int = 0                                                        # typed bond redemptions counted
+    stored: int = 0                                                       # of them, the ones from the history store
     unaccounted: list[str] = field(default_factory=list)                 # maturities nobody accounted for (the messages)
     workbook_net_kes_m: Optional[Decimal] = None                          # the uploaded workbook's own log, same window
     workbook_as_at: Optional[date] = None
@@ -425,13 +437,16 @@ def build_log(releases: list[dict[str, Any]], fy_start: date, limit: date,
     ([{date, accepted, redemptions}], cells, redemptions negative), used only as each row's second
     reading; a row of it that counts a switch is flagged on that switch's row.
 
-    ``typed_redemptions`` ([{date, bond, kes_m, source}], the form's "Other bond redemptions") are
+    ``typed_redemptions`` ([{date, bond, kes_m, source, stored?}], the form's "Other bond redemptions" and, with
+    ``stored``, the ones the history store keeps from earlier weeks) are
     bond redemptions CBK prints on no result file: each in the window is a row of its own that
     subtracts its amount on its value date, as analyst input.  ``maturities`` ([{date, bond,
     face_kes_m}], bond_issues.maturities) are only a question: one in the window with no
     redemption on a bond result of that day and no typed row for that day is a flagged row that
     adds nothing to the net.
     """
+    if not WORKBOOK_BORROWING:
+        workbook_log = None
     log = Log(fy_start, limit)
     seen_bills: set[str] = set()
     kept: list[dict[str, Any]] = []
@@ -451,7 +466,8 @@ def build_log(releases: list[dict[str, Any]], fy_start: date, limit: date,
         day = t["date"].isoformat() if isinstance(t["date"], date) else str(t["date"])
         if fy_start.isoformat() <= day <= limit.isoformat():
             days_typed.add(day)
-            extra.append({"value_date": day, "kind": TYPED, "bond": t["bond"], "kes_m": t["kes_m"], "source": t["source"]})
+            extra.append({"value_date": day, "kind": TYPED, "bond": t["bond"], "kes_m": t["kes_m"], "source": t["source"],
+                          "stored": bool(t.get("stored"))})
     # A bond result prints its day's redemptions in one total, so a maturity is carried by any bond result of the
     # day that states redemptions; a Treasury bill result's redemptions are bills and never carry a bond.
     days_redeemed = {r["value_date"] for r in kept if r["kind"] in (PRIMARY, TAP) and (r.get("redemptions_kes_m") or 0) > 0}
@@ -483,18 +499,21 @@ def build_log(releases: list[dict[str, Any]], fy_start: date, limit: date,
             log.unaccounted.append(message)
             continue
         if r["kind"] == TYPED:
-            name, amount = f"redemptions {r['value_date']} {r['bond']} ({TYPED_LABEL})", _d(r["kes_m"])
+            label = STORED_LABEL if r["stored"] else TYPED_LABEL
+            name, amount = f"redemptions {r['value_date']} {r['bond']} ({label})", _d(r["kes_m"])
             log.inputs[name] = {**an_input(r["kes_m"], ANALYST, r["source"]), "check_against": NSE_SHEET}
             log.redeemed.append(name)
             before, running = running, running - amount
-            log.rows.append({"key": row_key(r), "value_date": r["value_date"], "kind": TYPED_KIND, "accepted_kes_m": None,
+            log.rows.append({"key": row_key(r), "value_date": r["value_date"], "kind": STORED_KIND if r["stored"] else TYPED_KIND,
+                             "accepted_kes_m": None,
                              "redemptions_kes_m": r["kes_m"], "net_kes_m": float(-amount), "counted": "Yes",
                              "running_bn": float(running / 1000), "file": None, "sha256": None, "error": None,
-                             "_origin": ANALYST, "_note": f"{TYPED_LABEL}: {r['source']}",
+                             "_origin": ANALYST, "_note": f"{label}: {r['source']}",
                              "_derived": {"net_kes_m": {"expr": ["neg", "redemptions"], "inputs": {"redemptions": r["kes_m"]}},
                                           "running_bn": {"expr": ["add", "before", ["div", "net", 1000]],
                                                          "inputs": {"before": float(before / 1000), "net": float(-amount)}}}})
             log.typed += 1
+            log.stored += r["stored"]
             continue
         key, src, when = row_key(r), release_source(r), date.fromisoformat(r["value_date"])
         counts = r["kind"] != SWITCH          # a switch is not new debt: listed, never counted
@@ -627,7 +646,8 @@ def log_block(log: Log) -> dict[str, Any]:
         "amount is the sum of its issues' accepted amounts. A switch auction's results state no redemptions.",
         "A switch auction is not new debt and is never counted (the investments team's rule).",
         "CBK prints a bond redemption only in the results of a bond auction settling that day. A bond that matures on a day "
-        f"with no bond auction is typed under \"Other bond redemptions\" on the weekly form and shown here as \"{TYPED_LABEL}\". "
+        f"with no bond auction is typed under \"Other bond redemptions\" on the weekly form and shown here as \"{TYPED_LABEL}\"; "
+        f"in later weeks of the fiscal year it comes from the history store, shown as \"{STORED_LABEL}\". "
         f"A maturity listed in {bond_issues.SOURCE_NAME} with neither is a flagged row that adds nothing to the net; the face "
         "value it names is a floor at issue (the table lacks rows), not the amount redeemed.",
     ]
@@ -651,7 +671,7 @@ STOCK_COLUMNS = [
     {"key": "net_bonds_bn", "label": "Net of bond rows in the log (Kshs bn)", "fmt": NUMBER, "decimals": 2},
     {"key": "residual_bn", "label": "Residual (Kshs bn)", "fmt": NUMBER, "decimals": 2},
 ]
-_BOND_ROWS = (KINDS[PRIMARY], KINDS[TAP], TYPED_KIND)
+_BOND_ROWS = (KINDS[PRIMARY], KINDS[TAP], TYPED_KIND, STORED_KIND)
 
 
 def stock_check_block(log: Log, bond_stock: dict[date, float], as_of: Optional[date] = None) -> Optional[dict[str, Any]]:

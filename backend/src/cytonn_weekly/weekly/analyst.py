@@ -96,7 +96,7 @@ MMF_SOURCE_DEFAULT = "Daily Nation"      # printed under the fund table: the Dai
 # they are; weekly-changing ones carry but must be confirmed before any builder reads them.
 SLOW_FIELDS = ("large_caps", "foreign_prior_year", "universe_month_end", "fiscal_year_start", "mmf_source", "borrowing_target")
 WEEKLY_FIELDS = ("placements", "pe", "pe_average", "dividend_yield", "dividend_yield_average")
-SLOW_TABLES = ("eurobond_issues", "eurobond_yields", "remittances", "universe", "borrowing_redemptions")
+SLOW_TABLES = ("eurobond_issues", "eurobond_yields", "remittances", "universe")   # borrowing_redemptions: the history store carries them
 WEEKLY_TABLES = ("mmf", "interbank", "borrowing_log", "foreign_history")
 # Of the Universe of Coverage's columns, the ones that carry: prices do not (this Friday's is KCB IB's, last
 # Friday's is the price stored for last week); the month-end price carries only while the month is the same.
@@ -147,6 +147,7 @@ class Column:
     hi: Optional[float] = None
     scale: int = 1
     required: bool = True
+    max_chars: int = MAX_NAME   # a text cell's longest value
 
 
 @dataclass(frozen=True)
@@ -163,6 +164,7 @@ class Table:
     fixed_rows: tuple[tuple[str, str], ...] = ()   # (row key, label): a grid whose rows are given
     example: str = ""
     required: bool = True     # False exactly where the help says "Optional"
+    free_text: Optional[str] = None
 
 
 GROUPS = (
@@ -272,13 +274,20 @@ TABLE_LIST = (
           "The fixed income team (a bond redemption CBK prints on no auction result)",
           "Net domestic borrowing against the pro-rated target",
           (Column("date", "Value date", DATE), Column("bond", "Bond", TEXT),
-           Column("amount", "Amount redeemed", unit="Kshs mn", lo=0.01, hi=2_000_000)),
+           Column("amount", "Amount redeemed", unit="Kshs mn", lo=0.01, hi=2_000_000),
+           # Optional only so a row saved before these were asked for (2026-11-24) still reads; a pasted line needs all six.
+           Column("source", "Source", TEXT, required=False, max_chars=200),
+           Column("confirmed_by", "Confirmed by", TEXT, required=False),
+           Column("confirmed_on", "Confirmed on", DATE, required=False)),
           "A bond that matures on a day with no bond auction is on no CBK result file. One a line: value date, bond, the amount "
           "redeemed in Kshs mn (the amount outstanding at maturity, as shown on the NSE Implied Yields sheet, which may "
-          "differ from the face value at issue). Each row is subtracted "
-          "on its value date in the log built from CBK's results, as analyst input, labelled \"typed, not on a release\". It "
-          "is not added to an auction log typed above: put the redemption in that log.",
-          example="2026-10-12  IFB1/2014/12  16631.48"),
+          "differ from the face value at issue), the source, who confirmed it (one word, or separate the columns with tabs) and "
+          "the day they confirmed it. Each row is subtracted on its value date in the log built from CBK's results, as analyst "
+          "input, labelled \"typed, not on a release\". It is kept in the history store and counts in every later draft of the "
+          "fiscal year, labelled \"from the history store\", until it is retired here. It is not added to an auction log typed "
+          "above: put the redemption in that log.",
+          example="2026-10-12  XYZ1/2099/001  5000.00  NSE Implied Yields sheet  Analyst  2026-10-12",
+          free_text="source"),
     Table("foreign_history", EQ, "market", "Foreign net position, previous weeks", "The equities team's weekly sums",
           "Foreign investors (previous week and streak)",
           (Column("week_ending", "Week ending", DATE), Column("net", "Net position", unit="USD mn", lo=-2000, hi=2000)),
@@ -518,8 +527,8 @@ def clean_cell(raw: Any, col: Column, where: str) -> str:
     if col.kind == MONTH:
         return clean_month(text, where)
     name = " ".join(text.split())
-    if len(name) > MAX_NAME:
-        raise InputError(f"{where}: the name is {len(name)} characters; the limit is {MAX_NAME}")
+    if len(name) > col.max_chars:
+        raise InputError(f"{where}: the name is {len(name)} characters; the limit is {col.max_chars}")
     return name
 
 
@@ -531,7 +540,10 @@ def parse_paste(table: Table, text: str) -> tuple[list[dict[str, Any]], list[str
     Market Fund  11.01%" reads as rank, fund and rate.  A line with no digit is a heading.
     """
     cols = table.columns
-    wide = next(n for n, c in enumerate(cols) if c.kind in (TEXT, DATE, MONTH))
+    if table.free_text:
+        wide = next(n for n, c in enumerate(cols) if c.key == table.free_text)
+    else:
+        wide = next(n for n, c in enumerate(cols) if c.kind in (TEXT, DATE, MONTH))
     left, right = cols[:wide], cols[wide + 1:]
     rows, errors = [], []
     for n, line in enumerate(text.splitlines(), 1):
@@ -1060,6 +1072,10 @@ class Analyst:
         return self._read(FI, "eurobonds", fi_workbook.read_eurobonds)
 
     def wb_borrowing(self) -> Optional[dict[str, Any]]:
+        from cytonn_weekly.fixed_income import net_borrowing   # imported here: it pulls in the CBK PDF reader
+
+        if not net_borrowing.WORKBOOK_BORROWING:   # the workbook plays no part in net borrowing (its target, start or log)
+            return None
         return self._read(FI, "borrowing", fi_workbook.read_borrowing)
 
     def wb_turnover(self) -> Optional[equities_workbook.WeeklySeries]:
@@ -1376,7 +1392,8 @@ class Analyst:
                 start = Typed(fiscal_year_start(self.week), "start of the fiscal year", "1 July")
             other, amount = TABLES["borrowing_redemptions"], TABLES["borrowing_redemptions"].columns[2]
             redemptions = [{"date": date.fromisoformat(r["date"]), "bond": r["bond"],
-                            "amount": self._cell(other, amount, r, f"other bond redemptions, {r['bond']} on {r['date']}", None)}
+                            "amount": self._cell(other, amount, r, f"other bond redemptions, {r['bond']} on {r['date']}", None),
+                            "source": r.get("source"), "confirmed_by": r.get("confirmed_by"), "confirmed_on": r.get("confirmed_on")}
                            for r in sorted(self.typed_rows("borrowing_redemptions"), key=lambda r: r["date"])]
             return {"target_bn": self.field("borrowing_target"), "log": log, "fy_start": start, "fy_start_typed": typed_start,
                     "typed_log": bool(rows), "redemptions": redemptions}
@@ -1510,6 +1527,11 @@ class Analyst:
                 said.append(problem)
         listed = _names(labels)
         listed = listed[0].upper() + listed[1:]
+        from cytonn_weekly.fixed_income import net_borrowing
+
+        if not net_borrowing.WORKBOOK_BORROWING and which == FI and all(k.startswith("borrowing_") or k == "fiscal_year_start" for k in items):
+            return (f"{listed} {verb} not been typed under \"{FORM}\".",
+                    f"Type {them} under \"{FORM}\" on the start screen and draft again.")
         if self.book(which) is None:
             reason = (f"{listed} {verb} not been typed under \"{FORM}\", and the {workbook} for this week is not among this "
                       "week's inputs.")
@@ -1661,6 +1683,12 @@ def _status(analyst: "Analyst", week: Week, root: Optional[Path], section: Optio
                          **({"last_price": shown(before.number)} if before else {})}
                 if len(found) > 1:
                     auto.append(found)
+        stored_rows = None
+        if table.key == "borrowing_redemptions":
+            from cytonn_weekly.history import weekly as history_weekly
+
+            stored, _ = history_weekly.stored_redemptions(analyst.borrowing()["fy_start"].day, week.value_date_window[1])
+            stored_rows = stored or None
         return {"type": "table", "key": table.key, "label": table.label, "required": table.required, "mode": table.mode, "source": table.source,
                 "help": table.help, "example": table.example, "used_in": table.used_in,
                 "columns": [{"key": c.key, "label": c.label, "kind": c.kind, "unit": c.unit, "min": c.lo, "max": c.hi,
@@ -1674,7 +1702,8 @@ def _status(analyst: "Analyst", week: Week, root: Optional[Path], section: Optio
                 "carried": carried(table.key, rows), "needs_confirmation": table.key in form["unconfirmed"] and table.key not in superseded,
                 "auto_rows": auto or None,
                 "auto_note": ("This Friday's price is read from KCB IB's weekly report and last Friday's from the price stored "
-                              "for the previous week, where you type none.") if auto else ""}
+                              "for the previous week, where you type none.") if auto else "",
+                "stored_rows": stored_rows}
 
     groups = []
     for sec, key, title in GROUPS:

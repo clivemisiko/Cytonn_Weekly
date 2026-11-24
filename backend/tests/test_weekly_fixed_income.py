@@ -31,6 +31,16 @@ from tests import previous_issue_fixture as fx
 from tests import weekly_helpers as wh
 from tests.weekly_helpers import text_pdfs  # noqa: F401 - a fixture
 
+
+@pytest.fixture(scope="module", autouse=True)
+def _workbook_borrowing():
+    """Written against the workbook borrowing comparison, which is off by default (net_borrowing.WORKBOOK_BORROWING)."""
+    from cytonn_weekly.fixed_income import net_borrowing
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(net_borrowing, "WORKBOOK_BORROWING", True)
+        yield
+
 WEEK = wh.WEEK
 BULLETIN = (wh.FIXTURES / "cbk_weekly_bulletin_2026-10-02.pdf").read_bytes()
 RATES = {date.fromisoformat(d): v for d, v in

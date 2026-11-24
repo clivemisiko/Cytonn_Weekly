@@ -172,9 +172,10 @@ def _table_reason(bulletin: Optional[cbk_bulletin.Bulletin], table: str, otherwi
     return (bulletin.unavailable.get(table) if bulletin is not None else None) or otherwise
 
 
-def _typed_sources(inputs: WeeklyInputs, *cells: Any) -> list[dict[str, Any]]:
-    """The analysts' sources a part rests on: the workbook when one is uploaded, the form when a value was typed."""
-    names = [WB] if inputs.fi_book is not None else []
+def _typed_sources(inputs: WeeklyInputs, *cells: Any, workbook: bool = True) -> list[dict[str, Any]]:
+    """The analysts' sources a part rests on: the workbook when one is uploaded, the form when a value was typed.
+    ``workbook=False``: the part never reads the workbook (net borrowing, unless WORKBOOK_BORROWING), so it is not named."""
+    names = [WB] if workbook and inputs.fi_book is not None else []
     if any(analyst.is_typed(c) for c in cells):
         names.append(analyst.FORM)
     return [{"name": n} for n in names]
@@ -1198,13 +1199,18 @@ def _cbk_borrowing(inputs: WeeklyInputs, data: dict[str, Any], log: net_borrowin
     note = (f"{log.counted} CBK results from {log.fy_start.isoformat()} to {log.as_at.isoformat()} ({bills} Treasury bill "
             f"auctions, {log.counted - bills} Treasury bond auctions): accepted amounts less redemptions. No switch auction "
             "is counted.")
-    if log.typed:
-        note += (f" Less {log.typed} bond redemption{'' if log.typed == 1 else 's'} typed under \"{analyst.FORM}\" "
+    this_week = log.typed - log.stored
+    if this_week:
+        note += (f" Less {this_week} bond redemption{'' if this_week == 1 else 's'} typed under \"{analyst.FORM}\" "
                  f"({net_borrowing.TYPED_LABEL}).")
+    if log.stored:
+        note += (f" Less {log.stored} bond redemption{'' if log.stored == 1 else 's'} typed in an earlier week of the fiscal "
+                 f"year ({net_borrowing.STORED_LABEL}).")
     # A maturity nobody accounted for is its own flagged row in the log, and flags the figure it may overstate.
     text = _borrowing_sentence(figs, log.inputs, log.net_expr, data["target_bn"], log.fy_start, log.as_at,
                                net_flag="; ".join(log.flags + log.unaccounted), net_note=note, start_note=_start_note(data))
-    sources = [{"name": net_borrowing.SOURCE_NAME, "url": cbk_auctions.TBILL_LISTING}] + _typed_sources(inputs, data["target_bn"])
+    sources = [{"name": net_borrowing.SOURCE_NAME, "url": cbk_auctions.TBILL_LISTING}] + _typed_sources(
+        inputs, data["target_bn"], workbook=net_borrowing.WORKBOOK_BORROWING)
     notes = ["Net borrowing is worked out from CBK's Treasury bill and bond auction results: accepted amounts less "
              "redemptions, release by release (the log below). A switch auction is not new debt and is never counted."]
     if log.switches:
@@ -1244,7 +1250,8 @@ def _typed_borrowing(inputs: WeeklyInputs, week: Week, data: dict[str, Any],
     text = _borrowing_sentence(figs, flows, ["div", ["sum", *flows], 1000], data["target_bn"], data["fy_start"].day, latest,
                                net_second=second, start_note=_start_note(data))
     cells = [data["target_bn"]] + [r["accepted"] for r in log]
-    return computed_block("borrowing", title, text, figs.items, sources=_typed_sources(inputs, *cells))
+    return computed_block("borrowing", title, text, figs.items,
+                          sources=_typed_sources(inputs, *cells, workbook=net_borrowing.WORKBOOK_BORROWING))
 
 
 def borrowing_blocks(inputs: WeeklyInputs, week: Week, fetched: Optional[dict[str, Any]],
@@ -1268,11 +1275,22 @@ def borrowing_blocks(inputs: WeeklyInputs, week: Week, fetched: Optional[dict[st
     log, cbk_problem = None, "CBK's auction results could not be fetched from centralbank.go.ke."
     if fetched is not None:
         wb = form.wb_borrowing()
-        other = [{"date": r["date"], "bond": r["bond"], "kes_m": r["amount"].number, "source": typed_source(r["amount"], WB)}
+        from cytonn_weekly.history import weekly as history_weekly   # imported here: history imports weekly/analyst.py
+
+        other = [{"date": r["date"], "bond": r["bond"], "kes_m": r["amount"].number,
+                  "source": typed_source(r["amount"], WB) + (f" (given as: {r['source']})" if r.get("source") else "")}
                  for r in data["redemptions"]]
+        # Kept from earlier weeks of this fiscal year; a row typed this week (same day and bond) is the one used.
+        typed_here = {(r["date"].isoformat(), history_weekly.bond_subject(r["bond"])) for r in data["redemptions"]}
+        stored, store_err = history_weekly.stored_redemptions(data["fy_start"].day, window[1])
+        other += [{"date": s["date"], "bond": s["bond"], "kes_m": s["kes_m"], "stored": True,
+                   "source": f"{s['source']}; confirmed by {s['confirmed_by']} on {s['confirmed_on']}"}
+                  for s in stored if (s["date"], s["bond"]) not in typed_here]
         log = net_borrowing.build_log(fetched["releases"], data["fy_start"].day, window[1],
                                       workbook_log=wb["log"] if wb else None, cell_source=lambda cell: typed_source(cell, WB),
                                       typed_redemptions=other, maturities=fetched.get("maturities"))
+        if store_err:
+            log.flags.append(store_err)
         warnings.extend(fetched.get("warnings") or [])
         if log.problems:
             cbk_problem = "; ".join(log.problems) + "."

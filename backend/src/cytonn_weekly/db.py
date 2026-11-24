@@ -463,7 +463,7 @@ _ADDED_REVIEW_COLUMNS = (
 )
 
 
-# Chat columns report_jobs and job_messages gained after their first release (the same clauses as schema.sql).
+# Columns report_jobs, job_messages and series_points gained after their first release (the same clauses as schema.sql).
 _ADDED_JOB_COLUMNS = {
     "report_jobs": (("status", "status TEXT NOT NULL DEFAULT 'idle'"), ("paused_reason", "paused_reason TEXT"),
                     ("calls_used", "calls_used INTEGER NOT NULL DEFAULT 0"), ("input_tokens", "input_tokens INTEGER NOT NULL DEFAULT 0"),
@@ -471,6 +471,7 @@ _ADDED_JOB_COLUMNS = {
                     ("budget_raises", "budget_raises INTEGER NOT NULL DEFAULT 0")),
     "job_messages": (("tool_use_id", "tool_use_id TEXT"), ("tool_input", "tool_input TEXT"), ("usage", "usage TEXT"),
                      ("cards", "cards TEXT")),
+    "series_points": (("retired_at", "retired_at TEXT"), ("retired_reason", "retired_reason TEXT")),   # 2026-11-24
 }
 
 

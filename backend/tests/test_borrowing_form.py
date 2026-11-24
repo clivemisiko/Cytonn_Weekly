@@ -19,6 +19,16 @@ from tests import weekly_helpers as wh
 from tests.test_net_borrowing import captured_releases
 from tests.test_weekly_fixed_income import blocks, build, fetchers, figures
 
+
+@pytest.fixture(scope="module", autouse=True)
+def _workbook_borrowing():
+    """Written against the workbook borrowing comparison, which is off by default (net_borrowing.WORKBOOK_BORROWING)."""
+    from cytonn_weekly.fixed_income import net_borrowing
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(net_borrowing, "WORKBOOK_BORROWING", True)
+        yield
+
 WEEK = wh.WEEK
 NEXT = Week(date(2026, 10, 9))
 SWITCHES = "borrowing_switches"    # the table the form held until the rule was settled

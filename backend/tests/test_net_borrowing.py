@@ -43,6 +43,16 @@ from cytonn_weekly.weekly.week import Week
 from tests import weekly_helpers as wh
 from tests.test_weekly_fixed_income import BULLETIN, blocks, build, fetchers, figures, items
 
+
+@pytest.fixture(scope="module", autouse=True)
+def _workbook_borrowing():
+    """Written against the workbook borrowing comparison, which is off by default (net_borrowing.WORKBOOK_BORROWING)."""
+    from cytonn_weekly.fixed_income import net_borrowing
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(net_borrowing, "WORKBOOK_BORROWING", True)
+        yield
+
 FX = wh.FIXTURES
 CAPTURED = json.loads((FX / "cbk_net_borrowing_releases_fy2026-27_captured_2026-10-12.json").read_text(encoding="utf-8"))
 RELEASES = CAPTURED["releases"]

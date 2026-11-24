@@ -29,6 +29,16 @@ from tests import test_weekly_fixed_income as fi
 from tests import weekly_helpers as wh
 from tests.weekly_helpers import text_pdfs  # noqa: F401 - a fixture
 
+
+@pytest.fixture(scope="module", autouse=True)
+def _workbook_borrowing():
+    """Written against the workbook borrowing comparison, which is off by default (net_borrowing.WORKBOOK_BORROWING)."""
+    from cytonn_weekly.fixed_income import net_borrowing
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(net_borrowing, "WORKBOOK_BORROWING", True)
+        yield
+
 WEEK = wh.WEEK
 FORM = "Weekly analyst inputs"
 
@@ -565,6 +575,10 @@ def last_week(tmp_path, text_pdfs):
     inputs.store(WEEK, "equities_workbook", wh.equities_workbook_bytes(), "Equities.xlsx", books)
     root = tmp_path / "typed"
     stores(root, typed_from=books)
+    # With net_borrowing.WORKBOOK_BORROWING off (the default) the workbook offers no borrowing log, so it is typed here
+    # (invented figures), as an analyst would: every weekly item is then typed last week and carried this week.
+    if "borrowing_log" not in analyst.read_form(WEEK, root)["tables"]:
+        analyst.save_form(WEEK, {"tables": {"borrowing_log": {"text": "2026-07-06 1000 (500)"}}}, root)
     return root
 
 

@@ -33,11 +33,22 @@ from tests import weekly_helpers as wh
 from tests.test_net_borrowing import FY, RELEASES, TARGET, cbk_get
 from tests.test_weekly_fixed_income import BULLETIN, blocks, fetchers, figures, items
 
+
+@pytest.fixture(scope="module", autouse=True)
+def _workbook_borrowing():
+    """Written against the workbook borrowing comparison, which is off by default (net_borrowing.WORKBOOK_BORROWING)."""
+    from cytonn_weekly.fixed_income import net_borrowing
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(net_borrowing, "WORKBOOK_BORROWING", True)
+        yield
+
 WEEK = wh.WEEK                      # ending 2 October 2026: its auctions settle 3 to 9 October
 NEXT = Week(date(2026, 10, 9))      # its auctions settle 10 to 16 October: the window that holds 12 October
 PAGE = (wh.FIXTURES / "cbk_tbond_issues_2026-10-12_excerpt.html").read_text(encoding="utf-8")
 MATURITIES = bi.maturities(bi.parse_issues(PAGE))
 TABLE = "borrowing_redemptions"
+TAIL = "  NSE sheet  Analyst  2026-10-09"   # a pasted row's source, who confirmed it and when (invented)
 WARNING = ("bond maturity on 12-10-2026 (IFB1/2014/12): no redemption on any release and none typed. CBK's table shows "
            "15,420.55 mn, the face value at issue, which is only a floor; type the amount outstanding at maturity, as shown "
            "on the NSE Implied Yields sheet, under \"Other bond redemptions\"")
@@ -253,53 +264,63 @@ def test_the_form_holds_other_bond_redemptions_as_a_list_of_rows(root):
     shown = item(root)
     assert (shown["label"], shown["mode"], shown["rows"]) == ("Other bond redemptions", "paste", None)
     assert [(c["key"], c["label"], c["unit"]) for c in shown["columns"]] == [
-        ("date", "Value date", ""), ("bond", "Bond", ""), ("amount", "Amount redeemed", "Kshs mn")]
-    assert "typed, not on a release" in shown["help"] and shown["example"] == "2026-10-12  IFB1/2014/12  16631.48"
-    save(root, "Value date  Bond  Amount\n12 October 2026  IFB1/2014/12  9,000.50\n2026-11-09\tFXD1/2021/005\t57566.3\n")
+        ("date", "Value date", ""), ("bond", "Bond", ""), ("amount", "Amount redeemed", "Kshs mn"), ("source", "Source", ""),
+        ("confirmed_by", "Confirmed by", ""), ("confirmed_on", "Confirmed on", "")]
+    assert "typed, not on a release" in shown["help"] and "from the history store" in shown["help"]
+    assert shown["example"] == "2026-10-12  XYZ1/2099/001  5000.00  NSE Implied Yields sheet  Analyst  2026-10-12"
+    # a date in words, or a name with a space, needs tabs: on spaces only the source may hold more than one word
+    save(root, "Value date  Bond  Amount\n12 October 2026\tTEST3/2026/03\t9,000.50\tNSE sheet\tA. Analyst\t2026-10-09\n"
+               "2026-11-09  TEST4/2026/04  5000.0  the NSE sheet, a test  Analyst  2026-10-09\n")
     assert json.loads((inputs.week_dir(NEXT, root) / "analyst.json").read_text(encoding="utf-8"))["tables"][TABLE] == [
-        {"date": "2026-10-12", "bond": "IFB1/2014/12", "amount": "9000.50"},
-        {"date": "2026-11-09", "bond": "FXD1/2021/005", "amount": "57566.3"}]
-    assert item(root)["text"] == "2026-10-12\tIFB1/2014/12\t9000.50\n2026-11-09\tFXD1/2021/005\t57566.3"
+        {"date": "2026-10-12", "bond": "TEST3/2026/03", "amount": "9000.50", "source": "NSE sheet", "confirmed_by": "A. Analyst",
+         "confirmed_on": "2026-10-09"},
+        {"date": "2026-11-09", "bond": "TEST4/2026/04", "amount": "5000.0", "source": "the NSE sheet, a test",
+         "confirmed_by": "Analyst", "confirmed_on": "2026-10-09"}]
+    assert item(root)["text"] == ("2026-10-12\tTEST3/2026/03\t9000.50\tNSE sheet\tA. Analyst\t2026-10-09\n"
+                                  "2026-11-09\tTEST4/2026/04\t5000.0\tthe NSE sheet, a test\tAnalyst\t2026-10-09")
     assert item(root)["workbook_rows"] is None                    # the workbook has no such rows: they are only ever typed
     save(root, "")
     assert item(root)["rows"] is None
 
 
 def test_a_row_must_be_in_the_fiscal_year_positive_and_listed_once(root):
-    assert "2026-06-30 is not in the fiscal year (2026-07-01 to 2027-06-30)" in refused(root, "2026-06-30 IFB1/2014/12 100")
-    assert "2027-07-01 is not in the fiscal year" in refused(root, "2027-07-01 IFB1/2014/12 100")
+    assert "2026-06-30 is not in the fiscal year (2026-07-01 to 2027-06-30)" in refused(root, f"2026-06-30 TEST3/2026/03 100{TAIL}")
+    assert "2027-07-01 is not in the fiscal year" in refused(root, f"2027-07-01 TEST3/2026/03 100{TAIL}")
     for bad in ("0", "-15420.55", "(15420.55)"):
-        assert "Other bond redemptions" in refused(root, f"2026-10-12 IFB1/2014/12 {bad}")
-    assert "IFB1/2014/12 on 2026-10-12 appears twice" in refused(root, "2026-10-12 ifb1/2014/12 100\n2026-10-12 IFB1/2014/12 200")
+        assert "Other bond redemptions" in refused(root, f"2026-10-12 TEST3/2026/03 {bad}{TAIL}")
+    assert "TEST3/2026/03 on 2026-10-12 appears twice" in refused(
+        root, f"2026-10-12 test3/2026/03 100{TAIL}\n2026-10-12 TEST3/2026/03 200{TAIL}")
     assert "expected value date, bond, amount redeemed" in refused(root, "2026-10-12 15420.55")
+    assert "expected value date, bond, amount redeemed, source" in refused(root, "2026-10-12 TEST3/2026/03 100")   # no source
     assert item(root)["rows"] is None                                           # refused whole: nothing was stored
-    save(root, "2026-07-01 A 0.01\n2027-06-30 B 1\n2026-10-12 IFB1/2014/12 100\n2026-10-12 FXD1/2016/010 200")   # the edges
+    save(root, f"2026-07-01 A 0.01{TAIL}\n2027-06-30 B 1{TAIL}\n2026-10-12 TEST3/2026/03 100{TAIL}\n"
+               f"2026-10-12 TEST5/2026/05 200{TAIL}")   # the edges
 
 
 def test_the_api_takes_the_rows_and_refuses_a_bad_one(tmp_path):
     client = TestClient(create_app(db_path=tmp_path / "app.db", load_dotenv=False, inputs_root=tmp_path / "data" / "weekly"))
     url = "/api/inputs/weekly/2026-10-09/analyst"
-    bad = client.put(url, params={"section": "fixed_income"}, json={"tables": {TABLE: {"text": "2026-10-12 IFB1/2014/12 0"}}})
+    bad = client.put(url, params={"section": "fixed_income"}, json={"tables": {TABLE: {"text": f"2026-10-12 TEST3/2026/03 0{TAIL}"}}})
     assert bad.status_code == 422 and "Other bond redemptions" in json.dumps(bad.json())
-    ok = client.put(url, params={"section": "fixed_income"}, json={"tables": {TABLE: {"text": "2026-10-12 IFB1/2014/12 9000.5"}}})
+    ok = client.put(url, params={"section": "fixed_income"}, json={"tables": {TABLE: {"text": f"2026-10-12 TEST3/2026/03 9000.5{TAIL}"}}})
     assert ok.status_code == 200
     held = next(i for g in ok.json()["groups"] for i in g["items"] if i["key"] == TABLE)
-    assert held["rows"] == [{"date": "2026-10-12", "bond": "IFB1/2014/12", "amount": "9000.5"}]
+    assert held["rows"] == [{"date": "2026-10-12", "bond": "TEST3/2026/03", "amount": "9000.5", "source": "NSE sheet",
+                             "confirmed_by": "Analyst", "confirmed_on": "2026-10-09"}]
 
 
-def test_the_rows_carry_to_the_next_week_and_are_used_at_once(root):
-    save(root, "2026-10-12 IFB1/2014/12 9000.5")
+def test_the_rows_are_not_carried_on_the_form_the_history_store_keeps_them(root):
+    # 2026-11-24: a redemption is kept in the history store, so the form no longer carries it (tests/test_borrowing_history.py)
+    save(root, f"2026-10-12 TEST3/2026/03 9000.5{TAIL}")
     analyst.save_form(NEXT, {"fields": {"borrowing_target": "919.36"}}, root)
     after = Week(date(2026, 10, 16))
     done = analyst.carry_forward(after, root)
-    assert TABLE in done["carried"] and TABLE not in done["unconfirmed"]        # a redemption stays a redemption all year
+    assert TABLE not in done["carried"]
     assert "borrowing_target" in done["carried"] and "borrowing_target" not in done["unconfirmed"]
-    held = analyst.Analyst(inputs.WeeklyInputs(after, root)).borrowing()["redemptions"]
-    assert [(r["date"], r["bond"], r["amount"].number) for r in held] == [(date(2026, 10, 12), "IFB1/2014/12", 9000.5)]
-    assert held[0]["amount"].source == ("analyst input typed on the weekly form (other bond redemptions, IFB1/2014/12 on "
-                                        "2026-10-12: amount redeemed; source: The fixed income team (a bond redemption CBK "
-                                        "prints on no auction result))")
-    assert item(root, after)["carried"]["from"] == "2026-10-09"
+    assert analyst.Analyst(inputs.WeeklyInputs(after, root)).borrowing()["redemptions"] == []
+    [kept] = item(root, after)["stored_rows"]
+    assert (kept["date"], kept["bond"], kept["kes_m"], kept["source"], kept["confirmed_by"], kept["confirmed_on"]) == (
+        "2026-10-12", "TEST3/2026/03", 9000.5, "NSE sheet", "Analyst", "2026-10-09")
 
 
 # ---------------------------------------------------------------------------
@@ -329,7 +350,7 @@ def test_the_review_for_the_week_ending_9_october_asks_about_the_12_october_matu
 
 def test_a_typed_redemption_is_subtracted_in_the_review_as_analyst_input(root):
     before = figures(blocks(build(root))["borrowing"])["net_borrowing"]
-    save(root, "2026-10-12 IFB1/2014/12 9000.5")
+    save(root, f"2026-10-12 IFB1/2014/12 9000.5{TAIL}")
     review = build(root)
     b = blocks(review)["borrowing"]
     assert Decimal(before.replace(",", "")) - Decimal(figures(b)["net_borrowing"].replace(",", "")) == Decimal("9.0")
@@ -354,7 +375,7 @@ def test_the_week_ending_2_october_is_unchanged_with_the_maturities_known_and_no
 
 
 def test_typed_redemptions_are_not_added_to_a_log_the_analysts_typed_themselves(root):
-    save(root, "2026-10-12 IFB1/2014/12 9000.5")
+    save(root, f"2026-10-12 IFB1/2014/12 9000.5{TAIL}")
     analyst.save_form(NEXT, {"tables": {"borrowing_log": {"text": "2026-10-05 41196.84 (30511.20)\n2026-10-12 41196.84 (48062.00)"}}},
                       root)
     review = build(root)
