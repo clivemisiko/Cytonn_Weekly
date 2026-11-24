@@ -667,6 +667,8 @@ export interface WorkbookStale {
   found: string | null;
   /** The dates this week accepts (ISO): the Friday, and the as-at day in a holiday week. */
   expected: string[];
+  /** True when it is the whole uploaded workbook's own date, not one sheet's, that is not this week's. */
+  whole?: boolean;
 }
 
 /** One typed field of the "Weekly analyst inputs" form, with what an uploaded workbook holds for it. */

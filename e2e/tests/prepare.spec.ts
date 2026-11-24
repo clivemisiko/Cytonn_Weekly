@@ -380,3 +380,114 @@ for (const s of SECTIONS) {
     expect(calls).toEqual({ readiness: 2, analyst: 2 });
   });
 }
+
+// The card 1 rows that take an upload, one per section that has one; the same row markup for each. Every route below is
+// stood in for, so nothing is uploaded, kept or removed on the test backend, and every file name is invented.
+const UPLOADS = [
+  { slug: "fixed_income", slot: "fi_workbook", label: "Fixed income workbook", friday: "2027-09-10", required: true },
+  { slug: "equities", slot: "equities_workbook", label: "Equities workbook", friday: "2027-09-17", required: true },
+  { slug: "digital_payments", slot: "dp_workbook", label: "Digital Payments workbook", friday: "2027-09-24", required: false },
+];
+
+/** A promise the test opens itself, so it can look at the page while a request is still being answered. */
+function gate() {
+  let open!: () => void;
+  const shut = new Promise<void>((r) => (open = r));
+  return { shut, open };
+}
+
+const requiredMissing = async (page: Page) => Number(((await banner(page).textContent()) ?? "").match(/^(\d+) required/)?.[1] ?? 0);
+
+for (const u of UPLOADS) {
+  test(`T158 ${u.label}: an upload shows a spinner, the file's name and a disabled button while it is sent and read, then clears on a refusal and on success`, async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 900 });
+    await page.goto(url(u.slug, u.friday));
+    const p = prepare(page);
+    const row = p.getByRole("row", { name: new RegExp(u.label) });
+    const picker = p.getByLabel(`Upload ${u.label}`);
+    await expect(row).toContainText(/not uploaded/i);
+    let held = gate();
+    let status = 422;
+    await page.route(new RegExp(`/api/inputs/weekly/${u.friday}/${u.slot}\?`), async (route) => {
+      if (route.request().method() !== "PUT") return route.fallback();
+      await held.shut;
+      await route.fulfill(status === 422 ? { status, json: { detail: "Fake refusal: this is not the workbook." } } : { status, json: {} });
+    });
+    const xlsx = (name: string) => ({ name, mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from("PK fake") });
+
+    // a refusal: in progress, then the alert names the file and the row is as it was
+    await picker.setInputFiles(xlsx("fake-refused.xlsx"));
+    const busy = row.locator("[data-uploading]");
+    await expect(busy).toHaveText("Uploading and reading fake-refused.xlsx…");
+    await expect(busy).toHaveAttribute("role", "status");
+    await expect(busy.locator("svg")).toHaveClass(/animate-spin/);
+    await expect(busy.locator("svg")).toHaveClass(/motion-reduce:animate-none/);
+    await expect(picker).toBeDisabled();
+    held.open();
+    await expect(busy).toHaveCount(0);
+    await expect(p.locator('[data-card="prepare_sources"]').getByRole("alert")).toContainText("fake-refused.xlsx: Fake refusal: this is not the workbook.");
+    await expect(row).toContainText(/not uploaded/i);
+    await expect(picker).toBeEnabled();
+
+    // a success: in progress, then cleared, with no alert
+    held = gate();
+    status = 200;
+    await picker.setInputFiles(xlsx("fake-accepted.xlsx"));
+    await expect(busy).toHaveText("Uploading and reading fake-accepted.xlsx…");
+    held.open();
+    await expect(busy).toHaveCount(0);
+    await expect(p.locator('[data-card="prepare_sources"]').getByRole("alert")).toHaveCount(0);
+    await expect(picker).toBeEnabled();
+  });
+
+  test(`T159 ${u.label}: a kept file is removed only after a dialog naming it, and the row and the required count update at once`, async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 900 });
+    await page.goto(url(u.slug, u.friday));
+    await expect(banner(page)).toBeVisible();
+    const missing = await requiredMissing(page);
+    let kept = true;
+    const removed: string[] = [];
+    await page.route(/\/api\/sections\/[^/]+\/readiness/, async (route) => {
+      const res = await route.fetch();
+      const body = await res.json();
+      if (kept) {
+        const groups = body.readiness.groups as Record<string, { key: string; files?: unknown[] }[]>;
+        const from = u.required ? "needs_analyst" : "optional";
+        const at = groups[from].findIndex((e) => e.key === u.slot);
+        const [entry] = groups[from].splice(at, 1);
+        groups.in_place.push({ ...entry, why: "uploaded", files: [{ stored_name: `${u.slot}.xlsx`, name: "fake-kept.xlsx" }] } as never);
+      }
+      await route.fulfill({ response: res, json: body });
+    });
+    await page.route(new RegExp(`/api/inputs/weekly/${u.friday}/${u.slot}\.xlsx$`), async (route) => {
+      if (route.request().method() !== "DELETE") return route.fallback();
+      removed.push(route.request().url());
+      kept = false;
+      await route.fulfill({ status: 200, json: {} });
+    });
+    await page.reload();
+    const p = prepare(page);
+    const row = p.getByRole("row", { name: new RegExp(u.label) });
+    await expect(row).toContainText("Uploaded");
+    await expect(row.locator("[data-kept-file]")).toContainText("fake-kept.xlsx");
+    if (u.required) expect(await requiredMissing(page)).toBe(missing - 1);
+    const remove = row.getByRole("button", { name: `Remove fake-kept.xlsx from ${u.label}` });
+
+    await remove.click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toContainText("Remove fake-kept.xlsx?");
+    await expect(dialog).toContainText(`fake-kept.xlsx is taken out of this week’s inputs for ${u.label}`);
+    await expect(dialog).toContainText("Saved drafts, approved reviews and the history store are not changed.");
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(removed).toEqual([]);
+    await expect(row).toContainText("Uploaded");
+
+    await remove.click();
+    await page.getByRole("dialog").getByRole("button", { name: "Remove the file" }).click();
+    await expect(row).toContainText(/not uploaded/i);
+    await expect(row.locator("[data-kept-file]")).toHaveCount(0);
+    expect(removed).toHaveLength(1);
+    if (u.required) await expect(banner(page)).toHaveText(new RegExp(`^${missing} required item`));
+  });
+}

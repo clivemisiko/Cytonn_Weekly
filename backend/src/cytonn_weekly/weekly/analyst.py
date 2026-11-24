@@ -69,7 +69,7 @@ from typing import Any, Callable, Optional
 from cytonn_weekly.common import atomic
 from cytonn_weekly.weekly import equities_workbook, fi_workbook
 from cytonn_weekly.weekly.inputs import InputError, WeeklyInputs, week_dir
-from cytonn_weekly.weekly.week import Week, day_text, ordinal
+from cytonn_weekly.weekly.week import Week, day_text, ordinal, week_ending_of
 from cytonn_weekly.weekly.workbook import Cell, WorkbookError
 
 log = logging.getLogger(__name__)
@@ -1070,12 +1070,36 @@ class Analyst:
     def book(self, which: str) -> Any:
         return self.inputs.fi_book if which == FI else self.inputs.equities_book
 
+    def book_stale(self, which: str) -> Optional[dict[str, Any]]:
+        """{note, found, expected, whole} when the uploaded workbook's own date (inputs.identify) is not this week's or cannot be
+        read, else None.  The workbook is kept and still read; the form and the readiness check count no item as covered by it."""
+        def load() -> Optional[dict[str, Any]]:
+            entry = self.inputs.entry(_BOOK_FILES[which])
+            if entry is None or entry.get("matches"):
+                return None
+            workbook, week = WORKBOOKS[which].lower(), self.week
+            found = date.fromisoformat(entry["read_date"]) if entry.get("read_date") else None
+            this = f"this report is for the week ending {day_text(week.ending)}"
+            if found is None:
+                head = f"The uploaded {workbook} has no date that can be read ({_BOOK_DATE[which]}), and {this}."
+            else:
+                friday = week_ending_of(found)
+                dated = "" if friday == found else f" (dated {day_text(found)})"
+                head = f"The uploaded {workbook} is for the week ending {day_text(friday)}{dated}, and {this}."
+            return {"note": f"{head} It is kept and still read, so check every value taken from it; it counts for no item on the form. "
+                            f"Upload the workbook updated for this week, or type this week's figures under \"{FORM}\".",
+                    "found": found.isoformat() if found else None, "expected": [d.isoformat() for d in week.report_dates],
+                    "whole": True}
+
+        return self._once(f"book_stale:{which}", load)
+
     def _read(self, which: str, name: str, read: Callable[[Any], Any]) -> Any:
         """One workbook reading, or None (the reason kept) when the workbook is absent or does not hold it."""
         def load() -> Any:
             book = self.book(which)
             if book is None:
                 return None
+            self.book_stale(which)   # met: a draft that reads the workbook says when it is for another week (stale_lines)
             try:
                 return read(book)
             except WorkbookError as exc:
@@ -1632,8 +1656,10 @@ class Analyst:
         return [f"{FORM}: {text}" for text in seen]
 
     def stale_lines(self) -> list[str]:
-        """Every item an uploaded workbook holds but for another week (its date and the date expected), met so far."""
-        return list(dict.fromkeys(s["note"] for s in self.stale.values()))
+        """Every item an uploaded workbook holds but for another week (its date and the date expected), met so far; first, each
+        workbook read from whose own date is not this week's."""
+        books = [s["note"] for k, s in self._memo.items() if k.startswith("book_stale:") and s]
+        return list(dict.fromkeys(books + [s["note"] for s in self.stale.values()]))
 
 
 # ---------------------------------------------------------------------------
@@ -1678,6 +1704,9 @@ def status(week: Week, root: Optional[Path] = None, section: Optional[str] = Non
 
 # What the timing log calls each parsed file: its kind, never its name or contents.
 _BOOK_FILES = {FI: "fi_workbook.xlsx", EQ: "equities_workbook.xlsx"}
+# Where inputs.identify reads each workbook's own date, said when it finds none.
+_BOOK_DATE = {FI: f"no dated fund table title on its '{fi_workbook.MMF_SHEET}' sheet",
+              EQ: f"no dated row with a P/E on its '{equities_workbook.VALUATION_SHEET}' sheet"}
 _LOAD_KINDS = {"fi": "fixed income workbook", "eq": "equities workbook", "kcbw": "KCB weekly PDF"}
 
 
@@ -1727,10 +1756,15 @@ def _status(analyst: "Analyst", week: Week, root: Optional[Path], section: Optio
     superseded: set[str] = set()
 
     def held(key: str, wb: Any, value: Any) -> Any:
-        if key in form["unconfirmed"] and wb:
+        # a workbook for another week supplies nothing this week, so what was carried still waits
+        if key in form["unconfirmed"] and wb and not analyst.book_stale((FIELDS.get(key) or TABLES[key]).section):
             superseded.add(key)
             return None
         return value
+
+    def stale(key: str, section_: str, wb: Any) -> Optional[dict[str, Any]]:
+        """The reading's own refusal (a sheet for another week), else, for an item the workbook holds, the workbook's own date."""
+        return analyst.stale.get(_READING[key]) or (analyst.book_stale(section_) if wb else None)
 
     def workbook_first(key: str) -> bool:
         """The draft uses the workbook's value even where the form holds one (the fund table and its date only)."""
@@ -1752,7 +1786,7 @@ def _status(analyst: "Analyst", week: Week, root: Optional[Path], section: Optio
                 "max": spec.hi, "source": spec.source, "help": spec.help, "used_in": spec.used_in,
                 "value": value, "workbook": workbook,
                 "workbook_note": analyst.errors.get(_READING[spec.key]), "differences": differences.get(spec.key, []),
-                "workbook_stale": analyst.stale.get(_READING[spec.key]), "workbook_first": workbook_first(spec.key),
+                "workbook_stale": stale(spec.key, spec.section, wb), "workbook_first": workbook_first(spec.key),
                 "carried": carried(spec.key, value),
                 "needs_confirmation": spec.key in form["unconfirmed"] and spec.key not in superseded, "suggestable": spec.key in SUGGESTED_FIELDS,
                 "default": {"fiscal_year_start": fiscal_year_start(week).isoformat(), "mmf_source": MMF_SOURCE_DEFAULT}.get(spec.key)}
@@ -1788,7 +1822,7 @@ def _status(analyst: "Analyst", week: Week, root: Optional[Path], section: Optio
                 "workbook_rows": [_wb_row(table, r) for r in wb] if wb else None,
                 "workbook_ref": f"{WORKBOOKS[table.section]} '{first.sheet}'" if first is not None else None,
                 "workbook_note": analyst.errors.get(_READING[table.key]),
-                "workbook_stale": analyst.stale.get(_READING[table.key]), "workbook_first": workbook_first(table.key),
+                "workbook_stale": stale(table.key, table.section, wb), "workbook_first": workbook_first(table.key),
                 "warnings": _table_warnings(table, rows or []), "differences": differences.get(table.key, []),
                 "carried": carried(table.key, rows), "needs_confirmation": table.key in form["unconfirmed"] and table.key not in superseded,
                 "auto_rows": auto or None,

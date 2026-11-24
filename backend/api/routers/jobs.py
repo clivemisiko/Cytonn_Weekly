@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import date
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
@@ -7,6 +8,8 @@ from fastapi import APIRouter, HTTPException, Query
 from cytonn_weekly import jobs as job_store
 from cytonn_weekly import report_sections
 from cytonn_weekly.agent.tools import execute
+from cytonn_weekly.weekly import inputs as weekly_inputs
+from cytonn_weekly.weekly.week import Week
 from api.chat import BY_NAME
 from api.deps import Deps, chosen_report, configured_provider, provider_problem
 from api.schemas import JobMessage, JobRequest
@@ -95,6 +98,19 @@ def make_router(d: Deps) -> APIRouter:
             raise HTTPException(409, got["error"])
         return {"readiness": got}
 
+    def named(got: dict) -> None:
+        """Each kept file's own name beside its stored one, for the page's Remove dialog.  Added here, not in week_status, whose
+        answer the chat model reads and which never carries the analyst's file names."""
+        uploads = [e for entries in got.get("groups", {}).values() for e in entries if e.get("files")]
+        if not uploads:
+            return
+        status = weekly_inputs.status(Week(date.fromisoformat(got["week_ending"])), d.root)
+        names = {f["stored_name"]: f.get("original_name") for s in status["slots"]
+                 for f in ([x["file"] for x in s["days"]] if s["per_day"] else [s["file"]]) if f}
+        for e in uploads:
+            for f in e["files"]:
+                f["name"] = names.get(f["stored_name"]) or f["stored_name"]
+
     @router.get("/api/sections/{slug}/readiness")
     def section_readiness(slug: str, period: str = Query(...), report_type: str = Query(default="weekly"),
                           kind: str | None = Query(default=None)) -> dict:
@@ -111,6 +127,7 @@ def make_router(d: Deps) -> APIRouter:
         got = execute(BY_NAME, "week_status", {}, d.chat.context(key))
         if "error" in got:
             raise HTTPException(409, got["error"])
+        named(got)
         job = job_store.find_job(d.db_path, report_type, period, slug)
         talked = bool(job) and len(job_store.messages(d.db_path, job["job_id"])) > 1
         return {"readiness": got, "conversation": talked}

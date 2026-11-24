@@ -66,12 +66,13 @@ def test_a_fetched_upload_is_in_the_fetched_group(env):
 def test_a_workbook_value_counts_as_in_place_and_a_missing_day_is_named():
     slots = [{"slug": "kcb_daily", "title": "KCB", "optional": False, "per_day": True, "fetchable": False, "received": True,
               "complete": False, "sections": ["equities"], "file": None,
-              "days": [{"weekday": "Monday", "received": True, "file": {"fetched_from": None}},
+              "days": [{"weekday": "Monday", "received": True, "file": {"fetched_from": None, "stored_name": "kcb_daily_2026-09-28.pdf"}},
                        {"weekday": "Tuesday", "received": False, "file": None}]}]
     item = {"type": "field", "key": "pe", "label": "P/E", "required": True, "value": None, "workbook": {"value": "9"},
             "rows": None, "workbook_rows": None, "needs_confirmation": False, "carried": None}
     got = readiness.classify("equities", {"week_ending": "2026-10-02", "slots": slots}, {"groups": [{"items": [item]}]})
-    assert got["groups"]["needs_analyst"] == [{"kind": "upload", "key": "kcb_daily", "label": "KCB", "why": "missing days: Tuesday"}]
+    assert got["groups"]["needs_analyst"] == [{"kind": "upload", "key": "kcb_daily", "label": "KCB", "why": "missing days: Tuesday",
+                                                "files": [{"stored_name": "kcb_daily_2026-09-28.pdf"}]}]
     assert got["groups"]["in_place"] == [{"kind": "field", "key": "pe", "label": "P/E", "why": "from the workbook"}]
 
 

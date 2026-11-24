@@ -11,6 +11,7 @@ export function useSnips(week: MaybeRefOrGetter<string>, onChange?: (listing: Sn
   const drafts = ref<Record<string, string>>({});
   const busy = ref<Record<string, string>>({}); // hash -> what it is doing ("Reading…", "Confirming…")
   const uploading = ref(false);
+  const uploadingFile = ref<{ sector: string; name: string } | null>(null); // the file being sent, shown beside its sector's button
 
   function take(next: SnipsListing) {
     listing.value = next;
@@ -42,6 +43,7 @@ export function useSnips(week: MaybeRefOrGetter<string>, onChange?: (listing: Sn
     error.value = null;
     const added: string[] = [];
     for (const file of Array.from(files)) {
+      uploadingFile.value = { sector, name: file.name };
       try {
         const before = new Set((listing.value?.snips ?? []).map((s) => s.hash));
         const next = await api.uploadSnip(toValue(week), sector, file);
@@ -52,6 +54,7 @@ export function useSnips(week: MaybeRefOrGetter<string>, onChange?: (listing: Sn
       }
     }
     uploading.value = false;
+    uploadingFile.value = null;
     for (const h of added) await read(h);
   }
   async function read(hash: string) {
@@ -85,6 +88,6 @@ export function useSnips(week: MaybeRefOrGetter<string>, onChange?: (listing: Sn
   const bySector = computed(() =>
     (listing.value?.sectors ?? []).map((sec) => ({ ...sec, snips: (listing.value?.snips ?? []).filter((s) => s.sector === sec.id) })),
   );
-  return { listing, error, drafts, busy, uploading, bySector, load, upload, read, move, setDate, confirm, remove };
+  return { listing, error, drafts, busy, uploading, uploadingFile, bySector, load, upload, read, move, setDate, confirm, remove };
 }
 export type Snips = ReturnType<typeof useSnips>;

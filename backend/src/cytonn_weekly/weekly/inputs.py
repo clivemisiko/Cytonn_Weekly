@@ -172,8 +172,9 @@ def identify(slot: Slot, data: bytes, week: Week) -> dict[str, Any]:
             return _found(read, read in week.report_dates, "equities_workbook.xlsx", "")
         if slot.slug == FI_WORKBOOK:
             read = fi_workbook_date(fi_workbook.open_fi_workbook(data, slot.title))
-            # its date: the date its money market fund table is published on
-            return _found(read, read == week.ending, "fi_workbook.xlsx", "")
+            # its date: the date its money market fund table is published on; the Friday, or the as-at day of a holiday
+            # week, as read_mmf_table takes it
+            return _found(read, read in week.report_dates, "fi_workbook.xlsx", "")
         if slot.slug == DP_WORKBOOK:
             read = dp_workbook.read_dp_workbook(dp_workbook.open_dp_workbook(data, slot.title)).price_date
             # its date: the date of the newest price column
@@ -448,6 +449,11 @@ class WeeklyInputs:
         from cytonn_weekly.weekly.analyst import Analyst   # analyst.py imports this module
 
         return self._once("analyst", lambda: Analyst(self))
+
+    def entry(self, stored_name: str) -> Optional[dict[str, Any]]:
+        """A stored file's manifest entry (the date read from it and whether it is this week's), or None if it is not stored."""
+        entry = read_manifest(self.week, self.root).get(stored_name)
+        return entry if entry is not None and self._path(stored_name) is not None else None
 
     def matches(self, stored_name: str) -> Optional[bool]:
         """Whether a stored file's own date is this week's (None if it is not stored)."""

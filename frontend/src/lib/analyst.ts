@@ -4,7 +4,8 @@ import type { AnalystCarried, AnalystColumn, AnalystField, AnalystRow, AnalystTa
 /**
  * Where an item's value comes from: typed here, the uploaded workbook, both and different, or nowhere.
  * "second": the workbook's value is used and what the form holds is its second reading (the fund table).
- * "stale": nothing is typed and the workbook holds the item, but for another week.
+ * "stale": nothing is typed and the workbook holds the item, but is not dated this week (its sheet or the whole workbook): it
+ * covers nothing, even where its value is shown.
  */
 export type Origin = "typed" | "differs" | "workbook" | "second" | "stale" | "empty" | "carried" | "unconfirmed";
 
@@ -31,7 +32,7 @@ export function fieldOrigin(item: AnalystField): Origin {
   if (item.needs_confirmation) return "unconfirmed";
   const inBook = !!asText(item.workbook?.value);
   if (asText(item.value)) return item.workbook_first && inBook ? "second" : item.differences.length ? "differs" : item.carried ? "carried" : "typed";
-  return inBook ? "workbook" : item.workbook_stale ? "stale" : "empty";
+  return item.workbook_stale ? "stale" : inBook ? "workbook" : "empty";
 }
 
 export const tableOrigin = (item: AnalystTable): Origin =>
@@ -45,10 +46,10 @@ export const tableOrigin = (item: AnalystTable): Origin =>
           : item.carried?.whole
             ? "carried"
             : "typed"
-      : item.workbook_rows?.length
-        ? "workbook"
-        : item.workbook_stale
-          ? "stale"
+      : item.workbook_stale
+        ? "stale"
+        : item.workbook_rows?.length
+          ? "workbook"
           : "empty";
 
 /** Whether the uploaded workbook holds a value for the item this week. */
@@ -68,7 +69,7 @@ export function originLabel(origin: Origin, carried: AnalystCarried | null, rows
   if (origin === "differs") return `Typed${n}, differs from the workbook`;
   if (origin === "workbook") return `From the workbook${n}`;
   if (origin === "second") return `From the workbook${n}; the form's value is its second reading`;
-  if (origin === "stale") return "In the workbook, but for another week";
+  if (origin === "stale") return "In the workbook, but not dated this week";
   return "Empty";
 }
 
