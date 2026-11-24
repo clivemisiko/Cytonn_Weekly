@@ -63,6 +63,8 @@ export interface FigureInput {
   origin: "source" | "analyst_input" | "ocr";
   source: string;
   second?: { value: unknown; source: string; origin?: string } | null;
+  /** An OCR reading's own hint of what to check it against (may name the page's address). */
+  check?: string;
 }
 
 export interface ClaimContext {
@@ -209,6 +211,8 @@ export interface ReviewItem {
   resolution_note: string | null;
   /** The uploads that can fix this item (named as the inputs panel names them); empty or absent for most items. */
   fix_slots?: { slug: string; title: string }[];
+  /** Where on the start screen this item is fixed: a form field or table, an upload slot or a snip sector; empty for most. */
+  fix_inputs?: { panel: "analyst-form" | "inputs-panel" | "snips"; key: string }[];
   /** True for a flagged sentence of a drafted piece that the reviewer can rewrite or remove by hand. */
   edit_sentence?: boolean;
   edit_paragraph?: boolean;

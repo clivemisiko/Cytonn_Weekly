@@ -52,7 +52,7 @@ function picked(event: Event) {
 </script>
 
 <template>
-  <li class="space-y-2 border-t py-4 first:border-t-0 first:pt-0">
+  <li :data-attention-key="entry.slug" class="space-y-2 border-t py-4 first:border-t-0 first:pt-0">
     <div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
       <div class="min-w-0 space-y-1">
         <p class="flex flex-wrap items-center gap-2 text-sm font-semibold">

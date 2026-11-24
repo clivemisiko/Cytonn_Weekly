@@ -1,4 +1,4 @@
-import { nextTick, shallowRef } from "vue";
+import { type InjectionKey, nextTick, shallowRef } from "vue";
 import type { ApiProblem } from "./api";
 
 /**
@@ -105,6 +105,18 @@ function editing(): boolean {
   return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
 }
 
+/** Scroll `el` into view only if it is out of view (at once under reduced motion), then focus it unless someone is typing. */
+function reveal(el: HTMLElement, force: boolean): void {
+  const inset = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
+  if (needsScroll(el.getBoundingClientRect(), window.innerHeight, inset)) {
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    el.scrollIntoView({ block: "center", behavior: reduced ? "auto" : "smooth" });
+  }
+  if (!force && editing()) return;
+  if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
+  el.focus({ preventScroll: true });
+}
+
 /**
  * Go to a problem's place: after two frames (so the component has drawn the error), scroll its first `[data-problem]`
  * (else the target itself) into view only if it is out of view (at once under reduced motion), mark it (`highlight`), then
@@ -122,16 +134,41 @@ export async function goTo(target: string | null, { force = false } = {}): Promi
   const problem = el.querySelector<HTMLElement>("[data-problem]");
   const focusable = problem ?? el;
   if (problem) highlight(problem);
-  const inset = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
-  if (needsScroll(focusable.getBoundingClientRect(), window.innerHeight, inset)) {
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    focusable.scrollIntoView({ block: "center", behavior: reduced ? "auto" : "smooth" });
-  }
-  if (!force && editing()) return true;
-  if (!focusable.hasAttribute("tabindex")) focusable.setAttribute("tabindex", "-1");
-  focusable.focus({ preventScroll: true });
+  reveal(focusable, force);
   return true;
 }
+
+/** The element of one input inside a panel: `[data-attention="<panel>"] [data-attention-key="<key>"]`. */
+export function keyTarget(panel: string, key: string): HTMLElement | null {
+  if (typeof document === "undefined") return null;
+  return document.querySelector<HTMLElement>(`[data-attention="${CSS.escape(panel)}"] [data-attention-key="${CSS.escape(key)}"]`);
+}
+
+/**
+ * "Fix this" from a review item: go to one input on the start screen, mark it and focus its Confirm control when it
+ * holds an unconfirmed carried or suggested value, else its first control. The panels read their data after they
+ * mount, so this waits for the element (up to `waitMs`). Returns false when it never appears.
+ */
+export async function goToKey(panel: string, key: string, { waitMs = 8000 } = {}): Promise<boolean> {
+  await nextTick();
+  const until = Date.now() + waitMs;
+  let el = keyTarget(panel, key);
+  while ((!el || el.getClientRects().length === 0) && Date.now() < until) {
+    await frame();
+    el = keyTarget(panel, key);
+  }
+  if (!el || el.getClientRects().length === 0) return false;
+  highlight(el);
+  const control =
+    el.querySelector<HTMLElement>("[data-attention-confirm]:not(:disabled)") ??
+    el.querySelector<HTMLElement>("input:not([type=hidden]):not(:disabled), textarea:not(:disabled), select:not(:disabled), button:not(:disabled)");
+  reveal(el, true);
+  control?.focus({ preventScroll: true });
+  return true;
+}
+
+/** Provided by the review screen where a "Fix this" can open the section's start screen; absent (no button) elsewhere. */
+export const FIX_THIS: InjectionKey<(input: { panel: string; key: string }) => void> = Symbol("fix-this");
 
 /**
  * An action failed with these problems (installed as the API's failure handler in main.ts, so it is called for

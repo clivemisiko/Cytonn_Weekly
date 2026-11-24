@@ -162,3 +162,21 @@ test("T46 a section never drafted for the week still shows only Draft section, a
     await expect(card(page, title).getByRole("button")).toHaveText(["Draft section"]);
   }
 });
+
+test("T156 an approved section: Add this input on a review item reaches Draft again through the same dialog", async ({ page, request }) => {
+  const period = "Week ending 2026-12-11";
+  await draftAndApprove(request, "digital_payments", period, "weekly");
+  const old = (await latest(request, period, "digital_payments")).run_id;
+  const review = await (await request.get(`${API}/api/reviews/${old}`)).json();
+  // The item's fix_inputs are stood in for (the demo DP draft has no workbook quarter to fill).
+  review.review_items[0] = { ...review.review_items[0], status: "flagged", fix_slots: [], fix_inputs: [{ panel: "inputs-panel", key: "dp_workbook" }] };
+  await page.route(`**/api/reviews/${old}`, (route) => (route.request().method() === "GET" ? route.fulfill({ json: review }) : route.fallback()));
+  await page.goto(`${screenUrl(period)}&review=${old}`);
+  await page.getByRole("button", { name: /^\d+ Flagged/ }).click();
+  await page.getByRole("region", { name: "Selected review item" }).getByRole("button", { name: "Add this input" }).click();
+  await page.getByRole("button", { name: `Draft the ${period} section` }).click();
+  const dialog = page.getByRole("dialog", { name: "Draft Digital Payments again?" });
+  await expect(dialog).toContainText(`The earlier review (run ${old}, approved) stays saved and read-only.`);
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  expect((await latest(request, period, "digital_payments")).run_id).toBe(old); // nothing drafted, the approval untouched
+});

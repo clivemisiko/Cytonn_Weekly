@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import { useRouter } from "vue-router";
+import { computed, onMounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { goToKey } from "@/lib/attention";
 import Button from "@/components/ui/Button.vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import { LINK } from "@/components/ui/button";
@@ -55,6 +56,14 @@ const emit = defineEmits<{
 }>();
 
 const router = useRouter();
+const route = useRoute();
+// "Add this input" from a review item lands here with ?focus=<panel>:<key>: read once, then go to that input.
+onMounted(() => {
+  const raw = route.query.focus;
+  const focus = typeof raw === "string" ? raw : "";
+  const at = focus.indexOf(":");
+  if (at > 0) void goToKey(focus.slice(0, at), focus.slice(at + 1));
+});
 useShellRibbon(() => (props.config.dev_mode ? props.config.dev_mode_label : null)); // the shell draws it under the top bar
 const weekly = computed(() => props.report.type === "weekly" && !props.report.period);
 const thisRun = computed(() => (weekly.value ? "this week’s" : `the ${props.report.period}`));

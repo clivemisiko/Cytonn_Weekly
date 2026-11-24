@@ -17,7 +17,7 @@ const emit = defineEmits<{ confirm: [] }>();
       }}
     </p>
     <p v-if="carried?.note" class="text-xs [overflow-wrap:anywhere]">{{ carried.note }}</p>
-    <Button size="sm" variant="outline" :disabled="disabled" @click="emit('confirm')">
+    <Button size="sm" variant="outline" data-attention-confirm :disabled="disabled" @click="emit('confirm')">
       <PhCheck weight="bold" data-icon="inline-start" aria-hidden="true" />
       Confirm for this week<span class="sr-only">: {{ label }}</span>
     </Button>

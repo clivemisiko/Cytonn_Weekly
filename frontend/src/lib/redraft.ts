@@ -1,5 +1,8 @@
 import type { Decision, ReportType } from "./types";
 
+/** Under "Add this input" on an approved or locked review: what drafting again does to it (nothing; a new run is made). */
+export const FIX_APPROVED_NOTE = "This review is decided, and that run stays as it is. Drafting again makes a new run, and the section needs approving again.";
+
 /**
  * What an analyst is told before a section that already has a review is drafted again. The API allows it (nothing in
  * the backend refuses a new draft over a decided one); the new run becomes the section's latest, and the weekly export

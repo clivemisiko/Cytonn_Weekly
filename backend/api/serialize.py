@@ -215,6 +215,15 @@ def _fix_slots(review: CoordinatorReview, item: Any) -> list[dict[str, str]]:
     return [{"slug": s, "title": weekly_inputs.BY_SLUG[s].title} for s in slots]
 
 
+def _fix_inputs(review: CoordinatorReview, item: Any) -> list[dict[str, str]]:
+    """The start-screen inputs that would fix this item (weekly/recheck.fix_inputs); [] outside the weekly report."""
+    from cytonn_weekly.weekly import recheck
+
+    if review.report_type != "weekly":
+        return []
+    return recheck.fix_inputs(section_slug(review), review.section, item)
+
+
 def _can_edit_sentence(review: CoordinatorReview, n: int, item: Any) -> bool:
     """True for a flagged claim of a drafted piece that the reviewer can rewrite or remove by hand."""
     from cytonn_weekly.weekly import sentence_edit
@@ -274,7 +283,7 @@ def serialize_review(review: CoordinatorReview) -> dict[str, Any]:
         "section": _serialize_blocks(review) if "blocks" in review.section else _serialize_section(review),
         # The section's summary for the CMS (composed, never drafted): weekly/summaries.py.
         "summary": section_summary(review.section),
-        "review_items": [{"index": n, **item.to_dict(), "fix_slots": _fix_slots(review, item),
+        "review_items": [{"index": n, **item.to_dict(), "fix_slots": _fix_slots(review, item), "fix_inputs": _fix_inputs(review, item),
                           "edit_sentence": _can_edit_sentence(review, n, item),
                           "edit_paragraph": _can_edit_paragraph(review, n, item),
                           "remove_finding": _can_remove_finding(review, n, item)}
