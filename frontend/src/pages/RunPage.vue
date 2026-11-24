@@ -12,8 +12,8 @@ import { LINK, buttonVariants } from "@/components/ui/button";
 import * as api from "@/lib/api";
 import { queueText, useLiveElapsed } from "@/lib/drafting";
 import { STATUS_ORDER, clockTime, elapsed, friendlyTime, reportName } from "@/lib/format";
-import { type BackTarget, useBack } from "@/lib/nav";
-import { isTerminal, mergeEvents, overviewHref, stepLines } from "@/lib/run";
+import { type BackTarget, chooserHref, useBack } from "@/lib/nav";
+import { isTerminal, mergeEvents, screenHref, stepLines } from "@/lib/run";
 import { shell, useShellRibbon } from "@/lib/shell";
 import type { AppConfig, Run, RunEvent } from "@/lib/types";
 
@@ -187,7 +187,7 @@ watch([() => lines.value.length, settled], async () => {
 });
 
 // The top bar's Back: to the run's own report's list of sections (as the masthead's back link did before the bar).
-const backHref = computed(() => (run.value ? overviewHref(run.value.report_type, run.value.period) : "/overview"));
+const backHref = computed(() => (run.value ? screenHref({ type: run.value.report_type, period: run.value.period }) : chooserHref()));
 useBack((): BackTarget => ({ kind: "href", to: "all sections", href: backHref.value }));
 
 const devLabel = computed(() => run.value?.dev_mode_label ?? config.value?.dev_mode_label ?? "");
@@ -219,8 +219,8 @@ const status = computed(() => {
       <div v-if="missing" class="space-y-6">
         <Notice tone="warn" role="status">
           This run is no longer available. The tool was restarted, which stops a draft that was still running or waiting and
-          saves nothing from it. If the draft had finished, open the section from the overview.
-          <RouterLink to="/overview" :class="LINK">Go to the overview</RouterLink>
+          saves nothing from it. If the draft had finished, open the section from the section list.
+          <RouterLink :to="chooserHref()" :class="LINK">Go to the sections</RouterLink>
         </Notice>
       </div>
 
@@ -248,12 +248,12 @@ const status = computed(() => {
         </div>
         <p v-if="running && !final && !stopped" class="font-mono text-sm tabular-nums text-muted-foreground">Drafting for {{ elapsed(seconds) }}</p>
         <Notice v-if="stopped" tone="warn" role="status">
-          This draft run is taking longer than expected and may have stalled (elapsed time: {{ elapsed(seconds) }}). You can return to the Overview to restart the draft or cancel it.
+          This draft run is taking longer than expected and may have stalled (elapsed time: {{ elapsed(seconds) }}). You can return to the sections to restart the draft or cancel it.
         </Notice>
 
         <Notice v-if="feed === 'lost' && !settled" tone="warn" role="alert">
-          Connection lost. The draft may still finish. Check the overview before starting another.
-          <RouterLink :to="backHref" :class="LINK">Go to the overview</RouterLink>
+          Connection lost. The draft may still finish. Check the sections before starting another.
+          <RouterLink :to="backHref" :class="LINK">Go to the sections</RouterLink>
         </Notice>
 
         <section aria-labelledby="steps-title">
@@ -306,7 +306,7 @@ const status = computed(() => {
           </div>
           <RouterLink
             v-if="run?.review_id != null"
-            :to="overviewHref(run.report_type, run.period, run.review_id)"
+            :to="screenHref({ type: run.report_type, period: run.period }, { review: run.review_id })"
             data-slot="button"
             :class="cn(buttonVariants({ size: 'lg' }))"
           >
@@ -318,7 +318,7 @@ const status = computed(() => {
         <div v-if="failed && final" class="space-y-3">
           <Notice role="alert" class="font-medium">Drafting could not be completed.{{ final.detail ? ` Reason: ${final.detail}` : " Please try drafting the section again." }}</Notice>
           <p class="text-sm">
-            <RouterLink :to="backHref" :class="LINK">Back to overview</RouterLink>
+            <RouterLink :to="backHref" :class="LINK">Back to the sections</RouterLink>
           </p>
         </div>
 

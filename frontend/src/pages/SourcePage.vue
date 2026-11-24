@@ -9,6 +9,7 @@ import Notice from "@/components/review/Notice.vue";
 import { buttonVariants } from "@/components/ui/button";
 import * as api from "@/lib/api";
 import { friendlyTime } from "@/lib/format";
+import { chooserHref } from "@/lib/nav";
 import { shell } from "@/lib/shell";
 import { ORIGIN_WORDS, dateLabel, locateQuote } from "@/lib/sources";
 import type { SourceMeta } from "@/lib/types";
@@ -21,7 +22,7 @@ shell.invalidate(); // the rail knows no section's state here
 const first = (v: unknown) => (Array.isArray(v) ? String(v[0] ?? "") : typeof v === "string" ? v : "");
 const quote = first(route.query.quote).trim();
 const review = first(route.query.review);
-const backTo = /^\d+$/.test(review) ? { path: "/overview", query: { review } } : { path: "/overview" };
+const backTo = /^\d+$/.test(review) ? { path: "/overview", query: { review } } : chooserHref();
 
 const meta = shallowRef<SourceMeta | null>(null);
 const text = ref("");

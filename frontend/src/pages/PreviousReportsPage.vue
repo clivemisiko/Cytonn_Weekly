@@ -154,7 +154,7 @@ const weekTitle = computed(() => {
 
           <template v-else-if="phase.name === 'week'">
             <Notice v-if="!phase.status.ready" role="alert" class="font-medium">
-              This week's report is no longer marked as fully approved because one or more sections have newer drafts. Please visit the Overview to review pending changes.
+              This week's report is no longer marked as fully approved because one or more sections have newer drafts. Open the week's sections to review pending changes.
             </Notice>
             <Notice v-if="phase.status.is_dev_draft" role="alert" class="font-semibold">
               {{ phase.status.dev_mode_label }}: The exported document contains a developer watermark on every page ({{ phase.status.dev_sections.join(", ") }}).

@@ -149,12 +149,3 @@ export function screenHref(report: { type: ReportType; period: string; kind?: st
   else if (at.section) q.set("section", at.section);
   return `/overview?${q.toString()}`;
 }
-
-/** The overview of one report, optionally opening one saved review on it (how a finished run hands over). */
-export function overviewHref(type: ReportType, period: string, reviewId?: number | null): string {
-  // Always names the report: a bare /overview opens the default week, not the unlabelled weekly report.
-  const q = new URLSearchParams({ report: type });
-  if (period) q.set("period", period);
-  if (reviewId != null) q.set("review", String(reviewId));
-  return `/overview?${q.toString()}`;
-}

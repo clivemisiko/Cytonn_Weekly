@@ -10,10 +10,10 @@ import { draftAnyway, reviewHeading } from "./helpers";
  */
 const WEEK = "2026-10-09";
 const PERIOD = `Week ending ${WEEK}`;
-const OVERVIEW = `/overview?report=weekly&period=${encodeURIComponent(PERIOD)}`;
-// A bare /overview opens on the default week (defaultWeek). The choices are pinned so the week does not depend on what
-// earlier specs left drafted: the newest choice is midway, and no live draft can beat the newest midway week.
-const DEFAULT_WEEK = new RegExp(`/overview\\?report=weekly&period=Week(%20|\\+)ending(%20|\\+)${WEEK}$`);
+const OVERVIEW = `/chat?period=${encodeURIComponent(PERIOD)}`; // the section chooser, which took the overview's place
+// A bare /overview, and every way back to the sections, opens the chooser, which picks the default week (defaultWeek). The
+// choices are pinned so the week does not depend on what earlier specs left drafted.
+const CHOOSER = /\/chat$/;
 async function pinWeeks(page: Page) {
   await page.route("**/api/previous/weekly", (route) =>
     route.fulfill({
@@ -30,12 +30,13 @@ const RUN_TIMEOUT = 8 * 60_000;
 const card = (page: Page, title: string) => page.locator("li", { has: page.getByRole("heading", { name: title, exact: true }) });
 const topbar = (page: Page) => page.getByRole("navigation", { name: "App" });
 
+const chooserHeading = { name: SHOW_CHAT ? "Choose what to talk about" : "Choose a section" } as const;
 async function openOverview(page: Page) {
   await page.goto(OVERVIEW);
-  await expect(page.getByRole("heading", { name: "Analyst review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", chooserHeading)).toBeVisible();
 }
 
-/** A section's start screen, from the overview card's own button. */
+/** A section's start screen, from its card's own button in the chooser's aside. */
 async function openStart(page: Page, title: string, button: RegExp = /Draft section/) {
   await openOverview(page);
   await card(page, title).getByRole("button", { name: button }).click();
@@ -45,7 +46,7 @@ async function openStart(page: Page, title: string, button: RegExp = /Draft sect
 test.skip(!!process.env.E2E_VARIANT, "runs on the default test backend");
 test.describe.configure({ mode: "serial" });
 
-test("T01 landing page loads, Home becomes current on the overview, Back disabled", async ({ page }) => {
+test("T01 landing page loads, Home becomes current on the chooser, an old /overview address opens it, Back disabled", async ({ page }) => {
   await pinWeeks(page);
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /Welcome to Cytonn Weekly\./ })).toBeVisible();
@@ -61,32 +62,32 @@ test("T01 landing page loads, Home becomes current on the overview, Back disable
   await expect(page).toHaveURL(/\/chat$/); // the chat's section picker is where the welcome page leads
   await expect(page.getByRole("heading", { name: SHOW_CHAT ? "Choose what to talk about" : "Choose a section" })).toBeVisible();
   await expect(home).toHaveAttribute("aria-current", "page"); // Home is the chat
-  await page.goto("/overview"); // the overview is hidden from navigation but still opens by its address
-  await expect(page).toHaveURL(DEFAULT_WEEK); // a bare /overview opens on a labelled week
-  await expect(page.getByRole("heading", { name: "Analyst review", level: 1 })).toBeVisible();
-  await expect(home).not.toHaveAttribute("aria-current", /.*/);
+  await page.goto("/overview"); // the overview is gone: its old address opens the chooser on the default week
+  await expect(page).toHaveURL(CHOOSER);
+  await expect(page.getByRole("heading", chooserHeading)).toBeVisible();
+  await expect(page.getByLabel("Week", { exact: true })).toHaveValue(PERIOD);
+  await expect(home).toHaveAttribute("aria-current", "page");
 });
 
-test("T02 an old bookmark of a report at / goes to the overview with its query kept", async ({ page }) => {
-  await page.goto(`/?report=weekly&period=${encodeURIComponent(PERIOD)}`);
-  await expect(page.getByRole("heading", { name: "Analyst review", level: 1 })).toBeVisible();
-  const url = new URL(page.url());
-  expect(url.pathname).toBe("/overview");
-  expect(url.searchParams.get("report")).toBe("weekly");
-  expect(url.searchParams.get("period")).toBe(PERIOD);
+test("T02 an old bookmark of a report at / or /overview opens the chooser on its week", async ({ page }) => {
+  for (const old of [`/?report=weekly&period=${encodeURIComponent(PERIOD)}`, `/overview?report=weekly&period=${encodeURIComponent(PERIOD)}`]) {
+    await page.goto(old);
+    await expect(page.getByRole("heading", chooserHeading)).toBeVisible();
+    const url = new URL(page.url());
+    expect(url.pathname).toBe("/chat");
+    expect(url.searchParams.get("period")).toBe(PERIOD);
+  }
 });
 
-test("T03 overview lists the five weekly sections, the dev mark and the export gate", async ({ page }) => {
+test("T03 the chooser lists the five weekly sections, the dev mark and the export gate", async ({ page }) => {
   await openOverview(page);
   for (const title of ["Fixed Income", "Equities", "Real Estate", "Digital Payments", "Focus of the Week"]) {
     await expect(card(page, title)).toBeVisible();
   }
-  await expect(page.getByText(`Weekly, ${PERIOD}: 5 report sections.`, { exact: false })).toBeVisible();
   await expect(card(page, "Fixed Income").getByText("Not drafted for w/e 9 Oct 2026")).toBeVisible();
   await expect(page.getByRole("group", { name: "Sections by state" })).toContainText("Not drafted5 / 5");
-  // Dev mode: the ribbon under the top bar and the notice in the page.
+  // Dev mode: the ribbon under the top bar.
   await expect(page.getByRole("status").filter({ hasText: "DEV MODE DRAFT (local model): NOT FOR PUBLICATION OR CIRCULATION" })).toBeVisible();
-  await expect(page.getByRole("alert").filter({ hasText: "Development Mode Active (Local Model)" })).toBeVisible();
   // Export: there, and off until a section's draft is finished, with the reason.
   await expect(page.getByRole("heading", { name: "Export weekly report" })).toBeVisible();
   await expect(page.getByText("No section has a finished draft for this week yet. Draft a section, then export.")).toBeVisible();
@@ -166,14 +167,14 @@ test("T06 top bar stays in view after scrolling; Back goes to the section list, 
   await expect.poll(async () => (await page.locator("header").first().boundingBox())?.y).toBe(0);
   expect((await page.locator("header").first().boundingBox())?.height).toBe(44);
   await topbar(page).getByRole("button", { name: "Back to all sections" }).click();
-  await expect(page.getByRole("heading", { name: "Analyst review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", chooserHeading)).toBeVisible();
   expect(new URL(page.url()).searchParams.get("period")).toBe(PERIOD);
   await expect(card(page, "Equities")).toBeVisible();
 
   // From a deep link to a run (one the API does not know): Back names the section list, Home goes to the chat.
   await page.goto("/runs/not-a-run");
   await topbar(page).getByRole("button", { name: "Back to all sections" }).click();
-  await expect(page).toHaveURL(DEFAULT_WEEK); // a bare /overview opens on a labelled week
+  await expect(page).toHaveURL(CHOOSER);
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   await topbar(page).getByRole("link", { name: "Home" }).click();
   await expect(page).toHaveURL(/\/chat$/);
@@ -352,8 +353,8 @@ test("T11 a stopped run shows the error text and the way back", async ({ page })
   await expect(page.getByText(/^Stopped .* EAT\.$/)).toBeVisible();
   await expect(page.getByRole("log", { name: "Steps of this draft" }).getByRole("listitem").last()).toContainText("Failed: The draft stopped.");
   await expect(page.getByRole("heading", { name: "Draft ready for review" })).toHaveCount(0);
-  await page.getByRole("link", { name: "Back to overview" }).click();
-  await expect(page.getByRole("heading", { name: "Analyst review", level: 1 })).toBeVisible();
+  await page.getByRole("link", { name: "Back to the sections" }).click();
+  await expect(page.getByRole("heading", chooserHeading)).toBeVisible();
   expect(new URL(page.url()).searchParams.get("period")).toBe(PERIOD);
   await expect(card(page, "Real Estate").getByText("Not drafted for w/e 9 Oct 2026")).toBeVisible();
 });
@@ -472,13 +473,13 @@ test("T14 Word export: on once a draft is finished; the file downloads under its
   await expect(button).toBeEnabled();
 });
 
-test("T15 a run the API no longer has says so and links to the overview", async ({ page }) => {
+test("T15 a run the API no longer has says so and links to the sections", async ({ page }) => {
   await pinWeeks(page);
   await page.goto("/runs/not-a-run");
   await expect(page.getByRole("heading", { name: "Draft run", level: 1 })).toBeVisible();
   await expect(page.getByText(/This run is no longer available\. The tool was restarted, which stops a draft/)).toBeVisible();
-  await page.getByRole("link", { name: "Go to the overview" }).click();
-  await expect(page).toHaveURL(DEFAULT_WEEK); // a bare /overview opens on a labelled week
+  await page.getByRole("link", { name: "Go to the sections" }).click();
+  await expect(page).toHaveURL(CHOOSER);
 });
 
 test("T16 keyboard: the skip link comes first, the theme group is one tab stop moved by arrow keys", async ({ page }) => {

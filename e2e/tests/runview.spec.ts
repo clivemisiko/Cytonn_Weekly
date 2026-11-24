@@ -69,7 +69,7 @@ test("T75 a run the API no longer has: its notice is in the middle of the page, 
   await page.goto("/runs/not-a-run");
   const notice = page.getByRole("status").filter({ hasText: "This run is no longer available." });
   await expect(notice).toBeVisible();
-  await expect(page.getByRole("link", { name: "Go to the overview" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Go to the sections" })).toBeVisible();
   await expect(facts(page)).toHaveCount(0);
   // Centred between the rail and the window's edge, as a feed with no panel is (not pushed left by a column nothing fills).
   const rail = (await page.getByRole("navigation", { name: "Report sections" }).boundingBox())!;
