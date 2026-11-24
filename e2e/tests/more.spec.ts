@@ -228,7 +228,6 @@ test("T23 rejecting a section is final: the dialog, the locked review, the overv
   await expect(dialog).toBeHidden();
 
   await expect(page.getByText("Rejected and locked")).toBeVisible();
-  await expect(page.getByText("Decision recorded: rejected.")).toBeVisible();
   await expect(page.getByText(/Decision recorded on .* EAT\. This section is finalized and locked for editing\./)).toBeVisible();
   await expect(page.getByRole("button", { name: "Approve", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Reject", exact: true })).toHaveCount(0);

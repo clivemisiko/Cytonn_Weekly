@@ -76,7 +76,7 @@ const ITEM =
        expanded (the default), 56px when collapsed for the visit, always 224px from 1366px. Under 768px it is a drawer the
        top bar's Menu button opens, over the page. -->
   <div
-    class="sticky top-[calc(var(--topbar-h)+var(--ribbon-h,0rem))] h-[calc(100dvh-var(--topbar-h)-var(--ribbon-h,0rem))] shrink-0 min-[1366px]:w-56"
+    class="sticky top-0 h-dvh shrink-0 max-md:top-[calc(var(--topbar-h)+var(--ribbon-h,0rem))] max-md:h-[calc(100dvh-var(--topbar-h)-var(--ribbon-h,0rem))] min-[1366px]:w-56"
     :class="[open ? 'min-[768px]:w-56' : 'min-[768px]:w-14', menu ? 'max-md:fixed max-md:left-0 max-md:z-30 max-md:w-56' : 'max-md:hidden']"
   >
     <nav

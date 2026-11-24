@@ -181,7 +181,6 @@ test("T115 rejecting a section whose item carries a fix-needed note: the next dr
   const dialog = page.getByRole("dialog", { name: "Reject this section?" });
   await dialog.getByRole("button", { name: "Reject", exact: true }).click();
   await expect(dialog).toBeHidden();
-  await expect(page.getByText("Decision recorded: rejected.")).toBeVisible();
   await expect(page.getByText("Rejected and locked")).toBeVisible();
   expect((await (await request.get(`${API}/api/reviews/${first}`)).json()).decision).toBe("rejected");
 

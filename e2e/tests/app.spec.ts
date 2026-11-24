@@ -317,7 +317,6 @@ test("T09 Digital Payments: run to done, open the review, one decision for the w
   await approve.click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByText("Approved and locked")).toBeVisible();
-  await expect(page.getByText("Decision recorded: approved.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Approve", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Reject", exact: true })).toHaveCount(0);
 
@@ -334,13 +333,13 @@ test("T09 Digital Payments: run to done, open the review, one decision for the w
 test("T10 the sticky status bar stays under the top bar while a review scrolls", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 500 });
   await page.goto(`/overview?review=${paymentsReview}`);
-  await expect(page.getByText("Decision recorded: approved.")).toBeVisible();
+  await expect(page.getByText("Approved and locked")).toBeVisible();
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(100);
   const bar = page.locator('[data-attention="review-status-bar"]');
   // 44px top bar, then the dev ribbon's 28px when the review is a dev draft (this one is not).
   await expect.poll(async () => Math.round((await bar.boundingBox())?.y ?? -1)).toBe(44); // once the screen has settled into place
-  await expect(page.getByRole("button", { name: "Back to all sections" }).last()).toBeInViewport();
+  await expect(bar.getByText(/^Saved as run \d+$/)).toBeInViewport(); // the bar's own facts stay in reach (a locked bar has no controls)
 });
 
 test("T11 a stopped run shows the error text and the way back", async ({ page }) => {

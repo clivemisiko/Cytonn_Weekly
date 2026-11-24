@@ -81,7 +81,8 @@ const findingsLeft = computed(() => {
         </div>
       </template>
       <template v-if="review.period && review.report_type !== 'weekly'">
-        {{ review.report_title }}, <span class="font-mono">{{ review.period }}</span> · Run <span class="font-mono">{{ review.run_id }}</span>
+        {{ review.report_title }}, <span class="font-mono">{{ review.period }}</span
+        >, run <span class="font-mono">{{ review.run_id }}</span>
       </template>
       <template v-else>
         <span v-if="review.period" class="font-mono">{{ review.period }}</span
@@ -113,8 +114,7 @@ const findingsLeft = computed(() => {
         </p>
         <!-- Three counts, one per status, in the item cards' colour, glyph and border: each one filters the review items, and
              pressing it again shows every item. -->
-        <div class="space-y-2">
-          <div role="group" aria-label="Review items by status" class="grid grid-cols-1 gap-3 @min-[34rem]:grid-cols-3">
+        <div role="group" aria-label="Review items by status" class="flex flex-wrap items-center gap-1 rounded-lg border bg-card p-1.5">
             <CountTile
               v-for="s in STATUS_ORDER"
               :key="s"
@@ -124,8 +124,7 @@ const findingsLeft = computed(() => {
               :pressed="filter === s"
               @click="filter = filter === s ? 'all' : s"
             />
-          </div>
-          <p class="text-right text-xs text-muted-foreground">Not auto-verified is not the same as incorrect</p>
+          <p class="ml-auto px-3 text-xs text-muted-foreground">Not auto-verified is not the same as incorrect</p>
         </div>
         <details v-if="removed.length" class="rounded-lg border bg-card px-4 py-2.5 text-sm">
           <summary class="cursor-pointer font-medium">Removed findings ({{ removed.length }})</summary>

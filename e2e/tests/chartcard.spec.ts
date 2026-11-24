@@ -192,7 +192,7 @@ test("T81 rows left out of the series are listed by cell on the card and are a f
   await expect(dialog).toBeHidden();
 
   // Once decided, the review is frozen and so is the choice.
-  await expect(page.getByText("Decision recorded: approved.")).toBeVisible();
+  await expect(page.getByText("Approved and locked")).toBeVisible();
   expect((await (await request.get(`${API}/api/reviews/${id}`)).json()).decision).toBe("approved");
   await open(page, id);
   await expect(peCard(page).getByRole("button", { name: "Use the team's own chart" })).toBeDisabled();

@@ -40,16 +40,17 @@ test("T59 the rail lists the five sections with their state; it is a full rail, 
   expect((await nav.boundingBox())?.width).toBe(224);
   expect((await nav.getByRole("button", { name: /^Fixed Income, / }).boundingBox())!.width).toBeGreaterThan(150); // its label shows
 
-  // The dev ribbon is directly under the top bar and the rail starts under the ribbon, not behind it.
+  // The dev ribbon is directly under the top bar; the rail runs the full height beside them, from the top of the window.
   const ribbon = page.getByRole("status").filter({ hasText: "DEV MODE DRAFT (local model): NOT FOR PUBLICATION OR CIRCULATION" });
   expect(Math.round((await ribbon.boundingBox())!.y)).toBe(44);
   expect(Math.round((await ribbon.boundingBox())!.height)).toBe(28);
-  expect(Math.round((await nav.boundingBox())!.y)).toBe(72);
-  // It sticks: after the page has scrolled, the rail is still under the ribbon, as tall as the room left, not scrolled away.
+  expect(Math.round((await nav.boundingBox())!.y)).toBe(0);
+  expect(Math.round((await ribbon.boundingBox())!.x)).toBe(224); // the ribbon spans the page beside the rail
+  // It sticks: after the page has scrolled, the rail is still at the top, the window's full height, not scrolled away.
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(200);
-  await expect.poll(async () => Math.round((await nav.boundingBox())!.y)).toBe(72);
-  expect(Math.round((await nav.boundingBox())!.height)).toBe(768 - 72);
+  await expect.poll(async () => Math.round((await nav.boundingBox())!.y)).toBe(0);
+  expect(Math.round((await nav.boundingBox())!.height)).toBe(768);
   await expect(nav.getByRole("button", { name: "Focus of the Week, Not drafted" })).toBeInViewport();
   await page.evaluate(() => window.scrollTo(0, 0));
 

@@ -16,6 +16,10 @@ describe("CountTile", () => {
       const html = await render({ status: "clean", value: 0, sub: "None in this draft", pressed });
       expect(html.startsWith('<button type="button"')).toBe(true);
       expect(html).toContain(`aria-pressed="${pressed}"`);
+      // The tile's lines are not lost: they are its description (read by a screen reader) and its tooltip.
+      const id = /aria-describedby="([^"]+)"/.exec(html)![1];
+      expect(html).toContain(`id="${id}" class="sr-only">None in this draft. Checked against its source, no flag</span>`);
+      expect(html).toContain('title="None in this draft. Checked against its source, no flag"');
     }
   });
 });
