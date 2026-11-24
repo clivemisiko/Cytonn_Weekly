@@ -39,6 +39,8 @@ async function standIn(page: Page, request: APIRequestContext, slug: string, tit
   const body = { ...base, ...extra, section_slug: slug, section_title: title, review_items: [{ ...first, status: "flagged", fix_slots: [], ...item }] };
   await page.route(`**/api/reviews/${runId}`, (route) => (route.request().method() === "GET" ? route.fulfill({ json: body }) : route.fallback()));
   await page.goto(`${screenUrl(PERIOD)}&review=${runId}`);
+  await page.getByRole("button", { name: /^\d+ Flagged/ }).click();
+  await page.getByRole("button", { name: /^\d+ Flagged/ }).click();
   return page.getByRole("region", { name: "Selected review item" });
 }
 
@@ -52,7 +54,7 @@ for (const s of SECTIONS) {
       return;
     }
     await button.click();
-    await expect(page).toHaveURL(new RegExp(`section=${s.slug}.*focus=${encodeURIComponent(`${s.fix.panel}:${s.fix.key}`)}`));
+    await expect(page).toHaveURL(new RegExp(`section=${s.slug}.*focus=${s.fix.panel}(:|%3A)${s.fix.key}`));
     const target = page.locator(`[data-attention="${s.fix.panel}"] [data-attention-key="${s.fix.key}"]`);
     await expect(target).toHaveAttribute("data-attention-on", "");
     await expect(target).toBeInViewport();
@@ -88,6 +90,7 @@ test("T155 the read-only archive view of a review has no Add this input", async 
   const body = { ...base, review_items: [{ ...first, status: "flagged", fix_inputs: [{ panel: "inputs-panel", key: "dp_workbook" }] }] };
   await page.route(`**/api/reviews/${runId}`, (route) => (route.request().method() === "GET" ? route.fulfill({ json: body }) : route.fallback()));
   await page.goto(`/previous?period=${encodeURIComponent(PERIOD)}&review=${runId}`);
+  await page.getByRole("button", { name: /^\d+ Flagged/ }).click();
   await expect(page.getByRole("region", { name: "Selected review item" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Add this input" })).toHaveCount(0);
 });

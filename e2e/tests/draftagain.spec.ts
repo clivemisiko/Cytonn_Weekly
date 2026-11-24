@@ -172,6 +172,7 @@ test("T156 an approved section: Add this input on a review item reaches Draft ag
   review.review_items[0] = { ...review.review_items[0], status: "flagged", fix_slots: [], fix_inputs: [{ panel: "inputs-panel", key: "dp_workbook" }] };
   await page.route(`**/api/reviews/${old}`, (route) => (route.request().method() === "GET" ? route.fulfill({ json: review }) : route.fallback()));
   await page.goto(`${screenUrl(period)}&review=${old}`);
+  await page.getByRole("button", { name: /^\d+ Flagged/ }).click();
   await page.getByRole("region", { name: "Selected review item" }).getByRole("button", { name: "Add this input" }).click();
   await page.getByRole("button", { name: `Draft the ${period} section` }).click();
   const dialog = page.getByRole("dialog", { name: "Draft Digital Payments again?" });
