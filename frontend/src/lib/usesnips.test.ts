@@ -40,9 +40,22 @@ describe("useSnips: an upload in progress names its file, and clears on success 
     const going = snips.upload("land", files("fake-bad.png"));
     expect(snips.uploadingFile.value?.name).toBe("fake-bad.png");
     answer.fail(new Error("Fake refusal."));
-    await going;
+    await expect(going).resolves.toBeUndefined(); // said, never thrown: SnipSector.vue does not catch
     expect(snips.uploading.value).toBe(false);
     expect(snips.uploadingFile.value).toBeNull();
     expect(snips.error.value).toBe("fake-bad.png: Fake refusal.");
+  });
+
+  it("clears the spinner even when the refusal is not an error object", async () => {
+    // reading .message of it once threw inside the catch, and the in-progress state was never cleared
+    const answer = held<SnipsListing>();
+    vi.mocked(api.uploadSnip).mockReturnValue(answer.promise);
+    const snips = useSnips("2027-01-08");
+    const going = snips.upload("land", files("fake-odd.png"));
+    answer.fail(undefined as unknown as Error);
+    await expect(going).resolves.toBeUndefined();
+    expect(snips.uploading.value).toBe(false);
+    expect(snips.uploadingFile.value).toBeNull();
+    expect(snips.error.value).toBe("fake-odd.png: the upload failed.");
   });
 });
