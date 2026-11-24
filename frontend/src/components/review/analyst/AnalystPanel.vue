@@ -162,6 +162,7 @@ const hasBook = computed(() => form.value?.workbooks[props.section] ?? false);
             @confirm="confirm(item.key)"
             @dirty="(d) => mark(item.key, d)"
             @save="(text) => save(item.key, { tables: { [item.key]: text === null ? null : { text } } })"
+            @retire="(point_id, reason) => save(item.key, { retire: [{ point_id, reason }] })"
           />
           <GridTable
             v-else

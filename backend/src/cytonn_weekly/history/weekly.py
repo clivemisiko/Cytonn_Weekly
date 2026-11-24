@@ -19,6 +19,9 @@ FIELD_SERIES = {"pe": "eq.pe", "dividend_yield": "eq.dividend_yield", "turnover_
 TABLE_SERIES = ("mmf", "interbank", "eurobond_yields", "foreign_history", "universe", "remittances")
 TYPED_BESIDE = {"origin": "typed", "source_kind": "form_field", "source_ref": "mmf, typed beside the Daily Nation snip", "confirmed_by": store.FORM}
 _ISSUES = tuple(spec[0] for spec in fi_workbook.EUROBOND_ISSUES)
+# "Other bond redemptions" (analyst.TABLES): each row is a point of this series, the bond its subject, on its value date.
+REDEMPTION, REDEMPTIONS_TABLE = "fi.bond_redemption", "borrowing_redemptions"
+MAX_REASON = 200
 
 _failed = 0
 
@@ -105,10 +108,77 @@ def sync(week: Week, before: dict[str, Any], after: dict[str, Any], db_path: Opt
             how = _how(after, key, value)
             typed = set(mark.get("typed") or []) if mark.get("from") == analyst.SNIP else set()   # rows typed beside a snip
             items += [{**p, **(TYPED_BESIDE if p["subject"] in typed else how)} for p in _points(week, key, value, after)]
+        rows, had = now.get(REDEMPTIONS_TABLE) or [], was.get(REDEMPTIONS_TABLE) or []
+        if rows != had:
+            items += [_redemption(week, r) for r in rows]
         if items:
             store.record_many(db_path, items)
+        if rows != had:
+            _retire_dropped(week, had, rows, db_path)
     except Exception as exc:  # noqa: BLE001 - the store must never fail a save
         _fail(items, exc)
+
+
+def _retire_dropped(week: Week, had: list[dict[str, str]], rows: list[dict[str, str]], db_path: Optional[Union[Path, str]]) -> None:
+    """A redemption taken off (or re-dated on) the form of the week that typed it is retired, so the old row stops counting.
+    One typed in an earlier week stays: only the Retire button on the form takes it out."""
+    kept = {(r["date"], bond_subject(r["bond"])) for r in rows}
+    for day, bond in {(r["date"], bond_subject(r["bond"])) for r in had} - kept:
+        for p in store.current(db_path, REDEMPTION, bond, since=day, through=day):
+            if p["week_ending"] == week.ending.isoformat():
+                store.retire(db_path, p["point_id"], REDEMPTION, f"taken off the form for the week ending {week.ending.isoformat()}")
+
+
+def bond_subject(bond: str) -> str:
+    """A bond's name as the store and the comparisons hold it: upper case, no spaces (``xyz1/2099/001`` is ``XYZ1/2099/001``)."""
+    return "".join(str(bond).split()).upper()
+
+
+def _redemption(week: Week, r: dict[str, str]) -> dict[str, Any]:
+    # A row saved before source, confirmed by and confirmed on were asked for (2026-11-24) says so instead.
+    return {**_spec(REDEMPTION, bond_subject(r["bond"]), r["date"], week, r["amount"]), "origin": "typed", "source_kind": "source",
+            "source_ref": r.get("source") or f"{REDEMPTIONS_TABLE}, typed for the week ending {week.ending.isoformat()} (no source given)",
+            "confirmed_by": r.get("confirmed_by") or store.FORM, "confirmed_at": r.get("confirmed_on")}
+
+
+def stored_redemptions(start: date, end: date, db_path: Optional[Union[Path, str]] = None) -> tuple[list[dict[str, Any]], Optional[str]]:
+    """The active stored bond redemptions with a value date from ``start`` to ``end``, oldest first, and the reason the store
+    could not be read (then the list is empty).  Each: {point_id, date, bond, kes_m, source, confirmed_by, confirmed_on, week_ending}.
+
+    Read whatever CYTONN_HISTORY_READS says: a redemption typed once must count in every later week, and nothing else keeps it.
+    """
+    # ponytail: the draft and the form status read the default database (as history/reads.py does), while a save writes to the
+    # API's db_path; they are the same unless create_app is given another db_path.  Thread db_path through if that ever differs.
+    try:
+        points = store.current(db_path, REDEMPTION, None, since=start.isoformat(), through=end.isoformat())
+    except Exception as exc:  # noqa: BLE001 - the draft goes on; the borrowing figure is flagged with the reason
+        log.warning("history store: bond redemptions not read: %s", type(exc).__name__)
+        return [], f"the history store could not be read ({type(exc).__name__}), so no bond redemption kept there is counted"
+    return [{"point_id": p["point_id"], "date": p["as_of"], "bond": p["subject"], "kes_m": float(Decimal(p["value"])),
+             "source": p["source_ref"], "confirmed_by": p["confirmed_by"], "confirmed_on": str(p["confirmed_at"])[:10],
+             "week_ending": p["week_ending"]} for p in points], None
+
+
+def retire_redemption(week: Week, point_id: Any, reason: Any, root: Optional[Path] = None,
+                      db_path: Optional[Union[Path, str]] = None) -> dict[str, Any]:
+    """Retire one stored bond redemption with the analyst's reason.  Later drafts leave it out; a saved run keeps what it printed.
+
+    The same row typed on this week's form is taken off it too, so this week's draft leaves it out as well.  Raises
+    analyst.InputError when the reason is missing or too long, or the point is not an active stored redemption.
+    """
+    text = " ".join(str(reason or "").split())
+    if not text or len(text) > MAX_REASON:
+        raise analyst.InputError(f"Give the reason for retiring the redemption, in one line of at most {MAX_REASON} characters.")
+    if not isinstance(point_id, int) or isinstance(point_id, bool):
+        raise analyst.InputError("No stored bond redemption was named.")
+    gone = store.retire(db_path, point_id, REDEMPTION, text)
+    if gone is None:
+        raise analyst.InputError("That bond redemption is not kept in the history store, or was already retired.")
+    rows = analyst.read_form(week, root)["tables"].get(REDEMPTIONS_TABLE) or []
+    rest = [r for r in rows if (r["date"], bond_subject(r["bond"])) != (gone["as_of"], gone["subject"])]
+    if len(rest) != len(rows):
+        analyst.save_form(week, {"tables": {REDEMPTIONS_TABLE: {"rows": rest} if rest else None}}, root, db_path)
+    return {"date": gone["as_of"], "bond": gone["subject"]}
 
 
 def record_fetch(week: Week, key: str, rows: list[dict[str, Any]], note: str, db_path: Optional[Union[Path, str]] = None) -> None:

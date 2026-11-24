@@ -399,6 +399,8 @@ export interface AnalystChanges {
   tables?: Record<string, { text: string } | { rows: AnalystRow[] } | null>;
   /** Carried or suggested values to accept as they stand. */
   confirm?: string[];
+  /** Stored items to retire with a reason. */
+  retire?: { point_id: number; reason: string }[];
 }
 
 /** Save what was typed. The API checks every value; a refusal lists each reason on its own line and stores nothing. */

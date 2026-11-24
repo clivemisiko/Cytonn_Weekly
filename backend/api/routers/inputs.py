@@ -53,7 +53,10 @@ def make_router(d: Deps) -> APIRouter:
         """Keep what was typed.  422, with every reason (one a line), if any value is refused; nothing is stored then."""
         week, section = week_of(week_ending), form_section(section)
         try:
-            weekly_analyst.save_form(week, {"fields": body.fields, "tables": body.tables, "confirm": body.confirm}, d.root, d.db_path)
+            if body.fields or body.tables or body.confirm:
+                weekly_analyst.save_form(week, {"fields": body.fields, "tables": body.tables, "confirm": body.confirm}, d.root, d.db_path)
+            for item in body.retire:
+                history_weekly.retire_redemption(week, item.get("point_id"), item.get("reason"), d.root, d.db_path)
         except weekly_inputs.InputError as exc:
             raise ProblemError(422, str(exc), "analyst_refused")
         return weekly_analyst.status(week, d.root, section)

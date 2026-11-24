@@ -29,6 +29,16 @@ from tests import test_weekly_fixed_income as fi
 from tests import weekly_helpers as wh
 from tests.weekly_helpers import text_pdfs  # noqa: F401 - a fixture
 
+
+@pytest.fixture(scope="module", autouse=True)
+def _workbook_borrowing():
+    """Written against the workbook borrowing comparison, which is off by default (net_borrowing.WORKBOOK_BORROWING)."""
+    from cytonn_weekly.fixed_income import net_borrowing
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(net_borrowing, "WORKBOOK_BORROWING", True)
+        yield
+
 WEEK = wh.WEEK
 FORM = "Weekly analyst inputs"
 

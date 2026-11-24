@@ -153,6 +153,7 @@ class AnalystInputs(BaseModel):
     fields: dict[str, Any] = Field(default_factory=dict)
     tables: dict[str, Any] = Field(default_factory=dict)
     confirm: list[str] = Field(default_factory=list, max_length=60)
+    retire: list[dict[str, Any]] = Field(default_factory=list, max_length=20)   # [{point_id, reason}]: stored bond redemptions
 
 
 class NotableDecision(BaseModel):

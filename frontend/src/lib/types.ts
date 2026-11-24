@@ -699,6 +699,17 @@ export interface AnalystColumn {
 
 export type AnalystRow = Record<string, string>;
 
+export interface StoredRedemption {
+  point_id: number;
+  date: string;
+  bond: string;
+  kes_m: number;
+  source: string;
+  confirmed_by: string;
+  confirmed_on: string;
+  week_ending: string;
+}
+
 /**
  * One table of the form: pasted lines (the fund table) or a grid typed cell by cell (the Universe of Coverage).
  */
@@ -727,6 +738,8 @@ export interface AnalystTable {
   /** What a row gets without typing: this Friday's price from KCB IB, last Friday's from the stored week. */
   auto_rows: AnalystRow[] | null;
   auto_note: string;
+  /** Active bond redemptions read from the history store. */
+  stored_rows?: StoredRedemption[] | null;
 }
 
 export type AnalystItem = AnalystField | AnalystTable;

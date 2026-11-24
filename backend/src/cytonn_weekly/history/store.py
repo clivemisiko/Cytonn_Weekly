@@ -110,7 +110,9 @@ def _insert(conn: Any, rows: list[tuple]) -> dict[tuple[int, str], int]:
 
 def _row(sid: int, as_of: str, week: str, text: str, it: dict[str, Any], now: str) -> tuple:
     by = it.get("confirmed_by")
-    return (sid, as_of, week, text, it["origin"], it["source_kind"], str(it["source_ref"]), by, now if by else None, now)
+    # confirmed_at: when it was confirmed; an item may give its own (a bond redemption's "confirmed on" day), else now
+    return (sid, as_of, week, text, it["origin"], it["source_kind"], str(it["source_ref"]), by,
+            (it.get("confirmed_at") or now) if by else None, now)
 
 
 def _record_chunk(conn: Any, items: list[dict[str, Any]], only_new: bool = False) -> list[tuple[int, str]]:
@@ -118,14 +120,16 @@ def _record_chunk(conn: Any, items: list[dict[str, Any]], only_new: bool = False
     last = {(sid, as_of): n for n, (sid, as_of, *_rest) in enumerate(prepared)}   # the last item for a series and date wins
     sids, days = sorted({k[0] for k in last}), sorted({k[1] for k in last})
     current = {(r["series_id"], r["as_of"]): r for r in conn.execute(
-        "SELECT point_id, series_id, as_of, value, confirmed_at FROM series_points WHERE superseded_by IS NULL "
+        "SELECT point_id, series_id, as_of, value, confirmed_at, retired_at FROM series_points WHERE superseded_by IS NULL "
         f"AND series_id IN ({', '.join('?' * len(sids))}) AND as_of IN ({', '.join('?' * len(days))})", sids + days)}
     now, results, fresh = _now(), [None] * len(items), []
     for (sid, as_of), n in last.items():
         _, _, week, text, it = prepared[n]
         old = current.get((sid, as_of))
         # The same number is no change, unless it is now confirmed and the old point is not: that is a new point (typed over a suggestion).
-        if old is not None and (only_new or (Decimal(old["value"]) == Decimal(text) and (old["confirmed_at"] is not None or it.get("confirmed_by") is None))):
+        # A retired point typed again is a new point too, so it counts again; the retired row is kept, superseded.
+        if old is not None and (only_new or (old["retired_at"] is None and Decimal(old["value"]) == Decimal(text)
+                                             and (old["confirmed_at"] is not None or it.get("confirmed_by") is None))):
             results[n] = (old["point_id"], UNCHANGED)
         elif old is None:
             fresh.append((n, _row(sid, as_of, week, text, it, now)))
@@ -187,15 +191,31 @@ def confirm(db_path: Optional[Union[Path, str]], point_id: int, by: str) -> bool
         conn.close()
 
 
+def retire(db_path: Optional[Union[Path, str]], point_id: int, key: str, reason: str) -> Optional[dict[str, Any]]:
+    """Retire one current point of series ``key`` with a reason, instead of deleting it: no reader sees it again, and the
+    row stays.  {"as_of", "subject"} of the point retired, or None when it is not a current, unretired point of ``key``."""
+    conn = db.open_db(db_path)
+    try:
+        with conn.transaction():
+            found = conn.execute("SELECT p.as_of, s.subject FROM series_points p JOIN series s ON s.series_id = p.series_id "
+                                 "WHERE p.point_id = ? AND s.key = ? AND p.superseded_by IS NULL AND p.retired_at IS NULL",
+                                 (point_id, key)).fetchone()
+            if found is not None:
+                conn.execute("UPDATE series_points SET retired_at = ?, retired_reason = ? WHERE point_id = ?", (_now(), reason, point_id))
+        return dict(found) if found is not None else None
+    finally:
+        conn.close()
+
+
 def current(db_path: Optional[Union[Path, str]], key: str, subject: Optional[str] = "", *, confirmed_only: bool = True,
             through: Optional[str] = None, since: Optional[str] = None) -> list[dict[str, Any]]:
-    """The series' current points, oldest first, from ``since`` to ``through`` (dates) when given.  Unconfirmed points only with
+    """The series' current points, oldest first (a retired point is never one), from ``since`` to ``through`` (dates) when given.  Unconfirmed points only with
     confirmed_only=False.  ``subject=None`` takes every subject of the key (each point then carries its ``subject``)."""
     where = f"series {key!r} {subject!r}"
     conn = db.open_db(db_path)
     try:
         sql = (f"SELECT s.subject, {_POINT} FROM series_points p JOIN series s ON s.series_id = p.series_id "
-               "WHERE s.key = ? AND p.superseded_by IS NULL")
+               "WHERE s.key = ? AND p.superseded_by IS NULL AND p.retired_at IS NULL")
         params: list[Any] = [key]
         if subject is not None:
             sql += " AND s.subject = ?"

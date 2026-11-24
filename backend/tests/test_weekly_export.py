@@ -29,6 +29,16 @@ from tests.test_weekly_fixed_income import BULLETIN
 from tests.test_weekly_fixed_income import fetchers as fi_fetchers
 from tests.weekly_helpers import text_pdfs  # noqa: F401 - a fixture
 
+
+@pytest.fixture(scope="module", autouse=True)
+def _workbook_borrowing():
+    """Written against the workbook borrowing comparison, which is off by default (net_borrowing.WORKBOOK_BORROWING)."""
+    from cytonn_weekly.fixed_income import net_borrowing
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(net_borrowing, "WORKBOOK_BORROWING", True)
+        yield
+
 WEEK = wh.WEEK
 PERIOD = "Week ending 2026-10-02"
 ORDER = ["Fixed Income", "Equities", "Real Estate", "Digital Payments Weekly Highlights", "Focus of the Week"]

@@ -200,6 +200,8 @@ CREATE TABLE IF NOT EXISTS series_points (
     confirmed_by   TEXT,
     confirmed_at   TEXT,
     created_at     TEXT   NOT NULL,   -- ISO-8601 UTC
+    retired_at     TEXT,              -- set (ISO-8601 UTC) when an analyst retires the point: no reader sees it again
+    retired_reason TEXT,              -- the analyst's reason; the row is kept
     CHECK ((confirmed_by IS NULL) = (confirmed_at IS NULL))
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_series_points_current ON series_points (series_id, as_of) WHERE superseded_by IS NULL;
@@ -218,6 +220,10 @@ ALTER TABLE job_messages
     ADD COLUMN IF NOT EXISTS tool_input  TEXT,
     ADD COLUMN IF NOT EXISTS usage       TEXT,
     ADD COLUMN IF NOT EXISTS cards       TEXT;
+-- Retiring a point (2026-11-24, history/store.py retire): the same columns as in the CREATE TABLE above.
+ALTER TABLE series_points
+    ADD COLUMN IF NOT EXISTS retired_at     TEXT,
+    ADD COLUMN IF NOT EXISTS retired_reason TEXT;
 
 -- ---------------------------------------------------------------------------
 -- Row level security on, with no policies: Supabase's web API roles (anon, authenticated) see and change nothing here.
