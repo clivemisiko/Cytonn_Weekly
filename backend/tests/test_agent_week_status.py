@@ -54,6 +54,17 @@ def test_uploaded_typed_carried_and_fetched_inputs_land_in_their_own_groups(env)
     assert "pe" not in keys(got, "needs_analyst") and "equities_workbook" not in keys(got, "needs_analyst")
 
 
+def test_each_kept_file_comes_through_the_tool_by_its_stored_name_and_never_the_analysts_name(env):
+    # through execute(), as the model and the prepare page's readiness route both get it: its trim keeps the files
+    weekly_inputs.store(WEEK, "equities_workbook", equities_workbook_bytes(), "Fake Analyst Name.xlsx", env.root)
+    got = env.use("week_status")
+    kept = next(e for e in got["groups"]["in_place"] if e["key"] == "equities_workbook")
+    assert kept["files"] == [{"stored_name": "equities_workbook.xlsx"}]
+    others = [e for g in got["groups"].values() for e in g if e["kind"] == "upload" and e["key"] != "equities_workbook"]
+    assert others and all(e["files"] == [] for e in others)
+    assert "Fake Analyst Name" not in json.dumps(got)
+
+
 def test_a_fetched_upload_is_in_the_fetched_group(env):
     env.upload_equities_workbook()
     from tests.test_weekly_fixed_income import BULLETIN
