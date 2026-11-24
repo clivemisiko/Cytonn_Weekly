@@ -173,6 +173,7 @@ const leftOut = (s: NotCovered): [string, string[]][] =>
           <template v-if="b.source.as_of">
             · as of <span class="font-mono">{{ b.source.as_of.length === 10 ? friendlyDate(b.source.as_of) : friendlyTime(b.source.as_of) }}</span>
           </template>
+          <template v-if="b.source.via"> · {{ b.source.via }}</template>
         </p>
         <p v-if="typedRows(b) > 0" class="text-xs text-warn-fg">
           Analyst input: {{ typedRows(b) }} of {{ b.rows.length }} rows rest on cells typed in the

@@ -109,26 +109,61 @@ def read_tbills(book: Workbook, week: Week) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 CYTONN_FUND = "cytonn money market fund"
+MMF_TITLE = "money market fund yield for fund managers as published on"
 
 
-def read_placements(book: Workbook) -> Cell:
+class WorkbookWeekError(WorkbookError):
+    """The sheet holds the item, but its fund table is dated for another week: the sheet is not updated for this week."""
+
+    def __init__(self, message: str, found: Optional[date], expected: tuple[date, ...]):
+        super().__init__(message)
+        self.found, self.expected = found, expected
+
+
+def _day(d: date) -> str:
+    return f"{d.day} {d:%b %Y}"
+
+
+def _other_week(title: Cell, week: Week, holds: str, it: str) -> Optional[WorkbookWeekError]:
+    """The refusal when the fund table's title date is not this week's Friday or as-at day, else None."""
+    published = read_title_date(title.value)
+    if published in week.report_dates:
+        return None
+    shown = f"is dated {_day(published)}" if published else f"has a date that cannot be read ({title.value!r})"
+    return WorkbookWeekError(
+        f"The fixed income workbook holds {holds}, but {it} {shown}; this week needs "
+        f"{' or '.join(_day(d) for d in week.report_dates)}. The workbook is not yet updated for this week: "
+        f"update it and upload it again (sheet '{MMF_SHEET}', cell {title.ref}).", published, week.report_dates)
+
+
+def _sheet_week(sheet: Sheet, week: Optional[Week], holds: str) -> None:
+    """Refuse an item of the sheet when the sheet's fund table is for another week (the one date the sheet carries).
+    A sheet with no fund table title is read as before."""
+    titles = sheet.find_all(lambda s: s.startswith(MMF_TITLE))
+    if week is not None and titles:
+        problem = _other_week(titles[0], week, holds, f"its '{MMF_SHEET}' sheet is for another week: the fund table")
+        if problem is not None:
+            raise problem
+
+
+def read_placements(book: Workbook, week: Optional[Week] = None) -> Cell:
     sheet = book.sheet(MMF_SHEET)
+    _sheet_week(sheet, week, "the 3-month bank placements")
     label = sheet.find(lambda s: s.replace(" ", "") in ("3-monthsbankplacements", "3-monthbankplacements"),
                        rows=range(1, 30), what="'3-Months Bank Placements' row")
     return sheet.number(label.row, label.col + 1, "3-month bank placements")
 
 
 def read_mmf_table(book: Workbook, week: Week) -> dict[str, Any]:
-    """The ranked fund table published on the week's Friday: {published, title, funds: [{rank, fund, rate}]}."""
+    """The ranked fund table published on the week's Friday: {published, title, funds: [{rank, fund, rate}]}.
+    WorkbookWeekError (naming the date found and the date expected) when the table is for another week."""
     sheet = book.sheet(MMF_SHEET)
-    title = sheet.find(lambda s: s.startswith("money market fund yield for fund managers as published on"),
+    title = sheet.find(lambda s: s.startswith(MMF_TITLE),
                        what="'Money Market Fund Yield for Fund Managers as published on ...' table")
+    problem = _other_week(title, week, "a money market fund table", "it")
+    if problem is not None:
+        raise problem
     published = read_title_date(title.value)
-    if published not in week.report_dates:
-        shown = f"is dated {published.day} {published:%b %Y}" if published else f"has a date that cannot be read ({title.value!r})"
-        raise WorkbookError(f"The money market fund table in the fixed income workbook {shown}; this week needs "
-                            f"{week.ending.day} {week.ending:%b %Y}. The workbook is not yet updated for this week: "
-                            f"update it and upload it again (sheet '{MMF_SHEET}', cell {title.ref}).")
     head = title.row + 1
     rank = sheet.find("rank", rows=range(head, head + 2), what="'Rank' header of the fund table")
     fund = sheet.find("fund manager", rows=range(rank.row, rank.row + 1), what="'Fund Manager' header")
@@ -145,9 +180,10 @@ def read_mmf_table(book: Workbook, week: Week) -> dict[str, Any]:
     return {"published": published, "title": " ".join(str(title.value).split()), "funds": funds, "title_cell": title}
 
 
-def read_mmf_last_week(book: Workbook) -> Optional[Cell]:
+def read_mmf_last_week(book: Workbook, week: Optional[Week] = None) -> Optional[Cell]:
     """The Cytonn fund's rate in the sheet's "Last Week" column, if the sheet still carries it."""
     sheet = book.sheet(MMF_SHEET)
+    _sheet_week(sheet, week, "the Cytonn Money Market Fund's yield for the previous week")
     heads = sheet.find_all("last week", rows=range(1, 6))
     if not heads:
         return None

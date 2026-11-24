@@ -500,7 +500,8 @@ def test_a_typed_value_overrides_the_workbook_and_the_difference_is_shown_to_the
     assert any("Universe of Coverage, Alpha Bank: target price: typed as 60" in w for w in equities.section["warnings"])
 
 
-def test_a_pasted_table_replaces_the_workbooks_and_says_which_rows_differ(with_books):
+def test_a_pasted_table_replaces_the_workbooks_and_says_which_rows_differ(with_books, monkeypatch):
+    monkeypatch.setattr(analyst, "MMF_WORKBOOK_FIRST", False)   # the "typed wins" rule the constant restores when off
     save(with_books, {"mmf_published": "2026-10-02"}, {"mmf": {"text": FUNDS.replace("10.80%", "10.85%")}})   # six funds; the workbook has seven
     differences = item("mmf", with_books)["differences"]
     assert differences[0].startswith("money market fund table, Alpha Money Market Fund: effective annual rate: typed as 10.85%, "

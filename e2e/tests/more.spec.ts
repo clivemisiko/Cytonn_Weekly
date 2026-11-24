@@ -68,18 +68,19 @@ test("T17 inputs: remove a report and upload it again, Fetch from CBK (from a sa
   await expect.poll(async () => (await notes()).bidding_range ?? "").toBe(before.bidding_range ?? "");
 });
 
-test("T18 analyst inputs: a typed table is saved, shown as the rows in use, and cleared again", async ({ page }) => {
+test("T18 analyst inputs: a typed fund table is saved as the workbook's second reading, and cleared again", async ({ page }) => {
   await openStart(page, "Fixed Income");
   const panel = analystPanel(page);
   const table = panel.locator("#analyst-mmf");
   await expect(panel.getByText("From the workbook, 12 rows", { exact: true })).toBeVisible();
   await table.fill("1 Alpha Fund 11.9\n2 Beta Fund 11.5\n3 Gamma Fund 11.1\n4 Delta Fund 10.8\n5 Epsilon Fund 10.2");
   await panel.getByRole("button", { name: "Save table" }).and(page.locator(":enabled")).click();
-  await expect(panel.getByText(/^Typed, 5 rows/)).toBeVisible();
+  // The workbook holds this week's fund table, so it stays in use (MMF_WORKBOOK_FIRST) and the typed table is its second reading.
+  await expect(panel.getByText("From the workbook, 12 rows; the form's value is its second reading", { exact: true })).toBeVisible();
+  await expect(panel.getByText(/The workbook's table is used; a table pasted or confirmed here is its second reading\./)).toBeVisible();
   await expect(panel.getByRole("alert")).toHaveCount(0);
   const rows = panel.getByRole("region", { name: "Money market fund table: rows in use" });
-  await expect(rows.getByRole("row")).toHaveCount(6);
-  await expect(rows).toContainText("Epsilon Fund");
+  await expect(rows.getByRole("row")).toHaveCount(13); // the workbook's twelve rows and the header, not the five typed
   await expect(page.getByRole("button", { name: DRAFT })).toBeEnabled();
   await panel.getByRole("button", { name: "Clear typed table" }).first().click(); // the fund table is the first one
   await expect(panel.getByText("From the workbook, 12 rows", { exact: true })).toBeVisible();

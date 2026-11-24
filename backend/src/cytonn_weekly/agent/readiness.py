@@ -36,12 +36,22 @@ def _item(item: dict[str, Any]) -> tuple[str, str]:
         return "carried_or_suggested", ("carried from last week" if item["carried"] else "suggested") + ", not yet confirmed"
     if (item["carried"] or {}).get("from") == "fetched" and item["carried"]["whole"]:
         return "fetched", "fetched by the tool"
+    if workbook and item.get("workbook_first"):
+        # the fund table: the workbook's is used, and what the form holds is its second reading
+        return "in_place", "from the workbook; the form's value is its second reading" if filled else "from the workbook"
     if (item["carried"] or {}).get("from") == "snip" and item["carried"]["whole"]:
         return "in_place", "read from the Daily Nation page and confirmed"
     if filled:
         return "in_place", "typed"
     if workbook:
         return "in_place", "from the workbook"
+    stale = item.get("workbook_stale")
+    if stale:
+        # dates the reader parsed, never the workbook's own text
+        expected = " or ".join(stale["expected"])
+        why = (f"the workbook holds it, but dated {stale['found']}; this week needs {expected}" if stale["found"]
+               else f"the workbook holds it, but its date cannot be read; this week needs {expected}")
+        return ("needs_analyst" if item["required"] else "optional"), why
     return ("needs_analyst", "nothing typed and no workbook value") if item["required"] else ("optional", "not filled")
 
 

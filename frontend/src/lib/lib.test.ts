@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canonical, isCarried, linesOf, originLabel, range, rowsOf, tableOrigin } from "./analyst";
+import { canonical, inWorkbook, isCarried, linesOf, originLabel, range, rowsOf, tableOrigin } from "./analyst";
 import { ApiError, parseProblems } from "./api";
 import { draftAgainOff, stateOf, when } from "./drafting";
 import { elapsed, friendlyDate, friendlyTime, plural, pyRepr } from "./format";
@@ -183,6 +183,7 @@ describe("draft again", () => {
 describe("analyst form helpers", () => {
   const table = (over: Partial<AnalystTable>): AnalystTable =>
     ({
+      type: "table",
       key: "coverage",
       label: "Coverage",
       columns: [
@@ -235,6 +236,17 @@ describe("analyst form helpers", () => {
     expect(originLabel("unconfirmed", carried, "3 rows")).toBe("Carried from week ending 2 Oct 2026, 3 rows, not confirmed");
     expect(originLabel("typed", null)).toBe("Typed");
     expect(originLabel("differs", null, "1 row")).toBe("Typed, 1 row, differs from the workbook");
+    // the fund table: the workbook's rows are used and the typed ones are its second reading
+    const first = table({ rows: [{ company: "A" }], workbook_rows: [{ company: "B" }], workbook_first: true, differences: ["x"] });
+    expect(tableOrigin(first)).toBe("second");
+    expect(originLabel("second", null, "1 row")).toBe("From the workbook, 1 row; the form's value is its second reading");
+    // held, but for another week; and a typed value the workbook also holds
+    const stale = { note: "Fake note", found: "2031-01-03", expected: ["2031-01-10"] };
+    expect(tableOrigin(table({ workbook_stale: stale }))).toBe("stale");
+    expect(originLabel("stale", null)).toBe("In the workbook, but for another week");
+    expect(inWorkbook(table({ workbook_rows: [{ company: "B" }] }))).toBe(true);
+    expect(inWorkbook(table({}))).toBe(false);
+    expect(originLabel("typed", null, "2 rows", true)).toBe("Typed, 2 rows, also in the workbook");
     expect(range(1, 40, "%")).toBe("1 to 40%");
     expect(range(1, 5000, "Kshs bn")).toBe("1 to 5,000 Kshs bn");
     expect(range(null, 40, "%")).toBe("");

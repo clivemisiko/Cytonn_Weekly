@@ -15,7 +15,10 @@ const text = ref(props.item.text);
 const dirty = computed(() => text.value.trim() !== props.item.text.trim());
 watch(dirty, (now) => emit("dirty", now));
 const typed = computed(() => !!props.item.rows?.length);
-const rows = computed(() => props.item.rows ?? props.item.workbook_rows ?? []);
+// The workbook's rows are the ones in use when the draft takes the workbook first (the fund table).
+const rows = computed(() =>
+  props.item.workbook_first && props.item.workbook_rows?.length ? props.item.workbook_rows : (props.item.rows ?? props.item.workbook_rows ?? []),
+);
 const id = `analyst-${props.item.key}`;
 
 const retiringId = ref<number | null>(null);
@@ -59,7 +62,7 @@ function submitRetire(pointId: number) {
       </Button>
       <span v-if="dirty" class="text-xs font-medium text-warn-fg">Not saved yet.</span>
     </div>
-    <!-- The rows in use, read-only: what was typed, else what the uploaded workbook holds. -->
+    <!-- The rows in use, read-only: what was typed, else what the uploaded workbook holds (the workbook's first for the fund table). -->
     <div v-if="rows.length > 0" class="max-h-56 overflow-auto rounded-md border" tabindex="0" role="region" :aria-label="`${item.label}: rows in use`">
       <table class="w-full text-xs">
         <thead class="sticky top-0 bg-muted text-left">

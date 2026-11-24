@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { originLabel, tableOrigin } from "@/lib/analyst";
+import { inWorkbook, originLabel, tableOrigin } from "@/lib/analyst";
 import type { AnalystTable } from "@/lib/types";
 import Notice from "../Notice.vue";
 import Differences from "./Differences.vue";
@@ -17,16 +17,21 @@ const rows = computed(() => `${props.count} row${props.count === 1 ? "" : "s"}`)
     <div class="space-y-1">
       <div class="flex flex-wrap items-center gap-2">
         <h4 class="text-sm font-semibold">{{ item.label }}</h4>
-        <OriginChip :origin="origin">{{ originLabel(origin, item.carried, rows) }}</OriginChip>
+        <OriginChip :origin="origin">{{ originLabel(origin, item.carried, rows, inWorkbook(item)) }}</OriginChip>
       </div>
       <p v-if="item.help" class="max-w-[72ch] text-xs text-muted-foreground">{{ item.help }}</p>
       <SourceLine :source="item.source" :used-in="item.used_in" />
     </div>
     <slot />
-    <p v-if="!typed && item.workbook_ref" class="text-xs text-muted-foreground">
+    <p v-if="item.workbook_first && item.workbook_ref" class="text-xs text-muted-foreground">
+      Read from <span class="font-mono">{{ item.workbook_ref }}</span>. The workbook's table is used; a table pasted or confirmed here is
+      its second reading.
+    </p>
+    <p v-else-if="!typed && item.workbook_ref" class="text-xs text-muted-foreground">
       Read from <span class="font-mono">{{ item.workbook_ref }}</span>. Type here to use yours instead.
     </p>
-    <p v-if="item.workbook_note && !typed" class="text-xs text-warn-fg">{{ item.workbook_note }}</p>
+    <p v-if="item.workbook_stale" class="text-xs text-warn-fg">{{ item.workbook_stale.note }}</p>
+    <p v-else-if="item.workbook_note && !typed" class="text-xs text-warn-fg">{{ item.workbook_note }}</p>
     <Notice v-for="w in item.warnings" :key="w" tone="warn" role="status">{{ w }}</Notice>
     <Differences :lines="item.differences" />
   </div>
