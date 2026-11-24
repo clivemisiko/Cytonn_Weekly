@@ -100,7 +100,7 @@ test("T60 a section opens its chat from the rail, from the overview and from ano
   await expect(rail(page).getByRole("button", { name: "Digital Payments, Not drafted, this section is on screen" })).toHaveAttribute("aria-current", "page");
   await expect(rail(page).getByText("0 of 5 sections approved")).toBeVisible();
   await expect(rail(page).getByRole("progressbar", { name: "Sections approved" })).toHaveAttribute("aria-valuenow", "0");
-  await expect(rail(page).getByText("Report export unlocks when all 5 are approved.")).toBeVisible();
+  await expect(rail(page).getByText("The Word export takes every finished draft, approved or not.")).toBeVisible();
   await expect(rail(page).getByText("Dev mode · local model")).toBeVisible();
 
   await rail(page).getByRole("button", { name: "Real Estate, Not drafted" }).click();

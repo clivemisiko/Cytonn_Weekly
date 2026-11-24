@@ -209,8 +209,8 @@ const ITEM =
           <p v-if="shell.report.value?.type === 'weekly'" class="text-xs text-muted-foreground">
             {{
               shell.approved.value !== null && shell.approved.value === shell.total.value
-                ? "Ready to export from the chat."
-                : `Report export unlocks when all ${shell.total.value ?? ""} are approved.`
+                ? "Every section is approved. Export it from All reports."
+                : "The Word export takes every finished draft, approved or not."
             }}
           </p>
         </div>
