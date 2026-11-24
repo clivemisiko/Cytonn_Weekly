@@ -3,7 +3,7 @@ import type { ChartBlock, ChartSeriesFile } from "./types";
 
 /** The card's state in words (never by colour alone): what the analyst is looking at and why. */
 export function chartState(block: ChartBlock): { key: "team" | "drawn" | "not_drawn" | "no_workbook"; label: string } {
-  if (block.status === "no_workbook") return { key: "no_workbook", label: "No workbook uploaded" };
+  if (block.status === "no_workbook") return { key: "no_workbook", label: "No workbook for this week" };
   if (block.use_team_chart) return { key: "team", label: "Using the team's own chart" };
   if (block.status === "drawn") return { key: "drawn", label: "Drawn by the tool" };
   return { key: "not_drawn", label: "Not drawn" };

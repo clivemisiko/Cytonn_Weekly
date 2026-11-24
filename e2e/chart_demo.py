@@ -7,7 +7,7 @@ backend/ is changed:
 
     2026-09-25  a complete workbook: both charts are drawn, nothing is flagged on them
     2026-09-18  the same, with rows the reader leaves out of the P/E series (an empty value cell, a repeated date)
-    2026-09-11  a workbook not yet updated for the week: its newest row is the Friday before, so the charts are stale
+    2026-09-11  a workbook not yet updated for the week: its newest row is the Friday before, so the draft does not read it
     2026-09-04  no workbook at all: the charts are information, not findings
 
 The Equities draft for these weeks gets fetchers that fail at once, so it makes no outside request and the parts that

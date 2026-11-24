@@ -312,9 +312,16 @@ def test_missing_inputs_leave_named_unavailable_parts(tmp_path):
 
 def test_a_workbook_not_updated_for_the_week_says_so_in_each_part(tmp_path, text_pdfs):
     inputs.store(WEEK, "equities_workbook", wh.equities_workbook_bytes(updated=False), "Equities.xlsx", tmp_path)
-    by = blocks(build(tmp_path))
-    assert "has no row for 2 Oct 2026 on sheet 'NASI-PE & Dividend Yield'. The workbook is not yet updated for this week" in by["valuation"]["reason"]
-    assert "no 'Price as at 02/10/2026' column: workbook not yet updated for this week" in by["universe_of_coverage"]["reason"]
+    review = build(tmp_path)
+    by = blocks(review)
+    # a workbook for an earlier week is not read by the draft at all: each part names its week, never a sheet's refusal
+    ignored = "and the uploaded equities workbook is for the week ending 25 Sep 2026, an earlier week, so the draft does not read it."
+    assert by["valuation"]["reason"].endswith(ignored) and by["universe_of_coverage"]["reason"].endswith(ignored)
+    assert by["chart_nasi_pe"]["status"] == "no_workbook" and by["chart_nasi_pe"]["reason"].startswith(
+        "The uploaded equities workbook is for the week ending 25 Sep 2026, an earlier week, so the draft does not read it; ")
+    assert len([w for w in review.section["warnings"] if w.startswith(
+        "The uploaded equities workbook is for the week ending 25 Sep 2026, and this report is for the week ending 2 Oct 2026. "
+        "It is for an earlier week, so the draft ignores it")]) == 1
 
 
 def test_run_events_add_up_to_the_review(root):

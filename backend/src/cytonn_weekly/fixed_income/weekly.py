@@ -960,9 +960,10 @@ def shilling_blocks(inputs: WeeklyInputs, bulletin: Optional[cbk_bulletin.Bullet
     blocks: list[dict[str, Any]] = []
     now, was = rate(week.as_at), rate(week.previous_as_at)
     if now is None or was is None:
+        absent = inputs.analyst.unread(analyst.FI) or "the fixed income workbook is not among this week's inputs"
         blocks.append(unavailable_block("shilling", title, f"The US dollar rate for {week.as_at.isoformat()} or "
                                         f"{week.previous_as_at.isoformat()} was not found: CBK's rate table did not answer and "
-                                        "the fixed income workbook is not among this week's inputs.",
+                                        f"{absent}.",
                                         f"centralbank.go.ke answering, or the {WB.lower()}. {UPLOAD}"))
     else:
         figs = Figures()

@@ -1,6 +1,6 @@
 import io
 import sqlite3
-from datetime import datetime
+from datetime import date, datetime
 
 import pytest
 from openpyxl import load_workbook
@@ -20,6 +20,7 @@ from tests.weekly_helpers import WEEK, text_pdfs  # noqa: F401 - a fixture
 BOOKS = {"fixed_income": ("fi_workbook", "fi_workbook.xlsx", wh.fi_workbook_bytes, "fixed income workbook"),
          "equities": ("equities_workbook", "equities_workbook.xlsx", wh.equities_workbook_bytes, "equities workbook")}
 SECTIONS = tuple(BOOKS)
+BOOK_PROP = {"fixed_income": "fi_book", "equities": "equities_book"}
 COVERED = ("from the workbook", "from the workbook; the form's value is its second reading")
 
 
@@ -37,10 +38,17 @@ def held(item):
 
 
 def read_one(root, section):
-    """A reading a draft takes from the workbook, and the warnings the draft would add (Analyst.stale_lines)."""
-    a = inputs.WeeklyInputs(WEEK, root).analyst
+    """A reading a draft takes from the workbook (one no date check refuses), whether the draft opens the workbook at all,
+    and the warnings the draft would add (Analyst.stale_lines)."""
+    wi = inputs.WeeklyInputs(WEEK, root)
+    a = wi.analyst
     got = a.field("large_caps") if section == "equities" else a.wb_rows("eurobond_issues")
-    return got, a.stale_lines()
+    return got, getattr(wi, BOOK_PROP[section]) is not None, a.stale_lines()
+
+
+def page_opens(root, section):
+    """Whether the form (and readiness) still opens the workbook, to show its figures as not this week's."""
+    return getattr(inputs.WeeklyInputs(WEEK, root, old_books=True), BOOK_PROP[section]) is not None
 
 
 def without_date(section: str) -> bytes:
@@ -81,11 +89,14 @@ def test_a_workbook_for_another_week_is_said_on_the_slot_and_in_readiness_and_co
         stale = items[key]["workbook_stale"]
         assert stale["found"] == "2026-09-25" and stale["expected"] == ["2026-10-02"], key
         assert where[key][1] == "the workbook holds it, but dated 2026-09-25; this week needs 2026-10-02", key
-    # still readable: a draft takes the value, and its warnings say the workbook is for another week
-    value, lines = read_one(tmp_path, section)
-    assert value
-    assert lines[0].startswith(f"The uploaded {name} is for the week ending 25 Sep 2026, and this report is for the week ending 2 Oct 2026.")
-    assert "it counts for no item on the form" in lines[0]
+    # an earlier week: the form still shows it, but a draft never opens it, so no figure from it is used, not even as a
+    # second reading (every reader goes through WeeklyInputs.fi_book or equities_book), and its warning names both weeks
+    assert page_opens(tmp_path, section)
+    value, opened, lines = read_one(tmp_path, section)
+    assert not value and not opened
+    assert lines[0].startswith(f"The uploaded {name} is for the week ending 25 Sep 2026, and this report is for the week ending 2 Oct 2026. "
+                               "It is for an earlier week, so the draft ignores it: no figure from it is used, not even as a second "
+                               "reading, and it counts for no item on the form.")
 
 
 @pytest.mark.parametrize("section", SECTIONS)
@@ -97,8 +108,8 @@ def test_a_workbook_for_the_reports_own_week_behaves_as_before(tmp_path, text_pd
     assert all(i["workbook_stale"] is None for i in items.values())
     covered = [k for k, i in items.items() if held(i)]
     assert covered and all(where[k] == ("in_place", "from the workbook") for k in covered if not items[k]["workbook_first"])
-    value, lines = read_one(tmp_path, section)
-    assert value and lines == []
+    value, opened, lines = read_one(tmp_path, section)
+    assert value and opened and lines == []
 
 
 @pytest.mark.parametrize("section", SECTIONS)
@@ -116,8 +127,33 @@ def test_a_workbook_with_no_readable_date_is_said_to_have_none_never_taken_as_cu
     for key in holding:
         assert items[key]["workbook_stale"]["found"] is None, key
         assert where[key][1] == "the workbook holds it, but its date cannot be read; this week needs 2026-10-02", key
-    _, lines = read_one(tmp_path, section)
+    # treated as an earlier one by the draft: it cannot be shown to hold this week
+    assert page_opens(tmp_path, section)
+    value, opened, lines = read_one(tmp_path, section)
+    assert not value and not opened
     assert lines[0].startswith(f"The uploaded {name} has no date that can be read (")
+    assert ("and this report is for the week ending 2 Oct 2026. It cannot be shown to hold this week, so the draft ignores it: no "
+            "figure from it is used, not even as a second reading") in lines[0]
+
+
+@pytest.mark.parametrize("section", SECTIONS)
+def test_a_workbook_for_a_later_week_is_still_read_by_the_draft_but_never_counted_as_this_weeks(tmp_path, text_pdfs, section):  # noqa: F811
+    slot, _, book, name = BOOKS[section]
+    kept = inputs.store(WEEK, slot, book(Week(date(2026, 10, 9))), "Fake later book.xlsx", tmp_path)
+    assert (kept["read_date"], kept["matches"]) == ("2026-10-09", False)
+    # the page as before: the slot names both weeks, it counts as missing, and it covers no item (no check of its readers
+    # finding this week's own rows makes it this week's)
+    entry, items, where = week_view(tmp_path, section)
+    assert entry[0] == "needs_analyst"
+    assert entry[1]["why"] == ("uploaded, but it is for the week ending 9 Oct 2026, and this report is for the week ending 2 Oct 2026. "
+                               "It is kept, and not counted as this week's")
+    assert not [k for k, (g, why) in where.items() if g == "in_place" and why in COVERED]
+    assert all(i["workbook_stale"] for i in items.values() if held(i))
+    # the draft still reads it, and says to check every value it takes
+    value, opened, lines = read_one(tmp_path, section)
+    assert value and opened
+    assert lines[0].startswith(f"The uploaded {name} is for the week ending 9 Oct 2026, and this report is for the week ending 2 Oct 2026. "
+                               "It is kept and still read, so check every value taken from it")
 
 
 def test_a_holiday_weeks_fixed_income_workbook_dated_the_as_at_day_is_this_weeks():

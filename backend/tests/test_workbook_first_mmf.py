@@ -9,6 +9,9 @@ from tests.weekly_helpers import text_pdfs  # noqa: F401 - a fixture
 
 WEEK = wh.WEEK
 TITLE = "Money Market Fund Yield for Fund Managers"
+# The draft's line for this file's stale workbook (Analyst.book_stale): a workbook for an earlier week is not read by the draft.
+IGNORED = ("The uploaded fixed income workbook is for the week ending 25 Sep 2026, and this report is for the week ending 2 Oct 2026. "
+           "It is for an earlier week, so the draft ignores it: no figure from it is used, not even as a second reading")
 # The paste box's six funds as a snip confirms them (invented rates; Alpha differs from the synthetic workbook's 10.8)
 SNIP_ROWS = [{"rank": str(n), "fund": f, "rate": r} for n, (f, r) in enumerate(
     [("Cytonn Money Market Fund", "11.00"), ("Alpha Money Market Fund", "10.85"), ("Beta Money Market Fund", "10.70"),
@@ -54,8 +57,10 @@ def test_a_fund_table_dated_for_another_week_is_refused_on_the_form_in_readiness
     got = where(stale)
     assert got["mmf"] == ("needs_analyst", "the workbook holds it, but dated 2026-09-25; this week needs 2026-10-02")
     assert got["mmf"][1] != "nothing typed and no workbook value"
+    # the draft does not read a workbook for an earlier week at all, so it says that, naming both weeks, and never the sheet's refusal
     warnings = fi.build(stale).section["warnings"]
-    assert any("holds a money market fund table, but it is dated 25 Sep 2026; this week needs 2 Oct 2026" in w for w in warnings)
+    assert len([w for w in warnings if w.startswith(IGNORED)]) == 1
+    assert not any("holds a money market fund table" in w for w in warnings)
 
 
 def test_placements_and_last_weeks_yield_on_that_sheet_get_the_same_refusal(stale):
@@ -68,7 +73,7 @@ def test_placements_and_last_weeks_yield_on_that_sheet_get_the_same_refusal(stal
     assert got["placements"][0] == "needs_analyst" and got["placements"][1].startswith("the workbook holds it, but dated 2026-09-25")
     assert got["cmmf_last_week"][0] == "optional"
     warnings = " ".join(fi.build(stale).section["warnings"])
-    assert "holds the 3-month bank placements, but its 'Money Market Performance' sheet is for another week" in warnings
+    assert IGNORED in warnings and "holds the 3-month bank placements" not in warnings
 
 
 def test_the_refusal_is_still_said_when_a_table_is_typed(stale):
@@ -77,7 +82,7 @@ def test_the_refusal_is_still_said_when_a_table_is_typed(stale):
     assert item("mmf", stale)["workbook_stale"]["found"] == "2026-09-25"
     review = fi.build(stale)
     assert blocks(review)["mmf_table"]["source"]["via"] == "rows typed on the weekly form"
-    assert any("holds a money market fund table, but it is dated 25 Sep 2026" in w for w in review.section["warnings"])
+    assert any(w.startswith(IGNORED) for w in review.section["warnings"])
 
 
 def test_a_workbook_for_this_week_is_not_called_stale(books):

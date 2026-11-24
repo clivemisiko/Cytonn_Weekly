@@ -9,7 +9,7 @@ import { API, REPO, VARIANT, startRun, reviewHeading } from "./helpers";
  * and drafts those weeks without any outside source. This file has its own run on a freshly restored test backend
  * (`playwright test chartcard`).
  *
- *   2026-09-25  complete workbook: both charts drawn      2026-09-11  workbook not yet updated: both stale, not drawn
+ *   2026-09-25  complete workbook: both charts drawn      2026-09-11  workbook for an earlier week: not read, not drawn
  *   2026-09-18  rows left out of the P/E series           2026-09-04  no workbook: information only
  */
 test.skip(!!VARIANT, "runs on the default test backend");
@@ -199,35 +199,30 @@ test("T81 rows left out of the series are listed by cell on the card and are a f
   await expect(peCard(page).getByText("This review is decided, so the choice is frozen.")).toBeVisible();
 });
 
-test("T82 a workbook not yet updated: both charts are not drawn, the reason is in the feed and the items stay flagged until the choice is made", async ({ page, request }) => {
+test("T82 a workbook for an earlier week: the draft does not read it, both charts say so naming its week, and nothing is flagged", async ({ page, request }) => {
   const id = await draft(request, STALE);
   await open(page, id);
   for (const card of [peCard(page), yieldCard(page)]) {
-    await expect(card.getByText("Not drawn", { exact: true }).first()).toBeVisible();
+    await expect(card.getByText("No workbook for this week", { exact: true })).toBeVisible();
+    await expect(card.getByRole("status").filter({ hasText: "The uploaded equities workbook is for the week ending 4 Sep 2026, an earlier week, so the draft does not read it" })).toBeVisible();
+    await expect(card.getByText(/Nothing here needs resolving\./)).toBeVisible();
+    await expect(card.getByRole("button")).toHaveCount(0);
     await expect(card.getByRole("img")).toHaveCount(0);
-    await expect(card.getByText(/The newest point is dated 2026-09-04; for the week ending 2026-09-11 it should be dated 2026-09-11 or later\./)).toBeVisible();
-    await expect(card.getByRole("button", { name: "Show points" })).toHaveCount(0);
-    // A stale series still carries a last value and an average, but the card does not present them as the chart's.
-    await expect(card.getByLabel("What the chart rests on")).toHaveCount(0);
-    await expect(card.getByText(/From the analyst workbook, not verified/)).toHaveCount(0);
+    await expect(card.getByLabel("What the chart rests on")).toHaveCount(0); // no figure from it, not even its last value
   }
   await expect(notesList(page)).toHaveText("Charts to add by hand (2)");
-  const flagged = itemsOf(page, "NASI P/E chart");
-  await expect(flagged).toHaveCount(2); // the newest point, and the chart not drawn
-  expect(await flagged.evaluateAll((all) => all.map((el) => el.getAttribute("data-status")))).toEqual(["flagged", "flagged"]);
-
-  // The team's own chart settles it: both items accepted, and the placeholder stays.
-  await peCard(page).getByRole("button", { name: "Use the team's own chart" }).click();
-  await expect(peCard(page).getByText("Using the team's own chart", { exact: true })).toBeVisible();
-  expect(chartItems((await reviewOf(request, id)).review_items, "NASI P/E chart").map((i) => i.resolution)).toEqual(["accept", "accept"]);
-  await expect(notesList(page)).toHaveText("Charts to add by hand (2)");
+  await expect(itemsOf(page, "NASI P/E chart")).toHaveCount(0);
+  const saved = (await (await request.get(`${API}/api/reviews/${id}`)).json()) as { review_items: Item[]; section: { warnings: string[] } };
+  expect(saved.review_items.filter((i) => i.kind === "chart")).toEqual([]);
+  // the draft's warning names both weeks
+  expect(saved.section.warnings.filter((w) => w.startsWith("The uploaded equities workbook is for the week ending 4 Sep 2026, and this report is for the week ending 11 Sep 2026. It is for an earlier week, so the draft ignores it"))).toHaveLength(1);
 });
 
 test("T83 no workbook uploaded: the charts are information only, with nothing to resolve and nothing flagged", async ({ page, request }) => {
   const id = await draft(request, NONE);
   await open(page, id);
   for (const card of [peCard(page), yieldCard(page)]) {
-    await expect(card.getByText("No workbook uploaded", { exact: true })).toBeVisible();
+    await expect(card.getByText("No workbook for this week", { exact: true })).toBeVisible();
     await expect(card.getByRole("status").filter({ hasText: "equities workbook for this week is not among this week's inputs" })).toBeVisible();
     await expect(card.getByText(/Nothing here needs resolving\./)).toBeVisible();
     await expect(card.getByRole("button")).toHaveCount(0); // nothing to show or to set aside
@@ -274,12 +269,12 @@ test("T85 screenshots of the chart card at 1280px and 390px, light and dark (onl
   const dir = process.env.E2E_SHOTS;
   test.skip(!dir, "set E2E_SHOTS to a folder to write them");
   mkdirSync(dir!, { recursive: true });
-  const notDrawn = await draft(request, STALE); // a fresh draft: T82 set the earlier one's choice
+  const earlier = await draft(request, STALE);
   const none = await draft(request, NONE);
   const states: [string, number, boolean][] = [
     ["drawn-with-points", clean, true],
     ["rows-left-out", defectsId, false],
-    ["not-drawn", notDrawn, false],
+    ["earlier-week", earlier, false],
     ["no-workbook", none, false],
   ];
   for (const [theme, width] of [["light", 1280], ["dark", 1280], ["light", 390], ["dark", 390]] as const) {

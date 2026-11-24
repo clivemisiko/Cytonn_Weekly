@@ -1072,7 +1072,8 @@ class Analyst:
 
     def book_stale(self, which: str) -> Optional[dict[str, Any]]:
         """{note, found, expected, whole} when the uploaded workbook's own date (inputs.identify) is not this week's or cannot be
-        read, else None.  The workbook is kept and still read; the form and the readiness check count no item as covered by it."""
+        read, else None.  It is kept, and the form and the readiness check count no item as covered by it.  A draft ignores one
+        for an earlier week or with no date (WeeklyInputs.earlier) and still reads one for a later week, warned."""
         def load() -> Optional[dict[str, Any]]:
             entry = self.inputs.entry(_BOOK_FILES[which])
             if entry is None or entry.get("matches"):
@@ -1086,12 +1087,25 @@ class Analyst:
                 friday = week_ending_of(found)
                 dated = "" if friday == found else f" (dated {day_text(found)})"
                 head = f"The uploaded {workbook} is for the week ending {day_text(friday)}{dated}, and {this}."
-            return {"note": f"{head} It is kept and still read, so check every value taken from it; it counts for no item on the form. "
-                            f"Upload the workbook updated for this week, or type this week's figures under \"{FORM}\".",
+            if not self.inputs.earlier(_BOOK_FILES[which]):
+                kept = "It is kept and still read, so check every value taken from it; it counts for no item on the form."
+            else:
+                kept = (f"{'It cannot be shown to hold this week' if found is None else 'It is for an earlier week'}, so the draft "
+                        "ignores it: no figure from it is used, not even as a second reading, and it counts for no item on the form.")
+            return {"note": f"{head} {kept} Upload the workbook updated for this week, or type this week's figures under \"{FORM}\".",
                     "found": found.isoformat() if found else None, "expected": [d.isoformat() for d in week.report_dates],
                     "whole": True}
 
         return self._once(f"book_stale:{which}", load)
+
+    def unread(self, which: str) -> Optional[str]:
+        """Why a draft has no workbook although one is uploaded (for an earlier week, or with no date), as a clause; else None."""
+        if not self.inputs.earlier(_BOOK_FILES[which]):
+            return None
+        found = self.book_stale(which)["found"]
+        dated = ("has no date that can be read" if found is None
+                 else f"is for the week ending {day_text(week_ending_of(date.fromisoformat(found)))}, an earlier week")
+        return f"the uploaded {WORKBOOKS[which].lower()} {dated}, so the draft does not read it"
 
     def _read(self, which: str, name: str, read: Callable[[Any], Any]) -> Any:
         """One workbook reading, or None (the reason kept) when the workbook is absent or does not hold it."""
@@ -1551,7 +1565,7 @@ class Analyst:
 
     def last_friday_price(self, company: Any) -> Optional[Reading]:
         """The previous Friday's price: the Friday price stored for the previous week, named as such."""
-        previous = self._once("previous", lambda: WeeklyInputs(self.week.previous, self.inputs.root).analyst)
+        previous = self._once("previous", lambda: WeeklyInputs(self.week.previous, self.inputs.root, self.inputs.old_books).analyst)
         cell = previous.friday_price(company)
         if cell is None or cell.number is None:
             return None
@@ -1638,8 +1652,8 @@ class Analyst:
             return (f"{listed} {verb} not been typed under \"{FORM}\".",
                     f"Type {them} under \"{FORM}\" on the start screen and draft again.")
         if self.book(which) is None:
-            reason = (f"{listed} {verb} not been typed under \"{FORM}\", and the {workbook} for this week is not among this "
-                      "week's inputs.")
+            absent = self.unread(which) or f"the {workbook} for this week is not among this week's inputs"
+            reason = f"{listed} {verb} not been typed under \"{FORM}\", and {absent}."
         elif said:
             reason = " ".join(s if s.endswith(".") else s + "." for s in said) + f" {listed} {verb} not been typed under \"{FORM}\" either."
         else:
@@ -1657,7 +1671,10 @@ class Analyst:
 
     def stale_lines(self) -> list[str]:
         """Every item an uploaded workbook holds but for another week (its date and the date expected), met so far; first, each
-        workbook read from whose own date is not this week's."""
+        workbook read from, or asked for and ignored, whose own date is not this week's."""
+        for which, name in _BOOK_FILES.items():
+            if name in self.inputs.ignored:
+                self.book_stale(which)
         books = [s["note"] for k, s in self._memo.items() if k.startswith("book_stale:") and s]
         return list(dict.fromkeys(books + [s["note"] for s in self.stale.values()]))
 
@@ -1694,7 +1711,7 @@ def _table_warnings(table: Table, rows: list[dict[str, str]]) -> list[str]:
 def status(week: Week, root: Optional[Path] = None, section: Optional[str] = None) -> dict[str, Any]:
     """The form for one week: every item with what was typed, what the uploaded workbook holds, and where they differ."""
     started = time.perf_counter()
-    analyst = Analyst(WeeklyInputs(week, root))
+    analyst = Analyst(WeeklyInputs(week, root, old_books=True))   # the form shows an earlier workbook's figures, as not this week's
     try:
         return _status(analyst, week, root, section)
     finally:
