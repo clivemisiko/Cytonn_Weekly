@@ -77,6 +77,20 @@ test("T59 the rail lists the five sections with their state; it is a full rail, 
 
 const chatHeading = (title: string) => ({ name: title, level: 2 }) as const;
 
+test("T59b with the chat hidden, the rail's All reports leads to the overview and its report picker", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await openStart(page, "Digital Payments");
+  await expect(rail(page).getByRole("link", { name: "Sections", exact: true })).toBeVisible(); // SHOW_CHAT is false
+  const all = rail(page).getByRole("link", { name: "All reports", exact: true });
+  await expect(all).not.toHaveAttribute("aria-current", "page");
+  await all.click();
+  await expect(page).toHaveURL(/\/overview/);
+  await expect(all).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("form", { name: "Report" }).getByLabel("Report type")).toBeVisible();
+  await page.goto(overviewUrl("Q3'2026", "quarterly"));
+  await expect(rail(page).getByRole("link", { name: "All reports", exact: true })).toHaveAttribute("aria-current", "page");
+});
+
 test("T60 a section opens its chat from the rail, from the overview and from another section, and the rail marks the one on screen", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 768 });
   await page.goto(overviewUrl());
