@@ -82,8 +82,8 @@ const lists = computed(() =>
 <template>
   <li class="@container" :aria-labelledby="`sec-${s.slug}`">
     <div class="grid grid-cols-1 gap-x-3 @md:grid-cols-[1.75rem_minmax(0,1fr)]">
-      <span class="mt-3 hidden size-7 place-items-center rounded-sm border bg-card font-mono text-xs font-semibold text-muted-foreground @md:grid" aria-hidden="true">
-        {{ index + 1 }}
+      <span class="mt-3 hidden size-7 place-items-center font-mono text-xs font-semibold text-muted-foreground @md:grid" aria-hidden="true">
+        {{ String(index + 1).padStart(2, "0") }}
       </span>
 
       <div
@@ -99,7 +99,7 @@ const lists = computed(() =>
           <div class="min-w-0 space-y-2">
             <h2 :id="`sec-${s.slug}`" tabindex="-1" class="outline-none text-base font-semibold tracking-tight text-foreground">{{ s.title }}</h2>
             <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span :class="[CHIP_BASE, chip.className, chip.stateClass, 'rounded-sm tracking-wide uppercase']">
+              <span :class="[CHIP_BASE, chip.className, chip.stateClass, 'rounded-sm border-transparent text-[0.6875rem] tracking-wider uppercase']">
                 <span v-if="chip.glyph" class="glyph size-4 text-xs" aria-hidden="true">{{ chip.glyph }}</span>
                 <PhLockSimple v-if="state === 'unavailable'" weight="bold" class="size-3" aria-hidden="true" />
                 {{ chipLabel }}

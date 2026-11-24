@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
-import { API, DRAFT, PERIOD, REPO, VARIANT, WEEK, card, draftAndApprove, hold, openStart, overviewUrl, putAnalyst, release, startRun, topbar } from "./helpers";
+import { API, DRAFT, PERIOD, REPO, VARIANT, WEEK, card, draftAndApprove, hold, openStart, overviewUrl, putAnalyst, release, startRun, topbar, reviewHeading } from "./helpers";
 
 /**
  * The behaviours the first sixteen tests never exercised, against either app. This file has its own run on a freshly
@@ -175,7 +175,7 @@ test("T22 weekly Digital Payments: its own review shape (highlights, the stock t
   await expect(page.getByRole("heading", { name: "Digital Payments: draft run", level: 1 })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Draft ready for review", level: 2 })).toBeVisible({ timeout: 60_000 });
   await page.getByRole("link", { name: "Open review" }).click();
-  await expect(page.getByRole("heading", { name: "Digital Payments: analyst review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", reviewHeading("Digital Payments"))).toBeVisible();
   const draft = page.locator("section", { has: page.getByRole("heading", { name: /^Drafted section: / }) }).first();
   // The highlights under the report's own numerals, each with where it came from.
   const highlights = draft.locator("article");
@@ -212,7 +212,7 @@ test("T23 rejecting a section is final: the dialog, the locked review, the overv
   await page.getByRole("button", { name: `Draft the ${period} section` }).click();
   await expect(page.getByRole("heading", { name: "Draft ready for review", level: 2 })).toBeVisible();
   await page.getByRole("link", { name: "Open review" }).click();
-  await expect(page.getByRole("heading", { name: "Digital Payments: analyst review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", reviewHeading("Digital Payments"))).toBeVisible();
   const review = new URL(page.url()).searchParams.get("review");
 
   // Reject needs nothing resolved; it asks first.
@@ -241,7 +241,7 @@ test("T23 rejecting a section is final: the dialog, the locked review, the overv
   await expect(page.getByRole("button", { name: "Export weekly report" })).toBeDisabled();
   // "Draft again" opens the start screen, which says what happened and offers a new draft (T42 to T44 go through it).
   await card(page, "Digital Payments").getByRole("button", { name: "Draft again" }).click();
-  await expect(page.getByRole("heading", { name: "Digital Payments: analyst review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", reviewHeading("Digital Payments"))).toBeVisible();
   await expect(page.getByText(new RegExp(`review \\(run ${review}\\) was rejected`))).toBeVisible();
   await expect(page.getByRole("button", { name: "View it" })).toBeVisible();
   await expect(page.getByText("Or create a new draft. The existing review will remain safely saved in your archive.")).toBeVisible();
@@ -323,7 +323,7 @@ test("T25 Executive Summary: refused until every section is approved, then compo
   await page.getByRole("button", { name: `Compose the ${Q3} summary` }).click();
   await expect(page.getByRole("heading", { name: "Draft ready for review", level: 2 })).toBeVisible({ timeout: 60_000 });
   await page.getByRole("link", { name: "Open review" }).click();
-  await expect(page.getByRole("heading", { name: "Executive Summary: analyst review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", reviewHeading("Executive Summary"))).toBeVisible();
   await expect(page.getByText(`Quarterly Markets Review, ${Q3}, run`, { exact: false })).toBeVisible();
   await expect(page.getByRole("status").filter({ hasText: "Composed from the lead piece of each section. It does not summarize tables, parts not yet drafted, or Cytonn's own outlook." })).toBeVisible();
   // The panel: per included section, what its approved review holds that the summary does not carry.

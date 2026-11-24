@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
-import { API, VARIANT, card, openStart, overviewUrl, startRun, topbar } from "./helpers";
+import { API, VARIANT, card, openStart, overviewUrl, startRun, topbar, reviewHeading } from "./helpers";
 
 /**
  * The side rail: the report's sections with their state, the way to open one, the narrow and absent forms, the guard
@@ -13,7 +13,7 @@ test.describe.configure({ mode: "serial" });
 const json = { "Content-Type": "application/json" };
 const TITLES = ["Fixed Income", "Equities", "Real Estate", "Digital Payments", "Focus of the Week"];
 const rail = (page: Page) => page.getByRole("navigation", { name: "Report sections" });
-const heading = (title: string) => ({ name: `${title}: analyst review`, level: 1 }) as const;
+const heading = (title: string) => (reviewHeading(title)) as const;
 
 /** Digital Payments drafted through the API for that week; with `accept`, every item is accepted too. Left undecided. */
 async function draftPayments(request: APIRequestContext, period: string) {

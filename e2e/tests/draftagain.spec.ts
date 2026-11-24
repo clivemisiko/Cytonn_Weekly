@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
-import { API, VARIANT, card, draftAndApprove, hold, overviewUrl, release, startRun } from "./helpers";
+import { API, VARIANT, card, draftAndApprove, hold, overviewUrl, release, startRun, reviewHeading } from "./helpers";
 
 /**
  * "Draft again": a section that already has a review (in review, approved or rejected) can be drafted over from its
@@ -12,7 +12,7 @@ test.describe.configure({ mode: "serial" });
 test.afterEach(() => void release());
 
 const json = { "Content-Type": "application/json" };
-const HEADING = { name: "Digital Payments: analyst review", level: 1 } as const;
+const HEADING = reviewHeading("Digital Payments");
 
 /** Digital Payments drafted through the API for that week; the run's id. */
 async function draftPayments(request: APIRequestContext, period: string): Promise<number> {

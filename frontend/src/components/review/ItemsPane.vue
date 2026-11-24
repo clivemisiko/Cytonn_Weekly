@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { PhCaretDown } from "@phosphor-icons/vue";
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "reka-ui";
-import { computed, reactive, ref } from "vue";
+import { computed, reactive, watch } from "vue";
 import Button from "@/components/ui/Button.vue";
 import { STATUS_META, STATUS_ORDER } from "@/lib/format";
 import type { Review, Status } from "@/lib/types";
@@ -9,8 +9,8 @@ import ReviewItemCard from "./ReviewItemCard.vue";
 
 const props = defineProps<{ review: Review }>();
 
-type Filter = "all" | "flagged" | "not_auto_verified" | "clean";
-const filter = ref<Filter>("all");
+// The review's counts strip sets it: one status, or "all" when no tile is pressed.
+const filter = defineModel<"all" | Status>("filter", { default: "all" });
 
 const open = reactive<Record<Status, boolean>>({ flagged: true, not_auto_verified: true, clean: false });
 // Which cards show their evidence. Collapsed by default; Expand all / Collapse all act on every item with something to show.
@@ -22,28 +22,14 @@ const setAll = (on: boolean) => {
 
 const totalOf = (status: Status) => props.review.review_items.filter((i) => i.status === status).length;
 
-const filters = computed(() =>
-  (
-    [
-      { key: "all" as Filter, label: "All", count: props.review.review_items.length, flag: false, show: true },
-      { key: "flagged" as Filter, label: "Flagged", count: props.review.counts.flagged.total, flag: true, show: true },
-      { key: "not_auto_verified" as Filter, label: "Not auto-verified", count: totalOf("not_auto_verified"), flag: false, show: true },
-      { key: "clean" as Filter, label: "Clean", count: totalOf("clean"), flag: false, show: true },
-    ]
-  ).filter((f) => f.count === null || f.count > 0 || f.key === "all"),
-);
-
 const itemsOf = (status: Status) => {
   const items = props.review.review_items.filter((i) => i.status === status);
   return filter.value !== "all" && filter.value !== status ? [] : items;
 };
 
-function setFilter(next: Filter) {
-  filter.value = next;
-  if (next !== "all") {
-    open[next] = true;
-  }
-}
+watch(filter, (next) => {
+  if (next !== "all") open[next] = true;
+});
 
 // The explanation two or more not-auto-verified items share (the claims' "Not yet automatically checked..." note) is shown
 // once under the group header instead of on every card; each card keeps its "Not auto-verified" chip.
@@ -68,24 +54,6 @@ const shared = computed(() => {
         <Button size="sm" variant="outline" class="h-8 px-2.5 text-xs" @click="setAll(true)">Expand all</Button>
         <Button size="sm" variant="outline" class="h-8 px-2.5 text-xs" @click="setAll(false)">Collapse all</Button>
       </div>
-    </div>
-
-    <!-- Filters: a toggle group, so the one pressed is announced. Counts are from the review itself. -->
-    <div role="group" aria-label="Show items" class="flex flex-wrap items-center gap-1 rounded-lg border bg-muted/50 p-1 text-sm">
-      <button
-        v-for="f in filters"
-        :key="f.key"
-        type="button"
-        :aria-pressed="filter === f.key"
-        :class="[
-          'flex items-center gap-1.5 rounded-md px-2.5 py-1 font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring',
-          filter === f.key ? 'bg-card font-semibold text-foreground shadow-2xs' : 'text-muted-foreground hover:text-foreground',
-        ]"
-        @click="setFilter(f.key)"
-      >
-        <span>{{ f.label }}</span>
-        <span v-if="f.count !== null" class="count-badge" :class="f.flag && 'state-flagged'">{{ f.count }}</span>
-      </button>
     </div>
 
     <section v-for="status in STATUS_ORDER" v-show="filter === 'all' || filter === status" :key="status" :class="`state-${status}`" :aria-labelledby="`group-${status}-title`">

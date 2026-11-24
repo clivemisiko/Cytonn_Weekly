@@ -97,6 +97,10 @@ const ITEM =
         <PhSidebarSimple weight="bold" class="size-5" aria-hidden="true" />
       </button>
 
+      <p class="flex items-center gap-2 px-2 pt-1 text-lg font-semibold tracking-tight text-foreground max-md:hidden">
+        <span class="brand-dot size-2.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+        <span :class="[label, 'leading-none']">Cytonn <span class="mt-1 block text-[0.625rem] font-medium tracking-[0.3em] text-muted-foreground uppercase">Weekly</span></span>
+      </p>
       <div v-if="shell.report.value" class="space-y-1 border-b px-2 pt-1 pb-3" :class="!open && 'hidden min-[1366px]:block'">
         <template v-if="chatPeriod">
           <p class="eyebrow">{{ shell.report.value.title }} report</p>

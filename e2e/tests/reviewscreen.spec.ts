@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { API, VARIANT, card, overviewUrl } from "./helpers";
+import { API, VARIANT, card, overviewUrl, reviewHeading } from "./helpers";
 
 /**
  * The review screen's layout: the draft in the content column and the review items as the panel beside it, which is never
@@ -21,7 +21,7 @@ test("T72 the review items are the panel beside the draft and never fold, the st
   await page.setViewportSize({ width: 1366, height: 768 });
   await page.goto(overviewUrl(period));
   await card(page, "Digital Payments").getByRole("button", { name: "Resume review" }).click();
-  await expect(page.getByRole("heading", { name: "Digital Payments: analyst review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", reviewHeading("Digital Payments"))).toBeVisible();
   const items = page.getByRole("complementary", { name: "Review items" });
   const draft = page.locator("section", { has: page.getByRole("heading", { name: /^Drafted section: / }) }).first();
   await expect(items.getByRole("heading", { name: "Review items", level: 2 })).toBeVisible();
@@ -37,8 +37,25 @@ test("T72 the review items are the panel beside the draft and never fold, the st
   const tiles = page.getByRole("group", { name: "Review items by status" });
   // Polled: the tiles rise in as the screen settles, so one early reading can catch them a pixel apart.
   await expect
-    .poll(async () => new Set(await Promise.all([0, 1, 2].map(async (n) => Math.round((await tiles.locator(":scope > div").nth(n).boundingBox())!.y)))).size)
+    .poll(async () => new Set(await Promise.all([0, 1, 2].map(async (n) => Math.round((await tiles.locator(":scope > *").nth(n).boundingBox())!.y)))).size)
     .toBe(1);
+  // The strip filters the items: each tile shows its own status only, its count is that list's length, and pressing it
+  // again shows every item, as the old "All" filter did. Nothing is pressed at first. (Clean starts folded; a press unfolds it.)
+  let sum = 0;
+  for (const [name, status] of [[/Flagged/, "flagged"], [/Not auto-verified/, "not_auto_verified"], [/Clean/, "clean"]] as const) {
+    const tile = tiles.getByRole("button", { name });
+    await expect(tile).toHaveAttribute("aria-pressed", "false");
+    await tile.click();
+    await expect(tile).toHaveAttribute("aria-pressed", "true");
+    const shown = items.locator("li[data-status]:visible");
+    await expect(items.locator(`li[data-status]:visible:not([data-status="${status}"])`)).toHaveCount(0);
+    expect(await tile.textContent()).toContain(String(await shown.count()));
+    sum += await shown.count();
+    await tile.click();
+    await expect(tile).toHaveAttribute("aria-pressed", "false");
+  }
+  await expect(page.getByText("Not auto-verified is not the same as incorrect")).toBeVisible();
+  expect(await items.locator("li[data-status]:visible").count()).toBe(sum);
   const table = draft.getByRole("region", { name: /scrolls sideways on narrow screens$/ });
   await expect(table).toBeVisible();
   expect(await table.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);

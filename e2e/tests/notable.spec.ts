@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { API, VARIANT, openStart, overviewUrl } from "./helpers";
+import { API, VARIANT, openStart, overviewUrl, reviewHeading } from "./helpers";
 
 /**
  * "Notable this week": suggestions computed by code, shown with their working, accepted, edited or dismissed by the analyst.
@@ -184,7 +184,7 @@ test("T53 the panel is on the review screen too, and accepting, editing and dism
   const before = await state();
 
   await page.goto(`${overviewUrl(period(week))}&review=${runId}`);
-  await expect(page.getByRole("heading", { name: "Digital Payments: analyst review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", reviewHeading("Digital Payments"))).toBeVisible();
   await expect(page.getByText(`Saved as run ${runId}`)).toBeVisible();
   await expect(panel(page)).toBeVisible();
   await expect(candidates(page)).toHaveCount(2);

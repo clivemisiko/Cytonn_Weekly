@@ -1,7 +1,7 @@
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
-import { API, REPO, VARIANT, startRun } from "./helpers";
+import { API, REPO, VARIANT, startRun, reviewHeading } from "./helpers";
 
 /**
  * The chart card on the Equities review: the picture, its facts, "Show points", the choice to use the team's own chart, and what
@@ -45,7 +45,7 @@ async function draft(request: APIRequestContext, friday: string): Promise<number
 
 async function open(page: Page, id: number) {
   await page.goto(`/overview?review=${id}`);
-  await expect(page.getByRole("heading", { name: "Equities: analyst review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", reviewHeading("Equities"))).toBeVisible();
 }
 
 const cards = (page: Page) => page.locator("[data-chart-block]");

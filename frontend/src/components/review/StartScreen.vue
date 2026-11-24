@@ -253,7 +253,7 @@ const lists = computed(() => [
 
 <template>
   <div>
-    <Masthead wide :title="`${section.title}: analyst review`">
+    <Masthead wide :title="`${section.title} review`">
       <template v-if="!weekly" #meta><span class="font-mono">{{ report.period }}</span></template>
       {{ weekly ? "Draft this week’s section, check it, and review it here." : `Draft ${thisRun} section, check it, and review it here.` }}
     </Masthead>
