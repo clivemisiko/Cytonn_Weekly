@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { PhCaretDown, PhChatCircle, PhSidebarSimple } from "@phosphor-icons/vue";
+import { PhCaretDown, PhChatCircle, PhFiles, PhSidebarSimple } from "@phosphor-icons/vue";
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "reka-ui";
 import { computed, nextTick, ref, useTemplateRef, watch } from "vue";
 import { RouterLink, useRouter } from "vue-router";
 import { SHOW_CHAT } from "@/lib/features";
 import { reportName } from "@/lib/format";
 import { chatHref, mayLeave } from "@/lib/nav";
+import { overviewHref } from "@/lib/run";
 import { MARKS } from "@/lib/railmarks";
 import { type RailSection, shell } from "@/lib/shell";
 
@@ -64,9 +65,26 @@ const showProgress = computed(() => shell.held.value !== null && !atOverview.val
 
 // The current item is a green-tinted pill with an accent bar (and bold, and aria-current); an item that does nothing is dimmed and has no hover.
 // Only pages that exist; the chat's own sections stay in the list below.
-const PAGES = [
-  { to: "/chat", name: SHOW_CHAT ? "Chat" : "Sections", icon: PhChatCircle },
-];
+const allReports = computed(() => {
+  const r = shell.report.value;
+  if (!r) return "/overview";
+  const href = overviewHref(r.type, r.period);
+  return r.kind ? `${href}&kind=${encodeURIComponent(r.kind)}` : href;
+});
+// All reports keeps the report on screen, and is current only on the overview itself, not its start and review phases.
+const PAGES = computed(() => [
+  { to: allReports.value, name: "All reports", icon: PhFiles, current: atOverview.value },
+  { to: "/chat", name: SHOW_CHAT ? "Chat" : "Sections", icon: PhChatCircle, current: null },
+]);
+/** A start screen or review shares the overview's address, so a link to it would do nothing: leave the phase as Back does. */
+function follow(event: MouseEvent, inPhase: boolean, navigate: (e: MouseEvent) => unknown) {
+  const home = inPhase ? shell.home.value : null;
+  if (!mayLeave()) return event.preventDefault();
+  menu.value = false;
+  if (!home) return void navigate(event);
+  event.preventDefault();
+  home();
+}
 const ITEM =
   "flex w-full items-center gap-3 rounded-md px-2 py-1.5 text-left text-sm outline-none transition-colors duration-150 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring aria-disabled:cursor-default aria-disabled:opacity-60 aria-disabled:hover:bg-transparent aria-[current=page]:bg-accent aria-[current=page]:font-semibold aria-[current=page]:text-accent-foreground aria-[current=page]:hover:bg-accent aria-[current=page]:shadow-[inset_3px_0_0_var(--primary)]";
 </script>
@@ -76,7 +94,7 @@ const ITEM =
        expanded (the default), 56px when collapsed for the visit, always 224px from 1366px. Under 768px it is a drawer the
        top bar's Menu button opens, over the page. -->
   <div
-    class="sticky top-[calc(var(--topbar-h)+var(--ribbon-h,0rem))] h-[calc(100dvh-var(--topbar-h)-var(--ribbon-h,0rem))] shrink-0 min-[1366px]:w-56"
+    class="sticky top-0 h-dvh shrink-0 max-md:top-[calc(var(--topbar-h)+var(--ribbon-h,0rem))] max-md:h-[calc(100dvh-var(--topbar-h)-var(--ribbon-h,0rem))] min-[1366px]:w-56"
     :class="[open ? 'min-[768px]:w-56' : 'min-[768px]:w-14', menu ? 'max-md:fixed max-md:left-0 max-md:z-30 max-md:w-56' : 'max-md:hidden']"
   >
     <nav
@@ -97,6 +115,10 @@ const ITEM =
         <PhSidebarSimple weight="bold" class="size-5" aria-hidden="true" />
       </button>
 
+      <p class="flex items-center gap-2 px-2 pt-1 text-lg font-semibold tracking-tight text-foreground max-md:hidden">
+        <span class="brand-dot size-2.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+        <span :class="[label, 'leading-none']">Cytonn <span class="mt-1 block text-[0.625rem] font-medium tracking-[0.3em] text-muted-foreground uppercase">Weekly</span></span>
+      </p>
       <div v-if="shell.report.value" class="space-y-1 border-b px-2 pt-1 pb-3" :class="!open && 'hidden min-[1366px]:block'">
         <template v-if="chatPeriod">
           <p class="eyebrow">{{ shell.report.value.title }} report</p>
@@ -116,9 +138,9 @@ const ITEM =
             <a
               :href="href"
               :class="ITEM"
-              :aria-current="isExactActive ? 'page' : undefined"
+              :aria-current="(p.current ?? isExactActive) ? 'page' : undefined"
               :title="p.name"
-              @click="(event) => (mayLeave() ? ((menu = false), navigate(event)) : event.preventDefault())"
+              @click="(event) => follow(event, p.current === false, navigate)"
             >
               <component :is="p.icon" weight="bold" class="size-5 shrink-0" aria-hidden="true" />
               <span :class="[label, 'min-w-0 truncate']">{{ p.name }}</span>
@@ -187,8 +209,8 @@ const ITEM =
           <p v-if="shell.report.value?.type === 'weekly'" class="text-xs text-muted-foreground">
             {{
               shell.approved.value !== null && shell.approved.value === shell.total.value
-                ? "Ready to export from the chat."
-                : `Report export unlocks when all ${shell.total.value ?? ""} are approved.`
+                ? "Every section is approved. Export it from All reports."
+                : "The Word export takes every finished draft, approved or not."
             }}
           </p>
         </div>

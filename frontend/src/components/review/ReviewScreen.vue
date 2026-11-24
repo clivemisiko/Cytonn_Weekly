@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { PhLockSimple } from "@phosphor-icons/vue";
-import { computed, provide, watch } from "vue";
+import { PhArrowLeft, PhLockSimple } from "@phosphor-icons/vue";
+import { computed, provide, ref, watch } from "vue";
+import Button from "@/components/ui/Button.vue";
 import { OPEN_REVIEW, lastRecheck } from "@/lib/fixfile";
 import { lastSentence } from "@/lib/sentence";
 import { STATUS_ORDER, friendlyTime, weekRange } from "@/lib/format";
@@ -47,6 +48,8 @@ watch(
   },
 );
 
+// The strip filters the review items: one status, or every item when no tile is pressed.
+const filter = ref<"all" | Status>("all");
 const SUBLINES: Record<Status, string> = { flagged: "Read before approving", not_auto_verified: "Check by hand", clean: "Checked, no flag" };
 
 // Pieces the reviewer took out of the draft, and whether any drafted finding is left.
@@ -61,17 +64,30 @@ const findingsLeft = computed(() => {
 
 <template>
   <div>
-    <Masthead wide :title="`${review.section_title}: analyst review`">
-      <template #meta>
-        <template v-if="review.period && review.report_type !== 'weekly'">
-          {{ review.report_title }}, <span class="font-mono">{{ review.period }}</span
-          >, run <span class="font-mono">{{ review.run_id }}</span>
-        </template>
-        <template v-else>
-          <span v-if="review.period" class="font-mono">{{ review.period }}</span
-          ><template v-else>Report week</template> {{ weekRange(review.section.week_start, review.section.week_end) }}, run
-          <span class="font-mono">{{ review.run_id }}</span>
-        </template>
+    <Masthead wide :title="`${review.section_title} review`" :crumbs="['Reports', review.report_title, review.section_title]">
+      <template #actions>
+        <Button size="sm" variant="outline" @click="emit('close')"><PhArrowLeft weight="bold" aria-hidden="true" />All sections</Button>
+      </template>
+      <template v-if="review.decision" #meta>
+        <div class="flex flex-col items-start gap-1 sm:items-end">
+          <span
+            role="status"
+            class="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm font-semibold"
+            :class="approved ? 'border-ok/40 bg-ok/10 text-ok-fg' : 'border-flag/40 bg-flag/10 text-flag-fg'"
+          >
+            <PhLockSimple weight="bold" class="size-4" aria-hidden="true" />{{ approved ? "Approved" : "Rejected" }} and locked
+          </span>
+          <span class="text-xs">{{ review.decided_at ? `${friendlyTime(review.decided_at)} · ` : "" }}Read-only</span>
+        </div>
+      </template>
+      <template v-if="review.period && review.report_type !== 'weekly'">
+        {{ review.report_title }}, <span class="font-mono">{{ review.period }}</span
+        >, run <span class="font-mono">{{ review.run_id }}</span>
+      </template>
+      <template v-else>
+        <span v-if="review.period" class="font-mono">{{ review.period }}</span
+        ><template v-else>Report week {{ weekRange(review.section.week_start, review.section.week_end) }}</template> · Run
+        <span class="font-mono">{{ review.run_id }}</span>
       </template>
     </Masthead>
     <!-- The status bar sticks under the top bar across both columns: the counts and the decision never scroll out of reach. -->
@@ -93,23 +109,22 @@ const findingsLeft = computed(() => {
         <RecheckResult v-if="recheck" :result="recheck" @redraft="emit('redraft', review.section_slug)" />
         <SentenceResult v-if="sentence" :result="sentence" />
         <RejectedDraftNotes :run-id="review.run_id" />
-        <div
-          v-if="review.decision"
-          role="status"
-          class="rise-in flex flex-col gap-1 rounded-lg border border-l-[3px] px-4 py-2.5"
-          :class="approved ? 'border-ok/40 border-l-ok bg-ok/10' : 'border-flag/40 border-l-flag bg-flag/10'"
-        >
-          <span class="flex items-center gap-2 text-base font-semibold" :class="approved ? 'text-ok-fg' : 'text-flag-fg'">
-            <PhLockSimple weight="bold" class="size-4" aria-hidden="true" />
-            {{ approved ? "Approved" : "Rejected" }} and locked
-          </span>
-          <span class="text-sm text-muted-foreground">
-            Decision recorded{{ review.decided_at ? ` on ${friendlyTime(review.decided_at)}` : "" }}. This section is finalized and locked for editing.
-          </span>
-        </div>
-        <!-- Three counts, one per status, in the same colour, glyph and border style the item cards use. -->
-        <div role="group" aria-label="Review items by status" class="grid grid-cols-1 gap-3 @min-[34rem]:grid-cols-3">
-          <CountTile v-for="s in STATUS_ORDER" :key="s" :status="s" :value="review.counts[s].total" :sub="review.counts[s].total ? SUBLINES[s] : 'None in this draft'" />
+        <p v-if="review.decision" class="rise-in text-sm text-muted-foreground">
+          Decision recorded{{ review.decided_at ? ` on ${friendlyTime(review.decided_at)}` : "" }}. This section is finalized and locked for editing.
+        </p>
+        <!-- Three counts, one per status, in the item cards' colour, glyph and border: each one filters the review items, and
+             pressing it again shows every item. -->
+        <div role="group" aria-label="Review items by status" class="flex flex-wrap items-center gap-1 rounded-lg border bg-card p-1.5">
+            <CountTile
+              v-for="s in STATUS_ORDER"
+              :key="s"
+              :status="s"
+              :value="review.counts[s].total"
+              :sub="review.counts[s].total ? SUBLINES[s] : 'None in this draft'"
+              :pressed="filter === s"
+              @click="filter = filter === s ? 'all' : s"
+            />
+          <p class="ml-auto px-3 text-xs text-muted-foreground">Not auto-verified is not the same as incorrect</p>
         </div>
         <details v-if="removed.length" class="rounded-lg border bg-card px-4 py-2.5 text-sm">
           <summary class="cursor-pointer font-medium">Removed findings ({{ removed.length }})</summary>
@@ -138,7 +153,7 @@ const findingsLeft = computed(() => {
       </div>
 
       <template #aside>
-        <ItemsPane :review="review" />
+        <ItemsPane v-model:filter="filter" :review="review" />
       </template>
     </PageGrid>
   </div>

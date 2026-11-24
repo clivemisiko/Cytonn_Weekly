@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
-import { API, VARIANT, overviewUrl, release } from "./helpers";
+import { API, VARIANT, overviewUrl, release, reviewHeading } from "./helpers";
 
 // A flagged sentence of a drafted piece, edited or removed by hand. The test backend drafts a topic that says "bad figure"
 // with a sentence whose figure (Sh99.9 billion) is not in the text its source cited (e2e/serve_e2e.py). Each test uses
@@ -24,7 +24,7 @@ async function draftFocus(request: APIRequestContext, period: string): Promise<n
 
 async function open(page: Page, period: string, runId: number) {
   await page.goto(`${overviewUrl(period)}&review=${runId}`);
-  await expect(page.getByRole("heading", { name: "Focus of the Week: analyst review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", reviewHeading("Focus of the Week"))).toBeVisible();
 }
 
 const flagged = (page: Page) => page.locator('li[data-status="flagged"]');
@@ -181,7 +181,6 @@ test("T115 rejecting a section whose item carries a fix-needed note: the next dr
   const dialog = page.getByRole("dialog", { name: "Reject this section?" });
   await dialog.getByRole("button", { name: "Reject", exact: true }).click();
   await expect(dialog).toBeHidden();
-  await expect(page.getByText("Decision recorded: rejected.")).toBeVisible();
   await expect(page.getByText("Rejected and locked")).toBeVisible();
   expect((await (await request.get(`${API}/api/reviews/${first}`)).json()).decision).toBe("rejected");
 

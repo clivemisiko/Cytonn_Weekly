@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { API, DRAFT, PERIOD, VARIANT, card, overviewUrl } from "./helpers";
+import { API, DRAFT, PERIOD, VARIANT, card, overviewUrl, reviewHeading } from "./helpers";
 
 // The Sources panel of a Bedrock draft. Runs only on the "bedrock" start of the test API (E2E_VARIANT=bedrock, see
 // e2e/serve_e2e.py): the provider is Bedrock with invented settings, the model is a fake client that quotes the first
@@ -24,7 +24,7 @@ const group = (page: Page, subject: string) => page.getByRole("group", { name: `
 async function openFocusStart(page: Page) {
   await page.goto(overviewUrl());
   await card(page, "Focus of the Week").getByRole("button", { name: /Draft section|Draft again/ }).click();
-  await expect(page.getByRole("heading", { name: "Focus of the Week: analyst review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", reviewHeading("Focus of the Week"))).toBeVisible();
 }
 
 async function openFocus(page: Page) {
@@ -190,7 +190,7 @@ test("T113 a drafted piece shows its source host, date and verified quote, and a
   await expect(page).toHaveURL(/\/runs\//);
   await expect(page.getByRole("heading", { name: "Draft ready for review", level: 2 })).toBeVisible({ timeout: 60_000 });
   await page.getByRole("link", { name: "Open review" }).click();
-  await expect(page.getByRole("heading", { name: "Focus of the Week: analyst review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", reviewHeading("Focus of the Week"))).toBeVisible();
   await expect(page.getByText("DEV MODE", { exact: false })).toHaveCount(0); // a Bedrock draft is a production draft
 
   await page.getByRole("button", { name: "Expand all" }).click();

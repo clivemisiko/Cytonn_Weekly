@@ -1,7 +1,7 @@
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
-import { API, REPO, VARIANT, startRun } from "./helpers";
+import { API, REPO, VARIANT, startRun, reviewHeading } from "./helpers";
 
 /**
  * The chart card on the Equities review: the picture, its facts, "Show points", the choice to use the team's own chart, and what
@@ -45,7 +45,7 @@ async function draft(request: APIRequestContext, friday: string): Promise<number
 
 async function open(page: Page, id: number) {
   await page.goto(`/overview?review=${id}`);
-  await expect(page.getByRole("heading", { name: "Equities: analyst review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", reviewHeading("Equities"))).toBeVisible();
 }
 
 const cards = (page: Page) => page.locator("[data-chart-block]");
@@ -192,7 +192,7 @@ test("T81 rows left out of the series are listed by cell on the card and are a f
   await expect(dialog).toBeHidden();
 
   // Once decided, the review is frozen and so is the choice.
-  await expect(page.getByText("Decision recorded: approved.")).toBeVisible();
+  await expect(page.getByText("Approved and locked")).toBeVisible();
   expect((await (await request.get(`${API}/api/reviews/${id}`)).json()).decision).toBe("approved");
   await open(page, id);
   await expect(peCard(page).getByRole("button", { name: "Use the team's own chart" })).toBeDisabled();

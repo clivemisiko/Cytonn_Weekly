@@ -229,7 +229,7 @@ const flagged = computed(() =>
           </span>
         </div>
         <CollapsibleContent class="collapsible -m-1 overflow-hidden p-1">
-          <ol class="space-y-2">
+          <ol class="divide-y rounded-lg border bg-card">
             <SectionRow
               v-for="(s, i) in overview.sections"
               :key="s.slug"

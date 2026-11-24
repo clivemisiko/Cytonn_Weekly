@@ -259,7 +259,7 @@ async function goToSection(slug: string) {
 }
 
 // What the rail's items do while this page is on screen, and which of its screens the rail marks.
-useShellActions({ openSection: goToSection });
+useShellActions({ openSection: goToSection, home });
 useShellHere(() => {
   const p = phase.value;
   if (p.name === "overview") return { view: "overview" };

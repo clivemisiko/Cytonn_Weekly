@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { DRAFT, VARIANT, openStart, overviewUrl, release } from "./helpers";
+import { DRAFT, VARIANT, openStart, overviewUrl, release, reviewHeading } from "./helpers";
 
 /**
  * T87 to T98: what the page does when an action fails with a named problem (frontend/src/lib/attention.ts). A whole
@@ -88,7 +88,7 @@ test("T91 a decision the API refuses as already made: the dialog, then Show me g
   await page.getByRole("button", { name: DRAFT }).click();
   await expect(page.getByRole("heading", { name: "Draft ready for review", level: 2 })).toBeVisible();
   await page.getByRole("link", { name: "Open review" }).click();
-  await expect(page.getByRole("heading", { name: "Digital Payments: analyst review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", reviewHeading("Digital Payments"))).toBeVisible();
 
   const decided = "This section was already approved (review 1), so it cannot be changed. Reload the page to see the decision.";
   await page.route("**/api/reviews/*/decide", (route) =>

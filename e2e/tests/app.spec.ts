@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { SHOW_CHAT } from "../../frontend/src/lib/features";
-import { draftAnyway } from "./helpers";
+import { draftAnyway, reviewHeading } from "./helpers";
 
 /**
  * The suite for the web app in frontend/. The tests use only what a person sees (roles, names, text) plus the few
@@ -39,7 +39,7 @@ async function openOverview(page: Page) {
 async function openStart(page: Page, title: string, button: RegExp = /Draft section/) {
   await openOverview(page);
   await card(page, title).getByRole("button", { name: button }).click();
-  await expect(page.getByRole("heading", { name: `${title}: analyst review`, level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", reviewHeading(title))).toBeVisible();
 }
 
 test.skip(!!process.env.E2E_VARIANT, "runs on the default test backend");
@@ -134,7 +134,7 @@ test("T05 theme toggle: Light, Dark, System, kept after a reload and applied bef
   await expect(group).toHaveAccessibleName("Theme: Dark");
   await expect(page.getByRole("radio", { name: "Dark theme" })).toBeChecked();
   expect(await stored()).toBe("dark");
-  expect(await paper()).toBe("rgb(11, 13, 16)");
+  expect(await paper()).toBe("rgb(16, 21, 18)");
   await page.reload();
   expect(await firstFrame()).toBe("dark");
   await expect(page.getByRole("radio", { name: "Dark theme" })).toBeChecked();
@@ -151,7 +151,7 @@ test("T05 theme toggle: Light, Dark, System, kept after a reload and applied bef
   await page.getByRole("radio", { name: "System theme" }).click();
   await expect(page.locator("html")).not.toHaveAttribute("data-theme", /.*/);
   expect(await stored()).toBeNull();
-  expect(await paper()).toBe("rgb(11, 13, 16)"); // follows the (dark) device
+  expect(await paper()).toBe("rgb(16, 21, 18)"); // follows the (dark) device
   await page.reload();
   expect(await firstFrame()).toBe("system");
   await expect(group).toHaveAccessibleName("Theme: System");
@@ -290,7 +290,7 @@ test("T09 Digital Payments: run to done, open the review, one decision for the w
   await expect(page).toHaveURL(/\/runs\//);
   await page.getByRole("link", { name: "Open review" }).click();
 
-  await expect(page.getByRole("heading", { name: "Digital Payments: analyst review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", reviewHeading("Digital Payments"))).toBeVisible();
   paymentsReview = new URL(page.url()).searchParams.get("review") ?? "";
   expect(paymentsReview).toMatch(/^\d+$/);
   // One decision for the whole section, available on a drafted section with nothing to resolve first.
@@ -317,7 +317,6 @@ test("T09 Digital Payments: run to done, open the review, one decision for the w
   await approve.click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByText("Approved and locked")).toBeVisible();
-  await expect(page.getByText("Decision recorded: approved.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Approve", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Reject", exact: true })).toHaveCount(0);
 
@@ -334,13 +333,13 @@ test("T09 Digital Payments: run to done, open the review, one decision for the w
 test("T10 the sticky status bar stays under the top bar while a review scrolls", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 500 });
   await page.goto(`/overview?review=${paymentsReview}`);
-  await expect(page.getByText("Decision recorded: approved.")).toBeVisible();
+  await expect(page.getByText("Approved and locked")).toBeVisible();
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(100);
   const bar = page.locator('[data-attention="review-status-bar"]');
   // 44px top bar, then the dev ribbon's 28px when the review is a dev draft (this one is not).
   await expect.poll(async () => Math.round((await bar.boundingBox())?.y ?? -1)).toBe(44); // once the screen has settled into place
-  await expect(page.getByRole("button", { name: "Back to all sections" }).last()).toBeInViewport();
+  await expect(bar.getByText(/^Saved as run \d+$/)).toBeInViewport(); // the bar's own facts stay in reach (a locked bar has no controls)
 });
 
 test("T11 a stopped run shows the error text and the way back", async ({ page }) => {
@@ -382,7 +381,7 @@ test("T12 Fixed Income: run view steps to done, review lists the three statuses,
   await expect(tiles).toContainText("Clean");
   await page.getByRole("link", { name: "Open review" }).click();
 
-  await expect(page.getByRole("heading", { name: "Fixed Income: analyst review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", reviewHeading("Fixed Income"))).toBeVisible();
   await expect(page.getByRole("heading", { name: "Review items", level: 2 })).toBeVisible();
   const flaggedHead = page.getByRole("button", { name: /^! Flagged by the checker \(\d+\)$|^Flagged by the checker \(\d+\)$/ });
   const unverifiedHead = page.getByRole("button", { name: /Not automatically verified \(\d+\)$/ });
@@ -434,7 +433,7 @@ test("T13 Equities: run to done and its review opens with items", async ({ page 
   await expect(page.getByRole("heading", { name: "Equities: draft run", level: 1 })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Draft ready for review", level: 2 })).toBeVisible({ timeout: RUN_TIMEOUT });
   await page.getByRole("link", { name: "Open review" }).click();
-  await expect(page.getByRole("heading", { name: "Equities: analyst review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", reviewHeading("Equities"))).toBeVisible();
   expect(await page.locator("li[data-status]").count()).toBeGreaterThan(0);
   await expect(page.getByRole("button", { name: /Flagged by the checker \(\d+\)$/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeEnabled(); // one decision for the whole section, asked for once it is read

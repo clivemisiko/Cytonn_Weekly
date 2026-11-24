@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { PhCheckCircle, PhInfo, PhWarning } from "@phosphor-icons/vue";
+import { PhCheckCircle, PhWarning } from "@phosphor-icons/vue";
 import { computed, inject } from "vue";
 import { plural } from "@/lib/format";
 import { READ_ONLY } from "@/lib/previous";
@@ -44,12 +44,8 @@ const counts = computed(() => props.review.counts);
             </span>
           </div>
         </div>
-        <div class="relative min-h-6 basis-full text-sm font-medium sm:flex-1 sm:basis-0" aria-live="polite">
-          <span v-if="review.decision" class="flex items-center gap-2 text-foreground">
-            <PhInfo weight="bold" class="size-4 shrink-0 text-link" aria-hidden="true" />
-            <span>Decision recorded: <strong class="font-semibold">{{ review.decision }}</strong>.</span>
-          </span>
-          <span v-else-if="counts.flagged.total" class="flex items-center gap-2 text-warn-fg">
+        <div v-if="!review.decision" class="relative min-h-6 basis-full text-sm font-medium sm:flex-1 sm:basis-0" aria-live="polite">
+          <span v-if="counts.flagged.total" class="flex items-center gap-2 text-warn-fg">
             <PhWarning weight="bold" class="size-4 shrink-0" aria-hidden="true" />
             <span>{{ plural(counts.flagged.total, "flagged item") }}: read {{ counts.flagged.total === 1 ? "it" : "them" }} before you approve or reject.</span>
           </span>
@@ -59,7 +55,7 @@ const counts = computed(() => props.review.counts);
           </span>
         </div>
         <SectionDownload :review="review" />
-        <div v-if="!readOnly" class="basis-full lg:basis-auto">
+        <div v-if="!readOnly && !review.decision" class="basis-full lg:basis-auto">
           <DecisionControls :review="review" :deciding="deciding" :on-decide="onDecide" @close="emit('close')" />
         </div>
       </div>
