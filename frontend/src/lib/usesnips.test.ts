@@ -17,7 +17,10 @@ function held<T>() {
 }
 
 describe("useSnips: an upload in progress names its file, and clears on success and on failure", () => {
-  beforeEach(() => vi.mocked(api.uploadSnip).mockReset());
+  // A function returned from beforeEach is run as the test's teardown, so the braces keep the mock from being called again.
+  beforeEach(() => {
+    vi.mocked(api.uploadSnip).mockReset();
+  });
 
   it("shows the file and its sector while it is sent, then clears once the server answers", async () => {
     const answer = held<SnipsListing>();
