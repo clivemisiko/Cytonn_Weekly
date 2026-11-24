@@ -68,6 +68,6 @@ export function useLeaveGuard(unsaved: MaybeRefOrGetter<boolean>, question: stri
 
 /** True if the page may be left: nothing is unsaved, or the person said to leave anyway. */
 export function mayLeave(): boolean {
-  // ponytail: the browser's own confirm box; swap for the app's Dialog if the wording or styling needs to match.
+  // Known limit: the browser's own confirm box; swap for the app's Dialog if the wording or styling needs to match.
   return leaveQuestion === null || window.confirm(leaveQuestion);
 }

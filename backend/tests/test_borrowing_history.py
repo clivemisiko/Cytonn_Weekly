@@ -154,8 +154,10 @@ def test_with_the_constant_off_an_uploaded_workbook_changes_nothing_in_the_borro
     without = draft(root, WEEK)
     inputs.store(WEEK, "fi_workbook", wh.fi_workbook_bytes(), "FI.xlsx", root)
     with_book = draft(root, WEEK)
+    # numeral is the block's position in the section: the workbook feeds other parts that add blocks ahead of these
     for key in ("borrowing", "borrowing_log"):
-        assert blocks(with_book)[key] == blocks(without)[key]
+        assert {k: v for k, v in blocks(with_book)[key].items() if k != "numeral"} == \
+            {k: v for k, v in blocks(without)[key].items() if k != "numeral"}
     assert [(i.ref, i.status, i.detail) for i in items(with_book, "Net domestic borrowing")] == \
         [(i.ref, i.status, i.detail) for i in items(without, "Net domestic borrowing")]
     assert not any(w.startswith("Net domestic borrowing") and "workbook" in w for w in with_book.section["warnings"])

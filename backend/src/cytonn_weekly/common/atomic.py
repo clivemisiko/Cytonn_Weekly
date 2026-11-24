@@ -13,7 +13,7 @@ _REPLACE_RETRY_DELAY = 0.05
 
 # One lock for every read-modify-write of a small shared file (a manifest, a form, a cache index). Those are quick and
 # nothing waits on the network inside them, so one lock is enough; it is re-entrant because one save calls another.
-# ponytail: one lock for all of them, a lock per file if a long save ever sits in one.
+# Known limit: one lock for all of them, a lock per file if a long save ever sits in one.
 GUARD = threading.RLock()
 
 

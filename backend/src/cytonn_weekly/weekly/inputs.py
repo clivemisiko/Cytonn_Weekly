@@ -342,7 +342,7 @@ def status(week: Week, root: Optional[Path] = None) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 # Parsed files, shared across requests: (kind, path, mtime_ns, size) -> the parse. A replaced file has a new key, so it is parsed again.
-# ponytail: a fixed count, not a byte budget; each entry is at most one stored file (MAX_BYTES) plus what was read from it.
+# Known limit: a fixed count, not a byte budget; each entry is at most one stored file (MAX_BYTES) plus what was read from it.
 _PARSED: "OrderedDict[tuple, Any]" = OrderedDict()
 _PARSED_LOCK = threading.Lock()
 _PARSED_MAX = 6

@@ -239,7 +239,7 @@ def _ocr_page(page: Any, ocr: Optional[Callable[[Any], list]]) -> str:
     from cytonn_weekly.weekly.nse_price_list import DPI, rapidocr_engine
 
     image = np.array(page.to_image(resolution=DPI).original.convert("RGB"))[:, :, ::-1].copy()
-    words = sorted((ocr or rapidocr_engine())(image), key=lambda w: (round(w[1] / 15), w[0]))   # ponytail: rows by 15px bands
+    words = sorted((ocr or rapidocr_engine())(image), key=lambda w: (round(w[1] / 15), w[0]))   # Known limit: rows by 15px bands
     lines: dict[int, list[str]] = {}
     for x0, y0, _x1, _y1, text in words:
         lines.setdefault(round(y0 / 15), []).append(text)

@@ -312,7 +312,7 @@ def env_problem() -> Optional[str]:
     """Why a Bedrock draft cannot start, or None.  Checked before a draft takes the slot or fetches anything.
 
     Only the environment is looked at: calling AWS's credential chain here would reach the instance metadata
-    service on every page load.  # ponytail: a host role or profile is not recognised; read the chain if one is used.
+    service on every page load.  # Known limit: a host role or profile is not recognised; read the chain if one is used.
     """
     if not region():
         return REGION_MISSING

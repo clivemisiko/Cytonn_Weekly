@@ -134,7 +134,7 @@ class RunStore:
         """At startup: every run still queued or running belongs to a process that is gone.  Each becomes ``interrupted``, with a
         closing ``run_failed`` event that says so (the kind the run screen already shows as a stop).  Returns how many.
 
-        ponytail: assumes one API process (CLAUDE.md: never a second worker); with two, the second to start would mark the
+        Known limit: assumes one API process (CLAUDE.md: never a second worker); with two, the second to start would mark the
         first one's live runs.  A process id or heartbeat column is the upgrade if that ever changes.
         """
         now = _now()

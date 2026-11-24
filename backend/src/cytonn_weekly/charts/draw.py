@@ -98,7 +98,7 @@ def _place_average_label(fig, ax, label, xs: list[date], ys: list[float], level:
 
     Every start point is tried; the points just outside the label's width are counted too, so a segment entering
     its width is never missed."""
-    # ponytail: O(n * width) scan over about 365 weekly points; fine for weekly charts, a sliding window if series grow.
+    # Known limit: O(n * width) scan over about 365 weekly points; fine for weekly charts, a sliding window if series grow.
     renderer = fig.canvas.get_renderer()
     width = label.get_window_extent(renderer).width
     pts = [tuple(map(float, p)) for p in ax.transData.transform(list(zip(date2num(xs), ys)))]

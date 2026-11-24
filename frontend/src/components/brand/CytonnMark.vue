@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// ponytail: a placeholder drawn from the design artboards, not Cytonn's logo. Replace with Cytonn's official file once it is supplied.
+// Known limit: a placeholder drawn from the design artboards, not Cytonn's logo. Replace with Cytonn's official file once it is supplied.
 withDefaults(defineProps<{ size?: number; avatar?: boolean; label?: string }>(), { size: 96, avatar: false, label: undefined });
 </script>
 

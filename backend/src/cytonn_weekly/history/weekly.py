@@ -147,7 +147,7 @@ def stored_redemptions(start: date, end: date, db_path: Optional[Union[Path, str
 
     Read whatever CYTONN_HISTORY_READS says: a redemption typed once must count in every later week, and nothing else keeps it.
     """
-    # ponytail: the draft and the form status read the default database (as history/reads.py does), while a save writes to the
+    # Known limit: the draft and the form status read the default database (as history/reads.py does), while a save writes to the
     # API's db_path; they are the same unless create_app is given another db_path.  Thread db_path through if that ever differs.
     try:
         points = store.current(db_path, REDEMPTION, None, since=start.isoformat(), through=end.isoformat())
