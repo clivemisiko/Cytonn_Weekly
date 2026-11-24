@@ -4,8 +4,7 @@ import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "reka-ui
 import { computed, nextTick, ref, watch } from "vue";
 import PageGrid from "@/components/nav/PageGrid.vue";
 import { LINK } from "@/components/ui/button";
-import { exportChartsNote } from "@/lib/charts";
-import { type SectionState, draftAgainOff, draftingFor, draftingList, isLive, stateOf, useDraftingPoll } from "@/lib/drafting";
+import { attentionList, draftAgainOff, draftingFor, draftingList, isLive, reportCounts, stateOf, stateTally, useDraftingPoll } from "@/lib/drafting";
 import { friendlyDate, plural, reportName } from "@/lib/format";
 import { APPROVED_BANNER, fullyApproved } from "@/lib/previous";
 import { useShellRibbon } from "@/lib/shell";
@@ -16,6 +15,7 @@ import MetricCard from "@/components/ui/MetricCard.vue";
 import Panel from "@/components/ui/Panel.vue";
 import ActivityPanel from "./ActivityPanel.vue";
 import ExportBar from "./ExportBar.vue";
+import ExportNotices from "./ExportNotices.vue";
 import Notice from "./Notice.vue";
 import ReportPicker from "./ReportPicker.vue";
 import SectionRow from "./SectionRow.vue";
@@ -44,17 +44,7 @@ const live = computed(() => drafting.value.filter(isLive));
 useDraftingPoll(drafting, (next) => emit("overview", next), () => props.report);
 const name = computed(() => reportName(props.overview.report.title, props.overview.report.period));
 const kind = computed(() => props.overview.companion_kinds.find((k) => k.slug === props.overview.report.kind));
-const tally = computed<[string, number][]>(() => {
-  const states = props.overview.sections.map(stateOf);
-  const n = (st: SectionState) => states.filter((x) => x === st).length;
-  return [
-    ["Approved", n("approved")],
-    ["In review", n("in_review")],
-    ["Not drafted", n("not_drafted")],
-    ["Rejected", n("rejected")],
-    ["Not available yet", n("unavailable")],
-  ];
-});
+const tally = computed(() => stateTally(props.overview));
 
 // The group of cards: named by its week or period, with how many are approved and (always shown, even when the group
 // is folded) how many items the checker flagged across the sections' current reviews, as the payload counts them.
@@ -80,30 +70,13 @@ const groupLabel = computed(() => {
   const period = props.overview.report.period;
   return period.startsWith("Week ending ") ? `Week ending ${friendlyDate(period.slice(12))}` : period || "This week";
 });
-const approved = computed(() => props.overview.sections.filter((s) => stateOf(s) === "approved").length);
+const counts = computed(() => reportCounts(props.overview));
+const approved = computed(() => counts.value.approved);
 
-// Each section waiting on the analyst, worded from the payload: a stopped draft, a rejection, a review, or no draft yet.
-// rank orders the queue (lower first): a stopped draft, a rejection, flagged items, ready for a decision, not drafted.
-const attentionAll = computed(() =>
-  props.overview.sections
-    .flatMap((s, i) => {
-      const state = stateOf(s);
-      const d = draftingFor(drafting.value, s.slug, props.report);
-      if (d?.state === "failed") return [{ slug: s.slug, title: s.title, why: "The last draft stopped", flag: true, rank: 0, i }];
-      if (isLive(d)) return [];
-      if (state === "rejected") return [{ slug: s.slug, title: s.title, why: "Rejected: draft it again", flag: true, rank: 1, i }];
-      if (state === "in_review" && s.latest) {
-        const f = s.latest.counts.flagged.total;
-        return [{ slug: s.slug, title: s.title, why: f ? `${plural(f, "item")} flagged` : "Ready for a decision", flag: f > 0, rank: f > 0 ? 2 : 4, i }];
-      }
-      if (state === "not_drafted") return [{ slug: s.slug, title: s.title, why: s.requires_approved ? "Not composed yet" : "Not drafted yet", flag: false, rank: 5, i }];
-      return [];
-    })
-    .sort((a, b) => a.rank - b.rank || a.i - b.i),
-);
+const attentionAll = computed(() => attentionList(props.overview, props.report));
 const ATTENTION_SHOWN = 4;
 const attention = computed(() => attentionAll.value.slice(0, ATTENTION_SHOWN));
-const inReview = computed(() => props.overview.sections.filter((s) => stateOf(s) === "in_review").length);
+const inReview = computed(() => counts.value.inReview);
 // A review waiting on the analyst comes first, then a section with no draft (or whose draft stopped); a rejected one is
 // left to its card, where "Draft again" asks first.
 const next = computed(() => {
@@ -120,9 +93,7 @@ async function goToCard(slug: string) {
   el?.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   el?.focus({ preventScroll: true });
 }
-const flagged = computed(() =>
-  props.overview.sections.reduce((n, s) => (s.latest && (s.latest.current ?? s.latest.this_week) ? n + s.latest.counts.flagged.total : n), 0),
-);
+const flagged = computed(() => counts.value.flagged);
 </script>
 
 <template>
@@ -169,16 +140,8 @@ const flagged = computed(() =>
       <Notice v-if="config.dev_mode" quiet role="alert">
         <span class="font-semibold">Development Mode Active (Local Model):</span> Drafts generated in this mode are for testing purposes only and are not approved for publication.
       </Notice>
-      <Notice v-if="exportStatus?.is_dev_draft" quiet role="alert">
-        Export Notice: This document contains test content ({{ exportStatus.dev_sections.join(", ") }}) and includes a developer watermark on every page. It cannot be circulated or published externally.
-      </Notice>
       <!-- In the feed, not the foldable panel beside the export button: a note there could be folded away. -->
-      <Notice v-if="exportChartsNote(exportStatus?.charts_missing ?? 0)" tone="info" quiet role="status">
-        {{ exportChartsNote(exportStatus?.charts_missing ?? 0) }}
-      </Notice>
-      <div v-if="exportError" data-attention="export-bar">
-        <Notice role="alert" data-problem class="font-medium">{{ exportError }}</Notice>
-      </div>
+      <ExportNotices :status="exportStatus" :error="exportError" />
       <DraftingBanner v-for="d in live" :key="d.run_id ?? `${d.report_type}${d.period}${d.slug}`" :drafting="d" />
       <Notice v-if="fullyApproved(overview)" tone="info" role="status">
         <span>{{ APPROVED_BANNER }} <RouterLink to="/previous" :class="LINK">Previous reports</RouterLink></span>

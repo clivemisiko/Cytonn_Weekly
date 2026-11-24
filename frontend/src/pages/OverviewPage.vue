@@ -3,8 +3,6 @@ import { computed, onMounted, onUnmounted, shallowRef } from "vue";
 import { type LocationQuery, RouterLink, useRoute, useRouter } from "vue-router";
 import Masthead from "@/components/review/Masthead.vue";
 import Notice from "@/components/review/Notice.vue";
-import OverviewScreen from "@/components/review/OverviewScreen.vue";
-import OverviewSkeleton from "@/components/review/OverviewSkeleton.vue";
 import ReviewScreen from "@/components/review/ReviewScreen.vue";
 import ReviewSkeleton from "@/components/review/ReviewSkeleton.vue";
 import StartScreen from "@/components/review/StartScreen.vue";
@@ -13,15 +11,14 @@ import Button from "@/components/ui/Button.vue";
 import * as api from "@/lib/api";
 import { draftingList } from "@/lib/drafting";
 import { LINK } from "@/components/ui/button";
-import { BACK_NONE, type BackTarget, chatHref, useBack } from "@/lib/nav";
+import { BACK_NONE, type BackTarget, chatHref, chooserHref, useBack } from "@/lib/nav";
 import { openingReport, rememberWeek } from "@/lib/previous";
 import { shell, useShellActions, useShellHere } from "@/lib/shell";
-import { type AppConfig, type Drafting, type Overview, REPORT_TYPES, type ReportChoice, type ReportType, type Review, type SectionSummary, type WeekChoice } from "@/lib/types";
+import { type AppConfig, type Drafting, type Overview, REPORT_TYPES, type ReportChoice, type ReportType, type Review, type SectionSummary } from "@/lib/types";
 
 type Phase =
-  | { name: "booting"; target?: "overview" | "review" | "start" }
+  | { name: "booting"; target?: "review" | "start" }
   | { name: "unreachable"; message: string }
-  | { name: "overview"; config: AppConfig; overview: Overview }
   | { name: "start"; config: AppConfig; section: SectionSummary; saved: Review | null; drafting: Drafting[]; week: string | null }
   | { name: "review"; review: Review };
 
@@ -32,7 +29,7 @@ const route = useRoute();
 const router = useRouter();
 const phase = shallowRef<Phase>({
   name: "booting",
-  target: reviewFromUrl() ? "review" : sectionFromUrl() ? "start" : "overview",
+  target: reviewFromUrl() ? "review" : "start",
 });
 const report = shallowRef<ReportChoice>(api.WEEKLY_REPORT);
 let live = true;
@@ -73,46 +70,9 @@ function reportToUrl(next: ReportChoice, reviewId: number | null = null, section
   void router.replace({ path: route.path, query });
 }
 
-/** The weeks the selector lists, read with every overview shown; empty when the route cannot be read. */
-const weekChoices = shallowRef<WeekChoice[]>([]);
-async function loadWeekChoices() {
-  try {
-    const next = (await api.getPreviousWeeks()).choices ?? [];
-    if (live) weekChoices.value = next;
-  } catch {
-    if (live) weekChoices.value = [];
-  }
-}
-
-/** The report as the API normalized it ("q3 2026" comes back as "Q3'2026"). */
-const normalized = (overview: Overview): ReportChoice => ({ type: overview.report.type, period: overview.report.period, kind: overview.report.kind });
-
-/** The chosen report's overview. A report in the address bar that no longer fits falls back to the weekly one. */
-async function fetchOverview(wanted: ReportChoice): Promise<Phase> {
-  try {
-    const config = await api.getConfig();
-    try {
-      return { name: "overview", config, overview: await api.getOverview(wanted) };
-    } catch (err) {
-      if ((err as api.ApiError).status !== 422) throw err;
-      return { name: "overview", config, overview: await api.getOverview(api.WEEKLY_REPORT) };
-    }
-  } catch (err) {
-    return { name: "unreachable", message: messageOf(err) };
-  }
-}
-
-/** Show a phase; an overview also fixes the chosen report to what the API normalized, here and in the address bar. */
-function show(next: Phase) {
-  if (!live) return;
-  if (next.name === "overview") {
-    report.value = normalized(next.overview);
-    reportToUrl(report.value);
-    void loadWeekChoices();
-    shell.config.value = next.config;
-    shell.setOverview(next.overview); // the rail takes the very payload the cards are built from
-  }
-  phase.value = next;
+/** The section chooser of the report on screen: where this page goes instead of the overview it no longer shows. */
+function toChooser(how: "push" | "replace" = "replace") {
+  if (live) void router[how](chooserHref(report.value));
 }
 
 /** A section's start screen, with its current saved review (if any) offered for resume. `known` is an overview just read. */
@@ -122,7 +82,10 @@ async function fetchStart(slug: string, known?: Overview): Promise<Phase> {
     shell.config.value = config;
     shell.setOverview(overview);
     const section = overview.sections.find((s) => s.slug === slug);
-    if (!section) return { name: "overview", config, overview };
+    if (!section) {
+      toChooser();
+      return { name: "booting" };
+    }
     const run = section.latest;
     const saved = run && (run.current ?? run.this_week) ? await api.getReview(run.run_id) : null;
     // The weekly report's week: the Friday its period names, else the latest Friday (what an unlabelled draft uses).
@@ -144,7 +107,7 @@ onMounted(async () => {
   if (route.query.report === undefined) wanted = await openingReport(api.getPreviousWeeks, () => api.getOverview());
   const reviewId = reviewFromUrl();
   const sectionSlug = sectionFromUrl();
-  // The review named in the address bar, or the overview if it cannot be read. Closing it goes to its own report.
+  // The review named in the address bar, or the chooser if it cannot be read. Closing it goes to its own report.
   if (reviewId !== null) {
     try {
       const review = await api.getReview(reviewId);
@@ -153,33 +116,29 @@ onMounted(async () => {
       void shell.refreshFor(review.report_type, review.period); // the rail's sections and states, read for this review's report
       return;
     } catch {
-      /* fall through to the overview */
+      /* fall through to the chooser */
     }
   }
   if (sectionSlug) {
     report.value = wanted;
     try {
       const startPhase = await fetchStart(sectionSlug);
-      if (startPhase.name === "start") {
+      if (startPhase.name !== "booting") {
         set(startPhase);
         return;
       }
     } catch {
-      /* fall through to the overview */
+      /* fall through to the chooser */
     }
   }
-  show(await fetchOverview(wanted));
+  report.value = wanted;
+  toChooser();
 });
 
-function home() {
-  reportToUrl(report.value, null, null);
-  shell.invalidate(); // the overview is read again below, which then hands the rail its payload
-  set({ name: "booting", target: "overview" });
-  void fetchOverview(report.value).then(show);
-}
+// Back, "Change report" and closing a review: to this report's section chooser.
+const home = () => toChooser("push");
 
 // The top bar's Back: from a section's start screen or an open review, to this report's list of sections.
-// From the list of sections itself, Back is disabled as overview is the top-level workspace.
 const TO_SECTIONS: BackTarget = { kind: "go", to: "all sections", go: home };
 // Opened from a chat button (?from=chat, read once: the page rewrites its address as it moves between screens).
 const fromChat = route.query.from === "chat";
@@ -191,39 +150,6 @@ const chatBack = computed(() => {
 useBack((): BackTarget =>
   fromChat ? { kind: "href", to: "chat", href: chatBack.value } : phase.value.name === "start" || phase.value.name === "review" ? TO_SECTIONS : BACK_NONE,
 );
-
-/** Switch the overview to another report. A period the API rejects stays in the picker with the API's reason. */
-async function chooseReport(next: ReportChoice): Promise<string | null> {
-  const now = phase.value;
-  if (now.name !== "overview") return null;
-  try {
-    show({ ...now, overview: await api.getOverview(next) });
-    rememberWeek(report.value.type === "weekly" ? report.value.period : "");
-    return null;
-  } catch (err) {
-    return messageOf(err);
-  }
-}
-
-async function openSection(slug: string, resume: boolean) {
-  const now = phase.value;
-  if (now.name !== "overview") return;
-  const run = now.overview.sections.find((s) => s.slug === slug)?.latest;
-  if (resume && run) {
-    set({ name: "booting", target: "review" });
-    try {
-      const review = await api.getReview(run.run_id);
-      reportToUrl(report.value, review.run_id, null);
-      set({ name: "review", review });
-    } catch (err) {
-      set({ name: "unreachable", message: messageOf(err) });
-    }
-    return;
-  }
-  set({ name: "booting", target: "start" });
-  reportToUrl(report.value, null, slug);
-  set(await fetchStart(slug));
-}
 
 /**
  * A section opened from the rail, from any screen of this page. It goes where that section's own card button goes (its
@@ -259,10 +185,9 @@ async function goToSection(slug: string) {
 }
 
 // What the rail's items do while this page is on screen, and which of its screens the rail marks.
-useShellActions({ openSection: goToSection, home });
+useShellActions({ openSection: goToSection });
 useShellHere(() => {
   const p = phase.value;
-  if (p.name === "overview") return { view: "overview" };
   if (p.name === "start") return { view: "section", slug: p.section.slug };
   if (p.name === "review") return { view: "section", slug: p.review.section_slug };
   return null;
@@ -276,15 +201,6 @@ async function chooseWeek(slug: string, weekEnding: string) {
   set(await fetchStart(slug));
 }
 
-/** A polled overview replaces the shown one in place (same phase, so no screen transition). */
-function refreshOverview(overview: Overview) {
-  const now = phase.value;
-  if (now.name === "overview") {
-    set({ ...now, overview });
-    shell.setOverview(overview);
-  }
-}
-
 const key = computed(() => {
   const p = phase.value;
   return p.name === "review"
@@ -292,7 +208,7 @@ const key = computed(() => {
     : p.name === "start"
       ? `start-${p.section.slug}`
       : p.name === "booting"
-        ? `booting-${p.target ?? "overview"}`
+        ? `booting-${p.target ?? "start"}`
         : p.name;
 });
 </script>
@@ -305,8 +221,7 @@ const key = computed(() => {
       </p>
       <template v-if="phase.name === 'booting'">
         <ReviewSkeleton v-if="phase.target === 'review'" />
-        <StartSkeleton v-else-if="phase.target === 'start'" />
-        <OverviewSkeleton v-else />
+        <StartSkeleton v-else />
       </template>
 
       <template v-else-if="phase.name === 'unreachable'">
@@ -322,18 +237,6 @@ const key = computed(() => {
           </div>
         </div>
       </template>
-
-      <OverviewScreen
-        v-else-if="phase.name === 'overview'"
-        :overview="phase.overview"
-        :config="phase.config"
-        :report="report"
-        :weeks="weekChoices"
-        :on-report="chooseReport"
-        @open="openSection"
-        @redraft="(slug) => openSection(slug, false)"
-        @overview="refreshOverview"
-      />
 
       <StartScreen
         v-else-if="phase.name === 'start'"

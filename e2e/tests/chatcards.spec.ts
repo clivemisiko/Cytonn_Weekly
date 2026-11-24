@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { SHOW_CHAT } from "../../frontend/src/lib/features";
-import { API, PERIOD, VARIANT, WEEK, overviewUrl, topbar } from "./helpers";
+import { API, PERIOD, VARIANT, WEEK, overviewUrl, topbar, screenUrl } from "./helpers";
 
 test.skip(!SHOW_CHAT, "the chat is hidden (SHOW_CHAT in frontend/src/lib/features.ts)");
 test.skip(!!VARIANT, "runs on the default test backend");
@@ -150,7 +150,7 @@ test("T123 flagged items: each has Open full view, and approving from the chat w
   const chatWords = (await fromChat.innerText()).trim();
   expect((await (await request.get(`${API}/api/reviews/${id}`)).json()).decision).toBeNull(); // nothing was recorded
 
-  await page.goto(`${overviewUrl(period)}&review=${id}`);
+  await page.goto(`${screenUrl(period)}&review=${id}`);
   await page.getByRole("button", { name: "Approve", exact: true }).click();
   await page.getByRole("dialog", { name: "Approve with flagged items?" }).getByRole("button", { name: "Approve anyway" }).click();
   await expect(page.getByRole("alertdialog", { name: "The decision was not recorded" })).toBeVisible(); // the same dialog
@@ -246,11 +246,11 @@ test("T126 the inputs link opens the prepare page on the step it names, for the 
   await expect(page.getByLabel("Week", { exact: true })).toHaveValue(bare);
 
   // The old form is unchanged and still opens by its address: from the chat's address it offers Back to chat.
-  await page.goto(`${overviewUrl(bare)}&section=fixed_income&from=chat`);
+  await page.goto(`${screenUrl(bare)}&section=fixed_income&from=chat`);
   await expect(page.getByRole("heading", { name: "Weekly analyst inputs" })).toBeVisible();
   await page.getByRole("link", { name: "Back to chat" }).click();
   await expect(page).toHaveURL(/\/chat\?.*section=fixed_income/);
-  await page.goto(`${overviewUrl(bare)}&section=fixed_income`);
+  await page.goto(`${screenUrl(bare)}&section=fixed_income`);
   await expect(page.getByRole("heading", { name: "Weekly analyst inputs" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Back to chat" })).toHaveCount(0);
 });

@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
-import { API, VARIANT, card, draftAndApprove, hold, overviewUrl, release, startRun, reviewHeading } from "./helpers";
+import { API, VARIANT, card, draftAndApprove, hold, overviewUrl, release, startRun, reviewHeading, screenUrl } from "./helpers";
 
 /**
  * "Draft again": a section that already has a review (in review, approved or rejected) can be drafted over from its
@@ -73,7 +73,7 @@ test("T42 an approved section: Draft again asks first, the new run is undecided 
   // The earlier run is untouched: still approved, still locked, still readable.
   const earlier = await (await request.get(`${API}/api/reviews/${old}`)).json();
   expect([earlier.decision, earlier.locked]).toEqual(["approved", true]);
-  await page.goto(`${overviewUrl(period)}&review=${old}`);
+  await page.goto(`${screenUrl(period)}&review=${old}`);
   await expect(page.getByText("Approved and locked")).toBeVisible();
 });
 
@@ -83,7 +83,7 @@ test("T43 a rejected section: Draft again shows the notes of the rejected draft 
   // The screen no longer sets a resolution or a note; the API still stores them, and a rejection carries them to the next draft.
   const marked = await request.patch(`${API}/api/reviews/${first}/items/0`, { headers: json, data: { resolution: "fix_needed", note: "SYNTHETIC e2e: the hospitality line is missing." } });
   expect(marked.ok(), await marked.text()).toBe(true);
-  await page.goto(`${overviewUrl(period)}&review=${first}`);
+  await page.goto(`${screenUrl(period)}&review=${first}`);
   await expect(page.getByRole("heading", HEADING)).toBeVisible();
   await page.getByRole("button", { name: "Reject", exact: true }).click();
   await page.getByRole("dialog", { name: "Reject this section?" }).getByRole("button", { name: "Reject", exact: true }).click();

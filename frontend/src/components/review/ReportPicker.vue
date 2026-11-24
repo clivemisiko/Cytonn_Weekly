@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { PhCaretDown } from "@phosphor-icons/vue";
 import { computed, ref, useId } from "vue";
+import { useReportChoice } from "@/lib/reportchoice";
 import Button from "@/components/ui/Button.vue";
 import { weekChoiceLabel } from "@/lib/previous";
 import type { CompanionKind, ReportChoice, ReportType, ReportTypeInfo, WeekChoice } from "@/lib/types";
@@ -20,40 +21,29 @@ const props = defineProps<{
 }>();
 
 const id = useId();
-const type = ref<ReportType>(props.current.type);
-const period = ref(props.current.period);
-const kind = ref(props.current.kind ?? props.kinds[0]?.slug ?? "");
+const pick = useReportChoice(() => props.current, () => props.types, () => props.kinds);
+const { type, period, kind, info, periodLabel, hint } = pick;
 const error = ref<string | null>(null);
 const busy = ref(false);
-const info = computed(() => props.types.find((t) => t.slug === type.value));
-const issueOf = (slug: string) => props.kinds.find((k) => k.slug === slug)?.issue ?? "";
 const dirty = computed(
   () => type.value !== props.current.type || period.value.trim() !== props.current.period || (type.value === "companion" && kind.value !== props.current.kind),
 );
 
 function chooseType(next: ReportType) {
-  type.value = next;
   error.value = null;
-  const nextInfo = props.types.find((t) => t.slug === next);
-  if (next === props.current.type) period.value = props.current.period;
-  // A companion report has no "period just ended": it rides with the weekly issue its kind was published in.
-  else if (next === "companion") period.value = issueOf(kind.value);
-  else period.value = nextInfo?.suggested_period ?? "";
+  pick.chooseType(next);
 }
 
-/** Another companion report: its own issue replaces the last one's, unless the analyst typed a different one. */
 function chooseKind(next: string) {
-  const before = kind.value;
-  kind.value = next;
   error.value = null;
-  if (!period.value.trim() || period.value.trim() === issueOf(before)) period.value = issueOf(next);
+  pick.chooseKind(next);
 }
 
 async function apply() {
   if (busy.value) return;
   busy.value = true;
   error.value = null;
-  const message = await props.onApply({ type: type.value, period: period.value.trim(), kind: type.value === "companion" ? kind.value : null });
+  const message = await props.onApply(pick.choice());
   busy.value = false;
   error.value = message;
 }
@@ -66,14 +56,6 @@ function chooseWeek(next: string) {
   void apply();
 }
 
-const periodLabel = computed(() => (type.value === "companion" ? "Associated Weekly Report Issue" : info.value?.period_required ? "Period" : "Issue (optional)"));
-const hint = computed(() => {
-  if (type.value === "companion") {
-    const k = props.kinds.find((x) => x.slug === kind.value);
-    return k ? `${k.title} ran as the Focus of the Week of Cytonn ${k.issue} (${k.published}).` : "";
-  }
-  return info.value ? `Structure verified against ${info.value.published_as}.` : "";
-});
 </script>
 
 <template>

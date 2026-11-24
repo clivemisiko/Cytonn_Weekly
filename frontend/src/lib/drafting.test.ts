@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { effectScope, ref } from "vue";
-import { draftingFor, draftingList, draftingStatus, isDraftingThis, ownBusy, reattachHref, runHref, useLiveElapsed } from "./drafting";
+import { attentionList, canRedraft, draftingFor, draftingList, draftingStatus, isDraftingThis, ownBusy, reattachHref, reportCounts, runHref, sectionAction, useLiveElapsed } from "./drafting";
 import { elapsed } from "./format";
-import type { Drafting, ReportChoice } from "./types";
+import type { Drafting, Overview, ReportChoice, SectionSummary } from "./types";
 
 const WEEK = "Week ending 2026-10-09";
 const weekly: ReportChoice = { type: "weekly", period: WEEK, kind: null };
@@ -107,5 +107,46 @@ describe("where a draft that is running leads", () => {
     expect(draftingList({ drafting: null, drafting_list: undefined })).toEqual([]);
     expect(draftingStatus(draft({ state: "queued", position: 3 }))).toBe("Queued, 2 ahead");
     expect(draftingStatus(draft())).toBe("Being drafted now");
+  });
+});
+
+describe("the report's figures, its attention list and each section's action (the overview and the chooser share them)", () => {
+  const sec = (slug: string, decision: string | null | undefined, flagged = 0, over: Partial<SectionSummary> = {}) =>
+    ({
+      slug,
+      title: slug,
+      available: true,
+      requires_approved: false,
+      latest: decision === undefined ? null : { run_id: slug.length, current: true, this_week: true, decision, counts: { flagged: { total: flagged } } },
+      ...over,
+    }) as unknown as SectionSummary;
+  const overview = (sections: SectionSummary[], drafting_list: Drafting[] = []) => ({ sections, drafting: null, drafting_list }) as unknown as Overview;
+
+  it("counts approved, in review, flagged and drafting from the payload", () => {
+    const o = overview([sec("a", "approved"), sec("bb", null, 3), sec("ccc", undefined), sec("dddd", null, 0, { available: false })], [draft({ slug: "ccc" })]);
+    expect(reportCounts(o)).toEqual({ approved: 1, inReview: 1, flagged: 3, drafting: 1 });
+  });
+
+  it("orders the attention list: a stopped draft, a rejection, flagged, ready, not drafted; a running one is left out", () => {
+    const o = overview(
+      [sec("ready", null), sec("none", undefined), sec("flag", null, 2), sec("rej", "rejected"), sec("stop", undefined), sec("run", undefined), sec("ok", "approved")],
+      [draft({ slug: "stop", state: "failed" }), draft({ slug: "run" })],
+    );
+    expect(attentionList(o, weekly).map((a) => [a.slug, a.why])).toEqual([
+      ["stop", "The last draft stopped"],
+      ["rej", "Rejected: draft it again"],
+      ["flag", "2 items flagged"],
+      ["ready", "Ready for a decision"],
+      ["none", "Not drafted yet"],
+    ]);
+  });
+
+  it("offers Resume review, Draft section, View review or nothing, and Draft again only once there is a review", () => {
+    expect(sectionAction(sec("a", null))?.label).toBe("Resume review");
+    expect(sectionAction(sec("a", undefined))?.label).toBe("Draft section");
+    expect(sectionAction(sec("a", undefined, 0, { requires_approved: true }))?.label).toBe("Compose summary");
+    expect(sectionAction(sec("a", "approved"))?.label).toBe("View review");
+    expect(sectionAction(sec("a", undefined, 0, { available: false }))).toBeNull();
+    expect([sec("a", null), sec("a", "approved"), sec("a", "rejected"), sec("a", undefined)].map(canRedraft)).toEqual([true, true, true, false]);
   });
 });

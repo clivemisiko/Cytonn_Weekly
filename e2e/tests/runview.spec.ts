@@ -55,7 +55,7 @@ test("T74 a stopped run: the failure and the way back are in the feed, and the p
   await expect(alert).toContainText("the Ibuka summary could not be fetched (a deliberate failure for the tests)");
   await expect(panel.locator("dt")).toHaveText(["Section", "Report", "Started", "Stopped", "Steps"]);
   const side = (await panel.boundingBox())!;
-  for (const where of [alert, page.getByRole("link", { name: "Back to overview" }), page.getByText(/^Stopped .* EAT\.$/)]) {
+  for (const where of [alert, page.getByRole("link", { name: "Back to the sections" }), page.getByText(/^Stopped .* EAT\.$/)]) {
     await expect(where).toBeVisible();
     const box = (await where.boundingBox())!;
     expect(box.x + box.width).toBeLessThan(side.x); // in the feed, left of the panel
@@ -69,7 +69,7 @@ test("T75 a run the API no longer has: its notice is in the middle of the page, 
   await page.goto("/runs/not-a-run");
   const notice = page.getByRole("status").filter({ hasText: "This run is no longer available." });
   await expect(notice).toBeVisible();
-  await expect(page.getByRole("link", { name: "Go to the overview" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Go to the sections" })).toBeVisible();
   await expect(facts(page)).toHaveCount(0);
   // Centred between the rail and the window's edge, as a feed with no panel is (not pushed left by a column nothing fills).
   const rail = (await page.getByRole("navigation", { name: "Report sections" }).boundingBox())!;

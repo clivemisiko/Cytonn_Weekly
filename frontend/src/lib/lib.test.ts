@@ -5,7 +5,7 @@ import { draftAgainOff, stateOf, when } from "./drafting";
 import { elapsed, friendlyDate, friendlyTime, plural, pyRepr } from "./format";
 import { renderMarkdown } from "./markdown";
 import { redraftNotes } from "./redraft";
-import { mergeEvents, overviewHref, stepLines } from "./run";
+import { mergeEvents, screenHref, stepLines } from "./run";
 import { THEME_SCRIPT } from "./theme-script";
 import { MAX_TOPIC, topicLength } from "./topic";
 import { REPORT_TYPES, type AnalystTable, type AppConfig, type Drafting, type RunEvent, type SectionSummary } from "./types";
@@ -74,10 +74,16 @@ describe("run steps", () => {
   });
 
   it("builds the overview address", () => {
-    expect(overviewHref("weekly", "")).toBe("/overview?report=weekly"); // a bare /overview now opens the default week
-    expect(overviewHref("weekly", "Week ending 2026-10-09", 12)).toBe("/overview?report=weekly&period=Week+ending+2026-10-09&review=12");
-    expect(overviewHref("quarterly", "Q3'2026")).toBe("/overview?report=quarterly&period=Q3%272026");
-    expect(overviewHref("monthly", "Oct'2026")).toBe("/overview?report=monthly&period=Oct%272026"); // the apostrophe label kept
+    // No screen named: the section chooser, with the week only for a weekly report.
+    expect(screenHref({ type: "weekly", period: "" })).toBe("/chat");
+    expect(screenHref({ type: "weekly", period: "Week ending 2026-10-09" })).toBe("/chat?period=Week+ending+2026-10-09");
+    expect(screenHref({ type: "quarterly", period: "Q3'2026" })).toBe("/chat?report=quarterly&period=Q3%272026");
+    expect(screenHref({ type: "companion", period: "Weekly #38.2026", kind: "k" })).toBe("/chat?report=companion&period=Weekly+%2338.2026&kind=k");
+    // A review or a start screen keeps the old overview's address, naming the report.
+    expect(screenHref({ type: "weekly", period: "Week ending 2026-10-09" }, { review: 12 })).toBe("/overview?report=weekly&period=Week+ending+2026-10-09&review=12");
+    expect(screenHref({ type: "quarterly", period: "Q3'2026" }, { section: "equities" })).toBe("/overview?report=quarterly&period=Q3%272026&section=equities");
+    expect(screenHref({ type: "companion", period: "#40.2026", kind: "k" }, { review: 3 })).toBe("/overview?report=companion&period=%2340.2026&kind=k&review=3");
+    expect(screenHref({ type: "monthly", period: "Oct'2026" }, { review: 1 })).toBe("/overview?report=monthly&period=Oct%272026&review=1"); // the apostrophe label kept
   });
 
   it("lists the Monthly among the report types, after the weekly", () => {

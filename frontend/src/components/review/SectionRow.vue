@@ -4,7 +4,7 @@ import { computed } from "vue";
 import { RouterLink } from "vue-router";
 import Button from "@/components/ui/Button.vue";
 import { CHIP as CHIP_BASE } from "@/components/ui/button";
-import { type SectionState, draftingStatus, stateOf, useLiveElapsed, when } from "@/lib/drafting";
+import { type SectionState, canRedraft, draftingStatus, flaggedOf, sectionAction, stateOf, useLiveElapsed, when } from "@/lib/drafting";
 import { elapsed, friendlyDate, plural, weekRange } from "@/lib/format";
 import { textOf } from "@/lib/run";
 import type { Drafting, SectionSummary } from "@/lib/types";
@@ -33,15 +33,8 @@ const run = computed(() => props.s.latest);
 const current = computed(() => Boolean(run.value && (run.value.current ?? run.value.this_week)));
 const chip = computed(() => CHIP[state.value]);
 const chipLabel = computed(() => (state.value === "not_drafted" ? `Not drafted ${when(props.period)}` : chip.value.label));
-const action = computed(() => {
-  const draftLabel = props.s.requires_approved ? "Compose summary" : "Draft section";
-  if (state.value === "unavailable") return null;
-  if (state.value === "in_review") return { label: "Resume review", resume: true, primary: true };
-  if (state.value === "not_drafted") return { label: draftLabel, resume: false, primary: true };
-  return { label: "View review", resume: true, primary: false };
-});
-// A section that already has a review (in review, approved or rejected) can be drafted again; the start screen asks first.
-const canRedraft = computed(() => state.value === "in_review" || state.value === "approved" || state.value === "rejected");
+const action = computed(() => sectionAction(props.s));
+const canRedraftIt = computed(() => canRedraft(props.s));
 const seconds = useLiveElapsed(() => props.drafting);
 const failed = computed(() => props.drafting?.state === "failed");
 const queued = computed(() => props.drafting?.state === "queued");
@@ -67,8 +60,7 @@ const nothing = computed(() => {
   );
 });
 
-/** The flagged items of the section's current review, as the overview's payload counts them (0 with no current review). */
-const flagged = computed(() => (run.value && current.value ? run.value.counts.flagged.total : 0));
+const flagged = computed(() => flaggedOf(props.s));
 const hasMore = computed(() => props.s.built_parts.length > 0 || props.s.subsections.length > 0 || props.s.charts.length > 0);
 const lists = computed(() =>
   [
@@ -175,7 +167,7 @@ const lists = computed(() =>
                 <PhCaretRight weight="bold" data-icon="inline-end" aria-hidden="true" />
               </Button>
               <Button
-                v-if="canRedraft"
+                v-if="canRedraftIt"
                 variant="outline"
                 :disabled="draftAgainOff !== null"
                 :aria-describedby="draftAgainOff ? `redraft-off-${s.slug}` : undefined"
@@ -185,7 +177,7 @@ const lists = computed(() =>
                 Draft again
               </Button>
             </div>
-            <p v-if="canRedraft && draftAgainOff" :id="`redraft-off-${s.slug}`" class="max-w-72 text-xs text-muted-foreground @md:text-right">
+            <p v-if="canRedraftIt && draftAgainOff" :id="`redraft-off-${s.slug}`" class="max-w-72 text-xs text-muted-foreground @md:text-right">
               {{ draftAgainOff }}
             </p>
           </div>

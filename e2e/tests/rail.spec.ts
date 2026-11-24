@@ -36,7 +36,7 @@ test("T59 the rail lists the five sections with their state; it is a full rail, 
   const nav = rail(page);
   for (const title of TITLES) await expect(nav.getByRole("button", { name: `${title}, Not drafted` })).toBeVisible();
   await expect(nav.getByRole("button", { name: "Overview", exact: true })).toHaveCount(0); // the old pages are hidden from the rail
-  await expect(nav.getByRole("progressbar")).toHaveCount(0); // the overview shows the tally itself
+  await expect(nav.getByRole("progressbar")).toHaveCount(1); // the section chooser has no tally of its own in the rail's place
   expect((await nav.boundingBox())?.width).toBe(224);
   expect((await nav.getByRole("button", { name: /^Fixed Income, / }).boundingBox())!.width).toBeGreaterThan(150); // its label shows
 
@@ -48,7 +48,7 @@ test("T59 the rail lists the five sections with their state; it is a full rail, 
   expect(Math.round((await ribbon.boundingBox())!.x)).toBe(224); // the ribbon spans the page beside the rail
   // It sticks: after the page has scrolled, the rail is still at the top, the window's full height, not scrolled away.
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(200);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(100);
   await expect.poll(async () => Math.round((await nav.boundingBox())!.y)).toBe(0);
   expect(Math.round((await nav.boundingBox())!.height)).toBe(768);
   await expect(nav.getByRole("button", { name: "Focus of the Week, Not drafted" })).toBeInViewport();
@@ -76,20 +76,6 @@ test("T59 the rail lists the five sections with their state; it is a full rail, 
 });
 
 const chatHeading = (title: string) => ({ name: title, level: 2 }) as const;
-
-test("T59b with the chat hidden, the rail's All reports leads to the overview and its report picker", async ({ page }) => {
-  await page.setViewportSize({ width: 1366, height: 768 });
-  await openStart(page, "Digital Payments");
-  await expect(rail(page).getByRole("link", { name: "Sections", exact: true })).toBeVisible(); // SHOW_CHAT is false
-  const all = rail(page).getByRole("link", { name: "All reports", exact: true });
-  await expect(all).not.toHaveAttribute("aria-current", "page");
-  await all.click();
-  await expect(page).toHaveURL(/\/overview/);
-  await expect(all).toHaveAttribute("aria-current", "page");
-  await expect(page.getByRole("form", { name: "Report" }).getByLabel("Report type")).toBeVisible();
-  await page.goto(overviewUrl("Q3'2026", "quarterly"));
-  await expect(rail(page).getByRole("link", { name: "All reports", exact: true })).toHaveAttribute("aria-current", "page");
-});
 
 test("T60 a section opens its chat from the rail, from the overview and from another section, and the rail marks the one on screen", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 768 });

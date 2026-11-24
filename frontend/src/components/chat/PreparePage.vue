@@ -3,6 +3,7 @@ import { PhArrowRight, PhCaretDown, PhCloudArrowDown, PhUploadSimple } from "@ph
 import { computed, ref, shallowRef, watch } from "vue";
 import { RouterLink } from "vue-router";
 import ExportBar from "@/components/review/ExportBar.vue";
+import ExportNotices from "@/components/review/ExportNotices.vue";
 import Notice from "@/components/review/Notice.vue";
 import RedraftDialog from "@/components/review/RedraftDialog.vue";
 import SnipSector from "@/components/review/SnipSector.vue";
@@ -19,7 +20,7 @@ import { MARKS } from "@/lib/railmarks";
 import type { RailState } from "@/lib/shell";
 import { usesSources } from "@/lib/sources";
 import { MAX_SECTIONS, MAX_SECTION_TITLE, MAX_TOPIC, sectionTitles, sectionsProblem, topicLength } from "@/lib/topic";
-import type { AnalystForm, AppConfig, Drafting, ReportChoice, SectionSummary, SourcePiece } from "@/lib/types";
+import type { AnalystForm, AppConfig, Drafting, ExportStatus, ReportChoice, SectionSummary, SourcePiece } from "@/lib/types";
 import { useSnips } from "@/lib/usesnips";
 import FundSnipCard from "./FundSnipCard.vue";
 import InputSteps from "./InputSteps.vue";
@@ -205,6 +206,7 @@ const caption = computed(() => {
 });
 
 const exportProblem = ref<string | null>(null);
+const exportStatus = ref<ExportStatus | null>(null);
 const mark = computed(() => MARKS[props.state ?? "unknown"]);
 </script>
 
@@ -380,8 +382,8 @@ const mark = computed(() => MARKS[props.state ?? "unknown"]);
         <RedraftDialog :open="asking !== null" title="Draft this section?" :notes="asking ?? []" confirm-label="Draft anyway" @confirm="draft" @cancel="cancelled" />
       </section>
 
-      <ExportBar rows :period="report.period" :refresh-key="`${section.latest?.run_id ?? 0}-${section.latest?.decision ?? ''}`" @error="(m) => (exportProblem = m)" />
-      <Notice v-if="exportProblem" role="alert" class="font-medium">{{ exportProblem }}</Notice>
+      <ExportBar rows @status="(st) => (exportStatus = st)" :period="report.period" :refresh-key="`${section.latest?.run_id ?? 0}-${section.latest?.decision ?? ''}`" @error="(m) => (exportProblem = m)" />
+      <ExportNotices :status="exportStatus" :error="exportProblem" />
     </template>
   </div>
 </template>

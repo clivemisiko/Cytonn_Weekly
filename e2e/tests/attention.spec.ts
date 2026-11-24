@@ -193,7 +193,7 @@ test("T97 under reduced motion the highlight is the outline alone, with no pulse
   expect(await refusal.evaluate((el) => getComputedStyle(el).animationIterationCount)).toBe("1");
 });
 
-test("T98 an export the API refuses: the error is in the feed, Show me goes to it, and it stays in view with the panel folded", async ({ page }) => {
+test("T98 an export the API refuses: the error is beside the export in the chooser's aside, and Show me goes to it", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 768 });
   const NOT_READY = "The weekly report cannot be exported yet: Fixed Income (still in review).";
   const sections = ["Fixed Income", "Equities", "Real Estate", "Digital Payments", "Focus of the Week"];
@@ -206,7 +206,7 @@ test("T98 an export the API refuses: the error is in the feed, Show me goes to i
       : route.fulfill({ status: 409, json: { detail: NOT_READY, problems: [{ code: "export_not_ready", headline: "The report cannot be exported yet", target: "export-bar" }] } }),
   );
   await page.goto(overviewUrl());
-  const panel = page.getByRole("complementary", { name: "Report status" });
+  const panel = page.getByRole("complementary", { name: "This conversation" });
   await panel.getByRole("button", { name: "Export weekly report" }).click();
   const open = dialog(page, "The report cannot be exported yet");
   await expect(open.getByRole("button", { name: "Show me" })).toBeFocused();
@@ -215,11 +215,7 @@ test("T98 an export the API refuses: the error is in the feed, Show me goes to i
   await expect(notice).toBeFocused();
   await expect(notice).toHaveText(NOT_READY);
   await expect(notice).toHaveAttribute("data-attention-on", "");
-  await expect(panel.getByText(NOT_READY)).toHaveCount(0); // in the feed, not in the foldable panel
+  await expect(panel.getByText(NOT_READY)).toHaveCount(1); // the aside does not fold, so the error stays with its button
   await expect(page.getByText(NOT_READY, { exact: true })).toHaveCount(1);
-
-  await panel.getByRole("button", { name: "Hide Report status" }).click();
-  await expect(notice).toBeVisible();
   await expect(notice).toBeInViewport();
-  await panel.getByRole("button", { name: "Show Report status" }).click(); // leave the fold open for the tests after this one
 });
