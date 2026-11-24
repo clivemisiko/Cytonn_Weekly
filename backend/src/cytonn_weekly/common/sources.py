@@ -512,7 +512,7 @@ def fetch_page(url: str, subject: str, week_end: date, *, http_get: Callable[...
     ``http_get(url, max_bytes=...)`` answers once and follows nothing (common/http.http_get_once); this function
     follows at most MAX_HOPS redirects itself, each only to the same host, and applies every rule to each address.
     SourceError says, in the analyst's terms, why a page was not kept.
-    Known limit: the address is resolved before the request, so a DNS answer that changes between the two (rebinding) is not
+    ponytail: the address is resolved before the request, so a DNS answer that changes between the two (rebinding) is not
     caught; pin the checked IP in the connection if that matters. TLS is verified by httpx and cannot be turned off.
     """
     if not subject.strip():

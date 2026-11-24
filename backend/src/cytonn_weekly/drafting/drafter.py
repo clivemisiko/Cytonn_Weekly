@@ -52,7 +52,7 @@ def piece_urls(piece: dict[str, Any]) -> set[str]:
 
 def held_by(piece: dict[str, Any], existing: Sequence[dict[str, Any]]) -> Optional[str]:
     """The topic of an already drafted piece whose claims cite every page this piece cites, so the event is shown once.
-    Known limit: same page address, not same event; a closer match needs the sentences compared."""
+    ponytail: same page address, not same event; a closer match needs the sentences compared."""
     mine = piece_urls(piece)
     return next((e["topic"] for e in existing if mine and mine <= piece_urls(e)), None)
 

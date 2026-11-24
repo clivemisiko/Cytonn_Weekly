@@ -195,7 +195,7 @@ def add_message(db_path: Optional[Union[Path, str]], job_id: int, role: str, con
     ``tool_input`` are for a tool turn; ``usage`` is the model's token use for an assistant turn it wrote; ``cards`` are the cards
     shown with an assistant turn.  The last three are stored as JSON.
 
-    Known limit: the number is the highest so far plus one, read in the same transaction, and writes go one at a time through a
+    ponytail: the number is the highest so far plus one, read in the same transaction, and writes go one at a time through a
     process-wide lock (the API is one process).  A second process would collide on the primary key; a retry is the upgrade.
     """
     if role not in ROLES:

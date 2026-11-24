@@ -53,7 +53,7 @@ def make_router(d: Deps) -> APIRouter:
                 raise HTTPException(422, f"the headline can be at most {MAX_HEADLINE} characters")
         if body.dismiss_reason is not None and body.decision != "dismissed":
             raise HTTPException(422, "only a dismissed suggestion can carry a reason")
-        # Known limit: the detectors run again on every write; cache per request if one ever reads heavy history.
+        # ponytail: the detectors run again on every write; cache per request if one ever reads heavy history.
         current = next((s for s in notable_state(section, week)["suggestions"] if s["id"] == body.suggestion_id), None)
         if current is None:
             raise HTTPException(404, f"no suggestion {body.suggestion_id!r} for {section} in the week ending {week.ending.isoformat()}")

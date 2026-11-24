@@ -138,7 +138,7 @@ def is_connection_error(exc: BaseException) -> bool:
 def _postgres_sql(sql: str) -> str:
     """The SQL as psycopg wants it: ``?`` becomes ``%s`` (not inside a quoted string) and a literal ``%`` becomes ``%%``.
 
-    Known limit: a ``?`` in a ``--`` comment is converted too; none of this app's SQL has one.
+    ponytail: a ``?`` in a ``--`` comment is converted too; none of this app's SQL has one.
     """
     return _PLACEHOLDER.sub(lambda m: m.group(0) if m.group(1) else "%s", sql.replace("%", "%%"))
 
@@ -360,7 +360,7 @@ def _held_connection(url: str, schema: str):
 
 
 def _connect_postgres(url: str) -> Db:
-    # Known limit: one connection per process, one caller at a time (all database work is serialised); a pool
+    # ponytail: one connection per process, one caller at a time (all database work is serialised); a pool
     # (psycopg_pool) is the upgrade if more than one analyst ever works at once.
     schema = schema_name()
     url = _postgres_url(url)  # refused here, before the lock, if it is not usable
@@ -413,7 +413,7 @@ def _apply_postgres_schema(conn: Db) -> None:
 
     Every store call opens the database, and the script's ALTER TABLE ... ENABLE ROW LEVEL SECURITY takes a lock on each
     table, so running it each time would queue every request behind it.  All or nothing: DDL is transactional here.
-    Known limit: a schema dropped under a running process is not recreated until restart.
+    ponytail: a schema dropped under a running process is not recreated until restart.
     """
     key = hash((os.environ.get(DATABASE_URL_ENV), conn.schema))
     with _schema_lock:

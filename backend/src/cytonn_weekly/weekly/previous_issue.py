@@ -118,7 +118,7 @@ def norm_url(url: str) -> str:
 
 def digest(issue: Optional[Issue], *slugs: str) -> Optional[dict[str, Any]]:
     """What an issue's section already reported: {"headings": bold or heading lines, "urls": every address it linked}.
-    Known limit: a heading is only what the section marks bold; None when the issue or section is missing, so nothing is filtered."""
+    ponytail: a heading is only what the section marks bold; None when the issue or section is missing, so nothing is filtered."""
     section = issue.section(*slugs) if issue else None
     if section is None:
         return None

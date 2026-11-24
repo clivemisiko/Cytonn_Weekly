@@ -41,7 +41,7 @@ def _capped(url: str, call: Callable[[], Any]) -> Any:
         pool = ThreadPoolExecutor(1)
         try:
             return pool.submit(call).result(max(deadline - time.monotonic(), 0.1))
-        except FutureTimeout:   # Known limit: the abandoned thread ends at httpx's own timeouts
+        except FutureTimeout:   # ponytail: the abandoned thread ends at httpx's own timeouts
             raise httpx.ConnectTimeout(f"no answer in {TIMEOUT} s", request=httpx.Request("GET", safe_url(url))) from None
         except httpx.TransportError:
             if attempt == 2 or time.monotonic() >= deadline:

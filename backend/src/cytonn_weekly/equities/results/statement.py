@@ -615,7 +615,7 @@ def check(st: Statement) -> list[dict]:
     st.flags, st.unavailable = [], {}
     # Some banks print tax as a positive charge to subtract (Co-op), others as a signed
     # amount to add (Equity, KCB). The file's current tax lines decide, by majority.
-    # Known limit: one convention per file; a file mixing both would be flagged, not read.
+    # ponytail: one convention per file; a file mixing both would be flagged, not read.
     current = [v.value for e in st.entities for v in st.values[e].get("current_tax", {}).values() if v.value]
     tax_sign = 1 if sum(v < 0 for v in current) > len(current) / 2 else -1
     for entity in st.entities:

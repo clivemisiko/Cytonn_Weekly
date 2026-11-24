@@ -22,7 +22,7 @@ CMD ["npx", "vite", "--host", "0.0.0.0", "--port", "8080", "--strictPort"]
 
 # 2. Build dist/ and serve it with `vite preview`, which serves the static files and proxies
 # /api exactly as the dev server does (server-sent events included).
-# Known limit: vite preview, not a web server; move to nginx (with proxy_buffering off for the
+# ponytail: vite preview, not a web server; move to nginx (with proxy_buffering off for the
 # run events stream) when the app is hosted for more than one coordinator on one machine.
 FROM deps AS runner
 COPY --chown=node:node . .
