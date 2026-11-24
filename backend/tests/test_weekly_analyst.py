@@ -575,6 +575,10 @@ def last_week(tmp_path, text_pdfs):
     inputs.store(WEEK, "equities_workbook", wh.equities_workbook_bytes(), "Equities.xlsx", books)
     root = tmp_path / "typed"
     stores(root, typed_from=books)
+    # With net_borrowing.WORKBOOK_BORROWING off (the default) the workbook offers no borrowing log, so it is typed here
+    # (invented figures), as an analyst would: every weekly item is then typed last week and carried this week.
+    if "borrowing_log" not in analyst.read_form(WEEK, root)["tables"]:
+        analyst.save_form(WEEK, {"tables": {"borrowing_log": {"text": "2026-07-06 1000 (500)"}}}, root)
     return root
 
 
