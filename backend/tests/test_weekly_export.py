@@ -15,7 +15,9 @@ from fastapi.testclient import TestClient
 
 from api.main import create_app
 from cytonn_weekly.charts import store as chart_store
+from cytonn_weekly.report_sections import BY_SLUG
 from cytonn_weekly.review import store as review_store
+from cytonn_weekly.review.blocks import UNAVAILABLE_PART, unavailable_block
 from cytonn_weekly.digital_payments.delivery import DevModeDeliveryBlocked
 from cytonn_weekly.equities import weekly as eq_weekly
 from cytonn_weekly.fixed_income import weekly as fi_weekly
@@ -251,7 +253,7 @@ def test_computed_paragraphs_tables_charts_and_marked_text_are_all_in_the_file(w
     assert len(charts) == 6 and text[tbills + 3].startswith("[Chart to add: The chart below shows the yield growth rate")
     assert len(doc.inline_shapes) == 2 and not [t for t in text if t.startswith("[Chart not drawn")]
     assert sum(t == "[Carried forward from the previous issue: edit before publishing]" for t in text) == 4   # three carried paragraphs and the REITs standing text; a findings Focus prints no disclaimer
-    assert any(t.startswith("[Not included: T-Bonds: recommended bidding range") for t in text)
+    assert not any("Not included" in t or "T-Bonds: recommended bidding range" in t for t in text)   # a skipped part prints nothing
     assert "Source: Daily Nation" in text and "Source: Central Bank of Kenya (CBK) Weekly Highlights" in text
     assert "*Target Price as per Cytonn Analyst estimates" in text
     # tables are Word tables
@@ -411,7 +413,7 @@ def test_the_review_copy_keeps_every_mark_with_a_dev_draft(week, tmp_path):
     _save(week, "digital_payments", make_review(provider=LocalFakeProvider()))
     doc, text = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
     assert text[0] == export.DEV_LABEL and 'string="DEV MODE DRAFT"' in doc.sections[0].header._element.xml
-    assert text.count(NOTE) == 4 and any(t.startswith("[Not included: ") for t in text)
+    assert text.count(NOTE) == 4 and not any(t.startswith("[Not included: ") for t in text)
     note = next(p for p in doc.paragraphs if p.text == NOTE).runs[0]
     assert note.bold and str(note.font.color.rgb) == "C00000"
     assert doc.paragraphs[0].alignment == WD_ALIGN_PARAGRAPH.LEFT   # the dev banner
@@ -439,12 +441,91 @@ def test_the_chart_placeholders_keep_their_wording_and_look(week, tmp_path):
 
 def test_the_review_marks_and_small_lines_are_left_aligned_not_stretched(week, tmp_path):
     doc, _ = _text(export.write_weekly_report(week, PERIOD, tmp_path / "out"))
-    marks = [p for p in doc.paragraphs if p.text.startswith(("[Not included: ", "[Chart to add: ", "Source: ", "Every section checked"))
+    marks = [p for p in doc.paragraphs if p.text.startswith(("[Chart to add: ", "Source: ", "Every section checked"))
              or p.text in (NOTE, "Changes are in percentage points.")]
     kinds = {p.text.split(":")[0] for p in marks}
-    assert {"[Not included", "[Chart to add", "Source", NOTE.split(":")[0]} <= kinds
+    assert {"[Chart to add", "Source", NOTE.split(":")[0]} <= kinds
     assert all(p.alignment == WD_ALIGN_PARAGRAPH.LEFT for p in marks), [p.text[:40] for p in marks if p.alignment != WD_ALIGN_PARAGRAPH.LEFT]
     assert doc.styles["Normal"].paragraph_format.alignment == WD_ALIGN_PARAGRAPH.JUSTIFY   # the body stays justified
+
+
+# --- a part that was not drafted (an unavailable block) is left out of the file, never off the review screen --------
+
+def _computed(built):
+    """Undecided copies of the built Fixed Income and Equities, each with at least one skipped part.  A run id is set
+    so a drawn chart is looked up (and not found) in the test's own charts folder, as an unsaved review never is."""
+    fi, eq = (_copy(r) for r in built)
+    eq.section["blocks"].insert(1, unavailable_block("synthetic_skip", "Synthetic skipped part", "No input for it.", "Upload it."))
+    for n, r in enumerate((fi, eq), 1):
+        r.report_type, r.period, r.run_id = "weekly", PERIOD, n
+    return [(BY_SLUG["fixed_income"], fi), (BY_SLUG["equities"], eq)]
+
+
+def _paras(reviews, charts_root):
+    buf = io.BytesIO()
+    export.build_weekly_document(reviews, PERIOD, charts_root=charts_root, summary=False).save(buf)
+    return Document(io.BytesIO(buf.getvalue())).paragraphs
+
+
+def _without_skips(reviews):
+    import copy
+
+    out = copy.deepcopy(reviews)
+    for _, r in out:
+        r.section["blocks"] = [b for b in r.section["blocks"] if b["kind"] != "unavailable"]
+    return out
+
+
+def _skipped(review):
+    return [b for b in review.section["blocks"] if b["kind"] == "unavailable"]
+
+
+def test_skipped_fixed_income_and_equities_parts_leave_nothing_in_the_file(built, tmp_path):
+    reviews = _computed(built)
+    fi, eq = reviews[0][1], reviews[1][1]
+    assert any(b["title"].startswith("T-Bonds: recommended bidding range") for b in _skipped(fi)) and _skipped(eq)
+    paras = _paras(reviews, tmp_path)
+    body = "\n".join(p.text for p in paras)
+    headings = {p.text for p in paras if p.style.name.startswith("Heading")}
+    assert "Not included" not in body
+    for b in _skipped(fi) + _skipped(eq):
+        assert b["reason"] not in body and b["unblock"] not in body and b["title"] not in headings
+    # contributing nothing means exactly nothing (no blank paragraph either): the same file as with the parts deleted
+    assert [p.text for p in paras] == [p.text for p in _paras(_without_skips(reviews), tmp_path)]
+
+
+def test_charts_listed_after_a_skipped_part_keep_their_place(built, tmp_path):
+    reviews = _computed(built)
+    blocks = reviews[0][1].section["blocks"]
+    n = next(i for i, b in enumerate(blocks) if b["id"] == "money_market")
+    blocks[n] = unavailable_block("money_market", blocks[n]["title"], "No input for it.", "Upload it.")
+    text = [p.text for p in _paras(reviews[:1], tmp_path)]
+    assert [t for t in text if t.startswith("[Chart to add: ")] == [f"[Chart to add: {c}]" for c in fi_weekly.CHARTS]
+
+
+def test_the_review_screen_still_lists_every_skipped_part_as_a_review_item(built, tmp_path):
+    from api.serialize import serialize_review
+
+    for spec, review in _computed(built):
+        before = serialize_review(review)
+        _paras([(spec, review)], tmp_path)
+        assert serialize_review(review) == before   # exporting changes nothing the screen reads
+        assert [b["id"] for b in before["section"]["blocks"] if b["kind"] == "unavailable"] == [b["id"] for b in _skipped(review)]
+        built_skips = [b for b in _skipped(review) if b["id"] != "synthetic_skip"]   # the builder's own, with their items
+        refs = {i["ref"] for i in before["review_items"] if i["kind"] == UNAVAILABLE_PART}
+        assert {f"{b['title']} (not available yet)" for b in built_skips} <= refs
+
+
+def test_a_week_with_nothing_skipped_exports_every_part(built, tmp_path):
+    reviews = _without_skips(_computed(built))
+    assert not any(_skipped(r) for _, r in reviews)
+    text = [p.text for p in _paras(reviews[:1], tmp_path)]
+    assert [t for t in text if t.startswith("[Chart to add: ")] == [f"[Chart to add: {c}]" for c in fi_weekly.CHARTS]
+    text = [p.text for p in _paras(reviews, tmp_path)]
+    assert text.count(NOTE) >= 1
+    for _, r in reviews:   # every titled computed part still has its heading
+        titles = {b["title"] for b in r.section["blocks"] if b["kind"] == "computed" and not b.get("continues")}
+        assert titles <= set(text)
 
 
 def test_the_approval_line_writes_its_date_as_the_app_does(week, tmp_path):

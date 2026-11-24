@@ -10,8 +10,8 @@ import io
 from docx import Document
 
 from api.serialize import serialize_review
-from cytonn_weekly.review.blocks import ROMAN, grouped, letter, numbered
-from cytonn_weekly.real_estate.review_run import GROUPS, REITS_GROUP, group_of, layout
+from cytonn_weekly.review.blocks import ROMAN, UNAVAILABLE_PART, grouped, letter, numbered, unavailable_block
+from cytonn_weekly.real_estate.review_run import GROUPS, NO_SNIP, REITS_GROUP, UNBLOCK, group_of, layout
 from cytonn_weekly.report_sections import BY_SLUG
 from cytonn_weekly.weekly import export
 from cytonn_weekly.weekly.summaries import section_summary
@@ -127,15 +127,44 @@ def test_the_export_prints_groups_as_heading_2_and_lettered_stories_as_heading_3
     paras = _paragraphs(_review())
     h2 = [p.text for p in paras if p.style.name == "Heading 2"]
     h3 = [p.text for p in paras if p.style.name == "Heading 3"]
-    assert h2 == [f"I. {INDUSTRY}", f"II. {RES_SECTOR}", f"III. {LAND}", f"IV. {HOSPITALITY}", f"V. {MIXED_USE}", f"VI. {INFRA}",
-                  f"VII. {REITS}"]
+    # hospitality, mixed-use and infrastructure were not drafted: no heading, and REITs is IV with no gap
+    assert h2 == [f"I. {INDUSTRY}", f"II. {RES_SECTOR}", f"III. {LAND}", f"IV. {REITS}"]
     assert h3 == ["a. Industry reports: a development", "a. Residential sector: a development", "a. Land: a development"]
     text = [p.text for p in paras]
-    reits = text.index(f"VII. {REITS}")
+    reits = text.index(f"IV. {REITS}")
     assert text[reits + 1].startswith("Acorn D-REIT closed at Kshs 29.7 per unit, representing a 48.3% gain")   # the paragraph, no table
     assert text[reits + 2].startswith("Source: ") and "REITs weekly performance" not in [p.text for p in paras if p.style.name == "Heading 2"]
     assert not paras[reits]._parent.tables   # the price table is the review screen's, not the Word file's
     assert reits > max(text.index(h) for h in h3)
+
+
+def test_a_skipped_sector_is_not_mentioned_in_the_file_and_is_still_a_review_item_on_the_screen():
+    review = _review()
+    skipped = [b for b in review.section["blocks"] if b["kind"] == "unavailable"]
+    assert {b["sector"] for b in skipped} == {"hospitality", "mixed_use", "infrastructure"}
+    paras = _paragraphs(review)
+    text = [p.text for p in paras]
+    body = "\n".join(text)
+    assert "Not included" not in body and NO_SNIP not in body and UNBLOCK not in body
+    assert not any(b["reason"] in body for b in skipped)
+    headings = [p.text for p in paras if p.style.name.startswith("Heading")]
+    assert not any(h.endswith((HOSPITALITY, MIXED_USE, INFRA)) for h in headings)
+    assert all(t.strip() for t in text[text.index(f"III. {LAND}"):text.index(f"IV. {REITS}")])   # no stray blank paragraph
+    screen = serialize_review(review)   # the review screen is unchanged: every skipped part, as a block and a review item
+    assert [b["id"] for b in screen["section"]["blocks"] if b["kind"] == "unavailable"] == [b["id"] for b in skipped]
+    refs = [i["ref"] for i in screen["review_items"] if i["kind"] == UNAVAILABLE_PART]
+    assert refs == [f"{b['title']} (not available yet)" for b in skipped]
+
+
+def test_a_sector_skipped_in_the_middle_closes_the_gap_in_the_numerals():
+    review = _review()
+    blocks = review.section["blocks"]
+    land = next(n for n, b in enumerate(blocks) if b.get("sector") == "land")
+    blocks[land] = {**unavailable_block(blocks[land]["id"], LAND, NO_SNIP, UNBLOCK), "sector": "land"}
+    h2 = [p.text for p in _paragraphs(review) if p.style.name == "Heading 2"]
+    assert h2 == [f"I. {INDUSTRY}", f"II. {RES_SECTOR}", f"III. {REITS}"]
+    screen = [b.get("group_heading") for b in serialize_review(review)["section"]["blocks"]]
+    assert f"III. {LAND}" in screen and f"VII. {REITS}" in screen   # the review screen's numerals do not move
 
 
 def test_heading_3_has_the_report_look():

@@ -13,8 +13,9 @@ What it holds, read from Cytonn Weekly #38.2026 (cytonnreport.com issue 891):
 * each chart the real issue carries, where the issue puts it: the tool's own picture (6.0 in wide, with a line under it
   saying it is from the analyst workbook and not verified) for a chart it drew and the analyst approved, otherwise
   "[Chart to add: <caption>]" for the team's own chart (``_chart`` says each case);
-* text carried forward from the previous issue marked as such, and a part the analyst
-  approved as missing named as missing, so neither can pass for finished copy;
+* text carried forward from the previous issue marked as such, so it cannot pass for finished copy; a part that was
+  not drafted (an ``unavailable`` block) is left out entirely, with no line, heading or gap in the numbering, and is
+  listed on the review screen only;
 * "Executive Summary:" on page 1, after the title, as the published issue (#41.2026) prints it: each section's summary
   as one paragraph led by the section's name in bold, a section with no summary left out.
 
@@ -410,15 +411,25 @@ def _add_blocks(doc, review: CoordinatorReview, charts_root: Optional[Union[Path
         note = _mark(doc, GUIDE_LINE)
         note.bold, note.font.color.rgb = True, _RED
         return
-    chart_after: dict[str, list[str]] = section.get("chart_after") or {}
+    chart_after: dict[str, list[str]] = dict(section.get("chart_after") or {})
     charts = {b["caption"]: b for b in section.get("blocks", []) if b.get("kind") == "chart"}
 
     def place(captions: list[str]) -> None:
         for caption in captions:
             _chart(doc, caption, charts.get(caption), review, charts_root, (uploads or {}).get(caption))
 
+    # A part that was not drafted prints nothing, and is dropped before the layout numbers the groups, so a group
+    # holding only skipped parts has no heading and the numerals left run on with no gap.  The review screen lays out
+    # every block (api/serialize.py), so it still lists each one.  Charts listed after a dropped part keep their place.
+    drafted, prev = [], None
+    for b in section.get("blocks", []):
+        if b.get("kind") != "unavailable":
+            drafted.append(b)
+            prev = b["id"] if b.get("export") is not False else prev
+        elif prev is not None and b["id"] in chart_after:
+            chart_after[prev] = chart_after.get(prev, []) + chart_after.pop(b["id"])
     placed: set[str] = set()
-    layout = list(real_estate_layout(section, WEEKLY))
+    layout = list(real_estate_layout({**section, "blocks": drafted}, WEEKLY))
     for n, block in enumerate(layout):
         kind = block["kind"]
         if block.get("export") is False:
@@ -476,8 +487,6 @@ def _add_blocks(doc, review: CoordinatorReview, charts_root: Optional[Union[Path
             if len(section.get("blocks", [])) > 1:
                 doc.add_heading(block["title"], level=2)
             _add_text(doc, block["body_md"])
-        elif kind == "unavailable":
-            _red_line(doc, f"[Not included: {block['title']}. {block['reason']}]")
         # A chart block prints nothing where it stands: its place is where its caption is listed (chart_after).
         captions = chart_after.get(block["id"]) or []
         place(captions)
