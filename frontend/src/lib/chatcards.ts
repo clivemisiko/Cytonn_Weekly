@@ -29,6 +29,8 @@ export interface ReadinessEntry {
   why: string;
   /** An upload's kept files: the name stored under, and the analyst's own file name where the route adds it. */
   files?: KeptFile[];
+  /** The upload, or the workbook value, is for another week: shown in the warning colour. */
+  otherWeek?: boolean;
 }
 export interface KeptFile {
   storedName: string;
@@ -68,6 +70,7 @@ export function parseReadiness(data: unknown): Readiness | null {
       key: text(e.key),
       label: text(e.label),
       why: text(e.why),
+      ...(e.other_week === true ? { otherWeek: true } : {}),
       ...(Array.isArray(e.files)
         ? { files: list(e.files).filter((f) => text(f.stored_name)).map((f) => ({ storedName: text(f.stored_name), name: text(f.name) || text(f.stored_name) })) }
         : {}),
@@ -162,6 +165,8 @@ export interface SourceRow {
   fetch: string | null;
   /** What is kept for it this week, each removable. */
   files: KeptFile[];
+  /** What is kept is for another week. */
+  warn: boolean;
 }
 
 const capitalised = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
@@ -182,6 +187,7 @@ export function sourceRows(r: Readiness, order: string[] = []): SourceRow[] {
         upload: e.kind === "upload",
         fetch: fetchTable ? FETCHABLE_ITEMS[e.key] : FETCHABLE.includes(e.key) ? "Fetch from CBK" : null,
         files: e.files ?? [],
+        warn: e.otherWeek === true,
       });
     }
   }

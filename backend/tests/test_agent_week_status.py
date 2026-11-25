@@ -83,8 +83,17 @@ def test_a_workbook_value_counts_as_in_place_and_a_missing_day_is_named():
             "rows": None, "workbook_rows": None, "needs_confirmation": False, "carried": None}
     got = readiness.classify("equities", {"week_ending": "2026-10-02", "slots": slots}, {"groups": [{"items": [item]}]})
     assert got["groups"]["needs_analyst"] == [{"kind": "upload", "key": "kcb_daily", "label": "KCB", "why": "missing days: Tuesday",
-                                                "files": [{"stored_name": "kcb_daily_2026-09-28.pdf"}]}]
-    assert got["groups"]["in_place"] == [{"kind": "field", "key": "pe", "label": "P/E", "why": "from the workbook"}]
+                                                "files": [{"stored_name": "kcb_daily_2026-09-28.pdf"}], "other_week": False}]
+    assert got["groups"]["in_place"] == [{"kind": "field", "key": "pe", "label": "P/E", "why": "from the workbook", "other_week": False}]
+
+
+def test_an_item_held_for_another_week_is_marked_and_dated_as_the_screen_writes_dates():
+    item = {"type": "field", "key": "pe", "label": "P/E", "required": True, "value": None, "workbook": {"value": "9"},
+            "rows": None, "workbook_rows": None, "needs_confirmation": False, "carried": None,
+            "workbook_stale": {"found": "2026-11-13", "expected": ["2026-11-27"], "whole": True}}
+    got = readiness.classify("equities", {"week_ending": "2026-11-27", "slots": []}, {"groups": [{"items": [item]}]})
+    assert got["groups"]["needs_analyst"] == [{"kind": "field", "key": "pe", "label": "P/E", "other_week": True,
+                                                "why": "the workbook holds it, but dated 13 Nov 2026; this week needs 27 Nov 2026"}]
 
 
 def test_digital_payments_has_only_its_optional_workbook(env):

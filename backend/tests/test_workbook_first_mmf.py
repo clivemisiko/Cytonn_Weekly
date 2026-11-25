@@ -55,7 +55,7 @@ def test_a_fund_table_dated_for_another_week_is_refused_on_the_form_in_readiness
             "2 Oct 2026. The workbook is not yet updated for this week") in mmf["workbook_stale"]["note"]
     assert item("mmf_published", stale)["workbook_stale"]["found"] == "2026-09-25"
     got = where(stale)
-    assert got["mmf"] == ("needs_analyst", "the workbook holds it, but dated 2026-09-25; this week needs 2026-10-02")
+    assert got["mmf"] == ("needs_analyst", "the workbook holds it, but dated 25 Sep 2026; this week needs 2 Oct 2026")
     assert got["mmf"][1] != "nothing typed and no workbook value"
     # the draft does not read a workbook for an earlier week at all, so it says that, naming both weeks, and never the sheet's refusal
     warnings = fi.build(stale).section["warnings"]
@@ -70,7 +70,7 @@ def test_placements_and_last_weeks_yield_on_that_sheet_get_the_same_refusal(stal
             "table is dated 25 Sep 2026; this week needs 2 Oct 2026") in placements["workbook_stale"]["note"]
     assert "the Cytonn Money Market Fund's yield for the previous week" in last["workbook_stale"]["note"]
     got = where(stale)
-    assert got["placements"][0] == "needs_analyst" and got["placements"][1].startswith("the workbook holds it, but dated 2026-09-25")
+    assert got["placements"][0] == "needs_analyst" and got["placements"][1].startswith("the workbook holds it, but dated 25 Sep 2026")
     assert got["cmmf_last_week"][0] == "optional"
     warnings = " ".join(fi.build(stale).section["warnings"])
     assert IGNORED in warnings and "holds the 3-month bank placements" not in warnings

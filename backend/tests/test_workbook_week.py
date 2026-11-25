@@ -79,8 +79,9 @@ def test_a_workbook_for_another_week_is_said_on_the_slot_and_in_readiness_and_co
     # the slot: kept, not this week's, both weeks named, and counted as missing
     assert (tmp_path / WEEK.ending.isoformat() / stored).is_file()
     assert entry[0] == "needs_analyst" and entry[1]["files"] == [{"stored_name": stored}]
-    assert entry[1]["why"] == ("uploaded, but it is for the week ending 25 Sep 2026, and this report is for the week ending 2 Oct 2026. "
-                               "It is kept, and not counted as this week's")
+    assert entry[1]["why"] == ("uploaded, but it is for another week: the week ending 25 Sep 2026, and this report is for the week "
+                               "ending 2 Oct 2026. The draft ignores it. Upload this week's workbook.")
+    assert entry[1]["other_week"] is True
     # no item is covered by it, and each item it holds says so with both dates
     assert not [k for k, (g, why) in where.items() if g == "in_place" and why in COVERED]
     holding = [k for k, i in items.items() if held(i)]
@@ -88,7 +89,7 @@ def test_a_workbook_for_another_week_is_said_on_the_slot_and_in_readiness_and_co
     for key in holding:
         stale = items[key]["workbook_stale"]
         assert stale["found"] == "2026-09-25" and stale["expected"] == ["2026-10-02"], key
-        assert where[key][1] == "the workbook holds it, but dated 2026-09-25; this week needs 2026-10-02", key
+        assert where[key][1] == "the workbook holds it, but dated 25 Sep 2026; this week needs 2 Oct 2026", key
     # an earlier week: the form still shows it, but a draft never opens it, so no figure from it is used, not even as a
     # second reading (every reader goes through WeeklyInputs.fi_book or equities_book), and its warning names both weeks
     assert page_opens(tmp_path, section)
@@ -119,14 +120,15 @@ def test_a_workbook_with_no_readable_date_is_said_to_have_none_never_taken_as_cu
     assert (kept["read_date"], kept["matches"]) == (None, False)
     entry, items, where = week_view(tmp_path, section)
     assert entry[0] == "needs_analyst"
-    assert entry[1]["why"] == ("uploaded, but no date can be read from inside it, and this report is for the week ending 2 Oct 2026. "
-                               "It is kept, and not counted as this week's")
+    assert entry[1]["why"] == ("uploaded, but no date can be read from inside it, so it may be for another week, and this report is "
+                               "for the week ending 2 Oct 2026. The draft ignores it. Upload this week's workbook.")
+    assert entry[1]["other_week"] is True
     assert not [k for k, (g, why) in where.items() if g == "in_place" and why in COVERED]
     holding = [k for k, i in items.items() if held(i)]
     assert holding
     for key in holding:
         assert items[key]["workbook_stale"]["found"] is None, key
-        assert where[key][1] == "the workbook holds it, but its date cannot be read; this week needs 2026-10-02", key
+        assert where[key][1] == "the workbook holds it, but its date cannot be read; this week needs 2 Oct 2026", key
     # treated as an earlier one by the draft: it cannot be shown to hold this week
     assert page_opens(tmp_path, section)
     value, opened, lines = read_one(tmp_path, section)
@@ -145,8 +147,10 @@ def test_a_workbook_for_a_later_week_is_still_read_by_the_draft_but_never_counte
     # finding this week's own rows makes it this week's)
     entry, items, where = week_view(tmp_path, section)
     assert entry[0] == "needs_analyst"
-    assert entry[1]["why"] == ("uploaded, but it is for the week ending 9 Oct 2026, and this report is for the week ending 2 Oct 2026. "
-                               "It is kept, and not counted as this week's")
+    # a later week is still read by the draft, so the slot says that, not that it is ignored
+    assert entry[1]["why"] == ("uploaded, but it is for another week: the week ending 9 Oct 2026, and this report is for the week "
+                               "ending 2 Oct 2026. The draft still reads it, so check every value taken from it. Upload this week's workbook.")
+    assert entry[1]["other_week"] is True
     assert not [k for k, (g, why) in where.items() if g == "in_place" and why in COVERED]
     assert all(i["workbook_stale"] for i in items.values() if held(i))
     # the draft still reads it, and says to check every value it takes
