@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 import pytest
 
 from cytonn_weekly.weekly import analyst, inputs
+from cytonn_weekly.weekly.workbook import Cell
 from tests import weekly_helpers as wh
 from tests.weekly_helpers import text_pdfs  # noqa: F401 - a fixture
 
@@ -124,3 +126,117 @@ def test_a_cached_pdf_comes_back_as_a_copy(books):
     first = inputs.WeeklyInputs(WEEK, books).kcb_weekly
     first.problems.append("recorded by one request")
     assert "recorded by one request" not in inputs.WeeklyInputs(WEEK, books).kcb_weekly.problems
+
+
+def _count_formula_opens(monkeypatch) -> list[bool]:
+    from cytonn_weekly.weekly import workbook
+
+    opened: list[bool] = []
+    real = workbook.load_workbook
+
+    def counting(*args, **kwargs):
+        if kwargs.get("data_only") is False:
+            opened.append(True)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(workbook, "load_workbook", counting)
+    return opened
+
+
+def test_two_requests_open_the_formulas_workbook_once(books, monkeypatch):
+    opened = _count_formula_opens(monkeypatch)
+    analyst.status(WEEK, books, analyst.EQ)
+    analyst.status(WEEK, books, analyst.EQ)
+    assert len(opened) == 1
+
+
+def _equities_book_with(sheet: str, ref: str, value: Any) -> bytes:
+    """The file's own valid equities workbook with one cell set: only that cell differs from the stored one."""
+    import io
+
+    from openpyxl import load_workbook
+
+    wb = load_workbook(io.BytesIO(wh.equities_workbook_bytes()))
+    wb[sheet][ref] = value
+    out = io.BytesIO()
+    wb.save(out)
+    return out.getvalue()
+
+
+def test_a_replaced_workbook_is_not_served_its_old_formulas(books):
+    first = inputs.WeeklyInputs(WEEK, books).equities_book
+    sheet = first.sheet_names[0]
+    probe = Cell(None, sheet, 900, 40)   # AN900: empty in the helper's workbook, set only in the replacement
+    assert first.formula(probe) is None   # the old file's formulas are now in its holder
+    path = inputs.week_dir(WEEK, books) / "equities_workbook.xlsx"
+    path.write_bytes(_equities_book_with(sheet, "AN900", "=1+1"))   # a new size, so a new cache key whatever the clock gives
+    second = inputs.WeeklyInputs(WEEK, books).equities_book
+    assert second._formula_cache is not first._formula_cache
+    assert second.formula(probe) == "=1+1"
+    assert first.formula(probe) is None   # the old copy keeps its own file's formulas
+
+
+def _book_with_formulas(cells: dict[str, Any]) -> bytes:
+    import io
+
+    from openpyxl import Workbook as XlsxWorkbook
+
+    wb = XlsxWorkbook()
+    ws = wb.active
+    ws.title = "Sheet"
+    for ref, value in cells.items():
+        ws[ref] = value
+    out = io.BytesIO()
+    wb.save(out)
+    return out.getvalue()
+
+
+def test_formula_reads_every_cell_as_the_per_cell_scan_did():
+    import io
+    import warnings
+
+    from openpyxl import load_workbook
+
+    from cytonn_weekly.weekly.workbook import Workbook
+
+    cells = {"B2": "=A2*2", "C2": 5, "D4": "=SUM(B2:C2)", "A7": "text", "F7": "=AVERAGE(B8:B938)", "C9": None, "E12": "=1"}
+    data = _book_with_formulas(cells)
+    book = Workbook(data, "synthetic")
+    raw = load_workbook(io.BytesIO(data), read_only=True, data_only=False)["Sheet"]
+    compared = 0
+    for row in range(1, 15):          # past the last used row and column, where both give None
+        for col in range(1, 9):
+            # The old formula(), step for step: the first row the bounded scan yields, else None.  The scan yields no row
+            # at all for a row past the sheet's last one, which is the case the one-pass read must also give None for.
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                found = list(raw.iter_rows(min_row=row, max_row=row, min_col=col, max_col=col, values_only=True))
+            old = found[0][0] if found else None
+            expected = old if isinstance(old, str) and old.startswith("=") else None
+            assert book.formula(Cell(None, "Sheet", row, col)) == expected, (row, col)
+            compared += expected is not None
+    assert compared == 4   # every formula cell was reached and matched, not only the empty ones
+
+
+def test_hidden_sheet_reads_stay_with_each_copy():
+    import io
+
+    from openpyxl import Workbook as XlsxWorkbook
+
+    from cytonn_weekly.weekly.workbook import Workbook
+
+    wb = XlsxWorkbook()
+    wb.active.title = "Shown"
+    wb.active["A1"] = "=1"
+    hidden = wb.create_sheet("Kept")
+    hidden["A1"] = "=2"
+    hidden.sheet_state = "hidden"
+    out = io.BytesIO()
+    wb.save(out)
+    cached = Workbook(out.getvalue(), "synthetic")
+    one, two = cached.shared_copy(), cached.shared_copy()
+    one.sheet("Kept")
+    assert one.formula(Cell(None, "Kept", 1, 1)) == "=2"
+    assert two.formula(Cell(None, "Kept", 1, 1)) == "=2"   # the formulas come from the shared holder
+    assert one._formula_cache is two._formula_cache is cached._formula_cache
+    assert one.hidden_lines() and not two.hidden_lines() and not cached.hidden_lines()
