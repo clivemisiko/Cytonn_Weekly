@@ -339,8 +339,10 @@ def eurobond_yield(base: float, day: date) -> float:
     return round(base + day.timetuple().tm_yday * 0.00002, 5)
 
 
-def fi_workbook_bytes(week: Week = WEEK, updated: bool = True, funds: Optional[list[tuple[str, float]]] = None) -> bytes:
-    """A workbook laid out like the fixed income team's.  ``updated=False`` leaves it at the previous week."""
+def fi_workbook_bytes(week: Week = WEEK, updated: bool = True, funds: Optional[list[tuple[str, float]]] = None,
+                      rate_header: str = "Effective Annual Rate") -> bytes:
+    """A workbook laid out like the fixed income team's.  ``updated=False`` leaves it at the previous week; ``rate_header`` is
+    the fund table's rate heading (U11: "Effective" alone in the team's 14 Nov 2026 workbook)."""
     wb = XlsxWorkbook()
     wb.remove(wb.active)
     at = week if updated else week.previous
@@ -368,7 +370,7 @@ def fi_workbook_bytes(week: Week = WEEK, updated: bool = True, funds: Optional[l
     day = at.as_at.day
     suffix = "th" if 11 <= day % 100 <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
     ws["S10"] = f"Money Market Fund Yield for Fund Managers as published on {day}{suffix} {at.as_at:%B %Y}"
-    ws["S11"], ws["T11"], ws["U11"] = "Rank", "Fund Manager", "Effective Annual Rate"
+    ws["S11"], ws["T11"], ws["U11"] = "Rank", "Fund Manager", rate_header
     for n, (fund, rate) in enumerate(funds or FUNDS):
         ws[f"S{12 + n}"], ws[f"T{12 + n}"], ws[f"U{12 + n}"] = n + 1, fund, rate
 

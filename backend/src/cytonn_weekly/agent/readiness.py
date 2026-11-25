@@ -80,6 +80,9 @@ def _item(item: dict[str, Any]) -> tuple[str, str, bool]:
             why = (f"not typed, and the uploaded workbook is dated {found}; this week needs {expected}" if found
                    else f"not typed, and the uploaded workbook's date cannot be read; this week needs {expected}")
         return ("needs_analyst" if item["required"] else "optional"), why, True
+    if item.get("workbook_note"):
+        # the workbook is this week's but its reader refused the part: say why, in the form's own sentence
+        return ("needs_analyst" if item["required"] else "optional"), f"nothing typed. {item['workbook_note']}", False
     return ("needs_analyst", "nothing typed and no workbook value", False) if item["required"] else ("optional", "not filled", False)
 
 

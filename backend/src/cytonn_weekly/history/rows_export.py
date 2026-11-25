@@ -200,7 +200,9 @@ def _funds(db_path: Any, week: Week, master: Optional[Workbook]) -> Sheet:
             sheet = master.sheet(fi.MMF_SHEET)
             title = sheet.find(lambda s: s.startswith("money market fund yield for fund managers as published on"), what="fund table title")
             rank = sheet.find("rank", rows=range(title.row + 1, title.row + 3), what="'Rank' header")
-            cols = [rank, *(sheet.find(h, rows=range(rank.row, rank.row + 1), what=f"'{h}' header") for h in ("fund manager", "effective annual rate"))]
+            # the rate heading by its start, as fi_workbook.read_mmf_table reads it ("Effective" alone in the 14 Nov 2026 workbook)
+            heads = (("fund manager", "fund manager"), (lambda s: s.startswith("effective"), "effective annual rate"))
+            cols = [rank, *(sheet.find(m, rows=range(rank.row, rank.row + 1), what=f"'{h}' header") for m, h in heads)]
             out.header = [str(c.value).strip() for c in cols]
             found = ", ".join(f"{c.value.strip()} in {get_column_letter(c.col)}" for c in cols)
             for r in range(rank.row + 1, sheet.max_row + 1):
