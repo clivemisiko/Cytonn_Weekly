@@ -1711,7 +1711,9 @@ def _table_warnings(table: Table, rows: list[dict[str, str]]) -> list[str]:
 def status(week: Week, root: Optional[Path] = None, section: Optional[str] = None) -> dict[str, Any]:
     """The form for one week: every item with what was typed, what the uploaded workbook holds, and where they differ."""
     started = time.perf_counter()
-    analyst = Analyst(WeeklyInputs(week, root, old_books=True))   # the form shows an earlier workbook's figures, as not this week's
+    # The draft's rule (WeeklyInputs.earlier): a workbook for an earlier week, or with no date, gives the form nothing, so no item
+    # shows or folds a figure the draft will not use; the slot and the warnings still say why.  A later one is read, warned.
+    analyst = Analyst(WeeklyInputs(week, root))
     try:
         return _status(analyst, week, root, section)
     finally:
