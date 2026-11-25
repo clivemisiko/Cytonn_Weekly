@@ -468,6 +468,8 @@ test("T157 Fixed Income: a workbook for another week covers nothing, and the ste
   await page.goto(url("fixed_income", friday, "&view=prepare"));
   await expect(inputs(page).getByText("Step 1 of 11", { exact: true })).toBeVisible();
   await expect(covered(page)).toHaveCount(0);
+  // the form agrees with the draft, which ignores this workbook: no field or table is badged as the workbook's
+  await expect(inputs(page).getByText(/From the workbook/)).toHaveCount(0);
 });
 
 test("T161 Fixed Income: an upload refolds the steps with no reload, and the analyst stays on the same step", async ({ page }) => {
