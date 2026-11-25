@@ -102,6 +102,18 @@ def test_form_get_defaults_to_the_jobs_section_and_refuses_one_with_no_form(env)
     assert "no analyst form" in env.use("form_get", section="real_estate")["error"]
 
 
+
+@pytest.mark.parametrize("section", ["fixed_income", "equities"])
+def test_form_get_fits_under_the_result_limit_with_margin_and_carries_no_help_text(env, section):
+    from cytonn_weekly.agent.tools import MAX_RESULT_CHARS
+    env.upload_equities_workbook()
+    got = env.use("form_get", {"section": section})
+    assert "groups" in got, got
+    size = len(json.dumps(got))
+    print(f"form_get {section}: {size} chars of {MAX_RESULT_CHARS}")
+    assert size <= MAX_RESULT_CHARS - 500
+    assert all("help" not in i for i in items(got).values())
+
 # --- sources, sites, snips -----------------------------------------------------------------------
 
 def test_sources_list_gives_hosts_titles_dates_and_never_the_text(env):
