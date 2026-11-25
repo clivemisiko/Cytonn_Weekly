@@ -29,6 +29,16 @@
     ]
   },
   {
+    "name": "Family Bank",
+    "type": "bank",
+    "domain": "familybank.co.ke",
+    "ir": "",
+    "start": [
+      "https://familybank.co.ke/?page_id=660",
+      "https://familybank.co.ke/?page_id=404"
+    ]
+  },
+  {
     "name": "Equity Group Holdings",
     "type": "bank",
     "domain": "equitygroupholdings.com",
@@ -71,11 +81,10 @@
   {
     "name": "Stanbic Holdings",
     "type": "bank",
-    "domain": "standardbank.com",
+    "domain": "stanbicbank.co.ke",
     "ir": "",
-    "scope": "/kenya",
-    "hosts": [
-      "sponsorships.standardbank.com"
+    "start": [
+      "https://www.stanbicbank.co.ke/kenya/personal/about-us/investor-relations"
     ]
   },
   {

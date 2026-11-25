@@ -11,6 +11,7 @@ from typing import Any, Callable, Optional
 from urllib.parse import unquote, urldefrag, urljoin, urlsplit
 from urllib.robotparser import RobotFileParser
 
+from cytonn_weekly.common import content_dates
 from cytonn_weekly.common import sources as store
 from cytonn_weekly.weekly.workbook import read_title_date
 
@@ -26,6 +27,8 @@ _PERIOD = re.compile(r"ended|ending|period|quarter|half|year|as at|fy|q[1-4]
 _NO_ROBOTS = store.NOT_FOUND.split("{")[0]   # robots.txt answered "not found": nothing is disallowed
 
 ROBOTS_UNREADABLE = "robots.txt could not be read"
+BOT_WALL = "its site answered with a bot check instead of its pages"
+_WALL_MARKERS = (b"_Incapsula_Resource", b"cf-chl", b"challenge-platform")   # Imperva and Cloudflare challenge pages
 Raw = Callable[[str], tuple[str, bytes, str]]
 
 
@@ -135,7 +138,7 @@ def read_site(company: Any, piece: Any, *, fetch: Callable[..., store.SourceText
     try:
         explicit = bool(company.start)
         queue = list(company.start)[:MAX_START_PAGES] or [f"https://{company.domain}{company.scope}/"]
-        starts, found, read = len(queue), {}, 0
+        starts, found, read, walled = len(queue), {}, 0, False
         i = 0
         while i < len(queue) and time.monotonic() < deadline:
             url, i = queue[i], i + 1
@@ -150,6 +153,9 @@ def read_site(company: Any, piece: Any, *, fetch: Callable[..., store.SourceText
                 if i <= starts and str(exc) == ROBOTS_UNREADABLE:
                     return SiteRead([], ROBOTS_UNREADABLE)
                 continue
+            if any(m in body[:4096] for m in _WALL_MARKERS):
+                walled = True
+                continue
             read += 1
             for link in read_links(body, final):
                 u, label = link["url"], f"{link['text']} {unquote(urlsplit(link['url']).path)}"
@@ -160,10 +166,15 @@ def read_site(company: Any, piece: Any, *, fetch: Callable[..., store.SourceText
                 elif _NEWS.search(label) and (u not in found or found[u]["day"] is None):
                     found[u] = link
         if not read:
-            return SiteRead([], "its pages could not be read")
+            return SiteRead([], BOT_WALL if walled else "its pages could not be read")
         first, last = window
-        keep = sorted((c for c in found.values() if c["day"] and first <= c["day"] <= last), key=lambda c: c["day"], reverse=True)
-        keep += [c for c in found.values() if c["day"] is None and not c["url"].lower().endswith(".pdf")]   # undated: the page itself tells, and is refused if outside the week; a PDF states no date
+        # a link whose own words name a period too old to be this week's results is never fetched
+        words = lambda c: f"{c['text']} {unquote(urlsplit(c['url']).path)}"  # noqa: E731 - "View results" names its period in the address
+        fresh = [c for c in found.values() if not content_dates.stale_period(words(c), window)]
+        keep = sorted((c for c in fresh if c["day"] and first <= c["day"] <= last), key=lambda c: c["day"], reverse=True)
+        # undated: the page or PDF itself tells (its date, dateline or CreationDate), and is refused if outside the week;
+        # those naming a current period ("Q3 2026 Financial Results") are tried first, so menus do not use up the attempts
+        keep += sorted((c for c in fresh if c["day"] is None), key=lambda c: content_dates.latest_period(words(c)) is None)
         saved, attempts = [], 0
         for c in keep:
             if len(saved) >= MAX_SAVED or attempts >= MAX_ATTEMPTS or time.monotonic() > deadline:
