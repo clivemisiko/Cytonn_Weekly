@@ -35,7 +35,7 @@ from cytonn_weekly import paths
 from cytonn_weekly.common import atomic
 from cytonn_weekly.digital_payments import workbook as dp_workbook
 from cytonn_weekly.weekly import cbk_bulletin, equities_workbook, fi_workbook, kcb, nse_yield_curve
-from cytonn_weekly.weekly.week import Week, day_text
+from cytonn_weekly.weekly.week import Week, day_text, week_ending_of
 from cytonn_weekly.weekly.workbook import Workbook, WorkbookError, read_title_date
 
 MAX_BYTES = 30 * 1024 * 1024
@@ -172,8 +172,9 @@ def identify(slot: Slot, data: bytes, week: Week) -> dict[str, Any]:
             return _found(read, read in week.report_dates, "equities_workbook.xlsx", "")
         if slot.slug == FI_WORKBOOK:
             read = fi_workbook_date(fi_workbook.open_fi_workbook(data, slot.title))
-            # its date: the date its money market fund table is published on
-            return _found(read, read == week.ending, "fi_workbook.xlsx", "")
+            # its date: the date its money market fund table is published on; the Friday, or the as-at day of a holiday
+            # week, as read_mmf_table takes it
+            return _found(read, read in week.report_dates, "fi_workbook.xlsx", "")
         if slot.slug == DP_WORKBOOK:
             read = dp_workbook.read_dp_workbook(dp_workbook.open_dp_workbook(data, slot.title)).price_date
             # its date: the date of the newest price column
@@ -356,11 +357,14 @@ def _fresh(parsed: Any) -> Any:
 class WeeklyInputs:
     """One week's stored inputs, parsed on first use.  A missing input is None, never an error."""
 
-    def __init__(self, week: Week, root: Optional[Path] = None):
+    def __init__(self, week: Week, root: Optional[Path] = None, old_books: bool = False):
         self.week = week
         self.root = root
         self._cache: dict[str, Any] = {}
         self.loads: dict[str, str] = {}   # parsed file kind -> "parsed", for the timing log
+        # The form and the rows export open a workbook for an earlier week, or with no date; a draft never does (earlier()).
+        self.old_books = old_books
+        self.ignored: set[str] = set()    # stored names of the workbooks a draft asked for and was refused
         typed = self.notes.get("as_at")   # the as-at date the analyst set for the week, if any
         if typed:
             self.week = week.with_as_at(date.fromisoformat(typed))
@@ -398,13 +402,32 @@ class WeeklyInputs:
 
         return self._once(key, load)
 
+    def earlier(self, stored_name: str) -> bool:
+        """Whether a stored workbook's own date (identify) falls in an earlier week than this one, or cannot be read, so it
+        cannot be shown to hold this week.  One for a later week is not earlier: a draft still reads it, warned (Analyst.book_stale)."""
+        def load() -> bool:
+            entry = self.entry(stored_name)
+            if entry is None or entry.get("matches"):
+                return False
+            read = entry.get("read_date")
+            return read is None or week_ending_of(date.fromisoformat(read)) < self.week.ending
+
+        return self._once(f"earlier:{stored_name}", load)
+
+    def _book(self, key: str, name: str, parse: Callable[[bytes], Any]) -> Optional[Workbook]:
+        # Every builder reads a workbook through here, so an earlier one gives no figure to any part, not even a second reading.
+        if not self.old_books and self.earlier(name):
+            self.ignored.add(name)
+            return None
+        return self._parsed(key, name, parse)
+
     @property
     def equities_book(self) -> Optional[Workbook]:
-        return self._parsed("eq", "equities_workbook.xlsx", lambda b: equities_workbook.open_equities_workbook(b))
+        return self._book("eq", "equities_workbook.xlsx", lambda b: equities_workbook.open_equities_workbook(b))
 
     @property
     def fi_book(self) -> Optional[Workbook]:
-        return self._parsed("fi", "fi_workbook.xlsx", lambda b: fi_workbook.open_fi_workbook(b))
+        return self._book("fi", "fi_workbook.xlsx", lambda b: fi_workbook.open_fi_workbook(b))
 
     def hidden_sheet_lines(self) -> list[str]:
         """A warning for each hidden sheet a draft read a value from, in the equities and fixed income workbooks it has opened."""
@@ -448,6 +471,11 @@ class WeeklyInputs:
         from cytonn_weekly.weekly.analyst import Analyst   # analyst.py imports this module
 
         return self._once("analyst", lambda: Analyst(self))
+
+    def entry(self, stored_name: str) -> Optional[dict[str, Any]]:
+        """A stored file's manifest entry (the date read from it and whether it is this week's), or None if it is not stored."""
+        entry = read_manifest(self.week, self.root).get(stored_name)
+        return entry if entry is not None and self._path(stored_name) is not None else None
 
     def matches(self, stored_name: str) -> Optional[bool]:
         """Whether a stored file's own date is this week's (None if it is not stored)."""

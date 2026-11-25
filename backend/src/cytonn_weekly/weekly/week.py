@@ -45,6 +45,11 @@ def latest_friday(today: date) -> date:
     return today - timedelta(days=(today.weekday() - FRIDAY) % 7)
 
 
+def week_ending_of(day: date) -> date:
+    """The Friday of the report week a date falls in (Monday to Friday); a weekend day belongs to the Friday before."""
+    return latest_friday(day) if day.weekday() > FRIDAY else day + timedelta(days=FRIDAY - day.weekday())
+
+
 def day_text(d: date) -> str:
     """A date as the screen writes it ("15 Oct 2026"; frontend/src/lib/format.ts friendlyDate)."""
     return f"{d.day} {d:%b %Y}"

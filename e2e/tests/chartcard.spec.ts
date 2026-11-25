@@ -5,12 +5,13 @@ import { API, REPO, VARIANT, startRun, reviewHeading } from "./helpers";
 
 /**
  * The chart card on the Equities review: the picture, its facts, "Show points", the choice to use the team's own chart, and what
- * each state says. Every figure is invented: the demo instance stores invented equities workbooks for four Fridays (e2e/chart_demo.py)
+ * each state says. Every figure is invented: the demo instance stores invented equities workbooks for five Fridays (e2e/chart_demo.py)
  * and drafts those weeks without any outside source. This file has its own run on a freshly restored test backend
  * (`playwright test chartcard`).
  *
- *   2026-09-25  complete workbook: both charts drawn      2026-09-11  workbook not yet updated: both stale, not drawn
+ *   2026-09-25  complete workbook: both charts drawn      2026-09-11  workbook for an earlier week: not read, not drawn
  *   2026-09-18  rows left out of the P/E series           2026-09-04  no workbook: information only
+ *   2026-08-21  this week's workbook, 40 weeks of history: read, neither chart drawn
  */
 test.skip(!!VARIANT, "runs on the default test backend");
 test.describe.configure({ mode: "serial" });
@@ -20,6 +21,7 @@ const CLEAN = "2026-09-25";
 const DEFECTS = "2026-09-18";
 const STALE = "2026-09-11";
 const NONE = "2026-09-04";
+const SHORT = "2026-08-21";
 const PE_CAPTION = "The charts below indicate the historical P/E and dividend yields of the market (P/E chart)";
 const YIELD_CAPTION = "The charts below indicate the historical P/E and dividend yields of the market (dividend yield chart)";
 const json = { "Content-Type": "application/json" };
@@ -57,6 +59,19 @@ const notesList = (page: Page) => page.getByRole("heading", { name: /^Charts to 
 // The list itself; a review item repeats the caption as its context, so list items are looked for only here.
 const notes = (page: Page) => page.locator('section[aria-labelledby="charts-title"]').getByRole("listitem");
 const loaded = (img: Locator) => expect.poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBe(1200);
+/** The panel lists one status at a time (its tile pressed) or every item (no tile pressed); pressing the pressed tile shows every item. */
+async function listOnly(page: Page, label: "Flagged" | "Not auto-verified" | "Clean" | null) {
+  const tiles = page.getByRole("group", { name: "Review items by status" });
+  if (label === null) {
+    const pressed = tiles.getByRole("button", { pressed: true });
+    if (await pressed.count()) await pressed.click();
+    await expect(pressed).toHaveCount(0);
+    return;
+  }
+  const tile = tiles.getByRole("button", { name: new RegExp(`^\\d+ ${label}`) });
+  if ((await tile.getAttribute("aria-pressed")) !== "true") await tile.click();
+  await expect(tile).toHaveAttribute("aria-pressed", "true");
+}
 
 let clean = 0;
 let defectsId = 0;
@@ -87,12 +102,13 @@ test("T78 a complete workbook: both charts are drawn, with the picture, the fact
 
   // The yield chart is drawn in its own unit, and the review items for both charts sit in the panel, none flagged.
   await expect(yieldCard(page).locator("div", { hasText: "Last value" }).first()).toContainText("6.0%");
-  // The panel opens its Not auto-verified group and keeps Clean collapsed (coverage, not work): each chart has three items that
-  // rest on the analyst workbook, and the freshness and rows checks that found nothing are in Clean.
+  // Each chart has three items that rest on the analyst workbook (Not auto-verified), and the freshness and rows checks that
+  // found nothing are Clean: five items in all, none flagged.
+  await listOnly(page, "Not auto-verified");
   for (const title of ["NASI P/E chart", "NASI dividend yield chart"]) {
     expect(await itemsOf(page, title).evaluateAll((all) => all.map((el) => el.getAttribute("data-status")))).toEqual(Array(3).fill("not_auto_verified"));
   }
-  await panel(page).getByRole("button", { name: /^Clean \(\d+\)$/ }).click();
+  await listOnly(page, null);
   for (const title of ["NASI P/E chart", "NASI dividend yield chart"]) {
     const rows = itemsOf(page, title);
     await expect(rows).toHaveCount(5);
@@ -176,6 +192,7 @@ test("T81 rows left out of the series are listed by cell on the card and are a f
   await expect(yieldCard(page).getByText(/Empty value cells|Rows that share a date/)).toHaveCount(0);
 
   // The same defects are one flagged item in the Review items panel (not in anything that folds).
+  await listOnly(page, "Flagged");
   const rows = itemsOf(page, "NASI P/E chart").filter({ hasText: "rows of the series" });
   await expect(rows).toHaveCount(1);
   await expect(rows).toHaveAttribute("data-status", "flagged");
@@ -199,35 +216,31 @@ test("T81 rows left out of the series are listed by cell on the card and are a f
   await expect(peCard(page).getByText("This review is decided, so the choice is frozen.")).toBeVisible();
 });
 
-test("T82 a workbook not yet updated: both charts are not drawn, the reason is in the feed and the items stay flagged until the choice is made", async ({ page, request }) => {
+test("T82 a workbook for an earlier week: the draft does not read it, both charts say so naming its week, and nothing is flagged", async ({ page, request }) => {
   const id = await draft(request, STALE);
   await open(page, id);
   for (const card of [peCard(page), yieldCard(page)]) {
-    await expect(card.getByText("Not drawn", { exact: true }).first()).toBeVisible();
+    await expect(card.getByText("No workbook for this week", { exact: true })).toBeVisible();
+    await expect(card.getByRole("status").filter({ hasText: "The uploaded equities workbook is for the week ending 4 Sep 2026, an earlier week, so the draft does not read it" })).toBeVisible();
+    await expect(card.getByText(/Nothing here needs resolving\./)).toBeVisible();
+    await expect(card.getByRole("button")).toHaveCount(0);
     await expect(card.getByRole("img")).toHaveCount(0);
-    await expect(card.getByText(/The newest point is dated 2026-09-04; for the week ending 2026-09-11 it should be dated 2026-09-11 or later\./)).toBeVisible();
-    await expect(card.getByRole("button", { name: "Show points" })).toHaveCount(0);
-    // A stale series still carries a last value and an average, but the card does not present them as the chart's.
-    await expect(card.getByLabel("What the chart rests on")).toHaveCount(0);
-    await expect(card.getByText(/From the analyst workbook, not verified/)).toHaveCount(0);
+    await expect(card.getByLabel("What the chart rests on")).toHaveCount(0); // no figure from it, not even its last value
   }
   await expect(notesList(page)).toHaveText("Charts to add by hand (2)");
-  const flagged = itemsOf(page, "NASI P/E chart");
-  await expect(flagged).toHaveCount(2); // the newest point, and the chart not drawn
-  expect(await flagged.evaluateAll((all) => all.map((el) => el.getAttribute("data-status")))).toEqual(["flagged", "flagged"]);
-
-  // The team's own chart settles it: both items accepted, and the placeholder stays.
-  await peCard(page).getByRole("button", { name: "Use the team's own chart" }).click();
-  await expect(peCard(page).getByText("Using the team's own chart", { exact: true })).toBeVisible();
-  expect(chartItems((await reviewOf(request, id)).review_items, "NASI P/E chart").map((i) => i.resolution)).toEqual(["accept", "accept"]);
-  await expect(notesList(page)).toHaveText("Charts to add by hand (2)");
+  await listOnly(page, null);
+  await expect(itemsOf(page, "NASI P/E chart")).toHaveCount(0);
+  const saved = (await (await request.get(`${API}/api/reviews/${id}`)).json()) as { review_items: Item[]; section: { warnings: string[] } };
+  expect(saved.review_items.filter((i) => i.kind === "chart")).toEqual([]);
+  // the draft's warning names both weeks
+  expect(saved.section.warnings.filter((w) => w.startsWith("The uploaded equities workbook is for the week ending 4 Sep 2026, and this report is for the week ending 11 Sep 2026. It is for an earlier week, so the draft ignores it"))).toHaveLength(1);
 });
 
 test("T83 no workbook uploaded: the charts are information only, with nothing to resolve and nothing flagged", async ({ page, request }) => {
   const id = await draft(request, NONE);
   await open(page, id);
   for (const card of [peCard(page), yieldCard(page)]) {
-    await expect(card.getByText("No workbook uploaded", { exact: true })).toBeVisible();
+    await expect(card.getByText("No workbook for this week", { exact: true })).toBeVisible();
     await expect(card.getByRole("status").filter({ hasText: "equities workbook for this week is not among this week's inputs" })).toBeVisible();
     await expect(card.getByText(/Nothing here needs resolving\./)).toBeVisible();
     await expect(card.getByRole("button")).toHaveCount(0); // nothing to show or to set aside
@@ -237,7 +250,41 @@ test("T83 no workbook uploaded: the charts are information only, with nothing to
   expect(saved.review_items.filter((i) => i.kind === "chart")).toEqual([]);
   expect(saved.section.chart_notes).toEqual([PE_CAPTION, YIELD_CAPTION]);
   await expect(notesList(page)).toHaveText("Charts to add by hand (2)");
+  await listOnly(page, null);
   await expect(panel(page).getByText(/NASI (P\/E|dividend yield) chart/)).toHaveCount(0); // no item about them in the panel either
+});
+
+test("T160 a workbook for the week with too short a history: both charts say Not drawn and why, show no figure from it, and are one flagged item each; using the team's chart settles it", async ({ page, request }) => {
+  const id = await draft(request, SHORT);
+  await open(page, id);
+  for (const card of [peCard(page), yieldCard(page)]) {
+    await expect(card.getByText("Not drawn", { exact: true })).toBeVisible();
+    await expect(card.getByText(/^Not drawn\. Only 40 usable points; a chart needs at least 52\.$/)).toBeVisible();
+    await expect(card.getByRole("img")).toHaveCount(0);
+    await expect(card.getByRole("button", { name: "Show points" })).toHaveCount(0);
+    await expect(card.getByLabel("What the chart rests on")).toHaveCount(0);
+    await expect(card.getByText(/^From the analyst workbook/)).toHaveCount(0);
+    await expect(card.getByRole("button", { name: "Use the team's own chart" })).toBeEnabled();
+  }
+  await expect(notesList(page)).toHaveText("Charts to add by hand (2)");
+
+  const saved = await reviewOf(request, id);
+  expect(saved.section.chart_notes).toEqual([PE_CAPTION, YIELD_CAPTION]);
+  for (const title of ["NASI P/E chart", "NASI dividend yield chart"]) {
+    expect(chartItems(saved.review_items, title).map((i) => [i.ref, i.status])).toEqual([[`${title}: not drawn`, "flagged"]]);
+  }
+  await listOnly(page, "Flagged");
+  for (const title of ["NASI P/E chart", "NASI dividend yield chart"]) {
+    await expect(itemsOf(page, title)).toHaveCount(1);
+    await expect(itemsOf(page, title)).toHaveAttribute("data-status", "flagged");
+  }
+
+  // Using the team's own chart accepts the item as not used; the other chart is left as it was.
+  await peCard(page).getByRole("button", { name: "Use the team's own chart" }).click();
+  await expect(peCard(page).getByText("Using the team's own chart", { exact: true })).toBeVisible();
+  const after = await reviewOf(request, id);
+  expect(chartItems(after.review_items, "NASI P/E chart").map((i) => i.resolution)).toEqual(["accept"]);
+  expect(chartItems(after.review_items, "NASI dividend yield chart").map((i) => i.resolution)).toEqual([null]);
 });
 
 test("T84 at 390px the card has nothing to scroll sideways and its buttons are reachable; in dark mode the picture keeps a white frame", async ({ page }) => {
@@ -274,12 +321,12 @@ test("T85 screenshots of the chart card at 1280px and 390px, light and dark (onl
   const dir = process.env.E2E_SHOTS;
   test.skip(!dir, "set E2E_SHOTS to a folder to write them");
   mkdirSync(dir!, { recursive: true });
-  const notDrawn = await draft(request, STALE); // a fresh draft: T82 set the earlier one's choice
+  const earlier = await draft(request, STALE);
   const none = await draft(request, NONE);
   const states: [string, number, boolean][] = [
     ["drawn-with-points", clean, true],
     ["rows-left-out", defectsId, false],
-    ["not-drawn", notDrawn, false],
+    ["earlier-week", earlier, false],
     ["no-workbook", none, false],
   ];
   for (const [theme, width] of [["light", 1280], ["dark", 1280], ["light", 390], ["dark", 390]] as const) {

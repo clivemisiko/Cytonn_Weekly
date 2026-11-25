@@ -7,8 +7,9 @@ backend/ is changed:
 
     2026-09-25  a complete workbook: both charts are drawn, nothing is flagged on them
     2026-09-18  the same, with rows the reader leaves out of the P/E series (an empty value cell, a repeated date)
-    2026-09-11  a workbook not yet updated for the week: its newest row is the Friday before, so the charts are stale
+    2026-09-11  a workbook not yet updated for the week: its newest row is the Friday before, so the draft does not read it
     2026-09-04  no workbook at all: the charts are information, not findings
+    2026-08-21  a workbook for the week with too short a history (40 weeks, a chart needs 52): read, and neither chart drawn
 
 The Equities draft for these weeks gets fetchers that fail at once, so it makes no outside request and the parts that
 need an outside source are unavailable.  Other weeks are untouched.
@@ -24,21 +25,27 @@ from cytonn_weekly.weekly.week import Week
 from tests import weekly_helpers as wh
 
 CLEAN, DEFECTS, STALE, NONE = (Week(date(2026, 9, 25)), Week(date(2026, 9, 18)), Week(date(2026, 9, 11)), Week(date(2026, 9, 4)))
-WEEKS = {w.ending for w in (CLEAN, DEFECTS, STALE, NONE)}
+SHORT = Week(date(2026, 8, 21))
+WEEKS = {w.ending for w in (CLEAN, DEFECTS, STALE, NONE, SHORT)}
 SHEET = "NASI-PE & Dividend Yield"
 
 
-def workbook(week: Week, *, updated: bool = True, defects: bool = False) -> bytes:
+def workbook(week: Week, *, updated: bool = True, defects: bool = False, short: bool = False) -> bytes:
     """The synthetic equities workbook with enough NASI weeks to draw, its AVERAGE cells set to the mean of the rows the
-    reader will use (so a week with no defect is clean), and, if asked, rows the reader leaves out."""
+    reader will use (so a week with no defect is clean), and, if asked, rows the reader leaves out or a history too short
+    to draw (its newest row, the one the workbook is dated by, stays this week's)."""
     wb = load_workbook(io.BytesIO(wh.equities_workbook_bytes(week, updated=updated)))
     ws = wb[SHEET]
     out = {11, 12, 20} if defects else set()          # rows 11 and 12 share a date; B20 is empty
     if defects:
         ws["A12"] = ws["A11"].value
         ws["B20"] = None
+    last = 48 if short else 68                         # rows 8 to 47: 40 weekly points
+    for r in range(last, 68):
+        for col in range(1, 5):
+            ws.cell(r, col).value = None
     for col, avg in ((2, "B7"), (4, "D7")):
-        values = [ws.cell(r, col).value for r in range(8, 68) if r not in out or col == 4]
+        values = [ws.cell(r, col).value for r in range(8, last) if r not in out or col == 4]
         ws[avg] = sum(values) / len(values)
     buf = io.BytesIO()
     wb.save(buf)
@@ -50,6 +57,7 @@ def seed() -> None:
     inputs.store(CLEAN, "equities_workbook", workbook(CLEAN), "Equities (invented, complete).xlsx")
     inputs.store(DEFECTS, "equities_workbook", workbook(DEFECTS, defects=True), "Equities (invented, with defects).xlsx")
     inputs.store(STALE, "equities_workbook", workbook(STALE, updated=False), "Equities (invented, not updated).xlsx")
+    inputs.store(SHORT, "equities_workbook", workbook(SHORT, short=True), "Equities (invented, short history).xlsx")
 
 
 def offline_equities() -> None:

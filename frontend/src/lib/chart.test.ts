@@ -32,7 +32,7 @@ describe("chart card state", () => {
   it("names each state in words", () => {
     expect(chartState(drawn)).toEqual({ key: "drawn", label: "Drawn by the tool" });
     expect(chartState(notDrawn)).toEqual({ key: "not_drawn", label: "Not drawn" });
-    expect(chartState(noWorkbook)).toEqual({ key: "no_workbook", label: "No workbook uploaded" });
+    expect(chartState(noWorkbook)).toEqual({ key: "no_workbook", label: "No workbook for this week" });
   });
 
   it("says the team's own chart is in use, for a drawn chart and for one that was not drawn, but never for no workbook", () => {

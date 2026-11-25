@@ -210,6 +210,29 @@ describe("the prepare page's source documents", () => {
     later.groups.in_place.push(later.groups.needs_analyst.shift()!);
     expect(sourceRows(later, order).map((x) => x.key)).toEqual(order);
   });
+
+  it("carries each kept file, by the analyst's own name where the route gives it, so the row can offer to remove it", () => {
+    const got = parseReadiness(
+      data({
+        groups: {
+          needs_analyst: [entry("equities_workbook", { why: "not uploaded", files: [] })],
+          in_place: [entry("kcb_daily", { why: "uploaded", files: [{ stored_name: "kcb_daily_2031-01-06.pdf", name: "fake-monday.pdf" }, { stored_name: "kcb_daily_2031-01-07.pdf" }, { name: "no stored name" }] })],
+        },
+      }),
+    )!;
+    const rows = sourceRows(got);
+    expect(rows.find((x) => x.key === "kcb_daily")?.files).toEqual([
+      { storedName: "kcb_daily_2031-01-06.pdf", name: "fake-monday.pdf" },
+      { storedName: "kcb_daily_2031-01-07.pdf", name: "kcb_daily_2031-01-07.pdf" },
+    ]);
+    expect(rows.find((x) => x.key === "equities_workbook")?.files).toEqual([]);
+    // a workbook for another week is in "Needs you" with the check's words, never "Uploaded"
+    const stale = parseReadiness(
+      data({ groups: { needs_analyst: [entry("fi_workbook", { why: "uploaded, but it is for the week ending 3 Jan 2031, and this report is for the week ending 10 Jan 2031. It is kept, and not counted as this week's", files: [{ stored_name: "fi_workbook.xlsx", name: "fake-old.xlsx" }] })] } }),
+    )!;
+    const [row] = sourceRows(stale);
+    expect([row.added, row.status.startsWith("Uploaded, but it is for the week ending 3 Jan 2031"), row.files.length]).toEqual([false, true, 1]);
+  });
 });
 
 describe("openView: which view a section opens on", () => {

@@ -69,7 +69,7 @@ def make_router(d: Deps) -> APIRouter:
         Only confirmed points; a missing one is an empty cell with a note.  The uploaded workbooks are read, never changed.
         """
         week = week_of(week_ending)
-        inputs = weekly_inputs.WeeklyInputs(week, d.root)
+        inputs = weekly_inputs.WeeklyInputs(week, d.root, old_books=True)   # only the layout is taken, from whichever week's master
         try:
             equities, fixed_income = inputs.equities_book, inputs.fi_book
         except WorkbookError as exc:
