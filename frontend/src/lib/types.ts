@@ -772,6 +772,8 @@ export interface AnalystForm {
   groups: { section: string; key: string; title: string; items: AnalystItem[] }[];
   /** Whether each section's workbook is among the week's uploads. */
   workbooks: Record<string, boolean>;
+  /** Why an uploaded workbook is ignored (for an earlier week, or undated), as the draft words it; null when none is. */
+  workbooks_ignored: Record<string, string | null>;
   /** The Friday before this week's, and whether a form is saved for it to start from. */
   previous_week: string;
   can_carry: boolean;

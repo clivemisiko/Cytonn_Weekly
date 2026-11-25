@@ -91,6 +91,7 @@ const suggest = (key: string) => act(() => api.suggestAnalystInput(props.week, p
 
 const locked = computed(() => busy.value || !!props.disabled);
 const hasBook = computed(() => form.value?.workbooks[props.section] ?? false);
+const ignoredBook = computed(() => form.value?.workbooks_ignored?.[props.section] ?? null);
 </script>
 
 <template>
@@ -105,7 +106,9 @@ const hasBook = computed(() => form.value?.workbooks[props.section] ?? false);
           {{
             hasBook
               ? "A workbook is uploaded for this week: its values are used wherever manual inputs are omitted."
-              : "No workbook is uploaded for this week: the draft relies solely on the figures entered below."
+              : ignoredBook
+                ? `${ignoredBook.charAt(0).toUpperCase()}${ignoredBook.slice(1)}: the draft relies solely on the figures entered below.`
+                : "No workbook is uploaded for this week: the draft relies solely on the figures entered below."
           }}{{ form.saved_at ? ` Last saved ${friendlyTime(form.saved_at)}.` : "" }}
         </p>
         <div class="flex flex-wrap items-center gap-x-3 gap-y-2 pt-2">

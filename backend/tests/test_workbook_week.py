@@ -108,6 +108,7 @@ def test_a_workbook_for_the_reports_own_week_behaves_as_before(tmp_path, text_pd
     assert covered and all(where[k] == ("in_place", "from the workbook") for k in covered if not items[k]["workbook_first"])
     value, opened, lines = read_one(tmp_path, section)
     assert value and opened and lines == []
+    assert analyst.status(WEEK, tmp_path, section)["workbooks_ignored"][section] is None
 
 
 @pytest.mark.parametrize("section", SECTIONS)
@@ -203,7 +204,9 @@ def test_an_earlier_workbook_reaches_no_field_or_table_on_the_form_or_its_workbo
     slot, _, book, _ = BOOKS[section]
     inputs.store(WEEK, slot, book(updated=False), "Fake old book.xlsx", tmp_path)
     form = analyst.status(WEEK, tmp_path, section)
-    assert form["workbooks"][analyst.FI if section == "fixed_income" else analyst.EQ] is False
+    assert form["workbooks"][section] is False
+    assert form["workbooks_ignored"][section] == (f"the uploaded {BOOKS[section][3]} is for the week ending 25 Sep 2026, "
+                                                  "an earlier week, so the draft does not read it")
     items = {i["key"]: i for g in form["groups"] for i in g["items"]}
     assert all(not held(i) and i.get("workbook_ref") is None for i in items.values())
     if section == "fixed_income":

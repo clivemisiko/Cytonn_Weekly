@@ -1861,6 +1861,8 @@ def _status(analyst: "Analyst", week: Week, root: Optional[Path], section: Optio
             # the other section's workbook is only looked for, not opened: an upload is refused unless it opens
             "workbooks": {s: analyst.book(s) is not None if section in (None, s) else analyst.inputs._path(_BOOK_FILES[s]) is not None
                           for s in (FI, EQ)},
+            # why an uploaded workbook gives the form nothing (Analyst.unread, the draft's own clause), else None
+            "workbooks_ignored": {s: analyst.unread(s) if section in (None, s) else None for s in (FI, EQ)},
             "previous_week": week.previous_friday.isoformat(),
             "can_carry": bool(last["fields"] or last["tables"]),
             # what still waits to be confirmed, on this section's part of the form: the draft button waits for it
