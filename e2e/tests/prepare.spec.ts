@@ -1,6 +1,8 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { SHOW_CHAT } from "../../frontend/src/lib/features";
-import { API } from "./helpers";
+import { API, REPO } from "./helpers";
 
 // The prepare page, which every section shows while it has no draft. Every figure here is invented, and each test takes
 // its own Friday so a save in one never shows in another. The test backend is in dev mode: the sources step appears only
@@ -381,6 +383,125 @@ for (const s of SECTIONS) {
   });
 }
 
+// ---- Inputs the week's workbook already answers (the demo week holds both invented workbooks) ----
+const DEMO = "2026-10-09";
+const PRISTINE = join(REPO, "backend", "data", "demo-e2e", "pristine", "inputs", "weekly", DEMO);
+const covered = (page: Page) => inputs(page).locator("[data-covered]");
+const BOOK_SECTIONS = [
+  // `folded`: the steps the workbook answers, in the page's order; `steps`: the count left of today's 11.
+  { slug: "fixed_income", title: "Fixed Income", steps: 7, folded: ["3-month bank placements", "Cytonn Money Market Fund yield, previous week", "Money market fund table", "Fund table published on"] },
+  {
+    slug: "equities",
+    title: "Equities",
+    steps: 2,
+    folded: ["Large-cap list", "Year-to-date equities turnover", "Year-to-date foreign net position", "Foreign net position recorded in the previous year", "Market P/E", "Historical average P/E", "Market dividend yield", "Historical average dividend yield", "Foreign net position, previous weeks"],
+  },
+];
+
+for (const s of BOOK_SECTIONS) {
+  test(`T154 ${s.title}: what the workbook holds is out of the step-through, in one collapsed list with its count, names and values`, async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 900 });
+    await page.goto(url(s.slug, DEMO, "&view=prepare"));
+    const card = inputs(page);
+    await expect(card.getByText(new RegExp(`^Step \\d+ of ${s.steps}$`))).toBeVisible(); // it opens on the first one missing, as today
+    const list = covered(page);
+    await expect(list.locator("summary")).toHaveText(`${s.folded.length} inputs come from the workbook`);
+    await expect(list.locator("[data-covered-item]").first()).toBeHidden(); // collapsed
+    await list.locator("summary").click();
+    await expect(list.locator("[data-covered-item] p.font-medium")).toHaveText(s.folded);
+    for (const row of await list.locator("[data-covered-item]").all()) await expect(row).toContainText(/From the workbook: \S/);
+    // none of them is a step any more: stepping to the end never shows their fields
+    while (!(await card.getByText(`Step ${s.steps} of ${s.steps}`, { exact: true }).isVisible())) await card.getByRole("button", { name: "Next", exact: true }).click();
+    await expect(card.getByText(`Step ${s.steps} of ${s.steps}`, { exact: true })).toBeVisible();
+    // the banner and the readiness check count none of them as missing
+    await expect(banner(page)).toHaveText(/^(\d+ required items? missing|Everything required is in place)/);
+    await prepare(page).getByRole("button", { name: "View checklist" }).click();
+    const missing = prepare(page).locator("#prepare-checklist li").filter({ hasText: /nothing typed and no workbook value|not yet confirmed/ });
+    for (const name of s.folded) await expect(missing.filter({ hasText: new RegExp(`^${name.replace(/[/()]/g, "\$&")}:`) })).toHaveCount(0);
+  });
+}
+
+test("T155 Fixed Income: Override opens the normal field as a step, and a typed value wins as it does today", async ({ page, request }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(url("fixed_income", DEMO, "&view=prepare"));
+  const card = inputs(page);
+  await expect(card.getByText(/^Step \d+ of 7$/)).toBeVisible();
+  await covered(page).locator("summary").click();
+  await covered(page).getByRole("button", { name: /^Override\s*: 3-month bank placements$/ }).click();
+  await expect(card.getByText("Step 1 of 8", { exact: true })).toBeVisible(); // back in its own place, first
+  await expect(covered(page).locator("summary")).toHaveText("3 inputs come from the workbook");
+  const box = card.getByLabel("3-month bank placements");
+  await expect(box).toBeFocused();
+  await expect(card.getByText("From the workbook: 9.75. Type a value to use instead.")).toBeVisible();
+  try {
+    await box.fill("9.5");
+    await box.press("Enter");
+    await expect(card.getByText("Step 2 of 8", { exact: true })).toBeVisible();
+    const form = await (await request.get(`${API}/api/inputs/weekly/${DEMO}/analyst?section=fixed_income`)).json();
+    const item = form.groups.flatMap((g: { items: { key: string }[] }) => g.items).find((i: { key: string }) => i.key === "placements");
+    expect(item.value).toBe("9.5");
+    expect(item.differences.join(" ")).toContain("The typed value is used."); // today's rule, from the API
+    await page.reload(); // still folded, with what the form holds beside the workbook's value
+    await covered(page).locator("summary").click();
+    await expect(covered(page).locator('[data-covered-item="placements"]')).toContainText("Typed, differs from the workbook");
+  } finally {
+    expect((await request.put(`${API}/api/inputs/weekly/${DEMO}/analyst?section=fixed_income`, { data: { fields: { placements: "" } } })).ok()).toBeTruthy();
+  }
+});
+
+test("T156 Fixed Income: the fund table's Override opens the fund card and says the workbook's table is still used", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(url("fixed_income", DEMO, "&view=prepare"));
+  const card = inputs(page);
+  await covered(page).locator("summary").click();
+  await expect(covered(page).locator('[data-covered-item="fund"]')).toContainText("The draft uses the workbook's fund table and its date; what is added here is their second reading.");
+  await covered(page).getByRole("button", { name: /^Override\s*: Money market fund table$/ }).click();
+  await expect(card.getByRole("region", { name: "Money market fund table" })).toBeVisible();
+  await expect(card.getByText(/^Step \d of 8$/)).toBeVisible();
+});
+
+test("T157 Fixed Income: a workbook for another week covers nothing, and the steps are today's", async ({ page, request }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  const friday = "2027-10-01";
+  const put = await request.put(`${API}/api/inputs/weekly/${friday}/fi_workbook?filename=fi_workbook.xlsx`, { data: readFileSync(join(PRISTINE, "fi_workbook.xlsx")) });
+  expect(put.ok(), await put.text()).toBeTruthy();
+  await page.goto(url("fixed_income", friday, "&view=prepare"));
+  await expect(inputs(page).getByText("Step 1 of 11", { exact: true })).toBeVisible();
+  await expect(covered(page)).toHaveCount(0);
+});
+
+test("T161 Fixed Income: an upload refolds the steps with no reload, and the analyst stays on the same step", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  // Before the upload the form is read as if no workbook were in; the upload itself is stood in for, so the demo week is unchanged.
+  let uploaded = false;
+  await page.route(/\/api\/inputs\/weekly\/[^/]+\/analyst\?/, async (route) => {
+    if (uploaded || route.request().method() !== "GET") return route.fallback();
+    const form = await (await route.fetch()).json();
+    for (const g of form.groups) for (const i of g.items) Object.assign(i, i.type === "field" ? { workbook: null } : { workbook_rows: null, workbook_ref: null });
+    await route.fulfill({ json: form });
+  });
+  await page.route(/\/api\/inputs\/weekly\/[^/]+\/fi_workbook\?filename=/, async (route) => {
+    if (route.request().method() !== "PUT") return route.fallback();
+    uploaded = true;
+    await route.fulfill({ json: {} });
+  });
+  await page.goto(url("fixed_income", DEMO, "&view=prepare"));
+  const card = inputs(page);
+  await expect(card.getByText(/^Step \d+ of 11$/)).toBeVisible();
+  await expect(covered(page)).toHaveCount(0);
+  // stand on a step the workbook does not answer, so it is still there after the refold
+  // a single-value step's own label (the fund card and the tables have none of this kind)
+  const label = () => card.locator('[data-step]:visible label[for^="steps-prepare_inputs-"]');
+  const folded = BOOK_SECTIONS[0].folded;
+  const standing = async () => ((await label().count()) ? ((await label().first().textContent()) ?? "").trim() : "");
+  while (!(await standing()) || folded.includes(await standing())) await card.getByRole("button", { name: "Next", exact: true }).click();
+  const on = await standing();
+
+  await prepare(page).getByLabel("Upload Fixed income workbook", { exact: true }).setInputFiles(join(PRISTINE, "fi_workbook.xlsx"));
+  await expect(covered(page).locator("summary")).toHaveText(`${folded.length} inputs come from the workbook`);
+  await expect(card.getByText(/^Step \d+ of 7$/)).toBeVisible();
+  await expect(label().first()).toHaveText(on);
+});
 // The card 1 rows that take an upload, one per section that has one; the same row markup for each. Every route below is
 // stood in for, so nothing is uploaded, kept or removed on the test backend, and every file name is invented.
 const UPLOADS = [

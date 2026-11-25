@@ -1,3 +1,4 @@
+import { inWorkbook } from "./analyst";
 import { FETCHABLE_ITEMS, GROUPS, type Readiness, type ReadinessEntry } from "./chatcards";
 import { snipCounts } from "./snips";
 import { MAX_TOPIC, sectionTitles, sectionsProblem, topicLength } from "./topic";
@@ -46,7 +47,36 @@ export function prepareSteps(opts: { form: AnalystForm | null; sectors: { id: st
   ];
 }
 
-/** The step an address names: a step's key, or "snips" for the first snip step. */
+/** The form item a step stands for: the fund step is the fund table. */
+export const itemKey = (step: Step) => (step.kind === "fund" ? "mmf" : step.key);
+
+/** The keys of the steps this week's uploaded workbook already answers. The rule is the form's own status fields
+ *  (`inWorkbook`: `workbook` / `workbook_rows`, which the API leaves empty for a missing workbook or one for another week,
+ *  and which the readiness check reads as "from the workbook"); a table counts only when the workbook fills every one of its
+ *  columns (the Eurobond issues' yield at issue is never in it), and a value waiting to be confirmed is never folded away. */
+export function coveredKeys(steps: Step[], form: AnalystForm | null): string[] {
+  const items = new Map(formItems(form).map((i) => [i.key, i] as const));
+  return steps.flatMap((s) => {
+    const i = s.kind === "item" || s.kind === "fund" ? items.get(itemKey(s)) : undefined;
+    if (!i || i.needs_confirmation || !inWorkbook(i)) return [];
+    const full = i.type === "field" || i.columns.every((c) => i.workbook_rows!.some((r) => r[c.key]));
+    return full ? [s.key] : [];
+  });
+}
+
+/** The steps still to go through and the ones folded into "from the workbook"; an overridden step goes back in its place. */
+export function splitSteps(steps: Step[], covered: string[], overridden: string[] = []) {
+  const folded = (s: Step) => covered.includes(s.key) && !overridden.includes(s.key);
+  return { shown: steps.filter((s) => !folded(s)), folded: steps.filter(folded) };
+}
+
+/** Where the stepper stands once its steps change (a refold): the same step if it is still there, else the first one left. */
+export function keepStep(before: string[], now: string[], at: number): number {
+  const i = now.indexOf(before[at]);
+  return i >= 0 ? i : 0;
+}
+
+/** The step an address names:a step's key, or "snips" for the first snip step. */
 export const stepIndex = (steps: Step[], key: string | null | undefined) =>
   key ? steps.findIndex((s) => s.key === key || (key === "snips" && s.kind === "snips")) : -1;
 

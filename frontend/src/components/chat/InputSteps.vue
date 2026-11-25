@@ -5,9 +5,9 @@ import GridTable from "@/components/review/analyst/GridTable.vue";
 import PasteTable from "@/components/review/analyst/PasteTable.vue";
 import Button from "@/components/ui/Button.vue";
 import * as api from "@/lib/api";
-import { range } from "@/lib/analyst";
+import { fieldOrigin, inWorkbook, originLabel, range, tableOrigin } from "@/lib/analyst";
 import { typedProblem } from "@/lib/chatcards";
-import { NO_STEPS_LINE, type Step } from "@/lib/prepare";
+import { NO_STEPS_LINE, type Step, itemKey, keepStep, plural, splitSteps } from "@/lib/prepare";
 import type { AnalystField, AnalystForm, AnalystItem } from "@/lib/types";
 
 const props = defineProps<{
@@ -24,14 +24,19 @@ const props = defineProps<{
   /** The card's number on the prepare page; none in the chat. */
   n?: number;
   dataCard: string;
+  /** Keys of steps the uploaded workbook already answers: folded into one list, out of the step-through, until overridden. */
+  covered?: string[];
 }>();
 const emit = defineEmits<{ changed: []; form: [form: AnalystForm]; done: [] }>();
 defineSlots<{ step(props: { step: Step; next: () => void }): unknown }>();
 
+const overridden = ref<string[]>([]);
+const split = computed(() => splitSteps(props.steps, props.covered ?? [], overridden.value));
+const shown = computed(() => split.value.shown);
 const typed = ref<Record<string, string>>({});
 const errors = ref<Record<string, string>>({});
 const busy = ref<string | null>(null);
-const at = ref(Math.min(props.start, Math.max(props.steps.length - 1, 0)));
+const at = ref(Math.min(props.start, Math.max(shown.value.length - 1, 0)));
 const finished = ref(false);
 const announce = ref("");
 const body = useTemplateRef<HTMLElement>("body");
@@ -57,13 +62,21 @@ function savedOf(i: AnalystItem | undefined): string | null {
 }
 const carriedWord = (i: AnalystItem) => (i.carried?.from === "suggested" ? "Suggested" : i.carried?.from === "fetched" ? "Fetched" : "Carried from last week");
 
-const left = computed(() => props.steps.flatMap((s, i) => (props.missing.includes(s.key) ? [i] : [])));
-const last = computed(() => at.value === props.steps.length - 1);
+// A refold (an upload, a removal, a fetch, an Override) changes which steps are shown: stay on the same step by its key.
+watch(
+  () => shown.value.map((s) => s.key),
+  (now, before) => {
+    if (now.join() !== before.join()) at.value = keepStep(before, now, at.value);
+  },
+);
+
+const left = computed(() => shown.value.flatMap((s, i) => (props.missing.includes(s.key) ? [i] : [])));
+const last = computed(() => at.value === shown.value.length - 1);
 
 async function go(i: number) {
   at.value = i;
   finished.value = false;
-  announce.value = `Step ${i + 1} of ${props.steps.length}, ${props.steps[i].label}`;
+  announce.value = `Step ${i + 1} of ${shown.value.length}, ${shown.value[i].label}`;
   await nextTick();
   body.value?.querySelector<HTMLElement>(`[data-step="${i}"] :is(input:not([type=file]), textarea, select)`)?.focus();
 }
@@ -101,17 +114,40 @@ function saveField(i: AnalystField) {
   else void save(i.key, { fields: { [i.key]: text.trim() } });
 }
 const confirm = (key: string) => save(key, { confirm: [key] });
+
+/** What the workbook holds for a folded step, in words. */
+function bookValue(step: Step): string {
+  const i = byKey.value.get(itemKey(step));
+  if (!i || !inWorkbook(i)) return "";
+  if (i.type === "field") return shownOf(i.workbook!.value);
+  const n = i.workbook_rows!.length;
+  return `${n} row${n === 1 ? "" : "s"}${i.workbook_ref ? `, ${i.workbook_ref}` : ""}`;
+}
+/** Beside the workbook's value: what the form holds too, when it holds anything (a typed value wins, the fund table aside). */
+function alsoHeld(step: Step): string {
+  const i = byKey.value.get(itemKey(step));
+  if (!i) return "";
+  const origin = i.type === "field" ? fieldOrigin(i) : tableOrigin(i);
+  return origin === "workbook" ? "" : originLabel(origin, i.carried, undefined, true);
+}
+const firstOf = (step: Step) => byKey.value.get(itemKey(step))?.workbook_first === true;
+/** The normal field, back in the step-through in its own place, opened. */
+async function override(key: string) {
+  overridden.value = [...overridden.value, key];
+  await nextTick();
+  await go(shown.value.findIndex((s) => s.key === key));
+}
 </script>
 
 <template>
   <section :aria-labelledby="id('title')" class="space-y-4 rounded-lg border p-4 sm:p-6" :data-card="dataCard">
     <div class="flex flex-wrap items-baseline justify-between gap-2">
       <h3 :id="id('title')" class="text-lg font-semibold"><span v-if="n" class="mr-2 tabular-nums">{{ n }}</span>{{ heading }}</h3>
-      <p v-if="steps.length && !finished" class="text-sm text-muted-foreground tabular-nums">Step {{ at + 1 }} of {{ steps.length }}</p>
+      <p v-if="shown.length && !finished" class="text-sm text-muted-foreground tabular-nums">Step {{ at + 1 }} of {{ shown.length }}</p>
     </div>
     <p aria-live="polite" class="sr-only">{{ announce }}</p>
 
-    <p v-if="!steps.length" class="text-sm">{{ NO_STEPS_LINE }}</p>
+    <p v-if="!shown.length" class="text-sm">{{ split.folded.length ? "Nothing to type: everything here comes from the workbook." : NO_STEPS_LINE }}</p>
     <p v-else-if="finished && !left.length" class="text-sm">Everything required here is in place.</p>
     <div v-else-if="finished" class="flex flex-wrap items-center gap-2">
       <p class="text-sm">{{ left.length }} still to do</p>
@@ -119,7 +155,7 @@ const confirm = (key: string) => save(key, { confirm: [key] });
     </div>
 
     <div v-else ref="body">
-      <div v-for="(step, i) in steps" v-show="i === at" :key="step.key" :data-step="i" class="space-y-3">
+      <div v-for="(step, i) in shown" v-show="i === at" :key="step.key" :data-step="i" class="space-y-3">
         <template v-if="step.kind === 'item'">
           <template v-for="item in [byKey.get(step.key)]" :key="item?.key ?? step.key">
             <p v-if="!item" class="text-sm text-muted-foreground" aria-busy="true">Reading the form…</p>
@@ -220,7 +256,7 @@ const confirm = (key: string) => save(key, { confirm: [key] });
       </div>
     </div>
 
-    <div v-if="steps.length && !finished" class="flex flex-wrap justify-end gap-2 border-t pt-4">
+    <div v-if="shown.length && !finished" class="flex flex-wrap justify-end gap-2 border-t pt-4">
       <Button variant="outline" class="min-h-11" :disabled="at === 0 || busy !== null" @click="go(at - 1)">
         <PhArrowLeft weight="bold" data-icon="inline-start" aria-hidden="true" />Previous
       </Button>
@@ -228,5 +264,21 @@ const confirm = (key: string) => save(key, { confirm: [key] });
         {{ last ? "Done" : "Next" }}<PhArrowRight v-if="!last" weight="bold" data-icon="inline-end" aria-hidden="true" />
       </Button>
     </div>
+
+    <!-- What this week's workbook already holds: out of the step-through, each one a click from its normal field. -->
+    <details v-if="split.folded.length" class="rounded-md border px-4" data-covered>
+      <summary class="flex min-h-11 cursor-pointer items-center text-sm font-medium">{{ plural(split.folded.length, "input comes", "inputs come") }} from the workbook</summary>
+      <ul class="divide-y border-t">
+        <li v-for="step in split.folded" :key="step.key" class="flex flex-wrap items-center gap-3 py-3" :data-covered-item="step.key">
+          <div class="min-w-0 flex-1 basis-60 space-y-0.5 text-sm">
+            <p class="font-medium">{{ step.label }}</p>
+            <p class="text-muted-foreground [overflow-wrap:anywhere]">From the workbook: <span class="text-foreground">{{ bookValue(step) }}</span></p>
+            <p v-if="alsoHeld(step)" class="text-xs text-muted-foreground">{{ alsoHeld(step) }}</p>
+            <p v-if="firstOf(step)" class="text-xs text-muted-foreground">The draft uses the workbook's fund table and its date; what is added here is their second reading.</p>
+          </div>
+          <Button variant="outline" class="min-h-11" :disabled="busy !== null" @click="override(step.key)">Override<span class="sr-only">: {{ step.label }}</span></Button>
+        </li>
+      </ul>
+    </details>
   </section>
 </template>
