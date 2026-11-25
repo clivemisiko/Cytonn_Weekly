@@ -425,8 +425,14 @@ class WeeklyInputs:
         """Parse this week's stored workbooks into _PARSED through the form's own read path, so the next request hits the cache."""
         for slug in slugs:
             prop = _WARM_PROPS.get(slug)
-            if prop is not None:
-                getattr(self, prop)
+            if prop is None:
+                continue
+            started = time.perf_counter()
+            getattr(self, prop)
+            if self.loads.get(_WARM_KEYS[slug]) == "parsed":
+                # WARNING, not INFO: nothing configures the cytonn_weekly loggers, so only WARNING reaches docker logs.
+                _log.warning("workbook warm-up: week ending %s, %s parsed in %.1f s", self.week.ending.isoformat(), slug,
+                             time.perf_counter() - started)
 
     def earlier(self, stored_name: str) -> bool:
         """Whether a stored workbook's own date (identify) falls in an earlier week than this one, or cannot be read, so it
@@ -524,17 +530,18 @@ class WeeklyInputs:
 # ---------------------------------------------------------------------------
 
 _WARM_PROPS = {EQUITIES_WORKBOOK: "equities_book", FI_WORKBOOK: "fi_book"}
+_WARM_KEYS = {EQUITIES_WORKBOOK: "eq", FI_WORKBOOK: "fi"}
 # One worker: one workbook parsed at a time, so a warm-up never doubles the memory of a parse on a small box.
 _WARMER = ThreadPoolExecutor(max_workers=1, thread_name_prefix="workbook-warm")
 _log = logging.getLogger(__name__)
-WARM_WEEKS = 2   # the current and the most recent week: at most 2 weeks x 2 workbooks = 4 entries, under _PARSED_MAX
+WARM_WEEKS = 3   # at most 3 weeks x 2 workbooks = 6 entries, exactly _PARSED_MAX
 
 
 def _warm_now(weeks: Optional[list[Week]], root: Optional[Path], slugs: tuple[str, ...]) -> None:
     started = time.perf_counter()
     try:
         weeks = weeks if weeks is not None else recent_weeks(root)
-        for week in weeks:
+        for week in reversed(weeks):   # oldest first, so the newest week is the last used and the last the cache evicts
             WeeklyInputs(week, root).warm(slugs)
     except Exception:  # noqa: BLE001 - a failed warm-up only means the first request parses, as before
         _log.exception("warming the parsed-workbook cache failed")
@@ -543,14 +550,19 @@ def _warm_now(weeks: Optional[list[Week]], root: Optional[Path], slugs: tuple[st
 
 
 def recent_weeks(root: Optional[Path] = None, count: int = WARM_WEEKS) -> list[Week]:
-    """The newest weeks that have stored inputs, newest first."""
+    """The newest weeks whose equities or fixed income workbook is for that week by the form's own rule (stored, and not for an
+    earlier week or undated: WeeklyInputs.earlier), newest first.  A folder holding only an earlier week's workbook is passed over."""
     folder = inputs_root(root)
     found = []
     for child in sorted(folder.iterdir(), reverse=True) if folder.is_dir() else []:
         try:
-            found.append(Week(date.fromisoformat(child.name)))
+            week = Week(date.fromisoformat(child.name))
         except ValueError:
             continue
+        reader = WeeklyInputs(week, root)
+        names = (f"{slug}.xlsx" for slug in _WARM_PROPS)
+        if any(reader._path(name) is not None and not reader.earlier(name) for name in names):
+            found.append(week)
         if len(found) == count:
             break
     return found
