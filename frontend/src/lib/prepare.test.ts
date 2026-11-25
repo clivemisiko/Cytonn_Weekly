@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Readiness } from "./chatcards";
-import { coveredKeys, focusProblems, itemSteps, noDocumentsLine, openingStep, prepareCounts, prepareSteps, readFocus, splitSteps, stepIndex, writeFocus } from "./prepare";
+import { coveredKeys, focusProblems, itemSteps, keepStep, noDocumentsLine, openingStep, prepareCounts, prepareSteps, readFocus, splitSteps, stepIndex, writeFocus } from "./prepare";
 import type { AnalystForm, SnipMeta, SnipsListing, SourcePiece } from "./types";
 
 const field = (key: string, kind = "number") => ({ type: "field", key, label: `Fake ${key}`, kind }) as never;
@@ -132,6 +132,9 @@ describe("inputs this week's workbook already answers", () => {
     { slug: "focus", form: null, covered: [] },
   ];
   const stepsOf = (f: AnalystForm | null) => prepareSteps({ form: f, sectors: [], topic: false, sources: true });
+  /** The same form with no workbook: what the page held before the upload, or holds after the removal. */
+  const f0 = (f: AnalystForm | null) =>
+    f && ({ groups: f.groups.map((g) => ({ ...g, items: g.items.map((i) => ({ ...i, ...(i.type === "field" ? { workbook: null } : { workbook_rows: null, workbook_ref: null }) })) })) } as AnalystForm);
 
   for (const s of SECTIONS) {
     it(`${s.slug}: what the workbook holds leaves the step-through, and the count is of what is left`, () => {
@@ -162,6 +165,20 @@ describe("inputs this week's workbook already answers", () => {
         expect(coveredKeys(all, f)).toEqual([]);
         expect(splitSteps(all, coveredKeys(all, f)).shown).toEqual(all);
       }
+    });
+
+    it(`${s.slug}: a refold after an upload or a removal keeps the step the analyst is on, else opens the first one left`, () => {
+      const none = f0(s.form);
+      const keys = (f: AnalystForm | null) => splitSteps(stepsOf(f), coveredKeys(stepsOf(f), f)).shown.map((x) => x.key);
+      for (const [before, now] of [[keys(none), keys(s.form)], [keys(s.form), keys(none)]]) {
+        before.forEach((key, at) => {
+          const i = keepStep(before, now, at);
+          if (now.includes(key)) expect(now[i]).toBe(key);
+          else expect(i).toBe(0);
+        });
+      }
+      // a removal only brings steps back, so the analyst never moves to another step
+      keys(s.form).forEach((key, at) => expect(keys(none)[keepStep(keys(s.form), keys(none), at)]).toBe(key));
     });
 
     it(`${s.slug}: the banner, the readiness check and the step count agree`, () => {
@@ -199,5 +216,14 @@ describe("inputs this week's workbook already answers", () => {
     const f = form(typed);
     expect(coveredKeys(stepsOf(f), f)).toEqual(["placements"]);
     expect(originLabel(fieldOrigin(typed as never), null, undefined, true)).toBe("Typed, differs from the workbook");
+  });
+});
+
+describe("keepStep", () => {
+  it("follows the step by its key, and falls back to the first step when it is folded away", () => {
+    expect(keepStep(["a", "b", "c"], ["a", "c"], 2)).toBe(1);
+    expect(keepStep(["a", "b", "c"], ["a", "c"], 1)).toBe(0);
+    expect(keepStep(["a", "c"], ["a", "b", "c"], 1)).toBe(2);
+    expect(keepStep(["a"], [], 0)).toBe(0);
   });
 });

@@ -70,7 +70,13 @@ export function splitSteps(steps: Step[], covered: string[], overridden: string[
   return { shown: steps.filter((s) => !folded(s)), folded: steps.filter(folded) };
 }
 
-/** The step an address names: a step's key, or "snips" for the first snip step. */
+/** Where the stepper stands once its steps change (a refold): the same step if it is still there, else the first one left. */
+export function keepStep(before: string[], now: string[], at: number): number {
+  const i = now.indexOf(before[at]);
+  return i >= 0 ? i : 0;
+}
+
+/** The step an address names:a step's key, or "snips" for the first snip step. */
 export const stepIndex = (steps: Step[], key: string | null | undefined) =>
   key ? steps.findIndex((s) => s.key === key || (key === "snips" && s.kind === "snips")) : -1;
 

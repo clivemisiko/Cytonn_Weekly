@@ -45,9 +45,13 @@ const pieces = shallowRef<SourcePiece[] | null>(null);
 const talked = ref(false);
 const shapeProblem = ref<string | null>(null);
 const steps = shallowRef<Step[] | null>(null);
-/** The steps this week's workbook answers, read with the steps and fixed with them. */
+/** The steps this week's workbook answers, read with the steps and worked out again with them on a refold. */
 const covered = shallowRef<string[]>([]);
 let rowOrder: string[] = [];
+/** Counts each finished read, so the steps are worked out once from a readiness and a form read together. */
+const reads = ref(0);
+/** Set by an upload, a removal or a fetch: the next finished read works the steps out again. */
+let refold = false;
 
 // What the section is made of follows from its data: a form when the readiness check lists typed items, snips when it
 // counts snips, a topic when the section needs one, sources when the drafting engine searches.
@@ -70,11 +74,15 @@ async function read() {
   talked.value = got.conversation === true;
   shapeProblem.value = readiness.value ? null : "The readiness check came back in a shape this page does not know.";
   if (readiness.value?.snips && !snips.listing.value) await snips.load();
-  if (hasForm.value && !form.value) await readForm();
+  // Read again on a refold: an upload, a removal or a fetch changes what the workbook holds, and with it what folds.
+  if (hasForm.value && (!form.value || refold)) await readForm();
+  else reads.value++;
 }
 
 async function readForm() {
-  if (await formCall.run()) form.value = formCall.value.value;
+  if (!(await formCall.run())) return;
+  form.value = formCall.value.value;
+  reads.value++;
 }
 
 // ---- Focus of the Week: the topic and titles live on this page, mirrored to session storage for a reload ----
@@ -103,7 +111,8 @@ const focus = computed(() => (props.section.needs_topic ? { topic: topic.value, 
 const topicOver = computed(() => topicLength(topic.value) > MAX_TOPIC);
 const titlesError = computed(() => sectionsProblem(titles.value));
 
-function done() {
+function done(fold = false) {
+  refold ||= fold;
   emit("changed");
   void read();
 }
@@ -112,11 +121,14 @@ function done() {
 const counts = computed(() => (readiness.value ? prepareCounts(readiness.value, { snips: snips.listing.value, sources: pieces.value, focus: focus.value }) : null));
 const checklistOpen = ref(false);
 
-// ---- Card 2: every input, in one fixed order, captured once everything it is built from has been read ----
+// ---- Card 2: every input, in one fixed order, worked out once everything it is built from has been read, and again after an
+// upload, a removal or a fetch (a save does not refold: a value just confirmed stays where the analyst is). InputSteps keeps
+// the analyst on the same step by its key. ----
 watch(
-  [readiness, form, snips.listing],
+  reads,
   () => {
-    if (steps.value || !readiness.value || (hasForm.value && !form.value) || (readiness.value.snips && !snips.listing.value)) return;
+    if ((steps.value && !refold) || !readiness.value || (hasForm.value && !form.value) || (readiness.value.snips && !snips.listing.value)) return;
+    refold = false;
     const all = prepareSteps({ form: form.value, sectors: snips.listing.value?.sectors ?? [], topic: props.section.needs_topic, sources: takesSources.value });
     covered.value = coveredKeys(all, form.value);
     steps.value = all;
@@ -146,7 +158,7 @@ async function act(key: string, call: () => Promise<unknown>) {
     actionProblem.value = (err as Error).message;
   } finally {
     busy.value = null;
-    done();
+    done(true);
   }
 }
 const fetchRow = (key: string) => act(`fetch-${key}`, () => (key === "cbk_bulletin" ? api.fetchBulletin(week.value) : api.fetchAnalystTable(week.value, props.section.slug, key)));

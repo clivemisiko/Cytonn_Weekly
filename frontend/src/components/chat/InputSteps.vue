@@ -7,7 +7,7 @@ import Button from "@/components/ui/Button.vue";
 import * as api from "@/lib/api";
 import { fieldOrigin, inWorkbook, originLabel, range, tableOrigin } from "@/lib/analyst";
 import { typedProblem } from "@/lib/chatcards";
-import { NO_STEPS_LINE, type Step, itemKey, plural, splitSteps } from "@/lib/prepare";
+import { NO_STEPS_LINE, type Step, itemKey, keepStep, plural, splitSteps } from "@/lib/prepare";
 import type { AnalystField, AnalystForm, AnalystItem } from "@/lib/types";
 
 const props = defineProps<{
@@ -61,6 +61,14 @@ function savedOf(i: AnalystItem | undefined): string | null {
   return shownOf(i.value) || null;
 }
 const carriedWord = (i: AnalystItem) => (i.carried?.from === "suggested" ? "Suggested" : i.carried?.from === "fetched" ? "Fetched" : "Carried from last week");
+
+// A refold (an upload, a removal, a fetch, an Override) changes which steps are shown: stay on the same step by its key.
+watch(
+  () => shown.value.map((s) => s.key),
+  (now, before) => {
+    if (now.join() !== before.join()) at.value = keepStep(before, now, at.value);
+  },
+);
 
 const left = computed(() => shown.value.flatMap((s, i) => (props.missing.includes(s.key) ? [i] : [])));
 const last = computed(() => at.value === shown.value.length - 1);
