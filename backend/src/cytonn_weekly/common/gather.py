@@ -16,7 +16,7 @@ import httpx
 from cytonn_weekly import paths
 from cytonn_weekly.common import atomic
 from cytonn_weekly.common import run_events as ev
-from cytonn_weekly.common import site_read, source_policy
+from cytonn_weekly.common import content_dates, site_read, source_policy
 from cytonn_weekly.common import sources as store
 from cytonn_weekly.source_pieces import Piece
 
@@ -112,21 +112,35 @@ def _usable(pool: Iterable[dict[str, Any]], start: date, end: date, skip: set[st
 def _save(r: dict[str, Any], piece: Piece, fetch: Fetch, root: Optional[Path],
           on_event: Optional[ev.Observer] = None) -> Optional[store.SourceText]:
     """The page itself through fetch_page; if it cannot be read, the text the search returned; else nothing. A page whose
-    own date is outside the piece's window is left out (said in a run event), and its search text is not kept either."""
+    own date is outside the piece's window, who states none, or whose own words date it outside (its dateline or the
+    period it reports) is left out (said in a run event), and its search text is not kept either.
+
+    The search service's date only chooses which results to look at: it never dates a page (it is often the day the page
+    was crawled, which is how a 2024 results page once reached a 2026 draft). The search text is kept only when it carries
+    a dateline of its own inside the window."""
     url = r["url"]
+    title = str(r.get("title") or "")
     try:
-        return fetch(url, piece.subject, piece.end, root=root, origin="found", fallback_date=r["day"], window=piece.window)
+        return fetch(url, piece.subject, piece.end, root=root, origin="found", window=piece.window)
     except store.OutOfWindow as exc:
-        ev.emit(on_event, ev.SOURCE_LEFT_OUT, str(r.get("title") or store.host_of(url)), detail=str(exc))
+        ev.emit(on_event, ev.SOURCE_LEFT_OUT, title or store.host_of(url), detail=str(exc))
         return None
     except Exception as exc:  # noqa: BLE001 - one page never stops the gather
         log.warning("gather: fetch of %s failed: %s", store.host_of(url), type(exc).__name__)
     text = str(r.get("text") or "").strip()
     if len(text) < store.MIN_CHARS:
         return None
+    day = content_dates.dateline(text)
+    start, end = piece.window
+    why = ("its text states no date" if day is None else
+           content_dates.content_problem(title, text, piece.window) or ("" if start <= day <= end else f"its text is dated {day}"))
+    if why:
+        ev.emit(on_event, ev.SOURCE_LEFT_OUT, title or store.host_of(url),
+                detail=store.OUT_OF_WINDOW_CONTENT.format(host=store.host_of(url), why=why))
+        return None
     flags = (store.TEXT_FROM_SEARCH,) + ((store.INSECURE,) if url.lower().startswith("http://") else ())
     try:
-        return store.from_paste(url, r["day"], text, piece.subject, piece.end, title=str(r.get("title") or ""), root=root,
+        return store.from_paste(url, day.isoformat(), text, piece.subject, piece.end, title=title, root=root,
                                 origin="found", extra_flags=flags)
     except Exception as exc:  # noqa: BLE001
         log.warning("gather: the search text from %s could not be kept: %s", store.host_of(url), type(exc).__name__)

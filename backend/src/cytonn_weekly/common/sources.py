@@ -18,7 +18,7 @@ from typing import Any, Callable, Optional
 from urllib.parse import urljoin, urlsplit
 
 from cytonn_weekly import paths
-from cytonn_weekly.common import http, source_policy
+from cytonn_weekly.common import content_dates, http, source_policy
 from cytonn_weekly.equities import companies
 from cytonn_weekly.weekly.week import latest_friday
 
@@ -93,6 +93,7 @@ PAYWALL = ("The page at {host} shows a login or subscription prompt instead of t
            "text with its address and date instead.")
 SHORT = "The page at {host} has only {n} characters of text, too short to be an article, so nothing was kept."
 OUT_OF_WINDOW = "The page at {host} is dated {day}, outside the report week, so nothing was kept."
+OUT_OF_WINDOW_CONTENT = "The page at {host} is outside the report week ({why}), so nothing was kept."
 NO_SUBJECT = "Say which piece this source is for."
 NO_URL = "Give the address (URL) of the page the text came from."
 BAD_URL = "{url!r} is not a web address; it must start with http:// or https:// and name a site."
@@ -314,13 +315,18 @@ def read_html(body: bytes, content_type: str = "") -> tuple[str, str, str, bool]
     return text, (reader.og_title or " ".join(reader.title.split())), reader.date or reader.time_date, gated
 
 
-def read_pdf(body: bytes) -> tuple[str, str]:
+def read_pdf(body: bytes) -> tuple[str, str, str]:
+    """(text, title, the document's own date): the dateline at its top, else the day the file says it was created
+    (its CreationDate, "D:20261118..."), else ""."""
     import pdfplumber
 
     with pdfplumber.open(io.BytesIO(body)) as pdf:
         text = "\n\n".join((page.extract_text() or "").strip() for page in pdf.pages).strip()
-        title = str((pdf.metadata or {}).get("Title") or "").strip()
-    return text, title
+        meta = pdf.metadata or {}
+    title = str(meta.get("Title") or "").strip()
+    line = content_dates.dateline(text)
+    created = re.match(r"D:(\d{4})(\d{2})(\d{2})", str(meta.get("CreationDate") or ""))
+    return text, title, line.isoformat() if line else _iso_date("-".join(created.groups()) if created else "")
 
 
 # --- storage ------------------------------------------------------------------------------------------------------
@@ -507,7 +513,10 @@ def fetch_page(url: str, subject: str, week_end: date, *, http_get: Callable[...
 
     A never_read host (equities/source_policy.json) is refused whoever asks; the gather step reads only hosts the policy
     allows for the piece (common/gather.py). ``origin`` is "found" for a page the gather step chose; ``fallback_date`` (YYYY-MM-DD) is the date used only when the
-    page states none of its own (a PDF never does). With ``window``, a page whose date is outside it, or unknown, is not kept.
+    page states none of its own (meta tags or a time element, else the dateline at the top of its text; a PDF's dateline,
+    else its CreationDate). With ``window``, a page whose date is outside it or unknown, or whose own words date it
+    outside it (content_dates.content_problem: its dateline, or the newest reporting period its title and opening
+    name), is not kept.
 
     ``http_get(url, max_bytes=...)`` answers once and follows nothing (common/http.http_get_once); this function
     follows at most MAX_HOPS redirects itself, each only to the same host, and applies every rule to each address.
@@ -530,6 +539,8 @@ def fetch_page(url: str, subject: str, week_end: date, *, http_get: Callable[...
         raise SourceError(UNREADABLE.format(host=host_of(url) or "that address")) from None
     if window and not window[0].isoformat() <= page.published_date <= window[1].isoformat():
         raise OutOfWindow(OUT_OF_WINDOW.format(host=page.host, day=page.published_date or "no date"))
+    if window and (why := content_dates.content_problem(page.title, page.text, window)):
+        raise OutOfWindow(OUT_OF_WINDOW_CONTENT.format(host=page.host, why=why))
     return _save(page, body, raw_name, root)
 
 
@@ -622,13 +633,14 @@ def _read_page(url: str, subject: str, week_end: date, http_get: Callable[..., h
             raise SourceError(NOT_A_PAGE.format(host=host, kind=kind or "no type stated"))
     if is_pdf:
         try:
-            text, title = read_pdf(body)
+            text, title, published = read_pdf(body)
         except Exception:  # noqa: BLE001 - pdfplumber raises many kinds for a damaged file
             raise SourceError(EMPTY.format(host=host)) from None
-        published, gated, raw_name = "", False, ".pdf"
+        gated, raw_name = False, ".pdf"
     else:
         text, title, published, gated = read_html(body, headers.get("content-type", ""))
-        raw_name = ".html"
+        line = None if published else content_dates.dateline(text)
+        published, raw_name = published or (line.isoformat() if line else ""), ".html"
     if not text.strip():
         raise SourceError(PAYWALL.format(host=host) if gated else EMPTY.format(host=host))
     if gated:
