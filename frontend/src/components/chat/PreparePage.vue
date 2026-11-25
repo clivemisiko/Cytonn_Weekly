@@ -16,7 +16,7 @@ import { type KeptFile, type Readiness, draftCard, hasDraftWork, parseReadiness,
 import { useDraftStart } from "@/lib/draftstart";
 import { usePart } from "@/lib/loadpart";
 import { SHOW_CHAT } from "@/lib/features";
-import { type Step, coveredKeys, focusProblems, noDocumentsLine, openingStep, plural, prepareCounts, prepareSteps, readFocus, splitSteps, writeFocus } from "@/lib/prepare";
+import { type Folds, type Step, focusProblems, foldKeys, foldedAll, noDocumentsLine, openingStep, plural, prepareCounts, prepareSteps, readFocus, splitSteps, writeFocus } from "@/lib/prepare";
 import { MARKS } from "@/lib/railmarks";
 import type { RailState } from "@/lib/shell";
 import { usesSources } from "@/lib/sources";
@@ -46,8 +46,8 @@ const pieces = shallowRef<SourcePiece[] | null>(null);
 const talked = ref(false);
 const shapeProblem = ref<string | null>(null);
 const steps = shallowRef<Step[] | null>(null);
-/** The steps this week's workbook answers, read with the steps and worked out again with them on a refold. */
-const covered = shallowRef<string[]>([]);
+/** The steps folded out of the step-through (the workbook's, the defaults in use, the optional ones), read with the steps and worked out again with them on a refold. */
+const folds = shallowRef<Folds>({ covered: [], defaults: [], optional: [] });
 let rowOrder: string[] = [];
 /** Counts each finished read, so the steps are worked out once from a readiness and a form read together. */
 const reads = ref(0);
@@ -99,7 +99,7 @@ watch(
     form.value = null;
     pieces.value = null;
     steps.value = null;
-    covered.value = [];
+    folds.value = { covered: [], defaults: [], optional: [] };
     snips.listing.value = null;
     rowOrder = [];
     ({ topic: topic.value, titles: titles.value } = props.section.needs_topic ? readFocus(props.report.period, props.section.slug) : { topic: "", titles: "" });
@@ -131,12 +131,12 @@ watch(
     if ((steps.value && !refold) || !readiness.value || (hasForm.value && !form.value) || (readiness.value.snips && !snips.listing.value)) return;
     refold = false;
     const all = prepareSteps({ form: form.value, sectors: snips.listing.value?.sectors ?? [], topic: props.section.needs_topic, sources: takesSources.value });
-    covered.value = coveredKeys(all, form.value);
+    folds.value = foldKeys(all, form.value, readiness.value);
     steps.value = all;
   },
   { immediate: true },
 );
-const start = computed(() => (steps.value && counts.value ? openingStep(splitSteps(steps.value, covered.value).shown, counts.value.missing, props.openOn) : 0));
+const start = computed(() => (steps.value && counts.value ? openingStep(splitSteps(steps.value, foldedAll(folds.value)).shown, counts.value.missing, props.openOn) : 0));
 const sectorOf = (key: string) => snips.bySector.value.find((s) => `snips:${s.id}` === key);
 
 // ---- Card 1: source documents, in the order first seen ----
@@ -359,7 +359,9 @@ const mark = computed(() => MARKS[props.state ?? "unknown"]);
         v-if="steps"
         :key="`${section.slug} ${report.period}`"
         :steps="steps"
-        :covered="covered"
+        :covered="folds.covered"
+        :defaults="folds.defaults"
+        :optional="folds.optional"
         :form="form"
         :week="week"
         :section="section.slug"

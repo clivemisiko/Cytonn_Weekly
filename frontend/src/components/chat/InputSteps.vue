@@ -7,6 +7,7 @@ import Button from "@/components/ui/Button.vue";
 import * as api from "@/lib/api";
 import { fieldOrigin, inWorkbook, originLabel, range, tableOrigin } from "@/lib/analyst";
 import { typedProblem } from "@/lib/chatcards";
+import { friendlyDate } from "@/lib/format";
 import { NO_STEPS_LINE, type Step, itemKey, keepStep, plural, splitSteps } from "@/lib/prepare";
 import type { AnalystField, AnalystForm, AnalystItem } from "@/lib/types";
 
@@ -26,12 +27,19 @@ const props = defineProps<{
   dataCard: string;
   /** Keys of steps the uploaded workbook already answers: folded into one list, out of the step-through, until overridden. */
   covered?: string[];
+  /** Keys of steps with a safe default in use, and of optional steps: each in its own collapsed list, until Added or overridden. */
+  defaults?: string[];
+  optional?: string[];
 }>();
 const emit = defineEmits<{ changed: []; form: [form: AnalystForm]; done: [] }>();
 defineSlots<{ step(props: { step: Step; next: () => void }): unknown }>();
 
 const overridden = ref<string[]>([]);
-const split = computed(() => splitSteps(props.steps, props.covered ?? [], overridden.value));
+const split = computed(() => {
+  const { shown } = splitSteps(props.steps, [...(props.covered ?? []), ...(props.defaults ?? []), ...(props.optional ?? [])], overridden.value);
+  const list = (keys: string[] = []) => props.steps.filter((s) => keys.includes(s.key) && !overridden.value.includes(s.key));
+  return { shown, folded: list(props.covered), defaults: list(props.defaults), optional: list(props.optional) };
+});
 const shown = computed(() => split.value.shown);
 const typed = ref<Record<string, string>>({});
 const errors = ref<Record<string, string>>({});
@@ -130,6 +138,16 @@ function alsoHeld(step: Step): string {
   const origin = i.type === "field" ? fieldOrigin(i) : tableOrigin(i);
   return origin === "workbook" ? "" : originLabel(origin, i.carried, undefined, true);
 }
+/** An optional input's state: what is held, or not filled. */
+const heldOf = (step: Step) => savedOf(byKey.value.get(itemKey(step))) ?? "Not filled";
+/** What a default in use stands for, in words. */
+function defaultOf(step: Step): string {
+  const i = byKey.value.get(itemKey(step));
+  if (!i) return "";
+  if (i.type === "field") return `Default in use: ${i.kind === "date" && i.default ? friendlyDate(i.default) : (i.default ?? "")}`;
+  const empty = i.columns.filter((c) => !(i.workbook_rows ?? []).some((r) => r[c.key])).map((c) => c.label);
+  return `From the workbook: ${bookValue(step)}. ${empty.join(", ")}: the stored values are used.`;
+}
 const firstOf = (step: Step) => byKey.value.get(itemKey(step))?.workbook_first === true;
 /** The normal field, back in the step-through in its own place, opened. */
 async function override(key: string) {
@@ -147,7 +165,7 @@ async function override(key: string) {
     </div>
     <p aria-live="polite" class="sr-only">{{ announce }}</p>
 
-    <p v-if="!shown.length" class="text-sm">{{ split.folded.length ? "Nothing to type: everything here comes from the workbook." : NO_STEPS_LINE }}</p>
+    <p v-if="!shown.length" class="text-sm">{{ split.defaults.length || split.optional.length ? "Nothing required to type: the rest is listed below." : split.folded.length ? "Nothing to type: everything here comes from the workbook." : NO_STEPS_LINE }}</p>
     <p v-else-if="finished && !left.length" class="text-sm">Everything required here is in place.</p>
     <div v-else-if="finished" class="flex flex-wrap items-center gap-2">
       <p class="text-sm">{{ left.length }} still to do</p>
@@ -277,6 +295,32 @@ async function override(key: string) {
             <p v-if="firstOf(step)" class="text-xs text-muted-foreground">The draft uses the workbook's fund table and its date; what is added here is their second reading.</p>
           </div>
           <Button variant="outline" class="min-h-11" :disabled="busy !== null" @click="override(step.key)">Override<span class="sr-only">: {{ step.label }}</span></Button>
+        </li>
+      </ul>
+    </details>
+
+    <!-- Defaults in use and optional inputs: out of the step-through, each one a click from its normal field. -->
+    <details v-if="split.defaults.length" class="rounded-md border px-4" data-defaults>
+      <summary class="flex min-h-11 cursor-pointer items-center text-sm font-medium">{{ plural(split.defaults.length, "default", "defaults") }} in use</summary>
+      <ul class="divide-y border-t">
+        <li v-for="step in split.defaults" :key="step.key" class="flex flex-wrap items-center gap-3 py-3" :data-default-item="step.key">
+          <div class="min-w-0 flex-1 basis-60 space-y-0.5 text-sm">
+            <p class="font-medium">{{ step.label }}</p>
+            <p class="text-muted-foreground [overflow-wrap:anywhere]">{{ defaultOf(step) }}</p>
+          </div>
+          <Button variant="outline" class="min-h-11" :disabled="busy !== null" @click="override(step.key)">Override<span class="sr-only">: {{ step.label }}</span></Button>
+        </li>
+      </ul>
+    </details>
+    <details v-if="split.optional.length" class="rounded-md border px-4" data-optional>
+      <summary class="flex min-h-11 cursor-pointer items-center text-sm font-medium">{{ plural(split.optional.length, "optional input", "optional inputs") }}</summary>
+      <ul class="divide-y border-t">
+        <li v-for="step in split.optional" :key="step.key" class="flex flex-wrap items-center gap-3 py-3" :data-optional-item="step.key">
+          <div class="min-w-0 flex-1 basis-60 space-y-0.5 text-sm">
+            <p class="font-medium">{{ step.label }}</p>
+            <p class="text-muted-foreground [overflow-wrap:anywhere]">{{ heldOf(step) }}</p>
+          </div>
+          <Button variant="outline" class="min-h-11" :disabled="busy !== null" @click="override(step.key)">Add<span class="sr-only">: {{ step.label }}</span></Button>
         </li>
       </ul>
     </details>

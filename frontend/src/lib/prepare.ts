@@ -64,6 +64,45 @@ export function coveredKeys(steps: Step[], form: AnalystForm | null): string[] {
   });
 }
 
+const formStep = (s: Step) => s.kind === "item" || s.kind === "fund";
+
+/** Steps with a safe default in use, out of the step-through: a field the form gives a `default` for, with nothing typed and
+ *  nothing in the workbook (the fiscal year start), and a table the workbook fills in part whose empty columns are all
+ *  optional, with nothing typed (the Eurobond issues' yields at issue, which fall back to the stored values). Never one the
+ *  readiness check still calls required, and never one already covered. */
+export function defaultKeys(steps: Step[], form: AnalystForm | null, r: Readiness, covered: string[] = []): string[] {
+  const items = new Map(formItems(form).map((i) => [i.key, i] as const));
+  const required = new Set(r.groups.needs_analyst.map((e) => e.key));
+  return steps.flatMap((s) => {
+    const i = formStep(s) ? items.get(itemKey(s)) : undefined;
+    if (!i || i.needs_confirmation || covered.includes(s.key) || required.has(i.key)) return [];
+    if (i.type === "field") return i.default && !savedValue(i.value) && !inWorkbook(i) ? [s.key] : [];
+    // ponytail: "an empty optional column" stands for "falls back to stored values"; true of the Eurobond issues only today.
+    const empty = i.columns.filter((c) => !(i.workbook_rows ?? []).some((r) => r[c.key]));
+    return inWorkbook(i) && !i.rows?.length && empty.length && empty.every((c) => !c.required) ? [s.key] : [];
+  });
+}
+const savedValue = (v: string | string[] | null) => (Array.isArray(v) ? v.length > 0 : !!v?.trim());
+
+/** Form steps the readiness check classes as optional, out of the step-through (the Sources and snip steps stay steps). */
+export function optionalKeys(steps: Step[], r: Readiness, taken: string[] = []): string[] {
+  const optional = new Set(r.groups.optional.filter((e) => e.kind !== "upload").map((e) => e.key));
+  return steps.filter((s) => formStep(s) && optional.has(itemKey(s)) && !taken.includes(s.key)).map((s) => s.key);
+}
+
+export interface Folds {
+  covered: string[];
+  defaults: string[];
+  optional: string[];
+}
+/** The three folded lists, each step in at most one: the workbook first, then a default in use, then optional. */
+export function foldKeys(steps: Step[], form: AnalystForm | null, r: Readiness): Folds {
+  const covered = coveredKeys(steps, form);
+  const defaults = defaultKeys(steps, form, r, covered);
+  return { covered, defaults, optional: optionalKeys(steps, r, [...covered, ...defaults]) };
+}
+export const foldedAll = (f: Folds) => [...f.covered, ...f.defaults, ...f.optional];
+
 /** The steps still to go through and the ones folded into "from the workbook"; an overridden step goes back in its place. */
 export function splitSteps(steps: Step[], covered: string[], overridden: string[] = []) {
   const folded = (s: Step) => covered.includes(s.key) && !overridden.includes(s.key);
