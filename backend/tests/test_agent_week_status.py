@@ -26,7 +26,8 @@ def keys(got, group):
 
 def test_a_fresh_equities_week_lists_what_it_needs_and_only_its_own_inputs(env):
     got = env.use("week_status")
-    assert {"equities_workbook", "kcb_daily", "kcb_weekly", "cbk_bulletin", "pe", "turnover_ytd"} <= keys(got, "needs_analyst")
+    assert {"equities_workbook", "kcb_daily", "cbk_bulletin", "pe", "turnover_ytd"} <= keys(got, "needs_analyst")
+    assert "kcb_weekly" not in set().union(*(keys(got, g) for g in readiness.GROUPS))   # hidden while SHOW_KCB_WEEKLY is off
     assert keys(got, "optional") == {"foreign_prior_year"}
     everything = set().union(*(keys(got, g) for g in readiness.GROUPS))
     assert not everything & {"fi_workbook", "nse_yield_curve", "dp_workbook", "placements"}   # other sections' inputs

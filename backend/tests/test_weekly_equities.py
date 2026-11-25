@@ -286,28 +286,44 @@ def test_the_recommendation_rule(upside, expected):
     assert eqw.recommendation(upside) == expected
 
 
-def test_missing_inputs_leave_named_unavailable_parts(tmp_path):
-    def down(*args):
-        raise ConnectionError("no route to host")
+def _down(*args):
+    raise ConnectionError("no route to host")
 
-    review = build(tmp_path, fetchers=eqw.Fetchers(usd_rates=down, price_list=down, read_box=down, afx_page=down, bulletin=down,
-                                                   previous_issue=down))
+
+def _all_down():
+    return eqw.Fetchers(usd_rates=_down, price_list=_down, read_box=_down, afx_page=_down, bulletin=_down, previous_issue=_down)
+
+
+def test_missing_inputs_leave_named_unavailable_parts(tmp_path):
+    review = build(tmp_path, fetchers=_all_down())
     by = blocks(review)
     assert list(by) == ["indices", "large_caps", "banking", "turnover", "foreign", "valuation", "chart_nasi_pe", "chart_nasi_yield",
                         "universe_of_coverage", "company_notes", "outlook"]
     assert {b["kind"] for b in by.values() if not b["id"].startswith("chart_") and b["id"] != "company_notes"} == {"unavailable"}
-    assert by["large_caps"]["reason"] == "KCB IB's weekly trading report for this week is not among this week's inputs."
+    assert by["large_caps"]["reason"] == ("The equities workbook for this week is not among this week's inputs, so the large-cap "
+                                          "movers cannot be picked.")
     assert by["valuation"]["reason"] == (
         "The market P/E, the historical average P/E, the market dividend yield and the historical average dividend yield have "
         "not been typed under \"Weekly analyst inputs\", and the equities workbook for this week is not among this week's inputs.")
     assert by["universe_of_coverage"]["reason"].startswith("The Universe of Coverage inputs have not been typed")
     assert by["foreign"]["reason"].startswith("No foreign net flow was found for Monday 28 September")
+    assert by["foreign"]["reason"].endswith(": that day's KCB IB daily report is not among this week's inputs.")
+    assert "weekly report" not in by["foreign"]["reason"]
     # No workbook: no chart, said as information in the section and asking nothing of the analyst (no review item).
     assert [(by[c]["kind"], by[c]["status"]) for c in ("chart_nasi_pe", "chart_nasi_yield")] == [("chart", "no_workbook")] * 2
     assert by["chart_nasi_pe"]["reason"] == by["chart_nasi_yield"]["reason"] == eqw.NEED_WORKBOOK_FOR_CHARTS[0]
     assert {i.status for i in review.review_items} == {"flagged"} and len(review.review_items) == 8
     assert not [i for i in review.review_items if i.kind == "chart"]
     assert review.section["summary"] == ""
+
+
+def test_with_the_weekly_report_slot_shown_the_old_wording_stays(tmp_path, monkeypatch):
+    monkeypatch.setattr(inputs, "SHOW_KCB_WEEKLY", True)
+    by = blocks(build(tmp_path, fetchers=_all_down()))
+    assert by["large_caps"]["reason"] == "KCB IB's weekly trading report for this week is not among this week's inputs."
+    assert by["foreign"]["reason"].startswith("No foreign net flow was found for Monday 28 September")
+    assert by["foreign"]["reason"].endswith(": KCB IB's weekly report (which lists each weekday) is not among this week's inputs, "
+                                            "and neither is that day's daily report.")
 
 
 def test_a_workbook_not_updated_for_the_week_says_so_in_each_part(tmp_path, text_pdfs):

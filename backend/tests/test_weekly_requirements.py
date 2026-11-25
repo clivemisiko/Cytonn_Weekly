@@ -31,7 +31,7 @@ def test_required_is_false_exactly_where_the_label_or_help_says_optional():
 def test_both_status_outputs_carry_the_new_facts(tmp_path):
     slots = inputs.status(WEEK, tmp_path)["slots"]
     assert {s["slug"]: s["sections"] for s in slots} == {
-        "equities_workbook": ["equities"], "fi_workbook": ["fixed_income"], "kcb_daily": ["equities"], "kcb_weekly": ["equities"],
+        "equities_workbook": ["equities"], "fi_workbook": ["fixed_income"], "kcb_daily": ["equities"],
         "cbk_bulletin": ["fixed_income", "equities"], "nse_yield_curve": ["fixed_income"], "dp_workbook": ["digital_payments"]}
     form = analyst.status(WEEK, tmp_path)["groups"]
     assert {i["key"] for g in form for i in g["items"] if not i["required"]} == OPTIONAL_TODAY

@@ -146,7 +146,9 @@ async function handleBatchDrop(event: DragEvent) {
 
   const unassigned: string[] = [];
   for (const file of files) {
-    const slotSlug = guessSlot(file.name);
+    const guessed = guessSlot(file.name);
+    // only a slot the API lists for this week: a hidden one (KCB IB's weekly report) is never a drop target
+    const slotSlug = guessed && status.value?.slots.some((s) => s.slug === guessed) ? guessed : null;
     if (slotSlug) {
       await upload(slotSlug, [file]);
     } else {

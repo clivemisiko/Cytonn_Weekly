@@ -212,7 +212,8 @@ def _fix_slots(review: CoordinatorReview, item: Any) -> list[dict[str, str]]:
     if review.report_type != "weekly" or "blocks" not in review.section:
         return []
     slots = recheck.fix_slots(review.section.get("section"), review.section, item)
-    return [{"slug": s, "title": weekly_inputs.BY_SLUG[s].title} for s in slots]
+    shown = {x.slug for x in weekly_inputs.visible_slots()}
+    return [{"slug": s, "title": weekly_inputs.BY_SLUG[s].title} for s in slots if s in shown]
 
 
 def _fix_inputs(review: CoordinatorReview, item: Any) -> list[dict[str, str]]:

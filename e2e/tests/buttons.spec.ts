@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { API, REPO, VARIANT, WEEK, openStart, putAnalyst, release } from "./helpers";
@@ -109,6 +109,10 @@ test("T31 suggest a running total with no total saved the week before: the reaso
 });
 
 test("T32 suggest the foreign position with a total saved the week before: a suggestion with its working, then confirmed", async ({ page, request }) => {
+  // This week's equities workbook holds the foreign position, and a suggestion the workbook supplies is shown as the
+  // workbook's (commit 33737be), so it is set aside here: the suggestion is worked out from KCB IB's reports alone.
+  const book = join(DATA, "inputs", "weekly", WEEK, "equities_workbook.xlsx");
+  renameSync(book, `${book}.aside`);
   await putAnalyst(request, "2026-10-02", "equities", { foreign_ytd: "-150.5" });
   try {
     await openStart(page, "Equities");
@@ -123,6 +127,7 @@ test("T32 suggest the foreign position with a total saved the week before: a sug
   } finally {
     await putAnalyst(request, WEEK, "equities", { foreign_ytd: null });
     await putAnalyst(request, "2026-10-02", "equities", { foreign_ytd: null });
+    renameSync(`${book}.aside`, book);
   }
 });
 
@@ -155,15 +160,14 @@ test("T34 Show this week switches the week; Fetch from CBK for a week CBK has no
   await expect(bulletin).toContainText("Not received");
 });
 
-test("T35 Replace an uploaded report with a file; the slot keeps it as this week’s", async ({ page }) => {
+test("T35 Equities lists its three uploads and no KCB IB weekly report slot", async ({ page }) => {
+  // the weekly report slot is hidden while SHOW_KCB_WEEKLY is off in backend/src/cytonn_weekly/weekly/inputs.py
   await openStart(page, "Equities");
   const panel = inputsPanel(page);
-  const weekly = panel.locator("li", { hasText: "KCB IB weekly trading report" }).first();
-  await expect(weekly.getByRole("button", { name: /^Replace/ })).toBeVisible();
-  await weekly.locator('input[type="file"]').setInputFiles(join(REPO, "backend", "data", "demo", "inputs", "SYNTHETIC_KCB_weekly_2026-10-09.pdf"));
-  await expect(weekly).toContainText("Received, this week’s");
-  await expect(weekly).toContainText("SYNTHETIC_KCB_weekly_2026-10-09.pdf");
-  await expect(panel.getByRole("alert")).toHaveCount(0);
+  await expect(panel.locator("li", { hasText: "Equities workbook" }).first()).toBeVisible();
+  await expect(panel.locator("li", { hasText: "KCB IB daily trading reports" }).first()).toBeVisible();
+  await expect(panel.locator("li", { hasText: "CBK Weekly Bulletin" }).first()).toBeVisible();
+  await expect(panel.getByText("KCB IB weekly trading report")).toHaveCount(0);
 });
 
 test("T36 Universe of Coverage grid: add a company, remove it unsaved, add and save one, clear the typed values", async ({ page }) => {
