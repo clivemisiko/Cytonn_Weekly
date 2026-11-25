@@ -462,7 +462,7 @@ test("T156 Fixed Income: the fund table's Override opens the fund card and says 
 
 test("T157 Fixed Income: a workbook for another week covers nothing, and the steps are today's", async ({ page, request }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
-  const friday = "2027-09-10";
+  const friday = "2027-10-01";
   const put = await request.put(`${API}/api/inputs/weekly/${friday}/fi_workbook?filename=fi_workbook.xlsx`, { data: readFileSync(join(PRISTINE, "fi_workbook.xlsx")) });
   expect(put.ok(), await put.text()).toBeTruthy();
   await page.goto(url("fixed_income", friday, "&view=prepare"));
