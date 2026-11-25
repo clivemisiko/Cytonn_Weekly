@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Readiness } from "./chatcards";
-import { coveredKeys, focusProblems, itemSteps, keepStep, noDocumentsLine, openingStep, prepareCounts, prepareSteps, readFocus, splitSteps, stepIndex, writeFocus } from "./prepare";
+import { coveredKeys, defaultKeys, focusProblems, foldKeys, foldedAll, optionalKeys, itemSteps, keepStep, noDocumentsLine, openingStep, prepareCounts, prepareSteps, readFocus, splitSteps, stepIndex, writeFocus } from "./prepare";
 import type { AnalystForm, SnipMeta, SnipsListing, SourcePiece } from "./types";
 
 const field = (key: string, kind = "number") => ({ type: "field", key, label: `Fake ${key}`, kind }) as never;
@@ -225,5 +225,94 @@ describe("keepStep", () => {
     expect(keepStep(["a", "b", "c"], ["a", "c"], 1)).toBe(0);
     expect(keepStep(["a", "c"], ["a", "b", "c"], 1)).toBe(2);
     expect(keepStep(["a"], [], 0)).toBe(0);
+  });
+});
+
+describe("optional inputs and defaults in use leave the step-through", () => {
+  const f = (key: string, extra: object = {}) =>
+    ({ type: "field", key, label: `Fake ${key}`, kind: "number", value: null, workbook: null, differences: [], carried: null, needs_confirmation: false, default: null, ...extra }) as never;
+  const t = (key: string, cols: { key: string; required: boolean }[], wb: Record<string, string>[] | null, extra: object = {}) =>
+    ({ type: "table", key, label: `Fake ${key}`, mode: "grid", columns: cols, fixed_rows: [], rows: null, workbook_rows: wb, workbook_ref: wb ? "Fake 'Sheet'" : null, differences: [], carried: null, needs_confirmation: false, ...extra }) as never;
+  const entry = (key: string, kind = "field") => ({ kind, key, label: `Fake ${key}`, why: "fake" });
+  const opt = (c: string) => ({ key: c, required: false });
+  // Each section with a form: what the readiness check calls required and optional, and the default the form gives.
+  const SECTIONS = [
+    {
+      slug: "fixed_income",
+      form: form(
+        f("placements"),
+        f("liquidity_driver", { kind: "text" }),
+        f("fiscal_year_start", { kind: "date", default: "2031-07-01" }),
+        t("eurobond_issues", [opt("amount_mn"), opt("maturity"), opt("yield_at_issue")], [{ row: "a", amount_mn: "1,000", maturity: "2031-02-28" }]),
+        t("borrowing_log", [opt("date")], null),
+        f("mmf_source", { kind: "text", default: "Fake Paper" }),
+      ),
+      required: ["placements", "mmf_source"],
+      optional: ["liquidity_driver", "fiscal_year_start", "borrowing_log"],
+      inPlace: ["eurobond_issues"],
+      folds: { covered: [], defaults: ["fiscal_year_start", "eurobond_issues"], optional: ["liquidity_driver", "borrowing_log"] },
+      shown: ["placements", "mmf_source"],
+    },
+    {
+      slug: "equities",
+      form: form(f("pe"), f("foreign_prior_year"), f("turnover_ytd", { workbook: { value: "1.0", ref: "Fake!A1" } })),
+      required: ["pe"],
+      optional: ["foreign_prior_year"],
+      inPlace: ["turnover_ytd"],
+      folds: { covered: ["turnover_ytd"], defaults: [], optional: ["foreign_prior_year"] },
+      shown: ["pe"],
+    },
+  ];
+  const stepsOf = (x: AnalystForm) => prepareSteps({ form: x, sectors: [], topic: false, sources: true });
+  for (const s of SECTIONS) {
+    const r = readiness({ needs_analyst: s.required.map((k) => entry(k)), optional: s.optional.map((k) => entry(k)), in_place: s.inPlace.map((k) => entry(k)) });
+    it(`${s.slug}: optional and default inputs are folded, required ones stay steps, and the counter is of what is left`, () => {
+      const all = stepsOf(s.form);
+      const folds = foldKeys(all, s.form, r);
+      expect(folds).toEqual(s.folds);
+      const { shown } = splitSteps(all, foldedAll(folds));
+      expect(shown.map((x) => x.key)).toEqual([...s.shown, "sources"]); // the Sources step stays
+      for (const k of s.required) expect(shown.map((x) => x.key)).toContain(k);
+    });
+    it(`${s.slug}: Add or Override puts the input back in its own place`, () => {
+      const all = stepsOf(s.form);
+      const folded = foldedAll(foldKeys(all, s.form, r));
+      for (const key of folded) {
+        const { shown } = splitSteps(all, folded, [key]);
+        expect(shown.map((x) => x.key)).toEqual(all.map((x) => x.key).filter((k) => k === key || !folded.includes(k)));
+      }
+    });
+    it(`${s.slug}: the banner, the checklist and the counter agree`, () => {
+      const all = stepsOf(s.form);
+      const c = prepareCounts(r, {});
+      const shown = splitSteps(all, foldedAll(foldKeys(all, s.form, r))).shown.map((x) => x.key);
+      expect(c.required).toBe(s.required.length);
+      expect(c.checklist.find((g) => g.key === "needs_analyst")!.items.map((e) => e.key)).toEqual(s.required);
+      expect(shown.filter((k) => c.missing.includes(k))).toEqual(s.required); // every required item is a step, nothing optional is
+      expect(c.optional).toBe(s.optional.length);
+    });
+  }
+  it("a default is not in use once typed, once the workbook holds it, or while the readiness check calls it required", () => {
+    const steps = (x: AnalystForm) => stepsOf(x);
+    const typed = form(f("fiscal_year_start", { default: "2031-07-01", value: "2031-07-02" }));
+    expect(defaultKeys(steps(typed), typed, readiness())).toEqual([]);
+    const book = form(f("fiscal_year_start", { default: "2031-07-01", workbook: { value: "2031-07-01", ref: "Fake!A1" } }));
+    expect(defaultKeys(steps(book), book, readiness())).toEqual([]);
+    const need = form(f("mmf_source", { default: "Fake Paper" }));
+    expect(defaultKeys(steps(need), need, readiness({ needs_analyst: [entry("mmf_source")] }))).toEqual([]);
+  });
+  it("a table falls back only while the workbook fills it and nothing is typed; a required empty column keeps it a step", () => {
+    const cols = [opt("amount_mn"), opt("yield_at_issue")];
+    const none = form(t("eurobond_issues", cols, null));
+    expect(defaultKeys(stepsOf(none), none, readiness())).toEqual([]);
+    const typed = form(t("eurobond_issues", cols, [{ row: "a", amount_mn: "1" }], { rows: [{ row: "a", yield_at_issue: "7.0" }] }));
+    expect(defaultKeys(stepsOf(typed), typed, readiness())).toEqual([]);
+    const req = form(t("x_table", [opt("amount_mn"), { key: "rate", required: true }], [{ row: "a", amount_mn: "1" }]));
+    expect(defaultKeys(stepsOf(req), req, readiness())).toEqual([]);
+  });
+  it("only form steps are optional: snips, sources and uploads keep their place", () => {
+    const steps = prepareSteps({ form: form(f("a")), sectors: [{ id: "land", label: "Land" }], topic: false, sources: true });
+    const r = readiness({ optional: [entry("a"), entry("snips:land", "snip"), entry("sources", "sources"), entry("a", "upload")] });
+    expect(optionalKeys(steps, r)).toEqual(["a"]);
   });
 });
