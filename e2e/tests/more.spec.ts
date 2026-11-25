@@ -239,7 +239,8 @@ test("T23 rejecting a section is final: the dialog, the locked review, the overv
   await page.getByRole("button", { name: "Back to all sections" }).last().click();
   await expect(card(page, "Digital Payments")).toContainText("Rejected");
   await expect(card(page, "Digital Payments").getByRole("button", { name: "View review" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Export weekly report" })).toBeDisabled();
+  // A finished draft is exported whatever its decision (weekly/export.left_out_reason), so the rejected one still is.
+  await expect(page.getByRole("button", { name: "Export weekly report" })).toBeEnabled();
   // "Draft again" opens the start screen, which says what happened and offers a new draft (T42 to T44 go through it).
   await card(page, "Digital Payments").getByRole("button", { name: "Draft again" }).click();
   await expect(page.getByRole("heading", reviewHeading("Digital Payments"))).toBeVisible();

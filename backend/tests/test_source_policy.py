@@ -235,7 +235,15 @@ def test_a_found_page_dated_in_the_week_is_kept(tmp_path):
     assert not [k for k, _ in events if k == ev.SOURCE_LEFT_OUT]
 
 
-def test_a_found_pdf_states_no_date_so_it_keeps_the_search_date(tmp_path, monkeypatch):
-    monkeypatch.setattr(src, "read_pdf", lambda body: (PARAGRAPH * 3, "A PDF title"))
+def test_a_found_pdf_that_states_no_date_never_takes_the_search_date(tmp_path, monkeypatch):
+    # updated 2026-11-25: it used to keep the search service's date, which is how a 2024 page reached a 2026 draft
+    monkeypatch.setattr(src, "read_pdf", lambda body: (PARAGRAPH * 3, "A PDF title", ""))
+    saved, events = gather_real_fetch(tmp_path, Getter(reply(b"%PDF-1.4 not really", content_type="application/pdf")), "2026-11-06")
+    assert saved == [] and src.list_for("T-bills", FRIDAY, tmp_path) == []
+    assert any("no date" in d for k, d in events if k == ev.SOURCE_LEFT_OUT)
+
+
+def test_a_found_pdf_dated_by_itself_in_the_week_is_kept(tmp_path, monkeypatch):
+    monkeypatch.setattr(src, "read_pdf", lambda body: (PARAGRAPH * 3, "A PDF title", "2026-11-05"))
     saved, _ = gather_real_fetch(tmp_path, Getter(reply(b"%PDF-1.4 not really", content_type="application/pdf")), "2026-11-06")
-    assert [s.published_date for s in saved] == ["2026-11-06"]
+    assert [s.published_date for s in saved] == ["2026-11-05"]

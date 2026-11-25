@@ -54,6 +54,17 @@ def test_uploaded_typed_carried_and_fetched_inputs_land_in_their_own_groups(env)
     assert "pe" not in keys(got, "needs_analyst") and "equities_workbook" not in keys(got, "needs_analyst")
 
 
+def test_each_kept_file_comes_through_the_tool_by_its_stored_name_and_never_the_analysts_name(env):
+    # through execute(), as the model and the prepare page's readiness route both get it: its trim keeps the files
+    weekly_inputs.store(WEEK, "equities_workbook", equities_workbook_bytes(), "Fake Analyst Name.xlsx", env.root)
+    got = env.use("week_status")
+    kept = next(e for e in got["groups"]["in_place"] if e["key"] == "equities_workbook")
+    assert kept["files"] == [{"stored_name": "equities_workbook.xlsx"}]
+    others = [e for g in got["groups"].values() for e in g if e["kind"] == "upload" and e["key"] != "equities_workbook"]
+    assert others and all(e["files"] == [] for e in others)
+    assert "Fake Analyst Name" not in json.dumps(got)
+
+
 def test_a_fetched_upload_is_in_the_fetched_group(env):
     env.upload_equities_workbook()
     from tests.test_weekly_fixed_income import BULLETIN
@@ -66,13 +77,23 @@ def test_a_fetched_upload_is_in_the_fetched_group(env):
 def test_a_workbook_value_counts_as_in_place_and_a_missing_day_is_named():
     slots = [{"slug": "kcb_daily", "title": "KCB", "optional": False, "per_day": True, "fetchable": False, "received": True,
               "complete": False, "sections": ["equities"], "file": None,
-              "days": [{"weekday": "Monday", "received": True, "file": {"fetched_from": None}},
+              "days": [{"weekday": "Monday", "received": True, "file": {"fetched_from": None, "stored_name": "kcb_daily_2026-09-28.pdf"}},
                        {"weekday": "Tuesday", "received": False, "file": None}]}]
     item = {"type": "field", "key": "pe", "label": "P/E", "required": True, "value": None, "workbook": {"value": "9"},
             "rows": None, "workbook_rows": None, "needs_confirmation": False, "carried": None}
     got = readiness.classify("equities", {"week_ending": "2026-10-02", "slots": slots}, {"groups": [{"items": [item]}]})
-    assert got["groups"]["needs_analyst"] == [{"kind": "upload", "key": "kcb_daily", "label": "KCB", "why": "missing days: Tuesday"}]
-    assert got["groups"]["in_place"] == [{"kind": "field", "key": "pe", "label": "P/E", "why": "from the workbook"}]
+    assert got["groups"]["needs_analyst"] == [{"kind": "upload", "key": "kcb_daily", "label": "KCB", "why": "missing days: Tuesday",
+                                                "files": [{"stored_name": "kcb_daily_2026-09-28.pdf"}], "other_week": False}]
+    assert got["groups"]["in_place"] == [{"kind": "field", "key": "pe", "label": "P/E", "why": "from the workbook", "other_week": False}]
+
+
+def test_an_item_held_for_another_week_is_marked_and_dated_as_the_screen_writes_dates():
+    item = {"type": "field", "key": "pe", "label": "P/E", "required": True, "value": None, "workbook": {"value": "9"},
+            "rows": None, "workbook_rows": None, "needs_confirmation": False, "carried": None,
+            "workbook_stale": {"found": "2026-11-13", "expected": ["2026-11-27"], "whole": True}}
+    got = readiness.classify("equities", {"week_ending": "2026-11-27", "slots": []}, {"groups": [{"items": [item]}]})
+    assert got["groups"]["needs_analyst"] == [{"kind": "field", "key": "pe", "label": "P/E", "other_week": True,
+                                                "why": "the workbook holds it, but dated 13 Nov 2026; this week needs 27 Nov 2026"}]
 
 
 def test_digital_payments_has_only_its_optional_workbook(env):

@@ -21,7 +21,8 @@ const emit = defineEmits<{ save: [value: string]; dirty: [dirty: boolean]; confi
 
 const saved = asText(props.item.value);
 const value = ref(saved);
-const fromBook = computed(() => asText(props.item.workbook?.value));
+// A workbook not dated this week offers no value to type over: its figure is that week's, and the note below says so.
+const fromBook = computed(() => (props.item.workbook_stale ? "" : asText(props.item.workbook?.value)));
 const origin = computed(() => fieldOrigin(props.item));
 const id = `analyst-${props.item.key}`;
 const describedBy = computed(() => (props.error ? `${id}-error ${id}-hint` : `${id}-hint`));

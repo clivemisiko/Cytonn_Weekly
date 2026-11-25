@@ -671,10 +671,16 @@ def test_the_two_outlooks_look_only_in_their_own_section_as_before():
 def test_a_workbook_for_last_week_leaves_its_parts_unavailable_with_the_reason(tmp_path):
     inputs.store(WEEK, "cbk_bulletin", BULLETIN, "b.pdf", tmp_path)
     inputs.store(WEEK, "fi_workbook", wh.fi_workbook_bytes(updated=False), "FI.xlsx", tmp_path)
-    by = blocks(build(tmp_path))
-    assert by["money_market"]["kind"] == "unavailable" and "The workbook is not yet updated for this week" in by["money_market"]["reason"]
-    assert by["borrowing"]["kind"] == "unavailable" and "workbook not yet updated for this week" in by["borrowing"]["reason"]
+    review = build(tmp_path)
+    by = blocks(review)
+    # a workbook for an earlier week is not read by the draft at all: each part names its week, never a sheet's refusal
+    ignored = "and the uploaded fixed income workbook is for the week ending 25 Sep 2026, an earlier week, so the draft does not read it."
+    assert by["money_market"]["kind"] == "unavailable" and ignored in by["money_market"]["reason"]
+    assert by["borrowing"]["kind"] == "unavailable" and ignored in by["borrowing"]["reason"]
     assert by["tbills"]["kind"] == "computed"   # the bulletin still gives the auction
+    assert len([w for w in review.section["warnings"] if w.startswith(
+        "The uploaded fixed income workbook is for the week ending 25 Sep 2026, and this report is for the week ending 2 Oct 2026. "
+        "It is for an earlier week, so the draft ignores it")]) == 1
 
 
 def test_the_top_five_average_is_compared_with_last_week_when_last_weeks_workbook_is_stored(root):

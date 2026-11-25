@@ -420,7 +420,8 @@ export interface ChartDefect {
 
 /**
  * A chart the tool draws from the analyst workbook (charts/block.py). Metadata only: the picture and the series come from their
- * own routes. `no_workbook` means no workbook was uploaded, so nothing was read: information, with no review item.
+ * own routes. `no_workbook` means no workbook for the week was read (none uploaded, or one for an earlier week or with no date):
+ * information, with no review item.
  * `use_team_chart` is true while the analyst has set the tool's chart aside for the team's own.
  */
 export interface ChartBlock {
@@ -667,6 +668,8 @@ export interface WorkbookStale {
   found: string | null;
   /** The dates this week accepts (ISO): the Friday, and the as-at day in a holiday week. */
   expected: string[];
+  /** True when it is the whole uploaded workbook's own date, not one sheet's, that is not this week's. */
+  whole?: boolean;
 }
 
 /** One typed field of the "Weekly analyst inputs" form, with what an uploaded workbook holds for it. */

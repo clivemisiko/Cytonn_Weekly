@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { PhUploadSimple } from "@phosphor-icons/vue";
+import { PhCircleNotch, PhUploadSimple } from "@phosphor-icons/vue";
+import { ref } from "vue";
 import Button from "@/components/ui/Button.vue";
+import UploadProgress from "@/components/ui/UploadProgress.vue";
 import { buttonVariants } from "@/components/ui/button";
 import Textarea from "@/components/ui/Textarea.vue";
 import * as api from "@/lib/api";
@@ -9,6 +11,7 @@ import { hasUnclear, snipStatus } from "@/lib/snips";
 import { hashPrefix } from "@/lib/sources";
 import type { SnipMeta } from "@/lib/types";
 import type { Snips } from "@/lib/usesnips";
+import RedraftDialog from "./RedraftDialog.vue";
 
 const props = defineProps<{
   sec: { id: string; label: string; snips: SnipMeta[] };
@@ -24,7 +27,14 @@ function chosen(e: Event) {
   void upload(props.sec.id, t.files).then(() => (t.value = ""));
 }
 // The page's one snip store: its refs are unwrapped here so the markup reads as it did in SnipsPanel.
-const { listing, drafts, busy, uploading, upload, read, move, setDate, confirm, remove } = props.snips;
+const { listing, drafts, busy, uploading, uploadingFile, upload, read, move, setDate, confirm, remove } = props.snips;
+// The snip a Remove asks about, until it is confirmed or cancelled.
+const asking = ref<SnipMeta | null>(null);
+function removeAsked() {
+  const s = asking.value;
+  asking.value = null;
+  if (s) void remove(s);
+}
 </script>
 
 <template>
@@ -60,6 +70,7 @@ const { listing, drafts, busy, uploading, upload, read, move, setDate, confirm, 
         @change="(e) => { const t = e.target as HTMLInputElement; void upload(sec.id, t.files).then(() => (t.value = '')); }"
       />
     </div>
+    <UploadProgress v-if="uploadingFile?.sector === sec.id" :name="uploadingFile.name" />
     <p v-if="!sec.snips.length" class="text-sm text-muted-foreground">No snip yet. This sector will say “not included” unless one is confirmed.</p>
     <ul v-if="sec.snips.length" class="space-y-4" :aria-label="`${sec.label} snips`">
       <li v-for="s in sec.snips" :key="s.hash" class="grid gap-3 rounded-lg border p-3 md:grid-cols-2">
@@ -81,7 +92,8 @@ const { listing, drafts, busy, uploading, upload, read, move, setDate, confirm, 
         <div class="space-y-2">
           <p class="flex flex-wrap items-center gap-2 text-xs">
             <span class="break-all font-mono">{{ s.filename }}</span>
-            <span :class="s.confirmed ? 'font-semibold text-ok-fg' : 'font-semibold text-warn-fg'" role="status">
+            <span :class="['inline-flex items-center gap-1', s.confirmed ? 'font-semibold text-ok-fg' : 'font-semibold text-warn-fg']" role="status">
+              <PhCircleNotch v-if="busy[s.hash]" weight="bold" class="size-3.5 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />
               {{ busy[s.hash] ?? snipStatus(s, drafts[s.hash]) }}
             </span>
           </p>
@@ -157,9 +169,17 @@ const { listing, drafts, busy, uploading, upload, read, move, setDate, confirm, 
             >
               {{ s.confirmed ? "Confirmed" : "Confirm" }}
             </Button>
-            <Button size="sm" variant="outline" :disabled="disabled || !!busy[s.hash]" @click="remove(s)">Remove</Button>
+            <Button size="sm" variant="outline" :disabled="disabled || !!busy[s.hash]" :aria-label="`Remove ${s.filename}`" @click="asking = s">Remove</Button>
           </div>
         </div>
       </li>
     </ul>
+    <RedraftDialog
+      :open="asking !== null"
+      :title="`Remove ${asking?.filename ?? 'this snip'}?`"
+      :notes="asking ? [`${asking.filename} is taken out of this week’s ${sec.label} snips, with its reading and any source confirmed from it. Upload it again to put it back.`, 'Saved drafts, approved reviews and the history store are not changed.'] : []"
+      confirm-label="Remove the snip"
+      @confirm="removeAsked"
+      @cancel="asking = null"
+    />
 </template>

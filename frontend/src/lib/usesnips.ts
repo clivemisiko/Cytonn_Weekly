@@ -11,6 +11,7 @@ export function useSnips(week: MaybeRefOrGetter<string>, onChange?: (listing: Sn
   const drafts = ref<Record<string, string>>({});
   const busy = ref<Record<string, string>>({}); // hash -> what it is doing ("Reading…", "Confirming…")
   const uploading = ref(false);
+  const uploadingFile = ref<{ sector: string; name: string } | null>(null); // the file being sent, shown beside its sector's button
 
   function take(next: SnipsListing) {
     listing.value = next;
@@ -41,17 +42,24 @@ export function useSnips(week: MaybeRefOrGetter<string>, onChange?: (listing: Sn
     uploading.value = true;
     error.value = null;
     const added: string[] = [];
-    for (const file of Array.from(files)) {
-      try {
-        const before = new Set((listing.value?.snips ?? []).map((s) => s.hash));
-        const next = await api.uploadSnip(toValue(week), sector, file);
-        take(next);
-        added.push(...next.snips.filter((s) => !before.has(s.hash)).map((s) => s.hash));
-      } catch (err) {
-        error.value = `${file.name}: ${(err as api.ApiError).message}`;
+    // A refusal is said here and never thrown: SnipSector.vue calls this without a catch. The finally clears the spinner
+    // whatever happens, so a refused upload can never leave it running.
+    try {
+      for (const file of Array.from(files)) {
+        uploadingFile.value = { sector, name: file.name };
+        try {
+          const before = new Set((listing.value?.snips ?? []).map((s) => s.hash));
+          const next = await api.uploadSnip(toValue(week), sector, file);
+          take(next);
+          added.push(...next.snips.filter((s) => !before.has(s.hash)).map((s) => s.hash));
+        } catch (err) {
+          error.value = `${file.name}: ${err instanceof Error ? err.message : "the upload failed."}`;
+        }
       }
+    } finally {
+      uploading.value = false;
+      uploadingFile.value = null;
     }
-    uploading.value = false;
     for (const h of added) await read(h);
   }
   async function read(hash: string) {
@@ -85,6 +93,6 @@ export function useSnips(week: MaybeRefOrGetter<string>, onChange?: (listing: Sn
   const bySector = computed(() =>
     (listing.value?.sectors ?? []).map((sec) => ({ ...sec, snips: (listing.value?.snips ?? []).filter((s) => s.sector === sec.id) })),
   );
-  return { listing, error, drafts, busy, uploading, bySector, load, upload, read, move, setDate, confirm, remove };
+  return { listing, error, drafts, busy, uploading, uploadingFile, bySector, load, upload, read, move, setDate, confirm, remove };
 }
 export type Snips = ReturnType<typeof useSnips>;

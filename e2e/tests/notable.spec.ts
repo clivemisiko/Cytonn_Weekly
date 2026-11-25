@@ -167,6 +167,17 @@ test("T52 a detector that fails is one quiet line, never a stack trace, and the 
   expect((await res.json()).failed_checks).toBe(1);
 });
 
+/** A Word file's bytes with each zip entry's modified time zeroed: two exports a second apart differ only there. */
+function withoutZipTimes(docx: Buffer): Buffer {
+  const out = Buffer.from(docx);
+  for (let i = 0; i + 4 <= out.length; i++) {
+    const sig = out.readUInt32LE(i);
+    if (sig === 0x04034b50) out.fill(0, i + 10, i + 14); // local file header: time, date
+    else if (sig === 0x02014b50) out.fill(0, i + 12, i + 16); // central directory entry: time, date
+  }
+  return out;
+}
+
 test("T53 the panel is on the review screen too, and accepting, editing and dismissing leave the review, the overview and the export exactly as they were", async ({ page, request }) => {
   const week = "2027-01-22";
   const drafted = await request.post(`${API}/api/sections/digital_payments/draft`, {
@@ -179,7 +190,7 @@ test("T53 the panel is on the review screen too, and accepting, editing and dism
     review: await (await request.get(`${API}/api/reviews/${runId}`)).json(),
     overview: await (await request.get(`${API}/api/sections?report_type=weekly&period=${encodeURIComponent(period(week))}`)).json(),
     exportStatus: await (await request.get(`${API}/api/export/weekly?period=${encodeURIComponent(period(week))}`)).json(),
-    refused: await (await request.post(`${API}/api/export/weekly?period=${encodeURIComponent(period(week))}`)).text(),
+    exported: withoutZipTimes(await (await request.post(`${API}/api/export/weekly?period=${encodeURIComponent(period(week))}`)).body()),
   });
   const before = await state();
 
@@ -209,8 +220,8 @@ test("T53 the panel is on the review screen too, and accepting, editing and dism
   expect(after.review).toEqual(before.review);
   expect(after.overview).toEqual(before.overview);
   expect(after.exportStatus).toEqual(before.exportStatus);
-  expect(after.refused).toEqual(before.refused);
-  expect(after.exportStatus.ready).toBe(false); // the instance cannot export; the backend test writes the real .docx and compares it
+  expect(after.exported).toEqual(before.exported);
+  expect(after.exportStatus.ready).toBe(true); // a drafted section is exported without approval; the backend test reads the real .docx
 });
 
 test("T54 when the suggestions cannot be reached the panel says so briefly and the rest of the screen works", async ({ page }) => {

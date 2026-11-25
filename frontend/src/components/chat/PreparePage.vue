@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { PhArrowRight, PhCaretDown, PhCloudArrowDown, PhUploadSimple } from "@phosphor-icons/vue";
+import { PhArrowRight, PhCaretDown, PhCloudArrowDown, PhTrash, PhUploadSimple } from "@phosphor-icons/vue";
 import { computed, ref, shallowRef, watch } from "vue";
 import { RouterLink } from "vue-router";
 import ExportBar from "@/components/review/ExportBar.vue";
@@ -9,9 +9,10 @@ import RedraftDialog from "@/components/review/RedraftDialog.vue";
 import SnipSector from "@/components/review/SnipSector.vue";
 import SourcesPanel from "@/components/review/SourcesPanel.vue";
 import Button from "@/components/ui/Button.vue";
+import UploadProgress from "@/components/ui/UploadProgress.vue";
 import { LINK, buttonVariants } from "@/components/ui/button";
 import * as api from "@/lib/api";
-import { type Readiness, draftCard, hasDraftWork, parseReadiness, sourceRows, weekOf } from "@/lib/chatcards";
+import { type KeptFile, type Readiness, draftCard, hasDraftWork, parseReadiness, sourceRows, weekOf } from "@/lib/chatcards";
 import { useDraftStart } from "@/lib/draftstart";
 import { usePart } from "@/lib/loadpart";
 import { SHOW_CHAT } from "@/lib/features";
@@ -179,6 +180,18 @@ async function upload(slot: string, event: Event) {
     }
     if (refused.length) throw new Error(refused.join("\n"));
   });
+  // Done either way: the row shows what the server now holds, and a refusal is said in the alert below the table.
+  const rest = { ...picked.value };
+  delete rest[slot];
+  picked.value = rest;
+}
+
+// Removing a kept file: this week's inputs only (DELETE /api/inputs/weekly/{week}/{stored name}); no run, review or history is touched.
+const removing = ref<{ label: string; file: KeptFile } | null>(null);
+function removeFile() {
+  const asked = removing.value;
+  removing.value = null;
+  if (asked) void act(`remove-${asked.file.storedName}`, () => api.removeInput(week.value, asked.file.storedName));
 }
 
 // ---- Card 3: create the draft. The conversation is opened first, exactly as picking the section does, so the draft's
@@ -263,7 +276,7 @@ const mark = computed(() => MARKS[props.state ?? "unknown"]);
               <p class="text-sm font-semibold">{{ g.heading }} ({{ g.items.length }})</p>
               <p class="text-xs text-muted-foreground">{{ g.meaning }}</p>
               <ul class="list-disc space-y-0.5 pl-5 text-sm [overflow-wrap:anywhere]">
-                <li v-for="(e, i) in g.items" :key="`${e.key}-${i}`">{{ e.label }}: {{ e.why }}</li>
+                <li v-for="(e, i) in g.items" :key="`${e.key}-${i}`" :class="e.otherWeek && 'font-medium text-warn-fg'" :data-other-week="e.otherWeek || undefined">{{ e.label }}: {{ e.why }}</li>
               </ul>
             </div>
           </template>
@@ -288,9 +301,28 @@ const mark = computed(() => MARKS[props.state ?? "unknown"]);
           <tbody role="rowgroup" class="max-sm:block">
             <tr v-for="r in rows" :key="r.key" role="row" class="border-t align-middle max-sm:block max-sm:py-3">
               <th role="rowheader" scope="row" class="py-2.5 pr-3 text-left font-medium max-sm:block max-sm:p-0">{{ r.label }}</th>
-              <td role="cell" class="py-2.5 pr-3 text-muted-foreground max-sm:block max-sm:p-0">
-                {{ r.status }}
-                <span v-if="picked[r.key]" class="block text-xs text-foreground [overflow-wrap:anywhere]">Chosen: {{ picked[r.key] }}</span>
+              <td role="cell" class="py-2.5 pr-3 text-muted-foreground max-sm:block max-sm:p-0" :aria-busy="busy === `upload-${r.key}` || undefined">
+                <UploadProgress v-if="busy === `upload-${r.key}`" :name="picked[r.key] ?? r.label" />
+                <template v-else>
+                  <!-- another week's file: the warning ink of a not-auto-verified item (--warn-fg, light and dark) -->
+                  <p :class="r.warn && 'font-medium text-warn-fg'" :data-other-week="r.warn || undefined">{{ r.status }}</p>
+                  <ul v-if="r.upload && r.files.length" class="mt-1 space-y-1" :aria-label="`Kept for ${r.label}`">
+                    <li v-for="f in r.files" :key="f.storedName" class="flex flex-wrap items-center gap-2 text-xs text-foreground" data-kept-file>
+                      <span class="font-mono [overflow-wrap:anywhere]">{{ f.name }}</span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        class="min-h-11"
+                        :disabled="busy !== null"
+                        :aria-label="`Remove ${f.name} from ${r.label}`"
+                        @click="removing = { label: r.label, file: f }"
+                      >
+                        <PhTrash weight="bold" data-icon="inline-start" aria-hidden="true" />
+                        {{ busy === `remove-${f.storedName}` ? "Removing…" : "Remove" }}
+                      </Button>
+                    </li>
+                  </ul>
+                </template>
               </td>
               <td role="cell" class="py-2.5 max-sm:block max-sm:pt-2">
                 <div class="flex justify-end gap-2 max-sm:flex-wrap max-sm:justify-start">
@@ -309,6 +341,14 @@ const mark = computed(() => MARKS[props.state ?? "unknown"]);
           </tbody>
         </table>
         <Notice v-if="actionProblem" role="alert" class="font-medium whitespace-pre-line">{{ actionProblem }}</Notice>
+        <RedraftDialog
+          :open="removing !== null"
+          :title="`Remove ${removing?.file.name ?? 'this file'}?`"
+          :notes="removing ? [`${removing.file.name} is taken out of this week’s inputs for ${removing.label}, which then counts it as not uploaded. Upload it again to put it back.`, 'Saved drafts, approved reviews and the history store are not changed.'] : []"
+          confirm-label="Remove the file"
+          @confirm="removeFile"
+          @cancel="removing = null"
+        />
       </section>
 
       <div v-if="formCall.problem.value" class="flex flex-wrap items-center gap-3" data-part-problem="form">

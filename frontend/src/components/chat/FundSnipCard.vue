@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { PhTrash, PhUploadSimple } from "@phosphor-icons/vue";
+import { PhCircleNotch, PhTrash, PhUploadSimple } from "@phosphor-icons/vue";
 import { computed, onMounted, onUnmounted, ref, shallowRef, useTemplateRef } from "vue";
 import Notice from "@/components/review/Notice.vue";
+import RedraftDialog from "@/components/review/RedraftDialog.vue";
 import Button from "@/components/ui/Button.vue";
+import UploadProgress from "@/components/ui/UploadProgress.vue";
 import { FIELD, LINK } from "@/components/ui/button";
 import * as api from "@/lib/api";
 import { countsLine, currencyWord, listText, parseFundSnip, parseList, whyNotYet, withFix, type Fix, type FundRow, type FundSnip } from "@/lib/fundsnip";
@@ -55,15 +57,24 @@ async function act(key: string, call: () => Promise<unknown>, after?: (answer: u
   }
 }
 
+const uploadingName = ref<string | null>(null);
 function picked(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
   input.value = "";
-  if (file) void act("upload", () => api.uploadFundSnip(props.week, file));
+  if (!file) return;
+  uploadingName.value = file.name;
+  // act never throws: a refusal lands in `problem` and the card shows what the server still holds
+  void act("upload", () => api.uploadFundSnip(props.week, file)).then(() => (uploadingName.value = null));
 }
 
 const read = () => act("read", () => api.readFundSnip(props.week));
-const removeImage = () => act("remove", () => api.deleteFundSnip(props.week));
+// The page image only: a table already kept on the form stays there (DELETE .../fund-snip).
+const askingRemove = ref(false);
+const removeImage = () => {
+  askingRemove.value = false;
+  return act("remove", () => api.deleteFundSnip(props.week));
+};
 const edits = (fixes: Record<string, Fix>, typed = snip.value?.typed ?? []) => api.saveFundSnipEdits(props.week, { fixes, typed });
 const fix = (id: number, patch: Fix) => act(`fix-${id}`, () => edits(withFix(snip.value?.fixes ?? {}, id, patch)));
 const decide = (row: { name: string }, decision: "include" | "exclude" | "alias", to?: string) =>
@@ -111,13 +122,23 @@ const megabytes = (bytes: number) => `${(bytes / 1_048_576).toFixed(1)} MB`;
         {{ busy === "upload" ? "Uploading…" : snip?.image ? "Replace the page image" : "Choose the page image" }}
       </Button>
       <Button v-if="snip?.image" variant="outline" size="sm" :disabled="busy !== null" @click="read">
+        <PhCircleNotch v-if="busy === 'read'" weight="bold" data-icon="inline-start" class="animate-spin motion-reduce:animate-none" aria-hidden="true" />
         {{ busy === "read" ? "Reading the page, about a minute…" : snip.read ? "Read the page again" : "Read the page" }}
       </Button>
-      <button v-if="snip?.image" type="button" :disabled="busy !== null" :class="['inline-flex items-center gap-1 text-xs disabled:opacity-50', LINK]" @click="removeImage">
+      <button v-if="snip?.image" type="button" :disabled="busy !== null" :class="['inline-flex items-center gap-1 text-xs disabled:opacity-50', LINK]" @click="askingRemove = true">
         <PhTrash weight="bold" class="size-3" aria-hidden="true" />
         Remove the image
       </button>
     </div>
+    <UploadProgress v-if="busy === 'upload'" :name="uploadingName ?? 'the page image'" />
+    <RedraftDialog
+      :open="askingRemove"
+      :title="snip?.image ? `Remove the Daily Nation page image (${snip.image.type === 'jpeg' ? 'JPEG' : 'PNG'}, ${megabytes(snip.image.size)})?` : 'Remove the Daily Nation page image?'"
+      :notes="['The page image and its reading are taken out of this week’s inputs. A fund table already kept on the form stays there.', 'Saved drafts, approved reviews and the history store are not changed.']"
+      confirm-label="Remove the image"
+      @confirm="removeImage"
+      @cancel="askingRemove = false"
+    />
     <div v-if="snip?.image" class="flex flex-wrap items-end gap-3">
       <img :src="api.fundSnipImageUrl(week, snip.image.sha256)" alt="The Daily Nation page uploaded for this week" class="h-16 w-auto max-w-40 rounded-sm border bg-white object-contain" />
       <p class="font-mono text-xs text-muted-foreground">{{ snip.image.type === "jpeg" ? "JPEG" : "PNG" }}, {{ megabytes(snip.image.size) }}</p>

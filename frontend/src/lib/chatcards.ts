@@ -27,6 +27,14 @@ export interface ReadinessEntry {
   key: string;
   label: string;
   why: string;
+  /** An upload's kept files: the name stored under, and the analyst's own file name where the route adds it. */
+  files?: KeptFile[];
+  /** The upload, or the workbook value, is for another week: shown in the warning colour. */
+  otherWeek?: boolean;
+}
+export interface KeptFile {
+  storedName: string;
+  name: string;
 }
 export interface SnipCount {
   sector: string;
@@ -57,7 +65,16 @@ export function parseReadiness(data: unknown): Readiness | null {
   if (!isObject(data) || !isObject(data.groups) || typeof data.week_ending !== "string") return null;
   const groups = {} as Record<GroupKey, ReadinessEntry[]>;
   for (const { key } of GROUPS) {
-    groups[key] = list(data.groups[key]).map((e) => ({ kind: text(e.kind), key: text(e.key), label: text(e.label), why: text(e.why) }));
+    groups[key] = list(data.groups[key]).map((e) => ({
+      kind: text(e.kind),
+      key: text(e.key),
+      label: text(e.label),
+      why: text(e.why),
+      ...(e.other_week === true ? { otherWeek: true } : {}),
+      ...(Array.isArray(e.files)
+        ? { files: list(e.files).filter((f) => text(f.stored_name)).map((f) => ({ storedName: text(f.stored_name), name: text(f.name) || text(f.stored_name) })) }
+        : {}),
+    }));
   }
   const snips = Array.isArray(data.snips) ? list(data.snips).map((s) => ({ sector: text(s.sector), uploaded: num(s.uploaded), read: num(s.read), confirmed: num(s.confirmed) })) : null;
   const s = isObject(data.sources) ? data.sources : null;
@@ -146,6 +163,10 @@ export interface SourceRow {
   upload: boolean;
   /** The words on its fetch button, or null when the tool cannot fetch it. */
   fetch: string | null;
+  /** What is kept for it this week, each removable. */
+  files: KeptFile[];
+  /** What is kept is for another week. */
+  warn: boolean;
 }
 
 const capitalised = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
@@ -165,6 +186,8 @@ export function sourceRows(r: Readiness, order: string[] = []): SourceRow[] {
         added: group === "fetched" || group === "in_place",
         upload: e.kind === "upload",
         fetch: fetchTable ? FETCHABLE_ITEMS[e.key] : FETCHABLE.includes(e.key) ? "Fetch from CBK" : null,
+        files: e.files ?? [],
+        warn: e.otherWeek === true,
       });
     }
   }

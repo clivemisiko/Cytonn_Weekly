@@ -404,8 +404,9 @@ def banking_block(m: Market) -> dict[str, Any]:
     notes = []
     gainers, losers = [], []
     if m.inputs.equities_book is None:
+        absent = m.inputs.analyst.unread(analyst.EQ) or "the workbook is not among this week's inputs"
         notes.append(f"No stocks are named: they come from the {WB.lower()}'s '{equities_workbook.GAINERS_SHEET}' sheet, and "
-                     "the workbook is not among this week's inputs.")
+                     f"{absent}.")
     else:
         try:
             gainers, losers = ranked([x for x in sheet_movers(m) if x.ticker in BANKS])
@@ -514,7 +515,9 @@ def large_caps_block(m: Market) -> dict[str, Any]:
                 continue
             movers.append(Mover(ticker, name, stock["change_pct"], {"change": published(stock["change_pct"], src)}))
         flag, sources = LARGE_CAP_FLAG, [{"name": src}]
-        notes = [f"No {WB.lower()} is among this week's inputs, so the movers are picked from the large-cap list by KCB IB's "
+        unread = form.unread(analyst.EQ)
+        absent = unread[0].upper() + unread[1:] if unread else f"No {WB.lower()} is among this week's inputs"
+        notes = [f"{absent}, so the movers are picked from the large-cap list by KCB IB's "
                  f"week-on-week changes, not from the workbook's '{equities_workbook.GAINERS_SHEET}' sheet.",
                  f"The large-cap list is the one typed under \"{analyst.FORM}\"." if analyst.is_typed(names[0]) else
                  "The large-cap list is read from the equities workbook ('Market PE & Dividend Yield')."]
@@ -1051,7 +1054,10 @@ def build_equities_weekly_review(
 
     valuation = valuation_block(market)
     quoted = {f["key"]: f["display"] for f in valuation.get("figures", [])}   # what the draft prints beside the charts
-    charts, chart_files = chart_blocks(inputs.equities_book, WB, week.as_at, quoted, NEED_WORKBOOK_FOR_CHARTS, on_event)
+    unread = inputs.analyst.unread(analyst.EQ)
+    need = ((f"{unread[0].upper()}{unread[1:]}; the chart is drawn from its history, which the weekly analyst inputs form does not "
+             "hold.", NEED_WORKBOOK_FOR_CHARTS[1]) if unread else NEED_WORKBOOK_FOR_CHARTS)
+    charts, chart_files = chart_blocks(inputs.equities_book, WB, week.as_at, quoted, need, on_event)
     blocks: list[dict[str, Any]] = [indices_block(market), large_caps_block(market), banking_block(market),
                                     turnover_block(market), foreign_block(market), valuation, *charts,
                                     universe_block(market, warnings)]

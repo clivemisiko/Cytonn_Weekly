@@ -210,6 +210,51 @@ describe("the prepare page's source documents", () => {
     later.groups.in_place.push(later.groups.needs_analyst.shift()!);
     expect(sourceRows(later, order).map((x) => x.key)).toEqual(order);
   });
+
+  it("carries each kept file, by the analyst's own name where the route gives it, so the row can offer to remove it", () => {
+    const got = parseReadiness(
+      data({
+        groups: {
+          needs_analyst: [entry("equities_workbook", { why: "not uploaded", files: [] })],
+          in_place: [entry("kcb_daily", { why: "uploaded", files: [{ stored_name: "kcb_daily_2031-01-06.pdf", name: "fake-monday.pdf" }, { stored_name: "kcb_daily_2031-01-07.pdf" }, { name: "no stored name" }] })],
+        },
+      }),
+    )!;
+    const rows = sourceRows(got);
+    expect(rows.find((x) => x.key === "kcb_daily")?.files).toEqual([
+      { storedName: "kcb_daily_2031-01-06.pdf", name: "fake-monday.pdf" },
+      { storedName: "kcb_daily_2031-01-07.pdf", name: "kcb_daily_2031-01-07.pdf" },
+    ]);
+    expect(rows.find((x) => x.key === "equities_workbook")?.files).toEqual([]);
+    // a workbook for another week is in "Needs you" with the check's words, never "Uploaded"
+    const stale = parseReadiness(
+      data({ groups: { needs_analyst: [entry("fi_workbook", { why: "uploaded, but it is for another week: the week ending 3 Jan 2031, and this report is for the week ending 10 Jan 2031. The draft ignores it. Upload this week's workbook.", other_week: true, files: [{ stored_name: "fi_workbook.xlsx", name: "fake-old.xlsx" }] })] } }),
+    )!;
+    const [row] = sourceRows(stale);
+    expect([row.added, row.status.startsWith("Uploaded, but it is for another week: the week ending 3 Jan 2031"), row.status.endsWith("Upload this week's workbook."), row.files.length]).toEqual([false, true, true, 1]);
+    expect(row.warn).toBe(true); // drawn in the warning colour
+  });
+
+  // Every section with a workbook row: its row, and a form item it holds for another week, carry the warning; this week's do not.
+  for (const [section, slot] of [["fixed_income", "fi_workbook"], ["equities", "equities_workbook"], ["digital_payments", "dp_workbook"]]) {
+    it(`${section}: a workbook for another week, and an item it holds, are marked for the warning colour`, () => {
+      const got = parseReadiness(
+        data({
+          section,
+          groups: {
+            needs_analyst: [
+              entry(slot, { why: "uploaded, but it is for another week: the week ending 3 Jan 2031, and this report is for the week ending 10 Jan 2031. The draft ignores it. Upload this week's workbook.", other_week: true }),
+              entry("pe", { kind: "field", why: "the workbook holds it, but dated 3 Jan 2031; this week needs 10 Jan 2031", other_week: true }),
+            ],
+            in_place: [entry("kcb_weekly", { why: "uploaded", other_week: false })],
+          },
+        }),
+      )!;
+      expect(got.groups.needs_analyst.map((e) => e.otherWeek)).toEqual([true, true]);
+      expect(got.groups.in_place[0].otherWeek).toBeUndefined();
+      expect(sourceRows(got).map((r) => [r.key, r.warn])).toEqual([[slot, true], ["kcb_weekly", false]]);
+    });
+  }
 });
 
 describe("openView: which view a section opens on", () => {

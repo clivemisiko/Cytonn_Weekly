@@ -78,7 +78,7 @@ test("T108 a pasted source is listed with its host, date, size, origin and finge
   await expect(piece).toContainText("8 Oct 2026");
   await expect(piece).toContainText(`${PASTED.length.toLocaleString("en-GB")} characters`);
   await expect(piece).toContainText(/pasted \d+ \w+ \d{4}, \d\d:\d\d EAT/); // times are East Africa Time, never UTC
-  await expect(piece).toContainText(/fingerprint [0-9a-f]{8}\b/);
+  await expect(piece).toContainText(/fingerprint [0-9a-f]{8}(?![0-9a-f])/);
   await expect(piece).not.toContainText("host not on the approved list");
   await expect(piece.getByText("Sources are found automatically when you draft.")).toHaveCount(0);
 
@@ -213,7 +213,7 @@ test("T113 a drafted piece shows its source host, date and verified quote, and a
   await expect(claim).toContainText("“The invented regulator said private sector credit grew by 8.75% in the year to September 2026”");
   await expect(claim).toContainText("verified word-for-word against the saved document");
   await expect(claim).toContainText("Pasted");
-  await expect(claim).toContainText(/fingerprint [0-9a-f]{8}\b/);
+  await expect(claim).toContainText(/fingerprint [0-9a-f]{8}(?![0-9a-f])/);
   await expect(claim.getByRole("link", { name: "View saved text" })).toHaveAttribute("href", /^\/sources\/[0-9a-f]{8}\?quote=.+&review=\d+$/);
   // The source is not on the approved list: identified on the claim itself, in words.
   await expect(claim).toContainText("Unverified Source Domain");

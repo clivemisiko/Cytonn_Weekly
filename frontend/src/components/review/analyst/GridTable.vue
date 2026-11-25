@@ -118,7 +118,8 @@ const addLine = () => (lines.value = [...lines.value, { id: `new-${Date.now()}-$
       <span v-if="dirty" class="text-xs font-medium text-warn-fg">Not saved yet.</span>
     </div>
     <p v-if="(item.workbook_rows?.length ?? 0) > 0" class="text-xs text-muted-foreground">
-      Grey figures are the uploaded workbook’s. A cell you type overrides it; a cell you leave empty uses it.
+      Grey figures are the uploaded workbook’s<template v-if="item.workbook_stale">, which is not dated this week, so they count for nothing here</template>.
+      A cell you type overrides it; a cell you leave empty uses it.
     </p>
     <p v-if="item.auto_note" class="text-xs text-muted-foreground">{{ item.auto_note }} They show in grey.</p>
     <p v-if="item.carried && !item.needs_confirmation" class="text-xs text-muted-foreground">

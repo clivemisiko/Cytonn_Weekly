@@ -243,7 +243,9 @@ describe("analyst form helpers", () => {
     // held, but for another week; and a typed value the workbook also holds
     const stale = { note: "Fake note", found: "2031-01-03", expected: ["2031-01-10"] };
     expect(tableOrigin(table({ workbook_stale: stale }))).toBe("stale");
-    expect(originLabel("stale", null)).toBe("In the workbook, but for another week");
+    // a workbook for another week shows its rows but covers nothing: still "stale", never "From the workbook"
+    expect(tableOrigin(table({ workbook_stale: { ...stale, whole: true }, workbook_rows: [{ company: "B" }] }))).toBe("stale");
+    expect(originLabel("stale", null)).toBe("In the workbook, but not dated this week");
     expect(inWorkbook(table({ workbook_rows: [{ company: "B" }] }))).toBe(true);
     expect(inWorkbook(table({}))).toBe(false);
     expect(originLabel("typed", null, "2 rows", true)).toBe("Typed, 2 rows, also in the workbook");
