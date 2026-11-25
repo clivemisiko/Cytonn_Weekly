@@ -323,6 +323,20 @@ _READING = {"placements": "placements", "cmmf_last_week": "cmmf_last_week", "mmf
             "dividend_yield_average": "valuation", "universe_month_end": "universe", "universe": "universe"}
 
 
+# What a workbook reading is called when it cannot be read (unreadable_line).
+_READING_NAMED = {"mmf": "fund table", "placements": "3-month bank placements", "cmmf_last_week": "Cytonn fund's previous week yield",
+                  "interbank": "interbank rates", "eurobonds": "Eurobond yields", "remittances": "remittances",
+                  "borrowing": "net domestic borrowing log", "large_caps": "large-cap list", "turnover": "turnover",
+                  "foreign": "foreign positions", "valuation": "P/E and dividend yield", "universe": "Universe of Coverage"}
+
+
+def unreadable_line(name: str, exc: Exception) -> str:
+    """A sheet reader's refusal as the form and the readiness check show it: the part named, the reader's reason with its
+    quoting marks taken out (an apostrophe inside a word is kept)."""
+    detail = re.sub(r"(?<!\w)['\"]|['\"](?!\w)", "", str(exc)).strip().rstrip(".")
+    return f"The workbook's {_READING_NAMED.get(name, name.replace('_', ' '))} could not be read: {detail}."
+
+
 # How an item is named when a part says it is missing, where its label does not read as a noun.
 _NAMED = {"universe": "the Universe of Coverage inputs", "universe_month_end": "the date of the previous month's last price",
           "mmf_published": "the date the fund table was published on", "placements": "the 3-month bank placements rate",
@@ -1056,6 +1070,7 @@ class Analyst:
         self.form = usable_form(self.stored)             # a carried or suggested value is read only once confirmed
         self.errors: dict[str, str] = {}             # workbook reading -> why it could not be read
         self.stale: dict[str, dict[str, Any]] = {}   # workbook reading -> {note, found, expected}: held, but for another week
+        self.unreadable: dict[str, str] = {}         # workbook reading -> why it could not be read, in plain words (form, readiness)
         self.incomplete: dict[str, str] = {}         # item -> what is typed for it but cannot be used yet
         self.differences: list[dict[str, str]] = []  # {"item", "text"}
         self._memo: dict[str, Any] = {}
@@ -1121,6 +1136,8 @@ class Analyst:
                 if isinstance(exc, fi_workbook.WorkbookWeekError):
                     self.stale[name] = {"note": str(exc), "found": exc.found.isoformat() if exc.found else None,
                                         "expected": [d.isoformat() for d in exc.expected]}
+                else:
+                    self.unreadable[name] = unreadable_line(name, exc)
                 return None
 
         return self._once(f"wb:{name}", load)
@@ -1804,7 +1821,7 @@ def _status(analyst: "Analyst", week: Week, root: Optional[Path], section: Optio
         return {"type": "field", "key": spec.key, "label": spec.label, "required": spec.required, "kind": spec.kind, "unit": spec.unit, "min": spec.lo,
                 "max": spec.hi, "source": spec.source, "help": spec.help, "used_in": spec.used_in,
                 "value": value, "workbook": workbook,
-                "workbook_note": analyst.errors.get(_READING[spec.key]), "differences": differences.get(spec.key, []),
+                "workbook_note": analyst.unreadable.get(_READING[spec.key]) or analyst.errors.get(_READING[spec.key]), "differences": differences.get(spec.key, []),
                 "workbook_stale": stale(spec.key, spec.section, wb), "workbook_first": workbook_first(spec.key),
                 "carried": carried(spec.key, value),
                 "needs_confirmation": spec.key in form["unconfirmed"] and spec.key not in superseded, "suggestable": spec.key in SUGGESTED_FIELDS,
@@ -1840,7 +1857,7 @@ def _status(analyst: "Analyst", week: Week, root: Optional[Path], section: Optio
                 "rows": rows, "text": to_text(table, rows) if rows and table.mode == PASTE else "",
                 "workbook_rows": [_wb_row(table, r) for r in wb] if wb else None,
                 "workbook_ref": f"{WORKBOOKS[table.section]} '{first.sheet}'" if first is not None else None,
-                "workbook_note": analyst.errors.get(_READING[table.key]),
+                "workbook_note": analyst.unreadable.get(_READING[table.key]) or analyst.errors.get(_READING[table.key]),
                 "workbook_stale": stale(table.key, table.section, wb), "workbook_first": workbook_first(table.key),
                 "warnings": _table_warnings(table, rows or []), "differences": differences.get(table.key, []),
                 "carried": carried(table.key, rows), "needs_confirmation": table.key in form["unconfirmed"] and table.key not in superseded,
