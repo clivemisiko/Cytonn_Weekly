@@ -422,17 +422,16 @@ class WeeklyInputs:
         return self._once(key, load)
 
     def warm(self, slugs: tuple[str, ...] = (EQUITIES_WORKBOOK, FI_WORKBOOK)) -> None:
-        """Parse this week's stored workbooks into _PARSED through the form's own read path, so the next request hits the cache."""
-        for slug in slugs:
-            prop = _WARM_PROPS.get(slug)
-            if prop is None:
-                continue
+        """Run the form's own read (analyst.status) for each section whose workbook is named, so the next request finds the parse,
+        the sheets read, the formulas workbook and the KCB weekly parse cached.  The status itself is dropped at once."""
+        from cytonn_weekly.weekly import analyst   # analyst.py imports this module
+
+        for section in dict.fromkeys(_WARM_SECTIONS[s] for s in slugs if s in _WARM_SECTIONS):
             started = time.perf_counter()
-            getattr(self, prop)
-            if self.loads.get(_WARM_KEYS[slug]) == "parsed":
-                # WARNING, not INFO: nothing configures the cytonn_weekly loggers, so only WARNING reaches docker logs.
-                _log.warning("workbook warm-up: week ending %s, %s parsed in %.1f s", self.week.ending.isoformat(), slug,
-                             time.perf_counter() - started)
+            analyst.status(self.week, self.root, section)
+            # WARNING, not INFO: nothing configures the cytonn_weekly loggers, so only WARNING reaches docker logs.
+            _log.warning("workbook warm-up: week ending %s, %s form read in %.1f s", self.week.ending.isoformat(), section,
+                         time.perf_counter() - started)
 
     def earlier(self, stored_name: str) -> bool:
         """Whether a stored workbook's own date (identify) falls in an earlier week than this one, or cannot be read, so it
@@ -530,11 +529,13 @@ class WeeklyInputs:
 # ---------------------------------------------------------------------------
 
 _WARM_PROPS = {EQUITIES_WORKBOOK: "equities_book", FI_WORKBOOK: "fi_book"}
-_WARM_KEYS = {EQUITIES_WORKBOOK: "eq", FI_WORKBOOK: "fi"}
+_WARM_SECTIONS = {EQUITIES_WORKBOOK: "equities", FI_WORKBOOK: "fixed_income"}   # analyst.EQ and analyst.FI
 # One worker: one workbook parsed at a time, so a warm-up never doubles the memory of a parse on a small box.
 _WARMER = ThreadPoolExecutor(max_workers=1, thread_name_prefix="workbook-warm")
 _log = logging.getLogger(__name__)
-WARM_WEEKS = 3   # at most 3 weeks x 2 workbooks = 6 entries, exactly _PARSED_MAX
+# A week's form read also parses its KCB weekly PDF and the previous week's workbooks into _PARSED, so _PARSED_MAX holds about two
+# weeks of a real visit; a third would only evict itself.  Warmed oldest first, so anything evicted is the older week's.
+WARM_WEEKS = 2
 
 
 def _warm_now(weeks: Optional[list[Week]], root: Optional[Path], slugs: tuple[str, ...]) -> None:
