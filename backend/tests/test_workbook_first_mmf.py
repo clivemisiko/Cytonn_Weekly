@@ -48,15 +48,12 @@ def snip(root):
 # ---------------------------------------------------------------------------
 
 def test_a_fund_table_dated_for_another_week_is_refused_on_the_form_in_readiness_and_in_the_draft(stale):
+    # the form follows the draft (2026-11-25): a workbook for an earlier week is not opened, so the items carry nothing from it
+    # and the slot alone says why (test_workbook_week.py)
     mmf = item("mmf", stale)
-    assert mmf["workbook_rows"] is None
-    assert mmf["workbook_stale"]["found"] == "2026-09-25" and mmf["workbook_stale"]["expected"] == ["2026-10-02"]
-    assert ("The fixed income workbook holds a money market fund table, but it is dated 25 Sep 2026; this week needs "
-            "2 Oct 2026. The workbook is not yet updated for this week") in mmf["workbook_stale"]["note"]
-    assert item("mmf_published", stale)["workbook_stale"]["found"] == "2026-09-25"
-    got = where(stale)
-    assert got["mmf"] == ("needs_analyst", "the workbook holds it, but dated 25 Sep 2026; this week needs 2 Oct 2026")
-    assert got["mmf"][1] != "nothing typed and no workbook value"
+    assert mmf["workbook_rows"] is None and mmf["workbook_ref"] is None and mmf["workbook_stale"] is None
+    assert item("mmf_published", stale)["workbook"] is None
+    assert where(stale)["mmf"] == ("needs_analyst", "nothing typed and no workbook value")
     # the draft does not read a workbook for an earlier week at all, so it says that, naming both weeks, and never the sheet's refusal
     warnings = fi.build(stale).section["warnings"]
     assert len([w for w in warnings if w.startswith(IGNORED)]) == 1
@@ -65,12 +62,11 @@ def test_a_fund_table_dated_for_another_week_is_refused_on_the_form_in_readiness
 
 def test_placements_and_last_weeks_yield_on_that_sheet_get_the_same_refusal(stale):
     placements, last = item("placements", stale), item("cmmf_last_week", stale)
-    assert placements["workbook"] is None and last["workbook"] is None   # read before from a sheet of another week
-    assert ("holds the 3-month bank placements, but its 'Money Market Performance' sheet is for another week: the fund "
-            "table is dated 25 Sep 2026; this week needs 2 Oct 2026") in placements["workbook_stale"]["note"]
-    assert "the Cytonn Money Market Fund's yield for the previous week" in last["workbook_stale"]["note"]
+    # the production case (27 Nov against a 13 Nov workbook): neither folds as the workbook's, and neither is said to be held
+    assert placements["workbook"] is None and last["workbook"] is None
+    assert placements["workbook_stale"] is None and last["workbook_stale"] is None
     got = where(stale)
-    assert got["placements"][0] == "needs_analyst" and got["placements"][1].startswith("the workbook holds it, but dated 25 Sep 2026")
+    assert got["placements"] == ("needs_analyst", "nothing typed and no workbook value")
     assert got["cmmf_last_week"][0] == "optional"
     warnings = " ".join(fi.build(stale).section["warnings"])
     assert IGNORED in warnings and "holds the 3-month bank placements" not in warnings
@@ -79,7 +75,7 @@ def test_placements_and_last_weeks_yield_on_that_sheet_get_the_same_refusal(stal
 def test_the_refusal_is_still_said_when_a_table_is_typed(stale):
     # the case that was silent: a typed table hid the workbook's note on the form, and the draft said nothing
     save(stale, {"mmf_published": "2026-10-02", "placements": "9.5"}, {"mmf": {"text": FUNDS}})
-    assert item("mmf", stale)["workbook_stale"]["found"] == "2026-09-25"
+    assert item("mmf", stale)["workbook_rows"] is None
     review = fi.build(stale)
     assert blocks(review)["mmf_table"]["source"]["via"] == "rows typed on the weekly form"
     assert any(w.startswith(IGNORED) for w in review.section["warnings"])

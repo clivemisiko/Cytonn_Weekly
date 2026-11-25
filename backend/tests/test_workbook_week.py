@@ -46,9 +46,12 @@ def read_one(root, section):
     return got, getattr(wi, BOOK_PROP[section]) is not None, a.stale_lines()
 
 
-def page_opens(root, section):
-    """Whether the form (and readiness) still opens the workbook, to show its figures as not this week's."""
-    return getattr(inputs.WeeklyInputs(WEEK, root, old_books=True), BOOK_PROP[section]) is not None
+def assert_form_has_nothing_from_it(root, items, where):
+    """An ignored workbook gives the form nothing: no value, rows, ref or date note on any field or table, and readiness says it
+    holds none of them.  The form reports no workbook for the section."""
+    for key, i in items.items():
+        assert not held(i) and i.get("workbook_ref") is None and i["workbook_stale"] is None, key
+        assert "the workbook holds it" not in where[key][1], key
 
 
 def without_date(section: str) -> bytes:
@@ -84,15 +87,9 @@ def test_a_workbook_for_another_week_is_said_on_the_slot_and_in_readiness_and_co
     assert entry[1]["other_week"] is True
     # no item is covered by it, and each item it holds says so with both dates
     assert not [k for k, (g, why) in where.items() if g == "in_place" and why in COVERED]
-    holding = [k for k, i in items.items() if held(i)]
-    assert holding, "the synthetic workbook should hold some of this section's items"
-    for key in holding:
-        stale = items[key]["workbook_stale"]
-        assert stale["found"] == "2026-09-25" and stale["expected"] == ["2026-10-02"], key
-        assert where[key][1] == "the workbook holds it, but dated 25 Sep 2026; this week needs 2 Oct 2026", key
-    # an earlier week: the form still shows it, but a draft never opens it, so no figure from it is used, not even as a
-    # second reading (every reader goes through WeeklyInputs.fi_book or equities_book), and its warning names both weeks
-    assert page_opens(tmp_path, section)
+    # an earlier week: the form follows the draft, so no item shows, folds or is badged with a figure from it, and the draft never
+    # opens it, so no figure from it is used, not even as a second reading, and its warning names both weeks
+    assert_form_has_nothing_from_it(tmp_path, items, where)
     value, opened, lines = read_one(tmp_path, section)
     assert not value and not opened
     assert lines[0].startswith(f"The uploaded {name} is for the week ending 25 Sep 2026, and this report is for the week ending 2 Oct 2026. "
@@ -124,13 +121,8 @@ def test_a_workbook_with_no_readable_date_is_said_to_have_none_never_taken_as_cu
                                "for the week ending 2 Oct 2026. The draft ignores it. Upload this week's workbook.")
     assert entry[1]["other_week"] is True
     assert not [k for k, (g, why) in where.items() if g == "in_place" and why in COVERED]
-    holding = [k for k, i in items.items() if held(i)]
-    assert holding
-    for key in holding:
-        assert items[key]["workbook_stale"]["found"] is None, key
-        assert where[key][1] == "the workbook holds it, but its date cannot be read; this week needs 2 Oct 2026", key
-    # treated as an earlier one by the draft: it cannot be shown to hold this week
-    assert page_opens(tmp_path, section)
+    # treated as an earlier one by the draft and the form: it cannot be shown to hold this week
+    assert_form_has_nothing_from_it(tmp_path, items, where)
     value, opened, lines = read_one(tmp_path, section)
     assert not value and not opened
     assert lines[0].startswith(f"The uploaded {name} has no date that can be read (")
@@ -152,7 +144,9 @@ def test_a_workbook_for_a_later_week_is_still_read_by_the_draft_but_never_counte
                                "ending 2 Oct 2026. The draft still reads it, so check every value taken from it. Upload this week's workbook.")
     assert entry[1]["other_week"] is True
     assert not [k for k, (g, why) in where.items() if g == "in_place" and why in COVERED]
-    assert all(i["workbook_stale"] for i in items.values() if held(i))
+    holding = [k for k, i in items.items() if held(i)]
+    assert holding, "a later workbook is still read on the form, as today"
+    assert all(items[k]["workbook_stale"]["found"] == "2026-10-09" for k in holding)
     # the draft still reads it, and says to check every value it takes
     value, opened, lines = read_one(tmp_path, section)
     assert value and opened
@@ -201,3 +195,17 @@ def test_removing_an_uploaded_workbook_returns_the_slot_to_not_uploaded_and_touc
     assert after["counts"]["needs_analyst"] > before["counts"]["needs_analyst"]   # what it covered is missing again
     assert not (tmp_path / "inputs" / "2026-10-02" / "equities_workbook.xlsx").exists()
     assert review_store.load_review(run_id, db_path=env.db) is not None
+
+
+@pytest.mark.parametrize("section", SECTIONS)
+def test_an_earlier_workbook_reaches_no_field_or_table_on_the_form_or_its_workbooks_flag(tmp_path, text_pdfs, section):  # noqa: F811
+    # the production case: placements, last week's Cytonn yield and the Eurobond issues had no date of their own and folded
+    slot, _, book, _ = BOOKS[section]
+    inputs.store(WEEK, slot, book(updated=False), "Fake old book.xlsx", tmp_path)
+    form = analyst.status(WEEK, tmp_path, section)
+    assert form["workbooks"][analyst.FI if section == "fixed_income" else analyst.EQ] is False
+    items = {i["key"]: i for g in form["groups"] for i in g["items"]}
+    assert all(not held(i) and i.get("workbook_ref") is None for i in items.values())
+    if section == "fixed_income":
+        assert items["placements"]["workbook"] is None and items["cmmf_last_week"]["workbook"] is None
+        assert items["eurobond_issues"]["workbook_rows"] is None
