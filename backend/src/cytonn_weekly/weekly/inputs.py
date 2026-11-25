@@ -24,7 +24,10 @@ import copy
 import hashlib
 import json
 import re
+import logging
 import threading
+import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
@@ -347,6 +350,7 @@ def status(week: Week, root: Optional[Path] = None) -> dict[str, Any]:
 _PARSED: "OrderedDict[tuple, Any]" = OrderedDict()
 _PARSED_LOCK = threading.Lock()
 _PARSED_MAX = 6
+_INFLIGHT: dict[tuple, threading.Event] = {}   # keys being parsed now: other callers for the key wait instead of parsing too
 
 
 def _fresh(parsed: Any) -> Any:
@@ -385,22 +389,44 @@ class WeeklyInputs:
                 return None
             st = path.stat()   # before the read: a file replaced in between is cached under the old key, never served stale
             ident = (key, str(path.resolve()), st.st_mtime_ns, st.st_size)
-            with _PARSED_LOCK:
-                parsed = _PARSED.get(ident)
+            for attempt in (1, 2):
+                with _PARSED_LOCK:
+                    parsed = _PARSED.get(ident)
+                    if parsed is not None:
+                        _PARSED.move_to_end(ident)
+                    elif attempt == 1 and ident in _INFLIGHT:
+                        waiting = _INFLIGHT[ident]   # another caller is parsing this file: wait for its result
+                    else:
+                        waiting = None
+                        _INFLIGHT.setdefault(ident, threading.Event())
                 if parsed is not None:
-                    _PARSED.move_to_end(ident)
-            if parsed is not None:
-                self.loads[key] = "from cache"
-                return _fresh(parsed)
+                    self.loads[key] = "from cache"
+                    return _fresh(parsed)
+                if waiting is None:
+                    break
+                waiting.wait()   # set whether that parse worked or failed; a failure leaves no entry, so this caller parses
             self.loads[key] = "parsed"
-            parsed = parse(path.read_bytes())
-            with _PARSED_LOCK:
-                _PARSED[ident] = parsed
-                while len(_PARSED) > _PARSED_MAX:
-                    _PARSED.popitem(last=False)
+            try:
+                parsed = parse(path.read_bytes())
+                with _PARSED_LOCK:
+                    _PARSED[ident] = parsed
+                    while len(_PARSED) > _PARSED_MAX:
+                        _PARSED.popitem(last=False)
+            finally:
+                with _PARSED_LOCK:
+                    done = _INFLIGHT.pop(ident, None)
+                if done is not None:
+                    done.set()
             return _fresh(parsed)
 
         return self._once(key, load)
+
+    def warm(self, slugs: tuple[str, ...] = (EQUITIES_WORKBOOK, FI_WORKBOOK)) -> None:
+        """Parse this week's stored workbooks into _PARSED through the form's own read path, so the next request hits the cache."""
+        for slug in slugs:
+            prop = _WARM_PROPS.get(slug)
+            if prop is not None:
+                getattr(self, prop)
 
     def earlier(self, stored_name: str) -> bool:
         """Whether a stored workbook's own date (identify) falls in an earlier week than this one, or cannot be read, so it
@@ -491,3 +517,46 @@ class WeeklyInputs:
     def results_dir(self) -> Path:
         """Where CBK's auction result files are kept with their hashes (fixed_income/net_borrowing.py)."""
         return inputs_root(self.root).parent / "cbk_results"
+
+
+# ---------------------------------------------------------------------------
+# Warming the parsed-workbook cache in the background (after a restart, after an upload)
+# ---------------------------------------------------------------------------
+
+_WARM_PROPS = {EQUITIES_WORKBOOK: "equities_book", FI_WORKBOOK: "fi_book"}
+# One worker: one workbook parsed at a time, so a warm-up never doubles the memory of a parse on a small box.
+_WARMER = ThreadPoolExecutor(max_workers=1, thread_name_prefix="workbook-warm")
+_log = logging.getLogger(__name__)
+WARM_WEEKS = 2   # the current and the most recent week: at most 2 weeks x 2 workbooks = 4 entries, under _PARSED_MAX
+
+
+def _warm_now(weeks: Optional[list[Week]], root: Optional[Path], slugs: tuple[str, ...]) -> None:
+    started = time.perf_counter()
+    try:
+        weeks = weeks if weeks is not None else recent_weeks(root)
+        for week in weeks:
+            WeeklyInputs(week, root).warm(slugs)
+    except Exception:  # noqa: BLE001 - a failed warm-up only means the first request parses, as before
+        _log.exception("warming the parsed-workbook cache failed")
+        return
+    _log.info("warmed the parsed-workbook cache for %d week(s) in %.1f s", len(weeks), time.perf_counter() - started)
+
+
+def recent_weeks(root: Optional[Path] = None, count: int = WARM_WEEKS) -> list[Week]:
+    """The newest weeks that have stored inputs, newest first."""
+    folder = inputs_root(root)
+    found = []
+    for child in sorted(folder.iterdir(), reverse=True) if folder.is_dir() else []:
+        try:
+            found.append(Week(date.fromisoformat(child.name)))
+        except ValueError:
+            continue
+        if len(found) == count:
+            break
+    return found
+
+
+def warm_in_background(weeks: Optional[list[Week]] = None, root: Optional[Path] = None,
+                       slugs: tuple[str, ...] = tuple(_WARM_PROPS)) -> Future:
+    """Queue a warm-up on the warm thread and return at once; with no weeks, the most recent ones that have inputs."""
+    return _WARMER.submit(_warm_now, weeks, root, slugs)
