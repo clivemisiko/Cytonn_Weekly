@@ -171,10 +171,10 @@ def test_recent_weeks_picks_weeks_by_their_workbook_not_the_newest_folders(tmp_p
         _store_week(tmp_path, week)
     _store_week(tmp_path, weeks[3], book_week=weeks[2])   # an earlier week's workbook: the form skips it
     (inputs.inputs_root(tmp_path) / weeks[4].ending.isoformat()).mkdir(parents=True)   # a folder with no workbook
-    assert inputs.recent_weeks(tmp_path) == [weeks[2], weeks[1], weeks[0]]
+    assert inputs.recent_weeks(tmp_path) == [weeks[2], weeks[1]]   # WARM_WEEKS is 2: the newest two that qualify
 
 
-def test_three_weeks_fill_the_cache_without_evicting_the_newest(tmp_path):
+def test_the_warmed_weeks_stay_within_the_cache_and_keep_the_newest(tmp_path):
     from datetime import timedelta
 
     from cytonn_weekly.weekly.week import Week
@@ -183,18 +183,18 @@ def test_three_weeks_fill_the_cache_without_evicting_the_newest(tmp_path):
     for week in weeks:
         _store_week(tmp_path, week)
     inputs.warm_in_background(root=tmp_path).result(timeout=120)
-    assert len(inputs._PARSED) == inputs._PARSED_MAX
+    assert len(inputs._PARSED) <= inputs._PARSED_MAX
     newest = inputs.WeeklyInputs(weeks[-1], tmp_path)
     assert newest.equities_book is not None and newest.fi_book is not None
     assert newest.loads == {"eq": "from cache", "fi": "from cache"}
 
 
-def test_a_parse_during_warm_up_is_logged_with_week_kind_and_seconds(tmp_path, caplog):
+def test_each_form_read_of_the_warm_up_is_logged_with_week_section_and_seconds(tmp_path, caplog):
     _store_books(tmp_path)
     with caplog.at_level(logging.WARNING, logger=inputs.__name__):
         inputs.warm_in_background(root=tmp_path).result(timeout=60)
-    assert f"week ending {WEEK.ending.isoformat()}, {inputs.EQUITIES_WORKBOOK} parsed in" in caplog.text
-    assert f"{inputs.FI_WORKBOOK} parsed in" in caplog.text
+    assert f"week ending {WEEK.ending.isoformat()}, equities form read in" in caplog.text
+    assert f"week ending {WEEK.ending.isoformat()}, fixed_income form read in" in caplog.text
 
 
 def test_section_readiness_warms_the_opened_week(tmp_path, monkeypatch):
@@ -207,3 +207,48 @@ def test_section_readiness_warms_the_opened_week(tmp_path, monkeypatch):
     response = client.get("/api/sections/equities/readiness", params={"period": period})
     assert response.status_code == 200
     assert [WEEK] in calls
+
+
+def _count_opens(monkeypatch):
+    """Count every openpyxl open of a stored workbook, values (the parse) and formulas alike."""
+    opened = []
+    real = inputs.Workbook._open
+
+    def counting(self, data_only):
+        opened.append(data_only)
+        return real(self, data_only)
+
+    monkeypatch.setattr(inputs.Workbook, "_open", counting)
+    return opened
+
+
+def test_after_the_warm_up_the_form_read_opens_nothing(tmp_path, monkeypatch):
+    from cytonn_weekly.weekly import analyst
+
+    _store_books(tmp_path)
+    inputs.warm_in_background(root=tmp_path).result(timeout=120)
+    opened = _count_opens(monkeypatch)
+    for section in (analyst.EQ, analyst.FI):
+        analyst.status(WEEK, tmp_path, section)
+    assert opened == []   # no values parse and no formulas open
+
+
+def test_both_sections_of_one_week_are_warmed(tmp_path, monkeypatch):
+    from cytonn_weekly.weekly import analyst
+
+    _store_books(tmp_path)
+    seen = []
+    real = analyst.status
+    monkeypatch.setattr(analyst, "status", lambda week, root=None, section=None: seen.append((week, section)) or real(week, root, section))
+    inputs.warm_in_background(root=tmp_path).result(timeout=120)
+    assert sorted(s for _, s in seen) == sorted([analyst.EQ, analyst.FI]) and {w for w, _ in seen} == {WEEK}
+
+
+def test_a_failed_form_read_in_the_warm_up_is_swallowed(tmp_path, monkeypatch, caplog):
+    from cytonn_weekly.weekly import analyst
+
+    _store_books(tmp_path)
+    monkeypatch.setattr(analyst, "status", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("synthetic")))
+    with caplog.at_level(logging.ERROR, logger=inputs.__name__):
+        inputs.warm_in_background(root=tmp_path).result(timeout=60)
+    assert "warming the parsed-workbook cache failed" in caplog.text
