@@ -103,6 +103,7 @@ def no_cached_parses(monkeypatch):
     from cytonn_weekly.weekly import inputs
 
     monkeypatch.setattr(inputs, "_PARSED", OrderedDict())
+    monkeypatch.setattr(inputs, "_INFLIGHT", {})
 
 
 @pytest.fixture(autouse=True)

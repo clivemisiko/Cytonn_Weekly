@@ -284,6 +284,7 @@ def make_router(d: Deps) -> APIRouter:
             await run_in_threadpool(weekly_inputs.store, week, slot, data, filename, d.root)
         except weekly_inputs.InputError as exc:
             raise ProblemError(422, str(exc), "upload_refused")
+        weekly_inputs.warm_in_background([week], d.root, (slot,))   # a no-op for a slot that is not a workbook
         return weekly_inputs.status(week, d.root)
 
     @router.post("/api/inputs/weekly/{week_ending}/cbk_bulletin/fetch")

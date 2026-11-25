@@ -66,6 +66,7 @@ from cytonn_weekly.env import key_override_warnings, load_env
 from cytonn_weekly.drafting import bedrock as bedrock_provider
 from cytonn_weekly.notable.registry import Detector
 from cytonn_weekly.weekly import cbk_bulletin, cbk_rates, fetched_items, fund_snip
+from cytonn_weekly.weekly import inputs as weekly_inputs
 
 from api.deps import Deps, configured_provider
 from api.draft_slot import DRAFT_STALE_AFTER_SECONDS
@@ -173,6 +174,8 @@ def create_app(
 
     app.router.on_startup.append(interrupt_leftover_runs)
     app.router.on_startup.append(interrupt_leftover_jobs)
+    # The first form read after a restart would otherwise parse the workbooks on the request (close to 30 s on the droplet).
+    app.router.on_startup.append(lambda: weekly_inputs.warm_in_background(root=deps.root))
     app.router.on_shutdown.append(database.close_all)  # the held PostgreSQL connection, if any
     return app
 
