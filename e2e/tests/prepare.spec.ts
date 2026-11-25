@@ -387,7 +387,7 @@ for (const s of SECTIONS) {
 const DEMO = "2026-10-09";
 const PRISTINE = join(REPO, "backend", "data", "demo-e2e", "pristine", "inputs", "weekly", DEMO);
 const covered = (page: Page) => inputs(page).locator("[data-covered]");
-const BOOK_SECTIONS = [
+const BOOK_SECTIONS: { slug: string; title: string; steps: number; folded: string[]; override?: string }[] = [
   // `folded`: the steps the workbook answers, in the page's order; `steps`: the count left of 11 (7 before the optional
   // inputs and the defaults in use left the step-through). Fixed Income's 3: the fund table source label (required), the
   // Eurobond issues and the other bond redemptions (typed in the demo form, so they stay steps). The borrowing target is
@@ -396,8 +396,11 @@ const BOOK_SECTIONS = [
   {
     slug: "equities",
     title: "Equities",
-    steps: 2,
-    folded: ["Large-cap list", "Year-to-date equities turnover", "Year-to-date foreign net position", "Foreign net position recorded in the previous year", "Market P/E", "Historical average P/E", "Market dividend yield", "Historical average dividend yield", "Foreign net position, previous weeks"],
+    // 0 since the demo workbook's Universe of Coverage holds its w/w, m/m and YTD formulas (the reader locates its columns by
+    // them): the table and its month-end date are folded too, so nothing is left to type and the card says so.
+    steps: 0,
+    folded: ["Large-cap list", "Year-to-date equities turnover", "Year-to-date foreign net position", "Foreign net position recorded in the previous year", "Market P/E", "Historical average P/E", "Market dividend yield", "Historical average dividend yield", "Previous month's last price is the close of", "Foreign net position, previous weeks", "Universe of Coverage"],
+    override: "Universe of Coverage",
   },
 ];
 
@@ -406,7 +409,8 @@ for (const s of BOOK_SECTIONS) {
     await page.setViewportSize({ width: 1366, height: 900 });
     await page.goto(url(s.slug, DEMO, "&view=prepare"));
     const card = inputs(page);
-    await expect(card.getByText(new RegExp(`^Step \\d+ of ${s.steps}$`))).toBeVisible(); // it opens on the first one missing, as today
+    if (s.steps) await expect(card.getByText(new RegExp(`^Step \\d+ of ${s.steps}$`))).toBeVisible(); // it opens on the first one missing, as today
+    else await expect(card.getByText("Nothing to type: everything here comes from the workbook.", { exact: true })).toBeVisible();
     const list = covered(page);
     await expect(list.locator("summary")).toHaveText(`${s.folded.length} inputs come from the workbook`);
     await expect(list.locator("[data-covered-item]").first()).toBeHidden(); // collapsed
@@ -414,13 +418,22 @@ for (const s of BOOK_SECTIONS) {
     await expect(list.locator("[data-covered-item] p.font-medium")).toHaveText(s.folded);
     for (const row of await list.locator("[data-covered-item]").all()) await expect(row).toContainText(/From the workbook: \S/);
     // none of them is a step any more: stepping to the end never shows their fields
-    while (!(await card.getByText(`Step ${s.steps} of ${s.steps}`, { exact: true }).isVisible())) await card.getByRole("button", { name: "Next", exact: true }).click();
-    await expect(card.getByText(`Step ${s.steps} of ${s.steps}`, { exact: true })).toBeVisible();
+    if (s.steps) {
+      while (!(await card.getByText(`Step ${s.steps} of ${s.steps}`, { exact: true }).isVisible())) await card.getByRole("button", { name: "Next", exact: true }).click();
+      await expect(card.getByText(`Step ${s.steps} of ${s.steps}`, { exact: true })).toBeVisible();
+    } else await expect(card.getByText(/^Step \d+ of \d+$/)).toHaveCount(0);
     // the banner and the readiness check count none of them as missing
     await expect(banner(page)).toHaveText(/^(\d+ required items? missing|Everything required is in place)/);
     await prepare(page).getByRole("button", { name: "View checklist" }).click();
     const missing = prepare(page).locator("#prepare-checklist li").filter({ hasText: /nothing typed and no workbook value|not yet confirmed/ });
     for (const name of s.folded) await expect(missing.filter({ hasText: new RegExp(`^${name.replace(/[/()]/g, "\$&")}:`) })).toHaveCount(0);
+    if (s.override) {
+      // Override puts the folded table back as a step, on its normal card, and the list loses it
+      await covered(page).getByRole("button", { name: new RegExp(`^Override\\s*: ${s.override}$`) }).click();
+      await expect(card.getByText(`Step 1 of ${s.steps + 1}`, { exact: true })).toBeVisible();
+      await expect(card.getByRole("heading", { name: s.override, exact: true })).toBeVisible();
+      await expect(covered(page).locator("summary")).toHaveText(`${s.folded.length - 1} inputs come from the workbook`);
+    }
   });
 }
 

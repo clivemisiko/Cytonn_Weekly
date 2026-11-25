@@ -68,7 +68,13 @@ from typing import Any, Callable, Optional
 
 from cytonn_weekly.common import atomic
 from cytonn_weekly.weekly import equities_workbook, fi_workbook
-from cytonn_weekly.weekly.inputs import InputError, WeeklyInputs, week_dir
+from cytonn_weekly.weekly.inputs import SHOW_KCB_WEEKLY, InputError, WeeklyInputs, week_dir
+
+# Read once at import, like every other help text: the switch is a constant, not a runtime setting.
+LARGE_CAPS_HELP = ("One company a line, as the team names them. The movers are picked from this list by KCB IB's week-on-week changes."
+                   if SHOW_KCB_WEEKLY else
+                   "One company a line, as the team names them. The movers themselves come from the equities workbook's "
+                   "'Gainers & Losers' sheet, so upload the equities workbook for them.")
 from cytonn_weekly.weekly.week import Week, day_text, ordinal, saturday_issue, saturday_note, week_ending_of
 from cytonn_weekly.weekly.workbook import Cell, WorkbookError
 
@@ -211,7 +217,7 @@ FIELD_LIST = (
           "Net domestic borrowing against the pro-rated target", "Optional: 1 July is used when this is empty. The net borrowing "
           "log starts on this day and the target is pro-rated from it. Typed once, it is carried forward.", kind=DATE, required=False),
     Field("large_caps", EQ, "market", "Large-cap list", "The equities team's large-cap list", "Large-cap movers",
-          "One company a line, as the team names them. The movers are picked from this list by KCB IB's week-on-week changes.",
+          LARGE_CAPS_HELP,
           kind=NAMES),
     Field("turnover_ytd", EQ, "market", "Year-to-date equities turnover", "The equities team's running total",
           "Equities turnover", "Including this week.", unit="USD mn", lo=0, hi=100_000),

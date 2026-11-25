@@ -82,3 +82,7 @@ origin (`E2E_WEB_ORIGINS`).
 The Word export needs all six sections approved, and three of them need live sources the test instance does not have.
 T14 checks the real disabled state, then answers the two export calls itself to check what the page does when the API
 says the report is ready (the button enables, the file downloads under the name the API gives).
+
+## Demo equities workbook needs Universe of Coverage formulas
+
+The pristine e2e equities workbook (backend/data/demo-e2e/pristine/inputs/weekly/2026-10-09/equities_workbook.xlsx) is not in git. Since the Universe of Coverage reader started requiring formulas (6a4949c, 2026-11-05), each company row on the 'Universe of Coverage' sheet needs formulas in the w/w, m/m and YTD columns: H = G/E-1, I = G/F-1, J = G/L-1 (the same ones backend/tests/weekly_helpers.py writes). Without them the reader refuses the whole sheet, the grid lists no rows, and buttons.spec.ts T36 and prepare.spec.ts T154 (Equities) fail. A fresh setup must add them.

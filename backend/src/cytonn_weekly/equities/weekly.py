@@ -63,6 +63,7 @@ from cytonn_weekly.fixed_income.weekly import _carried
 from cytonn_weekly.drafting.base import NarrativeProvider
 from cytonn_weekly.drafting.drafter import draft_pieces
 from cytonn_weekly.weekly import analyst, cbk_bulletin, cbk_rates, equities_workbook, fi_workbook, kcb, nse_price_list, previous_issue
+from cytonn_weekly.weekly import inputs as wi
 from cytonn_weekly.weekly.inputs import WeeklyInputs
 from cytonn_weekly.weekly.prose import (
     Fallbacks,
@@ -98,6 +99,23 @@ UPLOAD = "Upload it under \"This week's inputs\" on the start screen and draft a
 NEED_WORKBOOK_FOR_CHARTS = ("The equities workbook for this week is not among this week's inputs; the chart is drawn from its history, which the weekly analyst inputs form does not hold.", f"The equities workbook for the week. {UPLOAD}")
 NEED_KCB_WEEKLY = ("KCB IB's weekly trading report for this week is not among this week's inputs.",
                    f"KCB IB's weekly report for the Friday. {UPLOAD}")
+# With the weekly report slot hidden (inputs.SHOW_KCB_WEEKLY off), the movers need the workbook's 'Gainers & Losers' sheet.
+NEED_WORKBOOK_FOR_MOVERS = ("The equities workbook for this week is not among this week's inputs, so the large-cap movers cannot be picked.",
+                            f"The equities workbook with its 'Gainers & Losers' sheet updated for the week. {UPLOAD}")
+
+
+def need_movers_source() -> tuple[str, str]:
+    return NEED_KCB_WEEKLY if wi.SHOW_KCB_WEEKLY else NEED_WORKBOOK_FOR_MOVERS
+
+
+def foreign_missing(days: str) -> tuple[str, str]:
+    """(why, what to do) when a weekday has no foreign net flow; names the weekly report only while its slot is shown."""
+    if wi.SHOW_KCB_WEEKLY:
+        return (f"No foreign net flow was found for {days}: KCB IB's weekly report (which lists each weekday) is not among "
+                "this week's inputs, and neither is that day's daily report.",
+                f"KCB IB's weekly report, or the daily report for each missing day. {UPLOAD}")
+    return (f"No foreign net flow was found for {days}: that day's KCB IB daily report is not among this week's inputs.",
+            f"The KCB IB daily report for each missing day. {UPLOAD}")
 
 INDEX_NAMES = {"nse_10": "NSE 10", "nse_25": "NSE 25", "nse_20": "NSE 20", "nasi": "NASI"}
 FOOTNOTES = ("*Target Price as per Cytonn Analyst estimates", "**Upside/ (Downside) is adjusted for Dividend Yield",
@@ -500,7 +518,7 @@ def large_caps_block(m: Market) -> dict[str, Any]:
             notes.append("KCB IB's weekly report is not among this week's inputs, so no change has a second reading.")
     else:
         if report is None:
-            return unavailable_block("large_caps", title, *NEED_KCB_WEEKLY)
+            return unavailable_block("large_caps", title, *need_movers_source())
         names = form.field("large_caps")
         if not names:
             return unavailable_block("large_caps", title, *form.why(analyst.EQ, ["large_caps"]))
@@ -691,10 +709,11 @@ def foreign_block(m: Market) -> dict[str, Any]:
     inputs, expr, missing = _usd_week(m, week, lambda d: _day_flow(m, d), "", rate_notes)
     if inputs is None:
         need_rate = [d for d in missing if m.rates.get(d) is None and _day_flow(m, d) is not None]
-        why = (f"The CBK rate for {_days(need_rate)} was not found." if need_rate else
-               f"No foreign net flow was found for {_days(missing)}: KCB IB's weekly report (which lists each weekday) is not among "
-               "this week's inputs, and neither is that day's daily report.")
-        return unavailable_block("foreign", title, why, f"KCB IB's weekly report, or the daily report for each missing day. {UPLOAD}")
+        if need_rate:
+            why, fix = f"The CBK rate for {_days(need_rate)} was not found.", foreign_missing(_days(missing))[1]
+        else:
+            why, fix = foreign_missing(_days(missing))
+        return unavailable_block("foreign", title, why, fix)
     figs = Figures()
     form = m.inputs.analyst
     series = form.wb_foreign()

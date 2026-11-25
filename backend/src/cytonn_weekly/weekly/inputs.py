@@ -92,7 +92,16 @@ SLOTS: tuple[Slot, ...] = (
          "Optional. Its P/Es are checked by company name and its Year Open against the first trading day's close; "
          "differences show as warnings on the Digital Payments review.", sections=("digital_payments",)),
 )
-BY_SLUG = {s.slug: s for s in SLOTS}
+BY_SLUG = {s.slug: s for s in SLOTS}   # every slot, hidden ones too: an upload to it, and a file already stored, still read
+
+# On: KCB IB's weekly report is offered as an upload slot again (panel, readiness, agent tools) and the help texts point to it.
+# Off: the slot is hidden everywhere and never required; a weekly report already stored is still read exactly as before.
+SHOW_KCB_WEEKLY = False
+
+
+def visible_slots() -> tuple[Slot, ...]:
+    """The slots offered to analysts: every slot but KCB IB's weekly report while SHOW_KCB_WEEKLY is off."""
+    return tuple(s for s in SLOTS if SHOW_KCB_WEEKLY or s.slug != KCB_WEEKLY)
 
 # Set by tests (conftest redirects it), so nothing is ever written under the real data directory.
 _DEFAULT_ROOT: Optional[Path] = None
@@ -318,7 +327,7 @@ def status(week: Week, root: Optional[Path] = None) -> dict[str, Any]:
     folder = week_dir(week, root)
     present = {name: e for name, e in manifest.items() if (folder / name).is_file()}
     slots = []
-    for slot in SLOTS:
+    for slot in visible_slots():
         files = sorted((e for e in present.values() if e.get("slot") == slot.slug), key=lambda e: e["stored_name"])
         view: dict[str, Any] = {"slug": slot.slug, "title": slot.title, "kind": slot.kind, "optional": slot.optional,
                                 "per_day": slot.per_day, "fetchable": slot.fetchable, "help": slot.help, "sections": list(slot.sections)}

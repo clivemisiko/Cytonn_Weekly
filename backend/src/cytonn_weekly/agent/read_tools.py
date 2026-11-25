@@ -42,7 +42,7 @@ class NoParams(Params):
 _FILE = ("read_date", "matches", "note", "received_at", "fetched_from")
 _SLOT = {"slug": None, "title": None, "optional": None, "per_day": None, "fetchable": None, "received": None, "complete": None,
          "file": _FILE, "days": ("date", "weekday", "received")}
-SLOT_SLUGS = tuple(weekly_inputs.BY_SLUG)
+SLOT_SLUGS = tuple(s.slug for s in weekly_inputs.visible_slots())   # fixed at import; a hidden slot is never offered
 
 
 class InputsList(NoParams):
