@@ -695,6 +695,8 @@ export interface AnalystField {
   workbook_stale?: WorkbookStale | null;
   /** The draft uses the workbook's value even where the form holds one (the fund table and its date). */
   workbook_first?: boolean;
+  /** A plain note from the API about how the value was entered (a Saturday fund table date kept as its Friday). */
+  notice?: string | null;
   /** Typed values that differ from the uploaded workbook's, in the API's words. */
   differences: string[];
   carried: AnalystCarried | null;

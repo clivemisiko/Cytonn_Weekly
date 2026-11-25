@@ -50,6 +50,16 @@ def week_ending_of(day: date) -> date:
     return latest_friday(day) if day.weekday() > FRIDAY else day + timedelta(days=FRIDAY - day.weekday())
 
 
+def saturday_issue(day: date) -> Optional[date]:
+    """The Friday a Saturday Daily Nation is entered as (it is out on the Friday and prints Friday's rates); None on any other day."""
+    return week_ending_of(day) if day.weekday() == FRIDAY + 1 else None
+
+
+def saturday_note(day: date) -> str:
+    return (f"Saturday {day_text(day)} is entered as Friday {day_text(week_ending_of(day))}: "
+            "the Saturday issue prints Friday's rates.")
+
+
 def day_text(d: date) -> str:
     """A date as the screen writes it ("15 Oct 2026"; frontend/src/lib/format.ts friendlyDate)."""
     return f"{d.day} {d:%b %Y}"

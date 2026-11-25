@@ -5,7 +5,7 @@ import GridTable from "@/components/review/analyst/GridTable.vue";
 import PasteTable from "@/components/review/analyst/PasteTable.vue";
 import Button from "@/components/ui/Button.vue";
 import * as api from "@/lib/api";
-import { fieldOrigin, inWorkbook, originLabel, range, tableOrigin } from "@/lib/analyst";
+import { fieldOrigin, inWorkbook, originLabel, range, tableOrigin, workbookShown } from "@/lib/analyst";
 import { typedProblem } from "@/lib/chatcards";
 import { friendlyDate } from "@/lib/format";
 import { NO_STEPS_LINE, type Step, itemKey, keepStep, plural, splitSteps } from "@/lib/prepare";
@@ -127,7 +127,7 @@ const confirm = (key: string) => save(key, { confirm: [key] });
 function bookValue(step: Step): string {
   const i = byKey.value.get(itemKey(step));
   if (!i || !inWorkbook(i)) return "";
-  if (i.type === "field") return shownOf(i.workbook!.value);
+  if (i.type === "field") return workbookShown(i);
   const n = i.workbook_rows!.length;
   return `${n} row${n === 1 ? "" : "s"}${i.workbook_ref ? `, ${i.workbook_ref}` : ""}`;
 }
@@ -182,8 +182,9 @@ async function override(key: string) {
                 <PhCheck weight="bold" aria-hidden="true" />Saved: <span class="[overflow-wrap:anywhere]">{{ savedOf(item) }}</span>
               </p>
               <p v-else-if="item.type === 'field' && !item.value && item.workbook" class="text-xs text-muted-foreground">
-                From the workbook: <span class="[overflow-wrap:anywhere]">{{ shownOf(item.workbook.value) }}</span>. Type a value to use instead.
+                From the workbook: <span class="[overflow-wrap:anywhere]">{{ workbookShown(item) }}</span>. Type a value to use instead.
               </p>
+              <p v-if="item.type === 'field' && item.notice" class="text-xs text-muted-foreground">{{ item.notice }}</p>
 
               <!-- A value carried or suggested waits for the analyst: confirm it as it stands, or type another and save. -->
               <div v-if="item.needs_confirmation && item.type === 'field'" class="flex flex-wrap items-center gap-3 rounded-md bg-cw-assistant px-4 py-3 text-sm">

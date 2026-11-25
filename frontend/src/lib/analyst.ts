@@ -26,6 +26,28 @@ export const capital = (text: string) => text.charAt(0).toUpperCase() + text.sli
 
 export const asText = (value: string | string[] | null | undefined) => (Array.isArray(value) ? value.join("\n") : (value ?? ""));
 
+/** How many decimals a workbook figure is shown with: the form spec gives no precision per field, so 2 for every unit. */
+export const SHOWN_DECIMALS = 2;
+
+/**
+ * A workbook figure as the analyst reads it, for display only: a decimal with more places than SHOWN_DECIMALS is rounded half
+ * up on its digits (no float arithmetic); integers, dates, names and text come back as they are. The stored value is untouched.
+ */
+export function shownFigure(text: string, kind: AnalystField["kind"] = "number"): string {
+  const m = kind === "number" ? /^(-?)(\d+)\.(\d+)$/.exec(text.trim()) : null;
+  if (!m || m[3].length <= SHOWN_DECIMALS) return text;
+  const [, sign, whole, frac] = m;
+  const digits = (BigInt(whole + frac.slice(0, SHOWN_DECIMALS)) + (frac.charCodeAt(SHOWN_DECIMALS) >= 53 ? 1n : 0n)).toString().padStart(SHOWN_DECIMALS + 1, "0");
+  const rounded = `${digits.slice(0, -SHOWN_DECIMALS)}.${digits.slice(-SHOWN_DECIMALS)}`;
+  return /^0\.0+$/.test(rounded) ? rounded : sign + rounded;
+}
+
+/** The workbook's value of a field in words, its figures rounded for display. */
+export const workbookShown = (item: AnalystField) => {
+  const v = item.workbook?.value;
+  return Array.isArray(v) ? v.join(", ") : shownFigure(v ?? "", item.kind);
+};
+
 export const header = (col: AnalystColumn) => (col.unit ? `${col.label} (${col.unit})` : col.label);
 
 export function fieldOrigin(item: AnalystField): Origin {

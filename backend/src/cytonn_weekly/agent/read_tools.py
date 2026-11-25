@@ -76,7 +76,7 @@ def _form_item(item: dict[str, Any]) -> dict[str, Any]:
     """One form item without free text: numbers and dates as typed, but text and names only as present or not, and a workbook that
     could not be read as a flag, so nothing a person or a workbook wrote reaches the model as words."""
     base = {"key": item["key"], "label": item["label"], "type": item["type"], "source": item["source"], "used_in": item["used_in"],
-            "help": item["help"], "carried": bool(item["carried"]), "needs_confirmation": item["needs_confirmation"],
+            "carried": bool(item["carried"]), "needs_confirmation": item["needs_confirmation"],
             "workbook_problem": bool(item["workbook_note"]), "workbook_other_week": bool(item.get("workbook_stale")),
             "workbook_first": bool(item.get("workbook_first")), "differs": bool(item["differences"]),
             "differences": len(item["differences"])}
@@ -277,7 +277,7 @@ READ_TOOLS = [
     Tool("form_get", "Show the weekly analyst inputs form for Fixed Income or Equities: each item, whether a value was typed, whether the "
          "workbook has one, and whether they differ. Text and table contents are not shown, only counts.", FormGet, form_get,
          {"week_ending": None, "workbooks": ("fixed_income", "equities"), "unconfirmed": ("key", "label"), "can_carry": None,
-          "groups": {"title": None, "items": ("key", "label", "type", "source", "used_in", "help", "carried", "needs_confirmation",
+          "groups": {"title": None, "items": ("key", "label", "type", "source", "used_in", "carried", "needs_confirmation",
                                               "workbook_problem", "workbook_other_week", "workbook_first", "differs", "differences", "rows", "workbook_rows", "warnings", "unit",
                                               "suggestable", "has_value", "value", "has_workbook_value", "workbook_value")}}),
     Tool("sources_list", "List the saved sources for the week: host, title, published date, whether it falls inside Monday to Friday "

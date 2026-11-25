@@ -3,7 +3,7 @@ import { computed, ref, watch } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import { FIELD } from "@/components/ui/button";
-import { asText, fieldOrigin, inWorkbook, originLabel, range } from "@/lib/analyst";
+import { asText, fieldOrigin, inWorkbook, originLabel, range, shownFigure } from "@/lib/analyst";
 import { friendlyDate } from "@/lib/format";
 import type { AnalystField } from "@/lib/types";
 import ConfirmBox from "./ConfirmBox.vue";
@@ -22,7 +22,7 @@ const emit = defineEmits<{ save: [value: string]; dirty: [dirty: boolean]; confi
 const saved = asText(props.item.value);
 const value = ref(saved);
 // A workbook not dated this week offers no value to type over: its figure is that week's, and the note below says so.
-const fromBook = computed(() => (props.item.workbook_stale ? "" : asText(props.item.workbook?.value)));
+const fromBook = computed(() => (props.item.workbook_stale ? "" : shownFigure(asText(props.item.workbook?.value), props.item.kind)));
 const origin = computed(() => fieldOrigin(props.item));
 const id = `analyst-${props.item.key}`;
 const describedBy = computed(() => (props.error ? `${id}-error ${id}-hint` : `${id}-hint`));
@@ -89,6 +89,7 @@ const commit = () => {
         Read from <span class="font-mono [overflow-wrap:anywhere]">{{ item.workbook.ref }}</span>. The workbook's value is used; the value
         here is its second reading.
       </p>
+      <p v-if="item.notice" class="text-xs text-muted-foreground">{{ item.notice }}</p>
       <p v-if="item.workbook_stale" class="text-xs text-warn-fg">{{ item.workbook_stale.note }}</p>
       <p v-else-if="item.workbook_note && !saved" class="text-xs text-warn-fg">{{ item.workbook_note }}</p>
     </div>

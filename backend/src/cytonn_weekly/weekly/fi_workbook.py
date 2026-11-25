@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
-from cytonn_weekly.weekly.week import Week
+from cytonn_weekly.weekly.week import Week, saturday_issue
 from cytonn_weekly.weekly.workbook import Cell, Sheet, Workbook, WorkbookError, norm, read_title_date
 
 SOURCE_NAME = "Fixed income workbook"
@@ -124,9 +124,15 @@ def _day(d: date) -> str:
     return f"{d.day} {d:%b %Y}"
 
 
+def mmf_title_date(value: object) -> Optional[date]:
+    """The fund table title's date, a Saturday read as the Friday before (the Saturday issue prints Friday's rates)."""
+    day = read_title_date(value)
+    return (saturday_issue(day) or day) if day else None
+
+
 def _other_week(title: Cell, week: Week, holds: str, it: str) -> Optional[WorkbookWeekError]:
     """The refusal when the fund table's title date is not this week's Friday or as-at day, else None."""
-    published = read_title_date(title.value)
+    published = mmf_title_date(title.value)
     if published in week.report_dates:
         return None
     shown = f"is dated {_day(published)}" if published else f"has a date that cannot be read ({title.value!r})"
@@ -163,7 +169,7 @@ def read_mmf_table(book: Workbook, week: Week) -> dict[str, Any]:
     problem = _other_week(title, week, "a money market fund table", "it")
     if problem is not None:
         raise problem
-    published = read_title_date(title.value)
+    published, printed = mmf_title_date(title.value), read_title_date(title.value)
     head = title.row + 1
     rank = sheet.find("rank", rows=range(head, head + 2), what="'Rank' header of the fund table")
     fund = sheet.find("fund manager", rows=range(rank.row, rank.row + 1), what="'Fund Manager' header")
@@ -178,7 +184,8 @@ def read_mmf_table(book: Workbook, week: Week) -> dict[str, Any]:
                       "rate": sheet.number(r, rate.col, f"rate of {name.strip()}")})
     if not funds:
         raise WorkbookError(f"'{MMF_SHEET}' fund table at {title.ref} has no rows")
-    return {"published": published, "title": " ".join(str(title.value).split()), "funds": funds, "title_cell": title}
+    return {"published": published, "title": " ".join(str(title.value).split()), "funds": funds, "title_cell": title,
+            "saturday": printed if printed != published else None}
 
 
 def read_mmf_last_week(book: Workbook, week: Optional[Week] = None) -> Optional[Cell]:

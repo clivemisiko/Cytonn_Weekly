@@ -225,3 +225,20 @@ def test_the_form_accepts_equal_rates_sharing_a_rank_and_still_refuses_a_skipped
         errors = []
         analyst._check_table(analyst.TABLES["mmf"], bad, WEEK, errors)
         assert errors and "ranks must run" in errors[0]
+
+
+def test_a_saturday_publish_date_is_kept_as_its_friday_with_a_note_and_a_sunday_is_refused(api):
+    ready(api)
+    # four list funds are on the page; a fifth is typed beside it, as the table needs at least five (analyst.MIN_FUNDS)
+    api.put(URL + "/edits", json={"fixes": {"10": {"ignore": True}, "11": {"ignore": True}},
+                                  "typed": [{"fund": "Delta Money Market Fund", "rate": "10.5"}]})
+    sunday = api.post(URL + "/confirm", json={"published": "2026-10-04"})
+    assert sunday.status_code == 422 and "outside this week" in sunday.json()["detail"]             # a Sunday
+    assert "fewer than" not in sunday.json()["detail"] and "at least" not in sunday.json()["detail"]
+    other = api.post(URL + "/confirm", json={"published": "2026-09-26"})
+    assert other.status_code == 422 and "outside this week" in other.json()["detail"]               # another week's Saturday
+    r = api.post(URL + "/confirm?section=fixed_income", json={"published": "2026-10-03"})
+    assert r.status_code == 200
+    published = next(i for g in r.json()["groups"] for i in g["items"] if i["key"] == "mmf_published")
+    assert published["value"] == "2026-10-02"
+    assert published["notice"] == "Saturday 3 Oct 2026 is entered as Friday 2 Oct 2026: the Saturday issue prints Friday's rates."
