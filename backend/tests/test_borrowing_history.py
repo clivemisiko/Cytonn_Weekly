@@ -150,7 +150,8 @@ def test_with_the_constant_off_a_workbook_log_is_never_set_beside_cbks(monkeypat
     assert nb.build_log(RELEASES, FY, limit, workbook_log=theirs).workbook_net_kes_m is not None
 
 
-def test_with_the_constant_off_an_uploaded_workbook_changes_nothing_in_the_borrowing_item(root):
+def test_with_the_constant_off_an_uploaded_workbook_changes_nothing_in_the_borrowing_item(root, monkeypatch):
+    monkeypatch.setattr(nb, "WORKBOOK_TARGET", False)   # the target alone is read since 25 Nov 2026 (test_borrowing_target_workbook.py)
     without = draft(root, WEEK)
     inputs.store(WEEK, "fi_workbook", wh.fi_workbook_bytes(), "FI.xlsx", root)
     with_book = draft(root, WEEK)
@@ -163,7 +164,8 @@ def test_with_the_constant_off_an_uploaded_workbook_changes_nothing_in_the_borro
     assert not any(w.startswith("Net domestic borrowing") and "workbook" in w for w in with_book.section["warnings"])
 
 
-def test_a_missing_target_points_at_the_form_not_at_a_workbook(root):
+def test_a_missing_target_points_at_the_form_not_at_a_workbook(root, monkeypatch):
+    monkeypatch.setattr(nb, "WORKBOOK_TARGET", False)   # the target alone is read since 25 Nov 2026 (test_borrowing_target_workbook.py)
     inputs.store(WEEK, "fi_workbook", wh.fi_workbook_bytes(), "FI.xlsx", root)
     b = blocks(draft(root, WEEK, target=False))["borrowing"]
     assert b["kind"] == "unavailable" and "workbook" not in b["reason"] and f'"{analyst.FORM}"' in b["reason"]
