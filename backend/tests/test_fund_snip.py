@@ -229,9 +229,14 @@ def test_the_form_accepts_equal_rates_sharing_a_rank_and_still_refuses_a_skipped
 
 def test_a_saturday_publish_date_is_kept_as_its_friday_with_a_note_and_a_sunday_is_refused(api):
     ready(api)
-    api.put(URL + "/edits", json={"fixes": {"10": {"ignore": True}, "11": {"ignore": True}}})
-    assert api.post(URL + "/confirm", json={"published": "2026-10-04"}).status_code == 422          # a Sunday
-    assert api.post(URL + "/confirm", json={"published": "2026-09-26"}).status_code == 422          # another week's Saturday
+    # four list funds are on the page; a fifth is typed beside it, as the table needs at least five (analyst.MIN_FUNDS)
+    api.put(URL + "/edits", json={"fixes": {"10": {"ignore": True}, "11": {"ignore": True}},
+                                  "typed": [{"fund": "Delta Money Market Fund", "rate": "10.5"}]})
+    sunday = api.post(URL + "/confirm", json={"published": "2026-10-04"})
+    assert sunday.status_code == 422 and "outside this week" in sunday.json()["detail"]             # a Sunday
+    assert "fewer than" not in sunday.json()["detail"] and "at least" not in sunday.json()["detail"]
+    other = api.post(URL + "/confirm", json={"published": "2026-09-26"})
+    assert other.status_code == 422 and "outside this week" in other.json()["detail"]               # another week's Saturday
     r = api.post(URL + "/confirm?section=fixed_income", json={"published": "2026-10-03"})
     assert r.status_code == 200
     published = next(i for g in r.json()["groups"] for i in g["items"] if i["key"] == "mmf_published")
