@@ -172,6 +172,12 @@ def _table_reason(bulletin: Optional[cbk_bulletin.Bulletin], table: str, otherwi
     return (bulletin.unavailable.get(table) if bulletin is not None else None) or otherwise
 
 
+def _target_from_workbook(target: Any) -> bool:
+    """The target came from the workbook (WORKBOOK_TARGET), or was typed with the workbook's cell as its second reading."""
+    return net_borrowing.WORKBOOK_TARGET and target is not None and (
+        not analyst.is_typed(target) or getattr(target, "other", None) is not None)
+
+
 def _typed_sources(inputs: WeeklyInputs, *cells: Any, workbook: bool = True) -> list[dict[str, Any]]:
     """The analysts' sources a part rests on: the workbook when one is uploaded, the form when a value was typed.
     ``workbook=False``: the part never reads the workbook (net borrowing, unless WORKBOOK_BORROWING), so it is not named."""
@@ -1213,7 +1219,7 @@ def _cbk_borrowing(inputs: WeeklyInputs, data: dict[str, Any], log: net_borrowin
     text = _borrowing_sentence(figs, log.inputs, log.net_expr, data["target_bn"], log.fy_start, log.as_at,
                                net_flag="; ".join(log.flags + log.unaccounted), net_note=note, start_note=_start_note(data))
     sources = [{"name": net_borrowing.SOURCE_NAME, "url": cbk_auctions.TBILL_LISTING}] + _typed_sources(
-        inputs, data["target_bn"], workbook=net_borrowing.WORKBOOK_BORROWING)
+        inputs, data["target_bn"], workbook=net_borrowing.WORKBOOK_BORROWING or _target_from_workbook(data["target_bn"]))
     notes = ["Net borrowing is worked out from CBK's Treasury bill and bond auction results: accepted amounts less "
              "redemptions, release by release (the log below). A switch auction is not new debt and is never counted."]
     if log.switches:

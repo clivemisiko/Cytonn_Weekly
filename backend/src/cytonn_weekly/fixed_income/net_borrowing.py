@@ -75,6 +75,9 @@ from cytonn_weekly.fixed_income import bond_issues, cbk_auctions
 # target, the fiscal year's start and the fallback log are not read from it (weekly/analyst.py wb_borrowing).  On: all of
 # that comes back as it was before 2026-11-24.  The team's log has known errors, so turn it on only to compare with it.
 WORKBOOK_BORROWING = False
+# The full-year target alone (team, 25 Nov 2026): read from the workbook's 'Budget Borrowing target' cell even while
+# WORKBOOK_BORROWING is off.  The log, redemptions, start and pro-rating stay the tool's own.
+WORKBOOK_TARGET = True
 
 SOURCE_NAME = "CBK Treasury bill and bond auction results"
 TBILL, PRIMARY, TAP, SWITCH = "tbill", "primary", "tap", "switch"
