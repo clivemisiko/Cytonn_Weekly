@@ -162,7 +162,9 @@ class Workbook:
         self.name = name
         self._source = source
         self._values = self._open(data_only=True)
-        self._formulas = None
+        # Shared by every shared_copy() and filled under the lock: the formulas workbook, opened on the first formula(), and
+        # each sheet's formulas read in one pass.  Read only once filled.
+        self._formula_cache: dict[str, Any] = {"book": None, "sheets": {}}
         self._sheets: dict[str, Sheet] = {}
         # Read-only mode does give each sheet's state (visible, hidden, veryHidden); it gives no hidden rows or columns.
         self._states = {ws.title: ws.sheet_state for ws in self._values.worksheets}
@@ -221,14 +223,21 @@ class Workbook:
 
     def formula(self, cell: Cell) -> Optional[str]:
         """The cell's formula text ("=AVERAGE(B8:B938)"), or None if it holds a typed value."""
-        with self._lock, warnings.catch_warnings():
-            if self._formulas is None:
-                self._formulas = self._open(data_only=False)
-            warnings.simplefilter("ignore")
-            for row in self._formulas[cell.sheet].iter_rows(min_row=cell.row, max_row=cell.row, min_col=cell.col,
-                                                            max_col=cell.col, values_only=True):
-                return row[0] if isinstance(row[0], str) and row[0].startswith("=") else None
-        return None
+        with self._lock:
+            rows = self._formula_cache["sheets"].get(cell.sheet)
+            if rows is None:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    if self._formula_cache["book"] is None:
+                        self._formula_cache["book"] = self._open(data_only=False)
+                    ws = self._formula_cache["book"][cell.sheet]
+                    # No stored dimensions: they bound the scan, and the per-cell read this replaces was never bounded by them.
+                    ws.reset_dimensions()
+                    rows = [tuple(r) for r in ws.iter_rows(min_row=1, values_only=True)]
+                self._formula_cache["sheets"][cell.sheet] = rows
+        row = rows[cell.row - 1] if 0 < cell.row <= len(rows) else ()
+        value = row[cell.col - 1] if 0 < cell.col <= len(row) else None
+        return value if isinstance(value, str) and value.startswith("=") else None
 
 
 _RANGE = re.compile(r"^=\s*AVERAGE\(\s*\$?([A-Z]{1,3})\$?(\d+)\s*:\s*\$?([A-Z]{1,3})\$?(\d+)\s*\)\s*$", re.I)
