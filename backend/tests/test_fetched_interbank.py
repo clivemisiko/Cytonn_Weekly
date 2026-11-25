@@ -78,7 +78,7 @@ def test_the_chat_groups_a_fetched_table_as_fetched_until_someone_edits_it(clien
     c, root, db = client
     status = c.post(f"/api/inputs/weekly/{FRIDAY}/analyst/fetch/interbank").json()
     out = readiness.classify("fixed_income", {"slots": [], "week_ending": FRIDAY}, status)
-    assert {"kind": "table", "key": "interbank", "label": "Daily interbank rates", "why": "fetched by the tool"} in out["groups"]["fetched"]
+    assert {"kind": "table", "key": "interbank", "label": "Daily interbank rates", "why": "fetched by the tool", "other_week": False} in out["groups"]["fetched"]
     rows = item(c.get(f"/api/inputs/weekly/{FRIDAY}/analyst")) ["rows"]
     rows[0] = {**rows[0], "rate": "9.9999"}
     assert c.put(f"/api/inputs/weekly/{FRIDAY}/analyst", json={"tables": {"interbank": {"rows": rows}}}).status_code == 200
