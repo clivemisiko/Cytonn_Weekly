@@ -259,7 +259,7 @@ const mark = computed(() => MARKS[props.state ?? "unknown"]);
               <p class="text-sm font-semibold">{{ g.heading }} ({{ g.items.length }})</p>
               <p class="text-xs text-muted-foreground">{{ g.meaning }}</p>
               <ul class="list-disc space-y-0.5 pl-5 text-sm [overflow-wrap:anywhere]">
-                <li v-for="(e, i) in g.items" :key="`${e.key}-${i}`">{{ e.label }}: {{ e.why }}</li>
+                <li v-for="(e, i) in g.items" :key="`${e.key}-${i}`" :class="e.otherWeek && 'font-medium text-warn-fg'" :data-other-week="e.otherWeek || undefined">{{ e.label }}: {{ e.why }}</li>
               </ul>
             </div>
           </template>
@@ -287,7 +287,8 @@ const mark = computed(() => MARKS[props.state ?? "unknown"]);
               <td role="cell" class="py-2.5 pr-3 text-muted-foreground max-sm:block max-sm:p-0" :aria-busy="busy === `upload-${r.key}` || undefined">
                 <UploadProgress v-if="busy === `upload-${r.key}`" :name="picked[r.key] ?? r.label" />
                 <template v-else>
-                  {{ r.status }}
+                  <!-- another week's file: the warning ink of a not-auto-verified item (--warn-fg, light and dark) -->
+                  <p :class="r.warn && 'font-medium text-warn-fg'" :data-other-week="r.warn || undefined">{{ r.status }}</p>
                   <ul v-if="r.upload && r.files.length" class="mt-1 space-y-1" :aria-label="`Kept for ${r.label}`">
                     <li v-for="f in r.files" :key="f.storedName" class="flex flex-wrap items-center gap-2 text-xs text-foreground" data-kept-file>
                       <span class="font-mono [overflow-wrap:anywhere]">{{ f.name }}</span>
