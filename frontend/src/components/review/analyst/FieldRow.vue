@@ -89,6 +89,7 @@ const commit = () => {
         Read from <span class="font-mono [overflow-wrap:anywhere]">{{ item.workbook.ref }}</span>. The workbook's value is used; the value
         here is its second reading.
       </p>
+      <p v-if="item.notice" class="text-xs text-muted-foreground">{{ item.notice }}</p>
       <p v-if="item.workbook_stale" class="text-xs text-warn-fg">{{ item.workbook_stale.note }}</p>
       <p v-else-if="item.workbook_note && !saved" class="text-xs text-warn-fg">{{ item.workbook_note }}</p>
     </div>

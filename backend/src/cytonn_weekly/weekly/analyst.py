@@ -69,7 +69,7 @@ from typing import Any, Callable, Optional
 from cytonn_weekly.common import atomic
 from cytonn_weekly.weekly import equities_workbook, fi_workbook
 from cytonn_weekly.weekly.inputs import InputError, WeeklyInputs, week_dir
-from cytonn_weekly.weekly.week import Week, day_text, ordinal, week_ending_of
+from cytonn_weekly.weekly.week import Week, day_text, ordinal, saturday_issue, saturday_note, week_ending_of
 from cytonn_weekly.weekly.workbook import Cell, WorkbookError
 
 log = logging.getLogger(__name__)
@@ -757,8 +757,37 @@ def clean_field(spec: Field, raw: Any, week: Week) -> Any:
             raise InputError(f"{spec.label}: type one line of at most {spec.max_chars} characters.")
         return text
     value = clean_date(text, spec.label) if spec.kind == DATE else clean_number(text, spec, spec.label)
+    if spec.key == "mmf_published" and (friday := saturday_issue(date.fromisoformat(value))):
+        value = friday.isoformat()   # the Saturday issue is out on the Friday and prints Friday's rates
     _check_field(spec, value, week)
     return value
+
+
+def _note_saturday(form: dict[str, Any], raw: Any, stored: Optional[str]) -> None:
+    """Keep the Saturday the analyst typed for the fund table's date when it was stored as its Friday, else forget it."""
+    form.pop("saturday_issue", None)
+    try:
+        typed = clean_date(raw, "") if str(raw or "").strip() else ""
+    except InputError:
+        return
+    if stored and typed != stored and saturday_issue(date.fromisoformat(typed)):
+        form["saturday_issue"] = typed
+
+
+def _iso(text: str) -> bool:
+    try:
+        date.fromisoformat(text)
+        return True
+    except ValueError:
+        return False
+
+
+def saturday_line(saturday: Any, friday: Any) -> Optional[str]:
+    """The plain note for a fund table date entered as a Saturday, while the stored date is still that Saturday's Friday."""
+    if not isinstance(saturday, str) or not _iso(saturday):
+        return None
+    day = date.fromisoformat(saturday)
+    return saturday_note(day) if saturday_issue(day) and str(friday) == week_ending_of(day).isoformat() else None
 
 
 def fiscal_year_start(week: Week) -> date:
@@ -791,7 +820,10 @@ def read_form(week: Week, root: Optional[Path] = None) -> dict[str, Any]:
     # carried: item -> {"from": the week it came from (or "suggested"), "value": what was carried, "note"?}
     carried = {k: v for k, v in (data.get("carried") or {}).items() if k in held and isinstance(v, dict) and v.get("from")}
     unconfirmed = sorted(k for k in (data.get("unconfirmed") or []) if k in held)
-    return {"fields": fields, "tables": tables, "saved_at": data.get("saved_at"), "carried": carried, "unconfirmed": unconfirmed}
+    got = {"fields": fields, "tables": tables, "saved_at": data.get("saved_at"), "carried": carried, "unconfirmed": unconfirmed}
+    if saturday_line(data.get("saturday_issue"), fields.get("mmf_published")):
+        got["saturday_issue"] = data["saturday_issue"]
+    return got
 
 
 _after_write = threading.local()
@@ -862,6 +894,8 @@ def save_form(week: Week, changes: dict[str, Any], root: Optional[Path] = None, 
             errors.append(str(exc))
             continue
         touched.add(key)
+        if key == "mmf_published":
+            _note_saturday(form, raw, value)
         if value is None:
             form["fields"].pop(key, None)
         else:
@@ -1021,6 +1055,7 @@ def fund_snip(week: Week, rows: list[dict[str, Any]], published: str, note: str,
         errors.append(str(exc))
     if errors or not clean:
         raise InputError("\n".join(errors[:12]) or f"{table.label}: no fund to keep")
+    _note_saturday(form, published, day)
     form["tables"]["mmf"], form["fields"]["mmf_published"] = clean, day
     form["carried"]["mmf"] = {"from": SNIP, "value": clean, "note": note, "typed": [fund_key(t) for t in typed]}
     form["unconfirmed"] = [k for k in form["unconfirmed"] if k not in ("mmf", "mmf_published")]
@@ -1811,6 +1846,16 @@ def _status(analyst: "Analyst", week: Week, root: Optional[Path], section: Optio
         if d["text"] not in differences.setdefault(d["item"], []):
             differences[d["item"]].append(d["text"])
 
+    def notice(key: str) -> Optional[str]:
+        """A plain note the field shows: today only a fund table date entered or titled as a Saturday."""
+        if key != "mmf_published":
+            return None
+        typed = saturday_line(form.get("saturday_issue"), form["fields"].get(key))
+        if typed:
+            return typed
+        table = analyst.wb_mmf()
+        return saturday_note(table["saturday"]) if table and table.get("saturday") else None
+
     def field_view(spec: Field) -> dict[str, Any]:
         wb = analyst.wb_field(spec.key)
         workbook = None
@@ -1823,7 +1868,7 @@ def _status(analyst: "Analyst", week: Week, root: Optional[Path], section: Optio
                 "value": value, "workbook": workbook,
                 "workbook_note": analyst.unreadable.get(_READING[spec.key]) or analyst.errors.get(_READING[spec.key]), "differences": differences.get(spec.key, []),
                 "workbook_stale": stale(spec.key, spec.section, wb), "workbook_first": workbook_first(spec.key),
-                "carried": carried(spec.key, value),
+                "notice": notice(spec.key), "carried": carried(spec.key, value),
                 "needs_confirmation": spec.key in form["unconfirmed"] and spec.key not in superseded, "suggestable": spec.key in SUGGESTED_FIELDS,
                 "default": {"fiscal_year_start": fiscal_year_start(week).isoformat(), "mmf_source": MMF_SOURCE_DEFAULT}.get(spec.key)}
 

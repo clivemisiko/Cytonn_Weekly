@@ -184,6 +184,7 @@ async function override(key: string) {
               <p v-else-if="item.type === 'field' && !item.value && item.workbook" class="text-xs text-muted-foreground">
                 From the workbook: <span class="[overflow-wrap:anywhere]">{{ workbookShown(item) }}</span>. Type a value to use instead.
               </p>
+              <p v-if="item.type === 'field' && item.notice" class="text-xs text-muted-foreground">{{ item.notice }}</p>
 
               <!-- A value carried or suggested waits for the analyst: confirm it as it stands, or type another and save. -->
               <div v-if="item.needs_confirmation && item.type === 'field'" class="flex flex-wrap items-center gap-3 rounded-md bg-cw-assistant px-4 py-3 text-sm">
