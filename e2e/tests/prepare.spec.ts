@@ -469,3 +469,36 @@ test("T157 Fixed Income: a workbook for another week covers nothing, and the ste
   await expect(inputs(page).getByText("Step 1 of 11", { exact: true })).toBeVisible();
   await expect(covered(page)).toHaveCount(0);
 });
+
+test("T158 Fixed Income: an upload refolds the steps with no reload, and the analyst stays on the same step", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  // Before the upload the form is read as if no workbook were in; the upload itself is stood in for, so the demo week is unchanged.
+  let uploaded = false;
+  await page.route(/\/api\/inputs\/weekly\/[^/]+\/analyst\?/, async (route) => {
+    if (uploaded || route.request().method() !== "GET") return route.fallback();
+    const form = await (await route.fetch()).json();
+    for (const g of form.groups) for (const i of g.items) Object.assign(i, i.type === "field" ? { workbook: null } : { workbook_rows: null, workbook_ref: null });
+    await route.fulfill({ json: form });
+  });
+  await page.route(/\/api\/inputs\/weekly\/[^/]+\/fi_workbook\?filename=/, async (route) => {
+    if (route.request().method() !== "PUT") return route.fallback();
+    uploaded = true;
+    await route.fulfill({ json: {} });
+  });
+  await page.goto(url("fixed_income", DEMO, "&view=prepare"));
+  const card = inputs(page);
+  await expect(card.getByText(/^Step \d+ of 11$/)).toBeVisible();
+  await expect(covered(page)).toHaveCount(0);
+  // stand on a step the workbook does not answer, so it is still there after the refold
+  // a single-value step's own label (the fund card and the tables have none of this kind)
+  const label = () => card.locator('[data-step]:visible label[for^="steps-prepare_inputs-"]');
+  const folded = BOOK_SECTIONS[0].folded;
+  const standing = async () => ((await label().count()) ? ((await label().first().textContent()) ?? "").trim() : "");
+  while (!(await standing()) || folded.includes(await standing())) await card.getByRole("button", { name: "Next", exact: true }).click();
+  const on = await standing();
+
+  await prepare(page).getByLabel("Upload Fixed income workbook", { exact: true }).setInputFiles(join(PRISTINE, "fi_workbook.xlsx"));
+  await expect(covered(page).locator("summary")).toHaveText(`${folded.length} inputs come from the workbook`);
+  await expect(card.getByText(/^Step \d+ of 7$/)).toBeVisible();
+  await expect(label().first()).toHaveText(on);
+});
