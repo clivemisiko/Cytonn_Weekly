@@ -153,3 +153,57 @@ def test_different_workbooks_parse_independently(tmp_path, monkeypatch):
     gate.set()
     held.join(10)
     assert isinstance(got[0], inputs.Workbook)
+
+
+def _store_week(root, week, book_week=None):
+    book_week = book_week or week
+    inputs.store(week, inputs.EQUITIES_WORKBOOK, equities_workbook_bytes(book_week), "eq.xlsx", root, record=False)
+    inputs.store(week, inputs.FI_WORKBOOK, fi_workbook_bytes(book_week), "fi.xlsx", root, record=False)
+
+
+def test_recent_weeks_picks_weeks_by_their_workbook_not_the_newest_folders(tmp_path):
+    from datetime import timedelta
+
+    from cytonn_weekly.weekly.week import Week
+
+    weeks = [Week(WEEK.ending + timedelta(days=7 * n)) for n in range(5)]   # oldest first
+    for week in weeks[:3]:
+        _store_week(tmp_path, week)
+    _store_week(tmp_path, weeks[3], book_week=weeks[2])   # an earlier week's workbook: the form skips it
+    (inputs.inputs_root(tmp_path) / weeks[4].ending.isoformat()).mkdir(parents=True)   # a folder with no workbook
+    assert inputs.recent_weeks(tmp_path) == [weeks[2], weeks[1], weeks[0]]
+
+
+def test_three_weeks_fill_the_cache_without_evicting_the_newest(tmp_path):
+    from datetime import timedelta
+
+    from cytonn_weekly.weekly.week import Week
+
+    weeks = [Week(WEEK.ending + timedelta(days=7 * n)) for n in range(4)]
+    for week in weeks:
+        _store_week(tmp_path, week)
+    inputs.warm_in_background(root=tmp_path).result(timeout=120)
+    assert len(inputs._PARSED) == inputs._PARSED_MAX
+    newest = inputs.WeeklyInputs(weeks[-1], tmp_path)
+    assert newest.equities_book is not None and newest.fi_book is not None
+    assert newest.loads == {"eq": "from cache", "fi": "from cache"}
+
+
+def test_a_parse_during_warm_up_is_logged_with_week_kind_and_seconds(tmp_path, caplog):
+    _store_books(tmp_path)
+    with caplog.at_level(logging.WARNING, logger=inputs.__name__):
+        inputs.warm_in_background(root=tmp_path).result(timeout=60)
+    assert f"week ending {WEEK.ending.isoformat()}, {inputs.EQUITIES_WORKBOOK} parsed in" in caplog.text
+    assert f"{inputs.FI_WORKBOOK} parsed in" in caplog.text
+
+
+def test_section_readiness_warms_the_opened_week(tmp_path, monkeypatch):
+    from api.main import create_app
+
+    calls = []
+    monkeypatch.setattr(inputs, "warm_in_background", lambda weeks=None, root=None, slugs=(): calls.append(weeks))
+    client = TestClient(create_app(db_path=tmp_path / "app.db", inputs_root=tmp_path / "in"))
+    period = f"Week ending {WEEK.ending.isoformat()}"
+    response = client.get("/api/sections/equities/readiness", params={"period": period})
+    assert response.status_code == 200
+    assert [WEEK] in calls

@@ -128,6 +128,9 @@ def make_router(d: Deps) -> APIRouter:
         if "error" in got:
             raise HTTPException(409, got["error"])
         named(got)
+        if got.get("week_ending"):
+            # The page's follow-up form request then finds this week's workbooks cached, or waits on the same parse (single-flight).
+            weekly_inputs.warm_in_background([Week(date.fromisoformat(got["week_ending"]))], d.root)
         job = job_store.find_job(d.db_path, report_type, period, slug)
         talked = bool(job) and len(job_store.messages(d.db_path, job["job_id"])) > 1
         return {"readiness": got, "conversation": talked}
