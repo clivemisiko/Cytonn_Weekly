@@ -4,6 +4,7 @@ import pytest
 from openpyxl import load_workbook
 
 from cytonn_weekly.fixed_income import net_borrowing as nb
+from cytonn_weekly.review.figures import SOURCES_DISAGREE
 from cytonn_weekly.weekly import analyst, fi_workbook, inputs
 from cytonn_weekly.weekly.workbook import Workbook, WorkbookError
 from tests import weekly_helpers as wh
@@ -32,6 +33,20 @@ def book(edit=None, **kw) -> bytes:
 
 def item(root, week=WEEK):
     return next(i for g in analyst.status(week, root, "fixed_income")["groups"] for i in g["items"] if i["key"] == "borrowing_target")
+
+
+# Review item refs are "<block title>: <figure label> (<value>)" (tests/test_net_borrowing.py, by_ref).
+TITLE = "Net domestic borrowing against the pro-rated target: "
+TARGET_FIGURES = ("Pro-rated net domestic borrowing target (Kshs bn)", "Net borrowing as a share of the pro-rated target")
+
+
+def assert_disagrees(review):
+    """Both figures worked out from the target carry the workbook's value as a sources-disagree flag (as for placements)."""
+    for label in TARGET_FIGURES:
+        [found] = items(review, TITLE + label)
+        assert found.status == "flagged" and SOURCES_DISAGREE in {f.kind for f in found.detail}, label
+        message = next(f for f in found.detail if f.kind == SOURCES_DISAGREE).message
+        assert "is 900" in message and "but 910" in message and "Fixed income workbook" in message, message
 
 
 def upload(root, data):
@@ -85,7 +100,7 @@ def test_typed_this_week_wins_and_the_difference_is_shown_and_flagged(root):
     assert got["value"] == "900" and any("The typed value is used." in d for d in got["differences"])
     review = draft(root, WEEK, target=False)
     assert any(w for w in review.section["warnings"] if LABEL in w and "The typed value is used." in w)
-    assert [i.status for i in items(review, "Pro-rated net domestic borrowing target")] == ["flagged"]
+    assert_disagrees(review)
 
 
 def test_a_carried_target_wins_and_the_difference_is_shown_and_flagged(root):
@@ -98,7 +113,7 @@ def test_a_carried_target_wins_and_the_difference_is_shown_and_flagged(root):
     review = draft(root, WEEK, target=False)
     assert inputs.WeeklyInputs(WEEK, root).analyst.field("borrowing_target").number == 900.0
     assert any(w for w in review.section["warnings"] if LABEL in w and "The typed value is used." in w)
-    assert [i.status for i in items(review, "Pro-rated net domestic borrowing target")] == ["flagged"]
+    assert_disagrees(review)
 
 
 def test_the_workbook_target_gives_the_same_figures_as_the_same_value_typed(tmp_path):
