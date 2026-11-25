@@ -117,7 +117,7 @@ def test_the_date_comes_from_a_time_element_when_there_is_no_meta_tag_and_is_emp
 
 
 def test_a_pdf_is_read_with_pdfplumber(tmp_path, monkeypatch):
-    monkeypatch.setattr(src, "read_pdf", lambda body: (PARAGRAPH * 3, "A PDF title"))
+    monkeypatch.setattr(src, "read_pdf", lambda body: (PARAGRAPH * 3, "A PDF title", ""))
     one = fetch(Getter(reply(b"%PDF-1.4 not really", content_type="application/pdf")), root=tmp_path)
     assert one.title == "A PDF title" and "8.75%" in one.text
     assert (tmp_path / "2026-11-06" / f"{one.id}.pdf").exists()
@@ -359,7 +359,7 @@ def test_a_reply_with_no_content_type_and_a_body_that_is_not_html_is_refused(tmp
 
 
 def test_a_reply_with_no_content_type_and_a_pdf_body_is_read_as_a_pdf(tmp_path, monkeypatch):
-    monkeypatch.setattr(src, "read_pdf", lambda body: (PARAGRAPH * 3, "A PDF title"))
+    monkeypatch.setattr(src, "read_pdf", lambda body: (PARAGRAPH * 3, "A PDF title", ""))
     assert fetch(Getter(reply(b"%PDF-1.4 not really")), root=tmp_path).title == "A PDF title"
 
 

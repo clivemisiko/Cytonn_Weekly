@@ -97,7 +97,7 @@ def _brief(c: Company) -> Any:
     from cytonn_weekly.drafting.base import NarrativeBrief
 
     return NarrativeBrief(id=c.id, section="Equities", label=c.name, focus=FOCUS, words=(60, 140),
-                          preferred_domains=(c.domain,) if c.domain else (), context=FACTS)
+                          preferred_domains=(c.domain,) if c.domain else (), context=FACTS, dated_only=True)
 
 
 ROUTE_TEXT = {"site": "own website read", "search": "search fallback", "nothing": "nothing found"}

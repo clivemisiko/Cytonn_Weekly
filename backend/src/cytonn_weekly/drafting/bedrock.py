@@ -18,7 +18,7 @@ from typing import Any, Callable, Optional, Sequence
 
 import anthropic
 
-from cytonn_weekly.common import run_events, source_policy
+from cytonn_weekly.common import content_dates, run_events, source_policy
 from cytonn_weekly.common import sources as source_store
 from cytonn_weekly.review.checks import check_sourced_claim
 from cytonn_weekly.common.run_events import frames
@@ -279,8 +279,10 @@ def within_window(results: list[dict[str, Any]], label: str, start: date, end: d
 
     A source outside the window is not shown to the model; it is named in a draft warning and in a run event (title, host,
     date), because a pasted source or a snip carries whatever date was typed. A source with no date (or none that reads as
-    a date) is kept and carries the flag "No date on this source". A snip with no typed date was saved with the report
-    Friday (``real_estate/snips.confirm``), so it counts as dated and is judged like any other.
+    a date) is kept and carries the flag "No date on this source", unless ``dated_only``: then it is left out, because
+    undated is not current. A confirmed snip skips the window. Any other source dated inside the window is still left out
+    when its own words date it outside (``content_dates.content_problem``: the dateline at the top of its text, or the
+    newest reporting period its title and opening name), so a page whose stated date is wrong never yields an item.
     """
     kept, notes = [], []
     observer = run_events.current_observer.get()
@@ -295,7 +297,18 @@ def within_window(results: list[dict[str, Any]], label: str, start: date, end: d
         elif day is None:
             flags = list(r.get("flags") or [])
             kept.append({**r, "flags": flags if source_store.NO_DATE_FLAG in flags else [*flags, source_store.NO_DATE_FLAG]})
-        elif r.get("origin") == "snip" or start <= day <= end:   # a confirmed snip is the analyst's own choice: its date is shown, not judged
+        elif r.get("origin") == "snip":   # a confirmed snip is the analyst's own choice: its date is shown, not judged
+            kept.append(r)
+        elif start <= day <= end and (why := content_dates.content_problem(str(r.get("title") or ""), str(r.get("text") or ""),
+                                                                           (start, end))):
+            # the stated date is inside, but the page's own words are not: a wrong date never makes old news current
+            title, host = " ".join(str(r.get("title") or r.get("host") or "this source").split()), r.get("host") or "an unknown site"
+            notes.append(f"{label}: the source \"{title}\" from {host} is dated {day.isoformat()}, but {why}, outside this "
+                         f"draft's dates ({start.isoformat()} to {end.isoformat()}), so the model was not shown it.")
+            run_events.emit(observer, run_events.SOURCE_LEFT_OUT, title,
+                            detail=f"From {host}: {why}, outside {start.isoformat()} to {end.isoformat()}, so it was not used "
+                                   f"for {label}.")
+        elif start <= day <= end:
             kept.append(r)
         else:
             title, host = " ".join(str(r.get("title") or r.get("host") or "this source").split()), r.get("host") or "an unknown site"

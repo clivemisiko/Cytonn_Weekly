@@ -8,11 +8,14 @@ said so), and a shortfall is reported rather than backfilled.
 
 from __future__ import annotations
 
+import re
 from dataclasses import replace
 from datetime import date, timedelta
 from typing import Any, Optional, Sequence
+from urllib.parse import urlsplit
 
 from cytonn_weekly.common.run_events import PART_SKIPPED, PIECE_FINISHED, PIECE_STARTED, Observer, emit
+from cytonn_weekly.common.sources import NEWS_SITE
 from cytonn_weekly.drafting.base import NarrativeBrief, NarrativeProvider
 from cytonn_weekly.drafting.factory import get_narrative_provider
 from cytonn_weekly.weekly.previous_issue import norm_url
@@ -50,11 +53,48 @@ def piece_urls(piece: dict[str, Any]) -> set[str]:
     return {u for u in (str(c.get("url") or "").split("#")[0].rstrip("/").lower() for c in piece.get("claims", [])) if u}
 
 
+SAME_HEADLINE = 0.75   # share of headline words two pieces must have in common to be one event
+_STOP = frozenset("a an and as at be by for from has have in is it its of on or the to was were with".split())
+_NUMBER = re.compile(r"\d[\d,]*(?:\.\d+)?")
+
+
+def _headline_words(piece: dict[str, Any]) -> set[str]:
+    return {w for w in re.findall(r"[a-z0-9]+", str(piece.get("headline") or "").lower()) if w not in _STOP}
+
+
+def _figures(piece: dict[str, Any]) -> set[str]:
+    return {n.replace(",", "") for c in piece.get("claims", []) for n in _NUMBER.findall(str(c.get("text") or ""))}
+
+
+def same_event(a: dict[str, Any], b: dict[str, Any]) -> bool:
+    """Whether two drafted pieces report one event, so it is shown once. Either every page one cites is cited by the other,
+    or, from different pages, their headlines share at least SAME_HEADLINE of their words and their claims do not give
+    different figures (when both give figures, at least one is common). Conservative: two stories about one company
+    ("KCB Q3 profit rises 24%", "KCB signs Afreximbank deal") share too few headline words, and two results stories with
+    similar headlines ("Equity Group Q3 2026 profit rises", "KCB Group Q3 2026 profit rises") differ in name and figures.
+    ponytail: word overlap, not meaning; two differently worded headlines of one event both survive."""
+    ua, ub = piece_urls(a), piece_urls(b)
+    if (ua and ua <= ub) or (ub and ub <= ua):
+        return True
+    wa, wb = _headline_words(a), _headline_words(b)
+    if not wa or not wb or len(wa & wb) / len(wa | wb) < SAME_HEADLINE:
+        return False
+    fa, fb = _figures(a), _figures(b)
+    return not (fa and fb) or bool(fa & fb)
+
+
+def _sourcing(piece: dict[str, Any]) -> tuple[bool, int]:
+    """How well a piece is sourced, for keeping the better of two on one event: a primary source (a claim not from a news
+    site) first, then the more specific page (the deepest address it cites; a home or listing page is shallow)."""
+    claims = piece.get("claims", [])
+    primary = any(NEWS_SITE not in (c.get("source_flags") or []) for c in claims)
+    depth = max((len([p for p in urlsplit(str(c.get("url") or "")).path.split("/") if p]) for c in claims), default=0)
+    return primary, depth
+
+
 def held_by(piece: dict[str, Any], existing: Sequence[dict[str, Any]]) -> Optional[str]:
-    """The topic of an already drafted piece whose claims cite every page this piece cites, so the event is shown once.
-    ponytail: same page address, not same event; a closer match needs the sentences compared."""
-    mine = piece_urls(piece)
-    return next((e["topic"] for e in existing if mine and mine <= piece_urls(e)), None)
+    """The topic of an already drafted piece that reports the same event (``same_event``), so the event is shown once."""
+    return next((e["topic"] for e in existing if same_event(piece, e)), None)
 
 
 def draft_pieces(
@@ -106,10 +146,17 @@ def draft_pieces(
             skipped[brief.id] = REPEAT
             warnings.append(f"{brief.label}: left out, {REPEAT} (it cites {url}, which that section already linked)")
             emit(on_event, PART_SKIPPED, brief.label, detail=f"Left out: {REPEAT} (it cites {url}).")
-        elif not brief.findings and (holder := held_by(piece_dict(res, brief), pieces)):   # Focus notes share one topic's pages
-            skipped[brief.id] = f"already drafted in this run under {holder}"
-            warnings.append(f"{brief.label}: left out, it cites the same page(s) as the piece already drafted under {holder}")
-            emit(on_event, PART_SKIPPED, brief.label, detail=f"Left out: the same story as {holder}.")
+        elif not brief.findings and (j := next((i for i, p in enumerate(pieces) if same_event(piece_dict(res, brief), p)), None)) is not None:
+            # Focus notes share one topic's pages. One event, one item: the better-sourced version stays, in the earlier place.
+            new, old = piece_dict(res, brief), pieces[j]
+            keep, drop = (new, old) if _sourcing(new) > _sourcing(old) else (old, new)
+            pieces[j] = keep
+            skipped[drop["brief_id"]] = f"already drafted in this run under {keep['topic']}"
+            warnings.append(f"{drop['topic']}: left out, it reports the same event as the piece drafted under {keep['topic']}"
+                            + (", which is better sourced" if keep is new else ""))
+            emit(on_event, PART_SKIPPED, drop["topic"], detail=f"Left out: the same story as {keep['topic']}.")
+            if keep is new:
+                emit(on_event, PIECE_FINISHED, brief.label, detail=res.headline)
         else:
             pieces.append(piece_dict(res, brief))
             emit(on_event, PIECE_FINISHED, brief.label, detail=res.headline)
