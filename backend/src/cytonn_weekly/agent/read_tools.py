@@ -294,7 +294,7 @@ READ_TOOLS = [
          {"section": None, "week_ending": None, "counts": readiness.GROUPS, "note": None,
           # an upload's kept files by the name the tool stored them under; the prepare page's route adds the analyst's own name
           # after this trim (api/routers/jobs.py named()), so the model never sees it
-          "groups": dict.fromkeys(readiness.GROUPS, {**dict.fromkeys((*_ENTRY, "source", "other_week")), "files": ("stored_name",)}),
+          "groups": dict.fromkeys(readiness.GROUPS, {**dict.fromkeys((*_ENTRY, "source", "other_week")), "why": LONG, "files": ("stored_name",)}),
           "snips": ("sector", "uploaded", "read", "confirmed"), "sources": ("total", "in_week", "outside_week")}),
     Tool("history_status", "Say, for this section and week, which history-store series have a confirmed point, only an unconfirmed one, or none, "
          "with counts and dates, and how many store writes failed and compare-mode differences were found. No values.", NoParams, history_status,
