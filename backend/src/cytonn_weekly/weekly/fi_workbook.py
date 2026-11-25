@@ -167,7 +167,8 @@ def read_mmf_table(book: Workbook, week: Week) -> dict[str, Any]:
     head = title.row + 1
     rank = sheet.find("rank", rows=range(head, head + 2), what="'Rank' header of the fund table")
     fund = sheet.find("fund manager", rows=range(rank.row, rank.row + 1), what="'Fund Manager' header")
-    rate = sheet.find("effective annual rate", rows=range(rank.row, rank.row + 1), what="'Effective Annual Rate' header")
+    # the team's 14 Nov 2026 workbook heads the column "Effective" alone, so the heading is matched by its start
+    rate = sheet.find(lambda s: s.startswith("effective"), rows=range(rank.row, rank.row + 1), what="'Effective Annual Rate' header")
     funds = []
     for r in range(rank.row + 1, sheet.max_row + 1):
         name = sheet.value(r, fund.col)
