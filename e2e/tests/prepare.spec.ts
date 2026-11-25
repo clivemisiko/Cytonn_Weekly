@@ -389,9 +389,10 @@ const PRISTINE = join(REPO, "backend", "data", "demo-e2e", "pristine", "inputs",
 const covered = (page: Page) => inputs(page).locator("[data-covered]");
 const BOOK_SECTIONS = [
   // `folded`: the steps the workbook answers, in the page's order; `steps`: the count left of 11 (7 before the optional
-  // inputs and the defaults in use left the step-through). Fixed Income's 4: the borrowing target and the fund table source
-  // label (required), the Eurobond issues and the other bond redemptions (typed in the demo form, so they stay steps).
-  { slug: "fixed_income", title: "Fixed Income", steps: 4, folded: ["3-month bank placements", "Cytonn Money Market Fund yield, previous week", "Money market fund table", "Fund table published on"] },
+  // inputs and the defaults in use left the step-through). Fixed Income's 3: the fund table source label (required), the
+  // Eurobond issues and the other bond redemptions (typed in the demo form, so they stay steps). The borrowing target is
+  // read from the workbook since net_borrowing.WORKBOOK_TARGET (25 Nov 2026), so it is folded.
+  { slug: "fixed_income", title: "Fixed Income", steps: 3, folded: ["3-month bank placements", "Cytonn Money Market Fund yield, previous week", "Net domestic borrowing target for the fiscal year", "Money market fund table", "Fund table published on"] },
   {
     slug: "equities",
     title: "Equities",
@@ -427,18 +428,18 @@ test("T155 Fixed Income: Override opens the normal field as a step, and a typed 
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto(url("fixed_income", DEMO, "&view=prepare"));
   const card = inputs(page);
-  await expect(card.getByText(/^Step \d+ of 4$/)).toBeVisible();
+  await expect(card.getByText(/^Step \d+ of 3$/)).toBeVisible();
   await covered(page).locator("summary").click();
   await covered(page).getByRole("button", { name: /^Override\s*: 3-month bank placements$/ }).click();
-  await expect(card.getByText("Step 1 of 5", { exact: true })).toBeVisible(); // back in its own place, first
-  await expect(covered(page).locator("summary")).toHaveText("3 inputs come from the workbook");
+  await expect(card.getByText("Step 1 of 4", { exact: true })).toBeVisible(); // back in its own place, first
+  await expect(covered(page).locator("summary")).toHaveText("4 inputs come from the workbook");
   const box = card.getByLabel("3-month bank placements");
   await expect(box).toBeFocused();
   await expect(card.getByText("From the workbook: 9.75. Type a value to use instead.")).toBeVisible();
   try {
     await box.fill("9.5");
     await box.press("Enter");
-    await expect(card.getByText("Step 2 of 5", { exact: true })).toBeVisible();
+    await expect(card.getByText("Step 2 of 4", { exact: true })).toBeVisible();
     const form = await (await request.get(`${API}/api/inputs/weekly/${DEMO}/analyst?section=fixed_income`)).json();
     const item = form.groups.flatMap((g: { items: { key: string }[] }) => g.items).find((i: { key: string }) => i.key === "placements");
     expect(item.value).toBe("9.5");
@@ -459,7 +460,7 @@ test("T156 Fixed Income: the fund table's Override opens the fund card and says 
   await expect(covered(page).locator('[data-covered-item="fund"]')).toContainText("The draft uses the workbook's fund table and its date; what is added here is their second reading.");
   await covered(page).getByRole("button", { name: /^Override\s*: Money market fund table$/ }).click();
   await expect(card.getByRole("region", { name: "Money market fund table" })).toBeVisible();
-  await expect(card.getByText(/^Step \d of 5$/)).toBeVisible();
+  await expect(card.getByText(/^Step \d of 4$/)).toBeVisible();
 });
 
 test("T157 Fixed Income: a workbook for another week covers nothing, and the steps are today's", async ({ page, request }) => {
@@ -503,7 +504,7 @@ test("T161 Fixed Income: an upload refolds the steps with no reload, and the ana
 
   await prepare(page).getByLabel("Upload Fixed income workbook", { exact: true }).setInputFiles(join(PRISTINE, "fi_workbook.xlsx"));
   await expect(covered(page).locator("summary")).toHaveText(`${folded.length} inputs come from the workbook`);
-  await expect(card.getByText(/^Step \d+ of 4$/)).toBeVisible();
+  await expect(card.getByText(/^Step \d+ of 3$/)).toBeVisible();
   await expect(label().first()).toHaveText(on);
 });
 // The card 1 rows that take an upload, one per section that has one; the same row markup for each. Every route below is
@@ -705,13 +706,47 @@ test("T164 Fixed Income: with the workbook and the yields at issue typed, the Eu
   await page.goto(url("fixed_income", DEMO, "&view=prepare"));
   const card = inputs(page);
   const list = card.locator("[data-defaults]");
-  await expect(card.getByText(/^Step \d+ of 4$/)).toBeVisible();
+  await expect(card.getByText(/^Step \d+ of 3$/)).toBeVisible();
   await expect(list.locator("summary")).toHaveText("1 default in use");
   await list.locator("summary").click();
   // the demo form types every yield at issue, so nothing falls back to the stored values and the table is the analyst's step
   await expect(list.locator('[data-default-item="eurobond_issues"]')).toHaveCount(0);
   await expect(list.locator('[data-default-item="fiscal_year_start"]')).toContainText(/Default in use: \S/);
   await list.getByRole("button", { name: /^Override\s*: Fiscal year starts on$/ }).click();
-  await expect(card.getByText(/^Step \d+ of 5$/)).toBeVisible();
+  await expect(card.getByText(/^Step \d+ of 4$/)).toBeVisible();
   await expect(list).toHaveCount(0);
+});
+
+test("T165 Fixed Income: a target typed over the workbook's wins, and the difference is shown", async ({ page, request }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  const formUrl = `${API}/api/inputs/weekly/${DEMO}/analyst?section=fixed_income`;
+  const target = async () =>
+    (await (await request.get(formUrl)).json()).groups
+      .flatMap((g: { items: { key: string }[] }) => g.items)
+      .find((i: { key: string }) => i.key === "borrowing_target");
+  const before = await target();
+  expect(before.workbook?.value, "the demo workbook supplies the target").toBeTruthy();
+  const workbook = Number(String(before.workbook.value).replace(/,/g, ""));
+  const typed = String(workbook >= 4999 ? workbook - 1 : workbook + 1); // differs from the demo workbook, inside 1 to 5,000
+  await page.goto(url("fixed_income", DEMO, "&view=prepare"));
+  const card = inputs(page);
+  await covered(page).locator("summary").click();
+  await covered(page).getByRole("button", { name: /^Override\s*: Net domestic borrowing target for the fiscal year$/ }).click();
+  await expect(card.getByText("Step 1 of 4", { exact: true })).toBeVisible();
+  const box = card.getByLabel("Net domestic borrowing target for the fiscal year");
+  await expect(box).toBeFocused();
+  await expect(card.getByText(/From the workbook: \S+\. Type a value to use instead\./)).toBeVisible();
+  try {
+    await box.fill(typed);
+    await box.press("Enter");
+    await expect(card.getByText("Step 2 of 4", { exact: true })).toBeVisible();
+    const after = await target();
+    expect(after.value).toBe(typed); // the typed value is the one the draft reads
+    expect(after.differences.join(" ")).toContain("The typed value is used.");
+    await page.reload();
+    await covered(page).locator("summary").click();
+    await expect(covered(page).locator('[data-covered-item="borrowing_target"]')).toContainText("Typed, differs from the workbook");
+  } finally {
+    expect((await request.put(formUrl, { data: { fields: { borrowing_target: "" } } })).ok()).toBeTruthy();
+  }
 });

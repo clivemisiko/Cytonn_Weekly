@@ -336,6 +336,23 @@ def read_remittances(book: Workbook) -> list[dict[str, Any]]:
 # Government borrowing
 # ---------------------------------------------------------------------------
 
+TARGET_RANGE = (1, 5000)   # Kshs bn, the form field's own range (analyst.FIELDS["borrowing_target"])
+
+
+def read_borrowing_target(book: Workbook) -> Any:
+    """The full-year net domestic borrowing target: the number directly below the 'Budget Borrowing target' header,
+    found by its text (start, any case, spaces ignored) wherever the table sits."""
+    sheet = book.sheet(BORROWING_SHEET)
+    label = sheet.find(lambda s: s.replace(" ", "").startswith("budgetborrowingtarget"),
+                       what="'Budget Borrowing target (Kshs bn)' header")
+    target = sheet.number(label.row + 1, label.col, "net domestic borrowing target")
+    lo, hi = TARGET_RANGE
+    if not lo <= target.number <= hi:
+        raise WorkbookError(f"the net domestic borrowing target in {target.ref} is outside the expected range "
+                            f"of {lo:,} to {hi:,} Kshs bn, so it is not used")
+    return target
+
+
 def read_borrowing(book: Workbook) -> dict[str, Any]:
     """The fiscal year's auction log and the typed net domestic borrowing target.
 

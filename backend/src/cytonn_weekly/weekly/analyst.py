@@ -316,7 +316,7 @@ TABLES = {t.key: t for t in TABLE_LIST}
 _READING = {"placements": "placements", "cmmf_last_week": "cmmf_last_week", "mmf_published": "mmf", "mmf": "mmf",
             "mmf_source": "mmf_source", "liquidity_driver": "liquidity_driver",
             "interbank": "interbank", "eurobond_issues": "eurobonds", "eurobond_yields": "eurobonds",
-            "remittances": "remittances", "borrowing_target": "borrowing", "borrowing_log": "borrowing",
+            "remittances": "remittances", "borrowing_target": "borrowing_target", "borrowing_log": "borrowing",
             "fiscal_year_start": "borrowing", "borrowing_redemptions": "borrowing",
             "large_caps": "large_caps", "turnover_ytd": "turnover", "foreign_ytd": "foreign", "foreign_prior_year": "foreign",
             "foreign_history": "foreign", "pe": "valuation", "pe_average": "valuation", "dividend_yield": "valuation",
@@ -326,7 +326,7 @@ _READING = {"placements": "placements", "cmmf_last_week": "cmmf_last_week", "mmf
 # What a workbook reading is called when it cannot be read (unreadable_line).
 _READING_NAMED = {"mmf": "fund table", "placements": "3-month bank placements", "cmmf_last_week": "Cytonn fund's previous week yield",
                   "interbank": "interbank rates", "eurobonds": "Eurobond yields", "remittances": "remittances",
-                  "borrowing": "net domestic borrowing log", "large_caps": "large-cap list", "turnover": "turnover",
+                  "borrowing": "net domestic borrowing log", "borrowing_target": "net domestic borrowing target", "large_caps": "large-cap list", "turnover": "turnover",
                   "foreign": "foreign positions", "valuation": "P/E and dividend yield", "universe": "Universe of Coverage"}
 
 
@@ -1215,6 +1215,10 @@ class Analyst:
             return None if table is None else Cell(table["published"], table["title_cell"].sheet, table["title_cell"].row,
                                                    table["title_cell"].col)
         if key == "borrowing_target":
+            from cytonn_weekly.fixed_income import net_borrowing
+
+            if net_borrowing.WORKBOOK_TARGET and not net_borrowing.WORKBOOK_BORROWING:
+                return self._read(FI, key, fi_workbook.read_borrowing_target)
             return (self.wb_borrowing() or {}).get("target_bn")
         if key == "fiscal_year_start":
             return (self.wb_borrowing() or {}).get("fy_start")
@@ -1700,7 +1704,9 @@ class Analyst:
         listed = listed[0].upper() + listed[1:]
         from cytonn_weekly.fixed_income import net_borrowing
 
-        if not net_borrowing.WORKBOOK_BORROWING and which == FI and all(k.startswith("borrowing_") or k == "fiscal_year_start" for k in items):
+        if not net_borrowing.WORKBOOK_BORROWING and which == FI and all(
+                (k.startswith("borrowing_") or k == "fiscal_year_start")
+                and not (k == "borrowing_target" and net_borrowing.WORKBOOK_TARGET) for k in items):
             return (f"{listed} {verb} not been typed under \"{FORM}\".",
                     f"Type {them} under \"{FORM}\" on the start screen and draft again.")
         if self.book(which) is None:
