@@ -15,7 +15,7 @@ from datetime import date, datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Callable, Optional
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
 from cytonn_weekly import paths
 from cytonn_weekly.common import content_dates, http, source_policy
@@ -121,6 +121,18 @@ class OutOfWindow(SourceError):
     """The page's own date is outside the window asked for (or it states none)."""
 
 
+SAME_CONTENT = "same content as an already saved source"
+SAME_AS_REMOVED = "same content as a source the analyst removed"
+
+
+class SameContent(SourceError):
+    """A found page whose text is already saved for the piece (``kept`` is that source's id) or was removed from it."""
+
+    def __init__(self, reason: str, kept: str = "") -> None:
+        super().__init__(f"{reason} ({kept})" if kept else reason)
+        self.reason, self.kept = reason, kept
+
+
 @dataclass
 class SourceText:
     id: str
@@ -161,6 +173,26 @@ def host_of(url: str) -> str:
         return (urlsplit(url).hostname or "").lower().rstrip(".")
     except ValueError:
         return ""
+
+
+_TRACKING = ("fbclid", "gclid", "mc_cid", "mc_eid", "ref")
+_DEFAULT_PORTS = {"http": 80, "https": 443}
+
+
+def url_key(url: str) -> str:
+    """The address as compared, never stored: scheme and host lower-cased, no leading www., no fragment, no tracking
+    parameters (utm_*, fbclid, gclid, mc_cid, mc_eid, ref), no trailing slash on the path, no default port."""
+    try:
+        parts = urlsplit(url.strip())
+        scheme, port = parts.scheme.lower(), parts.port
+    except ValueError:
+        return url.strip()
+    host = (parts.hostname or "").rstrip(".").removeprefix("www.")
+    if port and port != _DEFAULT_PORTS.get(scheme):
+        host = f"{host}:{port}"
+    query = urlencode([(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True)
+                       if not k.lower().startswith("utm_") and k.lower() not in _TRACKING])
+    return urlunsplit((scheme, host, parts.path.rstrip("/"), query, ""))
 
 
 def _under(host: str, domains: tuple[str, ...]) -> bool:
@@ -376,6 +408,13 @@ def _save(src: SourceText, raw: Optional[bytes], raw_name: str, root: Optional[P
         same = next((m for m in listed if m.get("id") == src.id), None)
         if same:
             return _load(folder, same)
+        if src.origin == "found":
+            text_sha, key = _sha(src.text.encode()), subject_key(src.subject)
+            kept = next((m for m in listed if subject_key(m.get("subject", "")) == key and m.get("text_sha256") == text_sha), None)
+            if kept:
+                raise SameContent(SAME_CONTENT, kept["id"])
+            if any(d.get("subject") == key and d.get("text_sha256") == text_sha for d in _read_dismissed(folder)):
+                raise SameContent(SAME_AS_REMOVED)
         folder.mkdir(parents=True, exist_ok=True)
         (folder / f"{src.id}.txt").write_bytes(src.text.encode())
         if raw is not None:
@@ -442,9 +481,10 @@ def _read_dismissed(folder: Path) -> list[dict[str, str]]:
 
 
 def dismissed(subject: str, week_end: date, root: Optional[Path] = None) -> set[str]:
-    """The addresses removed from a piece's automatically found sources: a later gather does not bring them back."""
+    """The addresses (as url_key) removed from a piece's automatically found sources: a later gather does not bring them
+    back. An entry written before text_sha256 was kept has only its address, and still counts."""
     key = subject_key(subject)
-    return {d["url"] for d in _read_dismissed(_folder(week_end, root)) if d.get("subject") == key}
+    return {url_key(d["url"]) for d in _read_dismissed(_folder(week_end, root)) if d.get("subject") == key and d.get("url")}
 
 
 def last_look(subject: str, week_end: date, root: Optional[Path] = None) -> Optional[dict[str, Any]]:
@@ -481,7 +521,7 @@ def record_look(subject: str, week_end: date, found: int, searched: bool, root: 
 
 def remove(source_id: str, root: Optional[Path] = None) -> bool:
     """Delete one source and its files; False when there is none.  A source found automatically is also recorded in
-    dismissed.json (by piece and address) so a later gather skips it; a pasted or fetched-by-hand one is not."""
+    dismissed.json (by piece, address and text hash) so a later gather skips it; a pasted or fetched-by-hand one is not."""
     with _LOCK:
         found = _find(source_id, root)
         if not found:
@@ -493,7 +533,8 @@ def remove(source_id: str, root: Optional[Path] = None) -> bool:
                 (folder / name).unlink(missing_ok=True)
         if meta.get("origin") == "found":
             tmp = folder / "dismissed.json.tmp"
-            tmp.write_text(json.dumps(_read_dismissed(folder) + [{"subject": subject_key(meta["subject"]), "url": meta["url"]}],
+            tmp.write_text(json.dumps(_read_dismissed(folder) + [{"subject": subject_key(meta["subject"]), "url": meta["url"],
+                                                               "text_sha256": meta.get("text_sha256", "")}],
                                       indent=2), encoding="utf-8")
             os.replace(tmp, folder / "dismissed.json")
     return True

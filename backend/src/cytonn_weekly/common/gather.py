@@ -101,10 +101,10 @@ def _usable(pool: Iterable[dict[str, Any]], start: date, end: date, skip: set[st
         url = str(r.get("url") or "").strip()
         day = store._iso_date(str(r.get("publishedDate") or ""))
         host = store.host_of(url)
-        if not (url and host and day) or url in seen or url in skip or store.is_social(host) or (owns and not owns(url)):
+        if not (url and host and day) or store.url_key(url) in seen or store.url_key(url) in skip or store.is_social(host) or (owns and not owns(url)):
             continue
         if start.isoformat() <= day <= end.isoformat():
-            seen.add(url)
+            seen.add(store.url_key(url))
             out.append({**r, "url": url, "day": day})
     return sorted(out, key=lambda r: r["day"], reverse=True)
 
@@ -122,7 +122,7 @@ def _save(r: dict[str, Any], piece: Piece, fetch: Fetch, root: Optional[Path],
     title = str(r.get("title") or "")
     try:
         return fetch(url, piece.subject, piece.end, root=root, origin="found", window=piece.window)
-    except store.OutOfWindow as exc:
+    except (store.OutOfWindow, store.SameContent) as exc:
         ev.emit(on_event, ev.SOURCE_LEFT_OUT, title or store.host_of(url), detail=str(exc))
         return None
     except Exception as exc:  # noqa: BLE001 - one page never stops the gather
@@ -142,6 +142,9 @@ def _save(r: dict[str, Any], piece: Piece, fetch: Fetch, root: Optional[Path],
     try:
         return store.from_paste(url, day.isoformat(), text, piece.subject, piece.end, title=title, root=root,
                                 origin="found", extra_flags=flags)
+    except store.SameContent as exc:
+        ev.emit(on_event, ev.SOURCE_LEFT_OUT, title or store.host_of(url), detail=str(exc))
+        return None
     except Exception as exc:  # noqa: BLE001
         log.warning("gather: the search text from %s could not be kept: %s", store.host_of(url), type(exc).__name__)
         return None
@@ -153,7 +156,7 @@ def _read_sites(pieces: list[Piece], fetch: Fetch, root: Optional[Path], limits:
     todo = [p for p in pieces if p.site is not None and len(store.list_for(p.subject, p.end, root)) < limits.enough]
 
     def one(piece: Piece) -> tuple[str, site_read.SiteRead]:
-        skip = {s.url for s in store.list_for(piece.subject, piece.end, root)} | store.dismissed(piece.subject, piece.end, root)
+        skip = {store.url_key(s.url) for s in store.list_for(piece.subject, piece.end, root)} | store.dismissed(piece.subject, piece.end, root)
         try:
             return piece.subject, site_read.read_site(piece.site, piece, fetch=fetch, root=root, skip=skip, deadline=deadline)
         except Exception as exc:  # noqa: BLE001
@@ -178,7 +181,7 @@ def gather_piece(piece: Piece, *, search: Search, fetch: Fetch, root: Optional[P
     if len(have) >= limits.enough:
         return []
     start, end = piece.window
-    skip = {s.url for s in have} | store.dismissed(piece.subject, piece.end, root)
+    skip = {store.url_key(s.url) for s in have} | store.dismissed(piece.subject, piece.end, root)
     ev.emit(on_event, ev.SOURCES_LOOKING, piece.subject)
     saved: list[store.SourceText] = list(site.saved) if site else []
     route, note = ("site", "") if saved else ("", site.note if site else "its site was not read")

@@ -568,7 +568,8 @@ def test_as_result_has_the_search_result_shape_plus_what_the_check_needs(tmp_pat
                  "sha256": one.sha256, "fetched_at": "2026-11-06T09:00:00+00:00", "host": "www.centralbank.go.ke",
                  "origin": "pasted", "flags": [src.ADDED_BY_ANALYST]}
     assert "text" not in one.meta() and one.meta()["id"] == one.id
-    found = paste(tmp_path, url="https://www.knbs.or.ke/cpi", origin="found")   # a page the tool found itself: not "Added by analyst"
+    found = paste(tmp_path, url="https://www.knbs.or.ke/cpi", text=PARAGRAPH + " A different page.",   # its own text, or the
+                  origin="found")   # content rule refuses it; a page the tool found itself: not "Added by analyst"
     assert found.as_result()["flags"] == [] and found.as_result()["origin"] == "found"
 
 
