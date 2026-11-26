@@ -159,7 +159,7 @@ def read_site(company: Any, piece: Any, *, fetch: Callable[..., store.SourceText
             read += 1
             for link in read_links(body, final):
                 u, label = link["url"], f"{link['text']} {unquote(urlsplit(link['url']).path)}"
-                if not company.owns(u) or store.is_social(store.host_of(u)) or u in skip or u in queue:
+                if not company.owns(u) or store.is_social(store.host_of(u)) or store.url_key(u) in skip or u in queue:
                     continue
                 if not explicit and i == 1 and len(queue) < MAX_START_PAGES and _HUB.search(label):
                     queue.append(u)
