@@ -202,8 +202,9 @@ FIELD_LIST = (
     Field("mmf_published", FI, "money_market", "Fund table published on", MMF_READ_FROM, "Money Market Performance",
           "The day's paper the fund table below is copied from.", kind=DATE),
     Field("mmf_source", FI, "money_market", "Fund table source label", MMF_READ_FROM, "The source line under the fund table",
-          "The table is copied from the e-paper issue of that Friday, or of the last working day of the week. Funds the team "
-          "keeps its own rate for are typed like any other row.", kind=TEXT),
+          "Optional: Daily Nation is used when this is empty (Ryan, 26 Nov 2026). Type Business Daily or the fund's website "
+          "when the table came from there. The table is copied from the e-paper issue of that Friday, or of the last working "
+          "day of the week. Funds the team keeps its own rate for are typed like any other row.", kind=TEXT, required=False),
     Field("liquidity_driver", FI, "liquidity", "What drove liquidity this week (optional)", "The fixed income team's own reading",
           "Liquidity", "Optional. Type it as a clause that continues the first sentence of the Liquidity paragraph, for example "
           "\"partly attributable to tax payments that offset government payments\". It is printed as typed and is the team's own "

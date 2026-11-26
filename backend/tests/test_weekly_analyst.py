@@ -332,7 +332,9 @@ def test_every_typed_value_is_an_analyst_input_never_clean(typed_week):
     table = items(review, "Money Market Fund Yield for Fund Managers")
     assert len(table) == len(wh.FUNDS) and {i.status for i in table} == {"not_auto_verified"}
     assert table[0].detail == ("Not auto-verified: analyst input typed on the weekly form (money market fund table; source: "
-                               "Daily Nation e-paper). The tool does not read the e-paper, so check the row against the paper.")
+                               "Daily Nation e-paper). The tool does not read the e-paper, so check the row against the paper. "
+                               'The source label was not typed, so the default "Daily Nation" is used; correct it on the form '
+                               "if the table came from Business Daily or a fund's website.")
     top5 = items(review, "Money Market Performance: Average yield of the Top 5")[0]
     assert top5.status == "not_auto_verified" and "(10.72%)" in top5.ref                     # worked out, never typed
     assert "analyst input typed on the weekly form (money market fund table, Alpha Money Market Fund" in top5.detail
@@ -543,7 +545,10 @@ def test_the_form_is_read_and_saved_through_the_api(client, tmp_path):
     assert client.get("/api/inputs/weekly/2026-10-03/analyst").status_code == 422          # not a Friday
     assert client.get("/api/inputs/weekly/2026-10-02/analyst?section=focus").status_code == 422
     # the form is not one of the upload slots, and saving it leaves the files' status alone
-    assert [s["slug"] for s in client.get("/api/inputs/weekly/2026-10-02").json()["slots"]] == [s.slug for s in inputs.SLOTS]
+    listed = [s["slug"] for s in client.get("/api/inputs/weekly/2026-10-02").json()["slots"]]
+    assert listed == [s.slug for s in inputs.visible_slots()]
+    # KCB IB's weekly report stays a slot but is not offered while SHOW_KCB_WEEKLY is off
+    assert inputs.KCB_WEEKLY in [s.slug for s in inputs.SLOTS] and (inputs.KCB_WEEKLY in listed) == inputs.SHOW_KCB_WEEKLY
 
 
 # ---------------------------------------------------------------------------
@@ -917,6 +922,43 @@ def test_the_label_carries_forward_and_is_used_at_once(tmp_path):
     assert "mmf_source" in done["carried"] and "mmf_source" not in done["unconfirmed"]
     assert source_label(tmp_path, NEXT) == "Invented Paper"
     assert analyst.status(NEXT, tmp_path)["unconfirmed"] == []
+
+
+def test_an_empty_label_is_a_default_in_use_never_a_missing_input(tmp_path):
+    from cytonn_weekly.agent import readiness
+
+    got = readiness.classify("fixed_income", inputs.status(WEEK, tmp_path), analyst.status(WEEK, tmp_path, "fixed_income"))
+    assert "mmf_source" not in [e["key"] for e in got["groups"]["needs_analyst"]]
+    assert "mmf_source" in [e["key"] for e in got["groups"]["optional"]]   # the prepare page lists it under defaults in use
+    assert item("mmf_source", tmp_path)["help"].startswith("Optional: Daily Nation is used when this is empty")
+
+
+def test_the_default_label_is_never_stored_as_typed_carried_or_in_the_history_store(tmp_path):
+    from cytonn_weekly import db
+
+    path = tmp_path / "history.db"
+    analyst.save_form(WEEK, {"fields": {"placements": "9.5"}, "tables": {}, "confirm": []}, tmp_path, path)
+    done = analyst.carry_forward(NEXT, tmp_path)
+    assert source_label(tmp_path, NEXT) == "Daily Nation"
+    for week in (WEEK, NEXT):
+        form = analyst.read_form(week, tmp_path)
+        assert "mmf_source" not in form["fields"] and "mmf_source" not in form["carried"]
+    assert "mmf_source" not in done["carried"] and "mmf_source" not in done["unconfirmed"]
+    conn = db.open_db(path)
+    try:
+        rows = conn.execute("SELECT * FROM series_points").fetchall()
+    finally:
+        conn.close()
+    assert rows   # the typed placements rate is there
+    assert not any(dict(r)["value"] == "Daily Nation" or "mmf_source" in str(v) for r in rows for v in dict(r).values())
+
+
+def test_the_review_says_when_the_source_label_defaulted_and_not_when_it_was_typed(typed_week):
+    note = blocks(fi.build(typed_week))["mmf_table"]["origin_note"]
+    assert 'The source label was not typed, so the default "Daily Nation" is used' in note
+    assert "Business Daily or a fund's website" in note
+    save(typed_week, {"mmf_source": "Invented Paper"})
+    assert "not typed" not in blocks(fi.build(typed_week))["mmf_table"]["origin_note"]
 
 
 def test_the_liquidity_driver_is_the_teams_own_words_printed_and_marked_as_analyst_input(typed_week):

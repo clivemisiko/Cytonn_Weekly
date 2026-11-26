@@ -585,6 +585,9 @@ def money_market_blocks(inputs: WeeklyInputs, tbill_inputs: Optional[dict[str, d
                                "via": table.get("via")})
     block["row_origin"] = ANALYST
     block["origin_note"] = f"Not auto-verified: {table['origin']}. The tool does not read the e-paper, so check the row against the paper."
+    if not inputs.analyst.form["fields"].get("mmf_source"):
+        block["origin_note"] += (f" The source label was not typed, so the default \"{inputs.analyst.mmf_source()}\" is used; "
+                                 "correct it on the form if the table came from Business Daily or a fund's website.")
     # A typed rate that differs from the uploaded workbook's is shown to the reviewer on its row.
     block["second_sources"] = [{"row": row["fund"], "column": "rate", "source": typed_source(f["rate"].other, WB),
                                 "value": f["rate"].other.number * 100}
