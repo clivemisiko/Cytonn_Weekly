@@ -13,7 +13,7 @@ from tests.weekly_helpers import text_pdfs  # noqa: F401 - a fixture
 
 WEEK = wh.WEEK
 ITEMS = (*analyst.FIELD_LIST, *analyst.TABLE_LIST)
-OPTIONAL_TODAY = {"cmmf_last_week", "liquidity_driver", "fiscal_year_start", "foreign_prior_year", "borrowing_log"}
+OPTIONAL_TODAY = {"cmmf_last_week", "liquidity_driver", "fiscal_year_start", "mmf_source", "foreign_prior_year", "borrowing_log"}
 
 # WeeklyInputs caches each input under one of these keys; every read of one goes through WeeklyInputs._once.
 CACHE_KEY = {"eq": inputs.EQUITIES_WORKBOOK, "fi": inputs.FI_WORKBOOK, "dp": inputs.DP_WORKBOOK, "kcbw": inputs.KCB_WEEKLY,
